@@ -4,6 +4,7 @@ Standard library only. Every function takes the workspace root so the CLI, the M
 server and tests share one implementation.
 """
 import contextlib
+import ast
 import datetime
 import fcntl
 import hashlib
@@ -110,11 +111,93 @@ def init(target, name, packs=(), repos=()):
     cfg = {'schema_version': 1, 'name': name, 'vault': 'vault', 'packs': list(packs),
            'repos': [str(Path(r).expanduser().resolve()) for r in repos], 'created': now()}
     (target / 'workspace.json').write_text(json.dumps(cfg, indent=2) + '\n')
-    # Project-scoped MCP config: Claude Code reads .mcp.json; other clients can copy the same command.
-    mcp = {'mcpServers': {'ai-dev-workspace': {'command': 'python3',
-           'args': [str(KIT / 'mcp' / 'server.py'), '--root', str(target)]}}}
-    (target / '.mcp.json').write_text(json.dumps(mcp, indent=2) + '\n')
-    return cfg
+    connections = [connect(target, 'claude')]
+    for client in ('cursor', 'codex'):
+        if shutil.which(client) or (client == 'cursor' and _has_app('Cursor')):
+            connections.append(connect(target, client))
+    return dict(cfg, connections=connections)
+
+
+def mcp_command(root):
+    return {'command': 'python3', 'args': [str(KIT / 'mcp/server.py'), '--root', str(Path(root).resolve())]}
+
+
+def client_connected(root, client):
+    if client == 'codex':
+        path = Path.home() / '.codex/config.toml'
+        text = path.read_text() if path.is_file() else ''
+        match = re.search(r'^\[mcp_servers\.(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
+        if not match:
+            return False
+        fields = {}
+        for key in ('command', 'args'):
+            value = re.search(r'^' + key + r'\s*=\s*(\[.*?\]|"[^"\n]*"|\'[^\'\n]*\')', match[1], re.M | re.S)
+            try:
+                fields[key] = ast.literal_eval(value[1]) if value else None
+            except (ValueError, SyntaxError):
+                return False
+        return fields == mcp_command(root)
+    path = root / ('.mcp.json' if client == 'claude' else '.cursor/mcp.json')
+    try:
+        data = json.loads(path.read_text())
+        return data.get('mcpServers', {}).get('ai-dev-workspace') == mcp_command(root)
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def connect(root, client, write=False):
+    if client not in ('claude', 'codex', 'cursor'):
+        raise WsError('Client must be claude, codex or cursor.')
+    if write and client != 'codex':
+        raise WsError('--write applies only to the Codex global configuration.')
+    server = mcp_command(root)
+    if client == 'codex':
+        block = '[mcp_servers.ai-dev-workspace]\ncommand = "python3"\nargs = ' + json.dumps(server['args']) + '\n'
+        result = {'client': client, 'connected': client_connected(root, client), 'config': block}
+        if not write or result['connected']:
+            return result
+        path = Path.home() / '.codex/config.toml'
+        original = path.read_text() if path.exists() else ''
+        if re.search(r'^(?:mcp_servers\s*=|mcp_servers\.|\[mcp_servers\.(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:\]|\.))', original, re.M):
+            raise WsError('Codex already has a different workspace entry; review the printed block manually.')
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            number = 0
+            while True:
+                backup = path.with_name(path.name + '.ws-backup' + (f'.{number}' if number else ''))
+                try:
+                    fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    with os.fdopen(fd, 'wb') as stream:
+                        stream.write(path.read_bytes())
+                    break
+                except FileExistsError:
+                    number += 1
+            result['backup'] = str(backup)
+        atomic_write(path, original.rstrip('\n') + '\n\n' + block)
+        result['connected'] = True
+        return result
+    path = root / ('.mcp.json' if client == 'claude' else '.cursor/mcp.json')
+    if client_connected(root, client):
+        return {'client': client, 'connected': True, 'path': str(path)}
+    data = {'mcpServers': {}}
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text())
+            if isinstance(existing, dict) and isinstance(existing.get('mcpServers'), dict):
+                data = existing
+        except (OSError, ValueError):
+            pass
+    data['mcpServers']['ai-dev-workspace'] = server
+    collision = path.exists()
+    destination = path.with_name(path.name + '.ws-new') if collision else path
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with destination.open('x') as stream:
+            stream.write(json.dumps(data, indent=2) + '\n')
+    except FileExistsError:
+        pass
+    return {'client': client, 'connected': not collision, 'path': str(destination),
+            'note': 'Review the staged config; existing files were kept.' if collision else 'Project MCP configuration written; approve it in the client.'}
 
 
 # --- files -----------------------------------------------------------------------
@@ -510,6 +593,7 @@ def doctor(root=None):
     if root:
         report['workspace'] = str(root)
         report['valid'] = validate(root)['valid']
+        report['clients'] = {client: client_connected(root, client) for client in ('claude', 'codex', 'cursor')}
     return report
 
 

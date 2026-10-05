@@ -24,6 +24,9 @@ def string(desc, optional=False):
 
 
 TOOLS = {
+    'connect_client': ('Write a project MCP config, or preview the Codex global config without changing it.',
+                       S(client={'type': 'string', 'enum': ['claude', 'codex', 'cursor']}),
+                       lambda r, a: core.connect(r, a['client'])),
     'find_task': ('Find task records by ticket key, branch or title words. Start every session with this.',
                   S(ref=string('ticket key, branch name or title words')),
                   lambda r, a: core.task_find(r, a['ref'])),

@@ -24,6 +24,9 @@ def main(argv=None):
     sub.add_parser('status', help='workspace overview')
     sub.add_parser('validate', help='check task records, links and secrets')
     sub.add_parser('doctor', help='check which tools are installed')
+    s = sub.add_parser('connect', help='connect an assistant to this workspace')
+    s.add_argument('client', choices=('claude', 'codex', 'cursor'))
+    s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
 
     t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
     s = t.add_parser('new'); s.add_argument('id'); s.add_argument('title')
@@ -62,6 +65,12 @@ def main(argv=None):
     try:
         if a.cmd == 'init':
             cfg = core.init(a.dir, a.name, a.pack, a.repo)
+            for connection in cfg.get('connections', []):
+                if connection['client'] == 'codex':
+                    print('Codex: add this block to ~/.codex/config.toml, or run ws connect codex --write:')
+                    out(connection['config'])
+                else:
+                    print(f"{connection['client']}: {connection.get('note', 'already connected')}")
             out(f"Workspace '{cfg['name']}' created in {Path(a.dir).resolve()} (packs: {', '.join(cfg['packs']) or 'none'}).\n"
                 f"Next: cd {a.dir} && ws status   — then see docs/SETUP.md for Claude, Codex and MCP.")
             return 0
@@ -82,6 +91,9 @@ def main(argv=None):
             out(core.doctor(root)); return 0
         root = core.find_root()
         if a.cmd == 'status': out(core.status(root))
+        elif a.cmd == 'connect':
+            result = core.connect(root, a.client, a.write)
+            out(result['config'] if a.client == 'codex' and not a.write else result)
         elif a.cmd == 'pack': out(core.pack_add(root, a.name))
         elif a.cmd == 'notices':
             out('\n'.join(f"- {n['message']} → {n['suggest']}" for n in core.notices(root)) or 'Nothing to report.')
