@@ -12,6 +12,7 @@ from unittest import mock
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT))
 from ws import core  # noqa: E402
+from mcp import server  # noqa: E402
 
 
 class Base(unittest.TestCase):
@@ -67,6 +68,34 @@ class TaskTests(Base):
         core.claim(self.root, 'T-1', 'codex')
         # Regression: our own claim_token must not look like a leaked secret.
         self.assertEqual(core.validate(self.root)['warnings'], [])
+
+    def test_local_claim_defaults_cover_daily_loop_and_mcp(self):
+        claim = core.claim(self.root, 'T-1', 'terra')
+        stored = self.root / '.ws/claims/T-1.json'
+        self.assertEqual(json.loads(stored.read_text()), {'worker': 'terra', 'token': claim['token']})
+        reply = server.handle(self.root, {'method': 'tools/call', 'id': 1, 'params': {
+            'name': 'checkpoint', 'arguments': {'id': 'T-1', 'status': 'in_progress', 'next': 'Run the tests'}}})
+        self.assertFalse(reply['result']['isError'])
+        core.checkpoint(self.root, 'T-1', 'review', 'Review the change')
+        core.release(self.root, 'T-1')
+        self.assertFalse(stored.exists())
+
+    def test_setup_daily_loop_runs_in_a_fresh_workspace(self):
+        root = Path(self.tmp.name) / 'daily-loop'
+
+        def ws(*args):
+            return subprocess.run([sys.executable, str(KIT / 'bin/ws'), *args], cwd=root,
+                                  text=True, capture_output=True, check=True)
+
+        subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'init', str(root), '--name', 'daily'],
+                       text=True, capture_output=True, check=True)
+        ws('task', 'new', 'T-1', 'Fix crash')
+        ws('task', 'find', 'T-1')
+        ws('claim', 'T-1', '--worker', 'me')
+        ws('checkpoint', 'T-1', '--status', 'in_progress', '--next', 'Run the tests')
+        ws('lesson', 'add', 'A failed test revealed the missing default → test the daily loop')
+        ws('feedback', 'add', 'The loop was easy to run', '--kind', 'friction')
+        ws('release', 'T-1')
 
     def test_concurrent_claim_has_one_winner(self):
         barrier = threading.Barrier(4)
