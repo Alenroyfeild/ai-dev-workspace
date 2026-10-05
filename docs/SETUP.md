@@ -23,6 +23,8 @@ cd ~/work/myapp-workspace && ws doctor
 
 Keep the workspace in its own git repo (`git init`) so the memory is versioned. Put it in a private repo if it holds company knowledge.
 
+Existing files are kept. Proposed kit content goes beside them as `.ws-new`; review and apply it manually. Existing sidecars are kept too.
+
 ## 3. Connect your assistant
 
 **Claude Code** – open the workspace folder. `CLAUDE.md` loads `AGENTS.md`; `.mcp.json` registers the MCP server. Claude Code asks once to approve the project MCP server; approve it (or check with `claude mcp list`). To work on code in another folder, add that folder as an additional working directory.

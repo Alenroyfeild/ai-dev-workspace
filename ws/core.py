@@ -72,28 +72,75 @@ def available_packs():
     return sorted(p.name for p in (KIT / 'packs').iterdir() if (p / 'pack.json').is_file())
 
 
-def _install_pack(target, name):
+def write_preserving(path, data, collisions):
+    """Create kit content exclusively, staging conflicts without replacing user files."""
+    path = Path(path)
+    destination = path
+    number = 0
+    while True:
+        if destination.is_file() and destination.read_bytes() == data:
+            break
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with destination.open('xb') as stream:
+                try:
+                    stream.write(data)
+                except BaseException:
+                    destination.unlink()
+                    raise
+            break
+        except (FileExistsError, IsADirectoryError):
+            suffix = '.ws-new' + (f'.{number}' if number else '')
+            destination = path.with_name(path.name + suffix)
+            number += 1
+    if destination != path:
+        collisions.append(f'Kept {path.name}; kit content is in {destination.name}')
+    return destination
+
+
+def copy_preserving(source, target, collisions, skip=()):
+    for path in sorted(source.rglob('*')):
+        relative = path.relative_to(source)
+        if str(relative) in skip:
+            continue
+        if path.is_dir():
+            (target / relative).mkdir(parents=True, exist_ok=True)
+        else:
+            write_preserving(target / relative, path.read_bytes(), collisions)
+
+
+def pack_rules(text, name):
+    snippet = KIT / 'packs' / name / 'AGENTS.snippet.md'
+    if snippet.is_file() and snippet.read_text().strip() not in text:
+        return text.rstrip('\n') + '\n' + snippet.read_text().replace('<kit>', str(KIT))
+    return text
+
+
+def _install_pack(target, name, collisions, install_rules=True):
     src = KIT / 'packs' / name
     if (src / 'vault').is_dir():
-        shutil.copytree(src / 'vault', target / 'vault', dirs_exist_ok=True)
-    snippet = src / 'AGENTS.snippet.md'
-    rules = target / 'AGENTS.md'
-    if snippet.is_file() and snippet.read_text().strip() not in rules.read_text():
-        rules.write_text(rules.read_text().rstrip('\n') + '\n' + snippet.read_text().replace('<kit>', str(KIT)))
+        copy_preserving(src / 'vault', target / 'vault', collisions)
+    if install_rules:
+        rules = target / 'AGENTS.md'
+        text = rules.read_text()
+        candidate = pack_rules(text, name)
+        if candidate != text:
+            write_preserving(rules, candidate.encode(), collisions)
 
 
 def pack_add(root, name):
     """Plug a pack into an existing workspace; idempotent."""
     manifest = pack_manifest(name)
     cfg = config(root)
-    _install_pack(root, name)
+    collisions = []
+    _install_pack(root, name, collisions)
     if name not in cfg['packs']:
         cfg['packs'].append(name)
         (root / 'workspace.json').write_text(json.dumps(cfg, indent=2) + '\n')
     nxt = [f"run {KIT / 'packs' / name / manifest['setup']}"] if manifest.get('setup') else []
     if manifest.get('selftest'):
         nxt.append(f"verify with {KIT / 'packs' / name / manifest['selftest']}")
-    return {'pack': name, 'installed': True, 'next': nxt or ['nothing else needed'],
+    return {'pack': name, 'installed': True, 'collisions': collisions, 'next': nxt or ['nothing else needed'],
             'missing': [r for r in requirement_status(manifest) if not r['ok']]}
 
 
@@ -104,17 +151,21 @@ def init(target, name, packs=(), repos=()):
     for pack in packs:
         pack_manifest(pack)
     target.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(KIT / 'template', target, dirs_exist_ok=True)
+    collisions = []
+    copy_preserving(KIT / 'template', target, collisions, skip=('AGENTS.md',))
+    rules = (KIT / 'template' / 'AGENTS.md').read_text()
     for pack in packs:
-        _install_pack(target, pack)
+        _install_pack(target, pack, collisions, install_rules=False)
+        rules = pack_rules(rules, pack)
+    write_preserving(target / 'AGENTS.md', rules.encode(), collisions)
     cfg = {'schema_version': 1, 'name': name, 'vault': 'vault', 'packs': list(packs),
            'repos': [str(Path(r).expanduser().resolve()) for r in repos], 'created': now()}
-    (target / 'workspace.json').write_text(json.dumps(cfg, indent=2) + '\n')
     # Project-scoped MCP config: Claude Code reads .mcp.json; other clients can copy the same command.
     mcp = {'mcpServers': {'ai-dev-workspace': {'command': 'python3',
            'args': [str(KIT / 'mcp' / 'server.py'), '--root', str(target)]}}}
-    (target / '.mcp.json').write_text(json.dumps(mcp, indent=2) + '\n')
-    return cfg
+    write_preserving(target / '.mcp.json', (json.dumps(mcp, indent=2) + '\n').encode(), collisions)
+    write_preserving(target / 'workspace.json', (json.dumps(cfg, indent=2) + '\n').encode(), collisions)
+    return dict(cfg, collisions=collisions)
 
 
 # --- files -----------------------------------------------------------------------
