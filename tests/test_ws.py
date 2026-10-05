@@ -189,7 +189,7 @@ class InterfaceTests(Base):
 class ReleaseFeedbackTests(Base):
     def setUp(self):
         super().setUp()
-        self.env = mock.patch.dict(os.environ, {'WS_REPO': 'acme/kit', 'HOME': self.tmp.name})
+        self.env = mock.patch.dict(os.environ, {'WS_REPO': 'acme/kit', 'HOME': self.tmp.name, 'WS_OFFLINE': '0'})
         self.env.start()
         self.addCleanup(self.env.stop)
         core.feedback_add(self.root, 'init should ask for the repo; token=abcdefghijklmnop1234', 'friction')
