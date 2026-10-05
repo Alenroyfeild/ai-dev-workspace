@@ -24,6 +24,8 @@ def string(desc, optional=False):
 
 
 TOOLS = {
+    'brief': ('Short local task memory: next action, blockers and matching lessons.', S(), lambda r, a: core.brief(r)),
+    'nudge': ('Checkpoint reminder for a claim without a checkpoint for 30 minutes.', S(), lambda r, a: core.nudge(r)),
     'find_task': ('Find task records by ticket key, branch or title words. Start every session with this.',
                   S(ref=string('ticket key, branch name or title words')),
                   lambda r, a: core.task_find(r, a['ref'])),

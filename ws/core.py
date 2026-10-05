@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -114,7 +115,27 @@ def init(target, name, packs=(), repos=()):
     mcp = {'mcpServers': {'ai-dev-workspace': {'command': 'python3',
            'args': [str(KIT / 'mcp' / 'server.py'), '--root', str(target)]}}}
     (target / '.mcp.json').write_text(json.dumps(mcp, indent=2) + '\n')
-    return cfg
+    return dict(cfg, hook_notices=install_memory_hooks(target))
+
+
+def install_memory_hooks(root):
+    command = 'env WS_ROOT=' + shlex.quote(str(root)) + ' python3 ' + shlex.quote(str(KIT / 'bin/ws'))
+    hooks = {'hooks': {event: [{'hooks': [{'type': 'command', 'timeout': 10,
+                         'command': command + (' brief --hook' if event == 'SessionStart' else ' nudge --hook')}]}]
+                       for event in ('SessionStart', 'PreCompact', 'Stop')}}
+    notices = []
+    for relative in ('.claude/settings.json', '.codex/hooks.json'):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            path = path.with_name(path.name + '.ws-new')
+            notices.append(f'Kept {relative}; review {relative}.ws-new for memory hooks.')
+        try:
+            with path.open('x') as stream:
+                stream.write(json.dumps(hooks, indent=2) + '\n')
+        except FileExistsError:
+            pass
+    return notices
 
 
 # --- files -----------------------------------------------------------------------
@@ -276,7 +297,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
             raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; pass its worker and token.')
         if expected_sha and expected_sha != digest_text(text):
             raise WsError('Task changed since you read it; read it again before checkpointing.')
-        text = set_meta(text, {'status': status, 'updated': now()})
+        text = set_meta(text, {'status': status, 'updated': now(), 'checkpoint_at': now()})
         text = set_section(text, 'Next action', redact(next_action))
         for name, body in (notes or {}).items():
             if name not in REQUIRED and name not in ('Findings', 'Failures', 'Risks', 'Do not redo'):
@@ -334,6 +355,44 @@ def lesson_search(root, query):
     words = [w.lower() for w in re.findall(r'\w{3,}', query)]
     lines = [l for l in path.read_text().splitlines() if l.startswith('- ')] if path.exists() else []
     return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
+
+
+def brief(root):
+    active = [t for t in task_list(root) if t['status'] == 'in_progress']
+    if not active:
+        return 'No in-progress task. Find or create the task before working.'
+    task = next((t for t in active if t['claimed_by']), active[0])
+    record = task_read(root, task['id'], ['Next action', 'Blockers'])
+    def words(text, limit):
+        return ' '.join(redact(text).split()[:limit])
+    lines = ['Resume this task; mention its next action in your opening response.',
+             f"Task {task['id']}: {words(task['title'], 15)}",
+             'Next action: ' + words(record['sections']['Next action'], 60),
+             'Blockers: ' + words(record['sections']['Blockers'], 25)]
+    lessons = lesson_search(root, task['title'])
+    query = set(re.findall(r'\w{3,}', task['title'].lower()))
+    lessons.sort(key=lambda line: -sum(line.lower().count(w) for w in query))
+    lines += ['Lesson: ' + words(line, 12) for line in lessons[:3]]
+    return '\n'.join(lines)
+
+
+def nudge(root):
+    current = datetime.datetime.fromisoformat(now())
+    for task in task_list(root):
+        if not task['claimed_by']:
+            continue
+        meta = task_read(root, task['id'], ['Next action'])['meta']
+        dates = []
+        for value in (meta.get('claimed_at'), meta.get('checkpoint_at')):
+            try:
+                stamp = datetime.datetime.fromisoformat(value or '')
+                if stamp.tzinfo:
+                    dates.append(stamp)
+            except ValueError:
+                pass
+        if dates and (current - max(dates)).total_seconds() >= 1800:
+            return f"Please checkpoint {task['id']} with its current progress and exact next action before stopping."
+    return ''
 
 
 def feedback_add(root, text, kind='idea', source='user'):

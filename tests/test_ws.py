@@ -26,6 +26,41 @@ class Base(unittest.TestCase):
 
 
 class TaskTests(Base):
+    def test_memory_hooks_and_brief_are_bounded(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Inspect the synthetic guard',
+                        notes={'Blockers': 'No blocker', 'Evidence': 'synthetic'})
+        core.lesson_add(self.root, 'Crash repeated → test the empty input')
+        brief = core.brief(self.root)
+        self.assertIn('Inspect the synthetic guard', brief)
+        self.assertIn('No blocker', brief)
+        self.assertIn('Crash repeated', brief)
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'word ' * 300)
+        self.assertLess(len(core.brief(self.root).split()), 200)
+        for name in ('.claude/settings.json', '.codex/hooks.json'):
+            hooks = json.loads((self.root / name).read_text())['hooks']
+            self.assertEqual(set(hooks), {'SessionStart', 'PreCompact', 'Stop'})
+
+    def test_hook_settings_collision_keeps_user_content(self):
+        target = Path(self.tmp.name) / 'hooks'
+        settings = target / '.claude/settings.json'
+        settings.parent.mkdir(parents=True)
+        settings.write_text('{"user": true}')
+        core.init(target, 'hooks')
+        self.assertEqual(settings.read_text(), '{"user": true}')
+        self.assertTrue(settings.with_name('settings.json.ws-new').exists())
+
+    def test_nudge_requires_stale_claim_and_checkpoint_resets_it(self):
+        with mock.patch.object(core, 'now', return_value='2026-01-01T00:00:00+00:00'):
+            token = core.claim(self.root, 'T-1', 'synthetic')['token']
+        with mock.patch.object(core, 'now', return_value='2026-01-01T00:29:59+00:00'):
+            self.assertEqual(core.nudge(self.root), '')
+        with mock.patch.object(core, 'now', return_value='2026-01-01T00:30:00+00:00'):
+            self.assertIn('T-1', core.nudge(self.root))
+            core.checkpoint(self.root, 'T-1', 'in_progress', 'next', worker='synthetic', token=token)
+            self.assertEqual(core.nudge(self.root), '')
+        core.release(self.root, 'T-1', 'synthetic', token)
+        self.assertEqual(core.nudge(self.root), '')
+
     def test_init_installs_template_pack_and_mcp_config(self):
         self.assertTrue((self.root / 'vault/Runbooks/iOS build triage.md').exists())
         self.assertIn('## iOS pack', (self.root / 'AGENTS.md').read_text())
@@ -154,6 +189,17 @@ class KnowledgeTests(Base):
 
 
 class InterfaceTests(Base):
+    def test_stop_hook_does_not_repeat_checkpoint_request(self):
+        with mock.patch.object(core, 'now', return_value='2020-01-01T00:00:00+00:00'):
+            core.claim(self.root, 'T-1', 'synthetic')
+        for active in (False, True):
+            proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook'],
+                                  cwd=self.root, input=json.dumps({'hook_event_name': 'Stop', 'stop_hook_active': active}),
+                                  capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            reply = json.loads(proc.stdout)
+            self.assertEqual(reply, {} if active else {'decision': 'block', 'reason': core.nudge(self.root)})
+
     def run_cli(self, *args):
         return subprocess.run([sys.executable, str(KIT / 'bin/ws'), *args], cwd=self.root, capture_output=True, text=True)
 

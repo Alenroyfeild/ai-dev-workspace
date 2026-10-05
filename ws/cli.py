@@ -51,6 +51,9 @@ def main(argv=None):
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
     sub.add_parser('version')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
+    for command in ('brief', 'nudge'):
+        s = sub.add_parser(command, help='local task memory for assistant sessions')
+        s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
     s = sub.add_parser('digest', help='summarise a big log/JSON file deterministically'); s.add_argument('file')
     r = sub.add_parser('run', help='orchestration step tracking').add_subparsers(dest='action', required=True)
     s = r.add_parser('log'); s.add_argument('task'); s.add_argument('step'); s.add_argument('--provider', required=True)
@@ -62,6 +65,8 @@ def main(argv=None):
     try:
         if a.cmd == 'init':
             cfg = core.init(a.dir, a.name, a.pack, a.repo)
+            for notice in cfg.get('hook_notices', []):
+                print(notice, file=sys.stderr)
             out(f"Workspace '{cfg['name']}' created in {Path(a.dir).resolve()} (packs: {', '.join(cfg['packs']) or 'none'}).\n"
                 f"Next: cd {a.dir} && ws status   — then see docs/SETUP.md for Claude, Codex and MCP.")
             return 0
@@ -82,6 +87,18 @@ def main(argv=None):
             out(core.doctor(root)); return 0
         root = core.find_root()
         if a.cmd == 'status': out(core.status(root))
+        elif a.cmd in ('brief', 'nudge'):
+            payload = json.load(sys.stdin) if a.hook else {}
+            if not isinstance(payload, dict):
+                raise core.WsError('Hook input must be a JSON object.')
+            message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
+            if a.hook and a.cmd == 'nudge':
+                if payload.get('hook_event_name') == 'Stop':
+                    out({'decision': 'block', 'reason': message} if message and not payload.get('stop_hook_active') else {})
+                elif message:
+                    out({'systemMessage': message})
+            elif message:
+                out(message)
         elif a.cmd == 'pack': out(core.pack_add(root, a.name))
         elif a.cmd == 'notices':
             out('\n'.join(f"- {n['message']} → {n['suggest']}" for n in core.notices(root)) or 'Nothing to report.')
