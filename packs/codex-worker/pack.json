@@ -1,0 +1,7 @@
+{"name": "codex-worker", "version": "0.1.0", "kind": "worker",
+ "description": "Optional second AI worker: Codex over ACP, read-only (writes blocked by Codex's readOnly sandbox). Saves the lead assistant's tokens on multi-file exploration.",
+ "setup": "setup.sh", "selftest": "selftest.sh",
+ "requires": [
+  {"cmd": "node", "why": "runs the ACP adapter", "install": "brew install node"},
+  {"cmd": "acpx", "why": "ACP client", "install": "npm install -g acpx"},
+  {"cmd": "codex", "why": "sign in once with `codex login` (optional if already signed in via the adapter)", "install": "npm install -g @openai/codex", "optional": true}]}

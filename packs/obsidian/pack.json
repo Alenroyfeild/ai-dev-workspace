@@ -1,0 +1,3 @@
+{"name": "obsidian", "version": "0.1.0", "kind": "editor",
+ "description": "Browse and edit the vault in Obsidian: links, graph, search. The workspace works without it; Obsidian only makes the memory pleasant to read.",
+ "requires": [{"app": "Obsidian", "why": "vault reader/editor", "install": "Download from https://obsidian.md (free)", "optional": true}]}

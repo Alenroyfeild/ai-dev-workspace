@@ -1,0 +1,23 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match kit.json version
+        run: |
+          v=$(python3 -c "import json;print(json.load(open('kit.json'))['version'])")
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "kit.json says $v, tag is $GITHUB_REF_NAME"; exit 1; }
+      - run: python3 -m unittest discover -s tests
+      - name: Release notes from CHANGELOG
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          awk -v v="$v" '$0 ~ "^## "v {f=1; next} /^## / && f {exit} f' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "No CHANGELOG section for $v"; exit 1; }
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+        env: {GH_TOKEN: "${{ github.token }}"}

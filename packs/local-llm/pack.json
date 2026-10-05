@@ -1,0 +1,3 @@
+{"name": "local-llm", "version": "0.1.0", "kind": "worker",
+ "description": "Free on-device model via Ollama for mechanical text jobs (log triage, extraction). Costs no paid tokens; output is checked against the source.",
+ "requires": [{"cmd": "ollama", "why": "local model runtime", "install": "brew install ollama && ollama serve & ollama pull qwen3.5:4b"}]}

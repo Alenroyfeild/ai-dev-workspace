@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Entry point: put this repo's bin/ on PATH, or run python3 bin/ws."""
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ws.cli import main
+sys.exit(main())

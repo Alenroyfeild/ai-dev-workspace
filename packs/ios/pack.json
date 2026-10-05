@@ -1,0 +1,5 @@
+{"name": "ios", "version": "0.1.0", "kind": "domain",
+ "description": "iOS/Xcode know-how: build-log triage, Simulator debugging, CocoaPods pitfalls, App Store review replies.",
+ "requires": [
+  {"cmd": "xcodebuild", "why": "build and test", "install": "Install Xcode from the App Store", "optional": true},
+  {"cmd": "xcrun", "why": "Simulator control", "install": "xcode-select --install", "optional": true}]}
