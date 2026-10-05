@@ -42,6 +42,12 @@ def redact(text):
     return SECRET_RE.sub('[REDACTED]', text)
 
 
+def redacted_line(value, field):
+    if not isinstance(value, str) or any(c in value for c in '\r\n\x85\u2028\u2029'):
+        raise WsError(f'{field} must be one line of text.')
+    return redact(value)
+
+
 # --- workspace -------------------------------------------------------------------
 
 def find_root(start=None):
@@ -194,6 +200,9 @@ def task_path(root, task_id):
 
 
 def task_new(root, task_id, title, objective='', branch='', repo=''):
+    title = redacted_line(title, 'Title')
+    branch = redacted_line(branch, 'Branch')
+    repo = redacted_line(repo, 'Repo')
     path = task_path(root, task_id)
     if path.exists():
         raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
@@ -324,7 +333,7 @@ def lesson_add(root, text, tags=()):
     text = ' '.join(redact(text).split())
     if len(text) < 10:
         raise WsError('Write the lesson as: what happened → rule.')
-    tag = ' '.join(f'#{t}' for t in tags)
+    tag = ' '.join(f'#{redacted_line(t, "Tag")}' for t in tags)
     _append_line(root, Path(config(root).get('vault', 'vault')) / 'Learnings.md', f'- {now()[:10]} {text} {tag}'.rstrip())
     return {'added': True}
 
@@ -339,6 +348,7 @@ def lesson_search(root, query):
 def feedback_add(root, text, kind='idea', source='user'):
     if kind not in ('idea', 'bug', 'praise', 'friction'):
         raise WsError('Kind is one of: idea, bug, praise, friction.')
+    source = redacted_line(source, 'Source')
     _append_line(root, Path(config(root).get('vault', 'vault')) / 'Feedback.md',
                  f'- [ ] {now()[:10]} **{kind}** ({source}): {" ".join(redact(text).split())}')
     return {'added': True}
@@ -356,7 +366,7 @@ def _shape(value, depth=0):
     if depth > 6:
         return '…'
     if isinstance(value, dict):
-        return {k: _shape(v, depth + 1) for k, v in list(value.items())[:40]}
+        return {redact(k): _shape(v, depth + 1) for k, v in list(value.items())[:40]}
     if isinstance(value, list):
         return [f'{len(value)} items', _shape(value[0], depth + 1)] if value else []
     if isinstance(value, str):
@@ -371,7 +381,7 @@ def digest_file(path, max_lines=60):
     """Deterministic summary of a big file: JSON shape, or deduplicated error lines of a log."""
     path = Path(path)
     raw = path.read_text(errors='replace')
-    out = {'file': str(path), 'bytes': len(raw), 'lines': raw.count('\n') + 1}
+    out = {'file': redact(str(path)), 'bytes': len(raw), 'lines': raw.count('\n') + 1}
     try:
         out['json_shape'] = _shape(json.loads(raw))
         return out
@@ -380,7 +390,7 @@ def digest_file(path, max_lines=60):
     seen, picked = {}, []
     for i, line in enumerate(raw.splitlines(), 1):
         if ERR_RE.search(line):
-            key = re.sub(r'\d+', '#', line.strip())[:200]
+            key = re.sub(r'\d+', '#', redact(line.strip()))[:200]
             if key in seen:
                 seen[key] += 1
                 continue
@@ -400,7 +410,8 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
     task_path(root, task_id)
     if result not in ('ok', 'failed', 'rejected', 'accepted', 'skipped'):
         raise WsError('result is ok, failed, rejected, accepted or skipped.')
-    entry = {'at': now(), 'task': task_id, 'step': step, 'provider': provider, 'model': model,
+    entry = {'at': now(), 'task': task_id, 'step': redacted_line(step, 'Step'),
+             'provider': redacted_line(provider, 'Provider'), 'model': redacted_line(model, 'Model'),
              'tokens_in': int(tokens_in), 'tokens_out': int(tokens_out), 'seconds': float(seconds),
              'result': result, 'note': redact(note)[:300]}
     path = vault(root) / 'Runs' / f'{task_id}.jsonl'
@@ -602,9 +613,9 @@ def feedback_submit(root, n, yes=False, use_gh=None):
         raise WsError(f'No feedback item {n}; see `ws feedback list --all`.')
     if item['issue']:
         raise WsError(f'Already submitted: {item["issue"]}')
-    title = f'[{item["kind"]}] {item["text"][:70]}'
-    body = (f'{redact(item["text"])}\n\n- kind: {item["kind"]}\n- recorded: {item["date"]}\n'
-            f'- kit version: {kit_meta()["version"]}\n- packs: {", ".join(config(root).get("packs", []))}\n')
+    title = f'[{item["kind"]}] {redact(item["text"])[:70]}'
+    body = redact(f'{item["text"]}\n\n- kind: {item["kind"]}\n- recorded: {item["date"]}\n'
+                  f'- kit version: {kit_meta()["version"]}\n- packs: {", ".join(config(root).get("packs", []))}\n')
     preview = {'title': title, 'body': body, 'note': 'Check it contains nothing private, then re-run with --yes.'}
     if not yes:
         return preview

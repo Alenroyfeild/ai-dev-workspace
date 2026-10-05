@@ -97,6 +97,20 @@ class TaskTests(Base):
         self.assertNotIn('abcdefghijklmnop123', text)
         self.assertNotIn('sk-1234567890abcdef', text)
 
+    def test_new_task_redacts_title_and_metadata(self):
+        markers = ['password=' + 'A' * 16, 'secret=' + 'B' * 16, 'api_key=' + 'C' * 16]
+        core.task_new(self.root, 'T-2', markers[0], branch=markers[1], repo=markers[2])
+        text = core.task_read(self.root, 'T-2')['text']
+        for marker in markers:
+            self.assertNotIn(marker, text)
+        self.assertEqual(text.count('[REDACTED]'), 3)
+
+    def test_single_line_task_fields_reject_newlines(self):
+        for values in ({'title': 'a\nb'}, {'branch': 'a\rb'}, {'repo': 'a\nb'}):
+            with self.subTest(values=values), self.assertRaises(core.WsError):
+                core.task_new(self.root, 'T-2', **{'title': 'ordinary', **values})
+        self.assertFalse((self.root / 'vault/Tasks/T-2.md').exists())
+
     def test_bad_ids_rejected(self):
         for bad in ('../x', 'a/b', '', '.hidden'):
             with self.assertRaises(core.WsError):
@@ -135,6 +149,45 @@ class KnowledgeTests(Base):
         d = core.digest_file(log)
         self.assertEqual(d['distinct_problem_lines'], 1)
         self.assertIn('(x2)', d['problems'][0])
+
+    def test_digest_redacts_before_number_normalization(self):
+        log = Path(self.tmp.name) / 'log.txt'
+        marker = 'password=' + '1' * 16
+        log.write_text('error: ' + marker + '\n')
+        digest = core.digest_file(log)
+        self.assertIn('[REDACTED]', digest['problems'][0])
+        self.assertNotIn(marker, json.dumps(digest))
+
+    def test_digest_redacts_json_keys_and_path(self):
+        marker = 'secret=' + 'J' * 16
+        path = Path(self.tmp.name) / (marker + '.json')
+        path.write_text(json.dumps({marker: 1}))
+        self.assertNotIn(marker, json.dumps(core.digest_file(path)))
+
+    def test_lesson_feedback_and_run_fields_are_redacted(self):
+        markers = ['token=' + 'D' * 16, 'password=' + 'E' * 16,
+                   'secret=' + 'F' * 16, 'api_key=' + 'G' * 16,
+                   'token=' + 'H' * 16]
+        core.lesson_add(self.root, 'A useful rule for the next run', [markers[0]])
+        core.feedback_add(self.root, 'An ordinary suggestion', source=markers[1])
+        core.run_log(self.root, 'T-1', markers[2], markers[3], model=markers[4])
+        files = [self.root / 'vault/Learnings.md', self.root / 'vault/Feedback.md',
+                 self.root / 'vault/Runs/T-1.jsonl']
+        stored = '\n'.join(path.read_text() for path in files)
+        for marker in markers:
+            self.assertNotIn(marker, stored)
+        self.assertEqual(stored.count('[REDACTED]'), len(markers))
+
+    def test_single_line_labels_reject_newlines(self):
+        cases = (
+            lambda: core.lesson_add(self.root, 'A useful rule for the next run', ['a\nb']),
+            lambda: core.feedback_add(self.root, 'A suggestion', source='a\rb'),
+            lambda: core.run_log(self.root, 'T-1', 'a\nb', 'worker'),
+            lambda: core.run_log(self.root, 'T-1', 'step', 'worker', model='a\rb'),
+        )
+        for call in cases:
+            with self.subTest(call=call), self.assertRaises(core.WsError):
+                call()
 
     def test_run_log_and_report(self):
         core.run_log(self.root, 'T-1', 'explore', 'codex', 'gpt-6-luna', 1000, 200, 30, 'ok')
@@ -189,7 +242,7 @@ class InterfaceTests(Base):
 class ReleaseFeedbackTests(Base):
     def setUp(self):
         super().setUp()
-        self.env = mock.patch.dict(os.environ, {'WS_REPO': 'acme/kit', 'HOME': self.tmp.name})
+        self.env = mock.patch.dict(os.environ, {'WS_REPO': 'acme/kit', 'HOME': self.tmp.name, 'WS_OFFLINE': '0'})
         self.env.start()
         self.addCleanup(self.env.stop)
         core.feedback_add(self.root, 'init should ask for the repo; token=abcdefghijklmnop1234', 'friction')
@@ -199,6 +252,24 @@ class ReleaseFeedbackTests(Base):
         self.assertIn('--yes', prev['note'])
         self.assertNotIn('abcdefghijklmnop1234', prev['body'])
         self.assertIn('kit version', prev['body'])
+
+    def test_submit_redacts_title_before_truncation(self):
+        marker = 'password=' + 'Q' * 80
+        path = self.root / 'vault/Feedback.md'
+        path.write_text(path.read_text().replace('[REDACTED]', marker))
+        preview = core.feedback_submit(self.root, 1)
+        self.assertIn('[REDACTED]', preview['title'])
+        self.assertNotIn('password=', preview['title'])
+        self.assertNotIn(marker, preview['body'])
+
+    def test_submit_redacts_configured_pack_names_in_body(self):
+        marker = 'secret=' + 'K' * 16
+        path = self.root / 'workspace.json'
+        cfg = json.loads(path.read_text())
+        cfg['packs'].append(marker)
+        path.write_text(json.dumps(cfg))
+        preview = core.feedback_submit(self.root, 1)
+        self.assertNotIn(marker, preview['body'])
 
     def test_submit_without_gh_gives_prefilled_url_then_link_and_sync(self):
         res = core.feedback_submit(self.root, 1, yes=True, use_gh=False)
