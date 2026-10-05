@@ -154,6 +154,29 @@ class KnowledgeTests(Base):
 
 
 class InterfaceTests(Base):
+    def test_mcp_invalid_inputs_keep_server_alive(self):
+        bad = [[], None, {'id': 1, 'method': 'ping'},
+               {'jsonrpc': '2.0', 'id': True, 'method': 'ping'},
+               {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call'},
+               {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': None}]
+        calls = [('read_task', {'id': 42}), ('read_task', {'id': 'T-1', 'sections': [None]}),
+                 ('read_task', {'id': 'T-1', 'extra': True}), ('find_task', []),
+                 ('checkpoint', {'id': 'T-1', 'status': 'ready', 'next': 'x', 'notes': {'Evidence': []}}),
+                 ('log_step', {'task': 'T-1', 'step': 'x', 'provider': 'x', 'tokens_in': True}),
+                 ('log_step', {'task': 'T-1', 'step': 'x', 'provider': 'x', 'seconds': float('inf')})]
+        bad += [{'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                 'params': {'name': name, 'arguments': args}} for name, args in calls]
+        for message in bad:
+            with self.subTest(message=message):
+                ping = {'jsonrpc': '2.0', 'id': 2, 'method': 'ping'}
+                proc = subprocess.run([sys.executable, str(KIT / 'mcp/server.py'), '--root', str(self.root)],
+                                      input=json.dumps(message) + '\n' + json.dumps(ping) + '\n',
+                                      capture_output=True, text=True, timeout=10)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                replies = list(map(json.loads, proc.stdout.splitlines()))
+                self.assertIn(replies[0]['error']['code'], (-32600, -32602))
+                self.assertEqual(replies[-1], {'jsonrpc': '2.0', 'id': 2, 'result': {}})
+
     def run_cli(self, *args):
         return subprocess.run([sys.executable, str(KIT / 'bin/ws'), *args], cwd=self.root, capture_output=True, text=True)
 

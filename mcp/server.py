@@ -5,6 +5,7 @@ Run: python3 mcp/server.py --root <workspace>   (or set WS_ROOT). No dependencie
 """
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -16,7 +17,7 @@ PROTOCOL = '2025-06-18'
 
 def S(**props):
     required = [k for k, v in props.items() if not v.pop('optional', False)]
-    return {'type': 'object', 'properties': props, 'required': required}
+    return {'type': 'object', 'properties': props, 'required': required, 'additionalProperties': False}
 
 
 def string(desc, optional=False):
@@ -71,25 +72,74 @@ TOOLS = {
 }
 
 
+def rpc_error(mid, code, message):
+    return {'jsonrpc': '2.0', 'id': mid, 'error': {'code': code, 'message': message}}
+
+
+def validate_input(value, schema, field='arguments'):
+    kind = schema.get('type')
+    valid = {'object': isinstance(value, dict), 'array': isinstance(value, list),
+             'string': isinstance(value, str), 'integer': type(value) is int,
+             'number': type(value) is int or (type(value) is float and math.isfinite(value))}
+    if kind and not valid.get(kind, False):
+        raise ValueError(f'{field} must be {kind}')
+    if 'enum' in schema and value not in schema['enum']:
+        raise ValueError(f'{field} is not an allowed value')
+    if kind == 'object':
+        props = schema.get('properties', {})
+        if any(key not in value for key in schema.get('required', [])):
+            raise ValueError(f'{field} is missing required fields')
+        extra = schema.get('additionalProperties', True)
+        for key, item in value.items():
+            if key in props:
+                validate_input(item, props[key], f'{field}.{key}')
+            elif extra is False:
+                raise ValueError(f'{field} has unknown fields')
+            elif isinstance(extra, dict):
+                validate_input(item, extra, f'{field}.{key}')
+    elif kind == 'array':
+        for item in value:
+            validate_input(item, schema['items'], field + '[]')
+
+
 def handle(root, msg):
-    method, mid = msg.get('method'), msg.get('id')
-    if mid is None:
+    if (not isinstance(msg, dict) or msg.get('jsonrpc') != '2.0'
+            or not isinstance(msg.get('method'), str)
+            or ('id' in msg and msg['id'] is not None and type(msg['id']) not in (int, str))):
+        return rpc_error(None, -32600, 'Invalid request')
+    method, mid = msg['method'], msg.get('id')
+    if 'id' not in msg:
         return None  # notification
+    params = msg.get('params', {})
+    if not isinstance(params, dict):
+        return rpc_error(mid, -32602, 'Params must be an object')
     if method == 'initialize':
-        result = {'protocolVersion': msg.get('params', {}).get('protocolVersion', PROTOCOL),
+        try:
+            validate_input(params, S(protocolVersion=string('version', True),
+                                     capabilities={'type': 'object', 'optional': True},
+                                     clientInfo={'type': 'object', 'optional': True}))
+        except ValueError as exc:
+            return rpc_error(mid, -32602, str(exc))
+        result = {'protocolVersion': params.get('protocolVersion', PROTOCOL),
                   'capabilities': {'tools': {}},
                   'serverInfo': {'name': 'ai-dev-workspace', 'version': '0.1.0'}}
     elif method == 'tools/list':
         result = {'tools': [{'name': n, 'description': d, 'inputSchema': s} for n, (d, s, _) in TOOLS.items()]}
     elif method == 'tools/call':
-        name = msg['params'].get('name')
-        args = msg['params'].get('arguments') or {}
+        name = params.get('name')
+        args = params.get('arguments', {})
+        if not isinstance(name, str):
+            return rpc_error(mid, -32602, 'Tool name must be a string')
         if name not in TOOLS:
-            return {'jsonrpc': '2.0', 'id': mid, 'error': {'code': -32602, 'message': f'Unknown tool {name}'}}
+            return rpc_error(mid, -32602, f'Unknown tool {name}')
+        try:
+            validate_input(args, TOOLS[name][1])
+        except ValueError as exc:
+            return rpc_error(mid, -32602, str(exc))
         try:
             value = TOOLS[name][2](root, args)
             result = {'content': [{'type': 'text', 'text': json.dumps(value, ensure_ascii=False, indent=1)}], 'isError': False}
-        except (core.WsError, KeyError, OSError, ValueError) as exc:
+        except (core.WsError, KeyError, OSError, ValueError, TypeError) as exc:
             result = {'content': [{'type': 'text', 'text': f'{type(exc).__name__}: {exc}'}], 'isError': True}
     elif method == 'ping':
         result = {}
