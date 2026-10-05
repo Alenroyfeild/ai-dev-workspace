@@ -45,6 +45,13 @@ class TaskTests(Base):
         self.assertEqual((self.root / 'AGENTS.md').read_text().count('## Obsidian pack'), 1)
         self.assertTrue((self.root / 'vault/.obsidian/app.json').exists())
 
+    def test_every_pack_is_idempotent_after_rendering_kit_path(self):
+        for name in core.available_packs():
+            core.pack_add(self.root, name)
+            core.pack_add(self.root, name)
+            snippet = (core.KIT / 'packs' / name / 'AGENTS.snippet.md').read_text().replace('<kit>', str(core.KIT)).strip()
+            self.assertEqual((self.root / 'AGENTS.md').read_text().count(snippet), 1, name)
+
     def test_empty_section_write_keeps_next_heading(self):
         # Regression: writing an empty section used to swallow the following heading.
         text = core.task_read(self.root, 'T-1')['text']
