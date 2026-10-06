@@ -1,84 +1,76 @@
 # AI Dev Workspace  ·  beta
 
-> **Beta (0.1.0-beta.1).** Works and is tested, but expect changes. Try it, and when something gets in your way your assistant will offer to send feedback: that is how this improves.
+**Your AI picks up exactly where it left off, in any assistant, and stops repeating the same mistakes.**
 
-**Shared, durable memory and coordination for AI-assisted software development.**
-Spend tokens once to learn your product and codebase; reuse that knowledge in every later session, with any assistant (Claude, Codex, Cursor or any MCP client).
+AI coding assistants forget everything between sessions. Every new chat re-reads the same files, re-discovers the same rules and repeats the same mistakes, and you pay for it in tokens and time. AI Dev Workspace gives Claude Code, Codex, Cursor and any MCP client one shared memory: plain Markdown files in a folder you own, a small CLI and an MCP server.
 
-AI coding assistants forget everything between sessions. Each new chat re-reads the same files, re-discovers the same product rules and repeats the same mistakes. AI Dev Workspace is a folder of plain Markdown plus a small CLI and an MCP server that give every assistant:
+No API keys, no server, no account, no telemetry. Python 3.9+ and git are all it needs.
 
-- **Task memory** – one record per ticket or branch: objective, evidence, blockers, exact next action. Any assistant can resume without the old chat.
-- **Product and project knowledge** – verified facts and a codebase map, searched in snippets instead of re-read.
-- **Lessons** – mistake → rule, checked before risky work so mistakes are not repeated.
-- **Coordination** – claims (one writer per task), stale-write protection, checkpoints.
-- **Token discipline** – deterministic log/JSON digests, load-on-demand rules, cheap workers for cheap jobs, and a per-step cost log so savings are measured, not assumed.
-- **Feedback loop** – users record friction and ideas; the workspace improves from them.
+## What it looks like
 
-Everything is optional and pluggable. The core needs only Python 3.9+ and git.
+A real run, lightly trimmed (Claude Code, synthetic task). Session 1 ends with:
 
-## Quick start (2 minutes)
-
-With pipx available, install the isolated CLI with `pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace`. Templates, packs, skills and the MCP server are bundled. The clone-based setup below remains supported.
-
-```bash
-git clone https://github.com/Alenroyfeild/ai-dev-workspace.git ~/ai-dev-workspace
-export PATH="$HOME/ai-dev-workspace/bin:$PATH"     # add to your shell profile
-ws init ~/work/myapp-workspace --name myapp --pack obsidian --repo ~/code/myapp
-cd ~/work/myapp-workspace
-ws doctor                                          # what is installed, what to add
-ws task new APP-123 "Fix login crash" --objective "Crash when email is empty"
+```text
+you:     /handoff DEMO-1. Crash reproduced; cause is a force-unwrap of email in
+         LoginValidator.swift:42. Next: add an empty-email guard and run LoginValidatorTests.
+claude:  (saves the checkpoint with `ws`)
 ```
 
-Then open the workspace folder in your assistant (Claude Code, Codex, …). It reads `AGENTS.md` (about 250 words) and pulls everything else on demand. Full guide: [docs/SETUP.md](docs/SETUP.md).
+The next day, a brand-new session that remembers nothing:
 
-## Packs (plug in only what you need)
+```text
+you:     hi
+claude:  I've got a task waiting from your earlier session:
+         DEMO-1: Fix login crash on empty email
+         Next action: Add empty-email guard in LoginValidator.validate()
+         (LoginValidator.swift:42) and run LoginValidatorTests
+         Ready to pick up where you left off?
+```
 
-| Pack | Kind | Adds | Needs |
-|---|---|---|---|
-| `obsidian` | editor | Vault settings so Obsidian opens the memory as a linked, searchable vault | [Obsidian](https://obsidian.md) (free, optional) |
-| `local-llm` | worker | Free on-device log triage via Ollama | [Ollama](https://ollama.com) + a small model |
-| `codex-worker` | worker | Codex as a **read-only** second AI over ACP, with a hostile self-test | Node, `acpx`, a Codex sign-in |
-| `ios` | domain | iOS build triage, Simulator debugging, App Store review runbooks | Xcode (optional) |
+No pasting old chats, no "where were we". The same memory works from Codex or any MCP client.
 
-`ws packs` lists them; `ws pack add <name>` plugs one into an existing workspace. Writing your own pack (Android, web, backend, data…) is a folder with a `pack.json`: see [docs/PACKS.md](docs/PACKS.md).
+## Quick start
 
-## Commands
+```bash
+pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace     # 1. install
+ws init ~/work/myapp-ws --name myapp --repo ~/code/myapp              # 2. create a workspace
+cd ~/work/myapp-ws && ws connect claude                                # 3. connect your assistant
+ws task new APP-123 "Fix login crash" && ws claim APP-123 --worker me  # 4. start a task
+```
 
-| Command | Does |
-|---|---|
-| `ws init <dir> --name N [--pack P] [--repo R]` | create a workspace |
-| `ws doctor` | installed tools, missing pack requirements, recommended extras |
-| `ws task new/find/list/show` | task records (`show --section "Next action"` reads only what you need) |
-| `ws claim` / `ws release` / `ws checkpoint` | ownership and progress, with stale-write protection |
-| `ws search "<words>"` | ranked snippets from product, project, runbook and analysis notes |
-| `ws lesson add/search` | lessons learned |
-| `ws feedback add/list` | user feedback on the workspace |
-| `ws digest <file>` | deterministic summary of a big log or JSON file |
-| `ws run log` / `ws run report` | per-step orchestration log: provider, model, tokens, seconds, result |
-| `ws validate` / `ws status` | health check / overview |
-| `ws feedback submit N` | turn a feedback item into a GitHub issue (preview first, redacted) |
-| `ws feedback sync` | tick feedback whose issue was closed |
-| `ws update [--check]` | see what the new release changed / update the kit |
+Open the workspace folder in Claude Code (add your code folder as a working directory) and work as usual. End a session with `/handoff`; start the next one with anything, or `/pickup`.
 
-The same operations are exposed as MCP tools by `mcp/server.py` (`ws init` writes `.mcp.json` for Claude Code).
+No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-workspace` and put `~/ai-dev-workspace/bin` on your PATH. Codex and Cursor: `ws connect codex` / `ws connect cursor`. Full guide: [docs/SETUP.md](docs/SETUP.md).
 
-## How the assistants work together
+## What you get
 
-One lead assistant decides, plans, reviews and accepts. Cheaper workers do bounded jobs: a second AI in read-only mode explores code, a local model triages logs, deterministic tools summarise files. Worker output is evidence to verify, never a decision. Every step can be logged with `ws run log`, and `ws run report` shows where tokens and time actually went. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- **Task memory that writes itself.** One record per ticket: objective, evidence, blockers, the exact next step. A session-start hook feeds it to the assistant; a stop hook asks for a checkpoint when one is overdue. Skills: `/handoff`, `/pickup`, `/lesson`.
+- **Lessons.** "What happened → rule", matched to the task and shown before the assistant starts, so a mistake made once is not made again.
+- **An instant codebase map.** `ws init --repo` writes the languages, build and test commands, folders and most-changed files, with no model and no tokens spent.
+- **Search instead of re-reading.** Vault notes, lessons, big logs (`ws digest`), and your past Claude and Codex conversations (`ws sessions search "why did we drop X"`).
+- **Safe by default.** Your existing files are never overwritten; conflicts are written beside them as `.ws-new`. One claim per task, with stale-write protection.
+- **Measured, not assumed.** `ws run log` / `ws run report` record which assistant did what, with tokens and time.
 
-## Updates and feedback, handled by your assistant
+All commands: [docs/COMMANDS.md](docs/COMMANDS.md).
 
-You don't need to remember any of it. At the start of a session the assistant runs `ws notices` once (cached; at most one network check a day) and, only when there is something, tells you in one line and asks:
+## Optional packs
 
-> "ai-dev-workspace 0.2.0 is available: faster search. Update now?"
-> "Your reported issue #12 was fixed. Check the release?"
-> "You noted 'search misses plurals' last week. Share it with the maintainers?"
+| Pack | Adds | Needs |
+|---|---|---|
+| `obsidian` | Open the memory as a linked, searchable Obsidian vault | [Obsidian](https://obsidian.md) |
+| `local-llm` | Free on-device log triage | [Ollama](https://ollama.com) and a small model |
+| `codex-worker` | Codex as a **read-only** second AI, with a hostile self-test | Node, `acpx`, a Codex sign-in |
+| `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |
 
-When something in the workspace annoys you or fails, the assistant offers to note it as feedback. Nothing is updated, recorded or sent without your yes, and feedback is redacted and previewed first. Offline or private setup: `export WS_OFFLINE=1`.
+`ws pack add <name>`. Your own domain (Android, web, backend) is a folder with a `pack.json`: [docs/PACKS.md](docs/PACKS.md).
+
+## Privacy
+
+Everything stays in your folder. The only network call is a once-a-day check for a new release (`export WS_OFFLINE=1` turns it off). Nothing is updated, recorded or sent without your yes; feedback you choose to share is redacted and previewed first.
 
 ## Status
 
-Early (0.1). Core, MCP server and packs are tested (`python3 -m unittest discover -s tests`). Write access for second-AI workers is deliberately not offered yet: see [docs/ROADMAP.md](docs/ROADMAP.md) for why and what comes next. Feedback and packs welcome: [CONTRIBUTING.md](CONTRIBUTING.md). How feedback becomes issues and releases: [docs/MAINTAINING.md](docs/MAINTAINING.md).
+Beta (0.1.0-beta.1): tested (`python3 -m unittest discover -s tests`), and changing. When something gets in your way, your assistant offers to note it as feedback; that is how this improves. Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md). How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Contributing and packs: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

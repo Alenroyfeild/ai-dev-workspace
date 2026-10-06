@@ -5,7 +5,7 @@
 1. **Plain files are the source of truth.** Markdown and JSON in a folder, versioned with git, readable without any tool. No database, no service to run.
 2. **One implementation, many front doors.** `ws/core.py` holds all logic; the CLI (`ws/cli.py`), the MCP server (`mcp/server.py`) and tests call it. A new front door (an editor plugin, a web view) must also call `core`, never re-implement it.
 3. **Provider-neutral.** Rules live in `AGENTS.md`, which every assistant reads. Provider-specific pieces (a Codex adapter, a Claude skill) live in packs and are optional.
-4. **Load on demand.** Only `AGENTS.md` is always loaded (~250 words + pack snippets). Everything else is fetched by search, by section, or by digest.
+4. **Load on demand.** Only `AGENTS.md` is always loaded (about 330 words plus pack snippets). Everything else is fetched by search, by section, or by digest.
 5. **Deterministic first.** Counting, deduplication, shape extraction, validation and redaction are code, not model calls. Models are used for judgment.
 6. **Prove, don't assume.** Capabilities that touch safety (sandboxing, write access) ship with a self-test that checks real effects on disk. Nothing is enabled on a claim.
 

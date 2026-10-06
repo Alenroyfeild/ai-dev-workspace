@@ -703,7 +703,7 @@ def brief(root):
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     def words(text, limit):
         return ' '.join(redact(text).split()[:limit])
-    lines = ['Resume this task; mention its next action in your opening response.',
+    lines = ['Saved task memory from earlier sessions: state the next action in your first reply, then ask before starting work.',
              f"Task {task['id']}: {words(task['title'], 15)}",
              'Next action: ' + words(record['sections']['Next action'], 60),
              'Blockers: ' + words(record['sections']['Blockers'], 25)]

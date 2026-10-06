@@ -1,0 +1,41 @@
+# Commands
+
+Every command works from inside a workspace folder (or with `WS_ROOT` set). Most print JSON.
+
+## Set up
+
+| Command | Does |
+|---|---|
+| `ws init <dir> --name N [--repo R] [--pack P]` | Create a workspace. Never overwrites your files: conflicts are written beside them as `.ws-new`. With `--repo`, also writes the codebase map. |
+| `ws connect claude\|codex\|cursor` | Connect an assistant: MCP config, plus the `/handoff`, `/pickup`, `/lesson` and `/thinkbeforeact` skills for Claude and Codex (existing skill names are kept). Codex: prints the config block; `--write` appends it with a backup. |
+| `ws doctor` | What is installed, which assistants are connected, what is missing. |
+| `ws packs` / `ws pack add <name>` | List and add optional packs. |
+| `ws map [<repo>]` | Rewrite the codebase map (languages, build/test commands, folders, most-changed files). No model involved. |
+
+## Daily loop
+
+| Command | Does |
+|---|---|
+| `ws task new <ID> "<title>"` / `find` / `list` / `show <ID> --section "Next action"` | Task records. `show --section` reads only what you need. |
+| `ws claim <ID> --worker me` | Take the task. The claim is remembered locally, so the next commands need no token. |
+| `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Evidence=..."]` | Save progress and the exact next step. |
+| `ws release <ID>` | Give the task back. |
+| `ws brief` | The in-progress task's next action, blockers and matching lessons, in under 200 words. The session-start hook runs this. |
+| `ws lesson add "<what happened → rule>"` / `ws lesson search "<words>"` | Lessons learned. |
+| `ws search "<words>"` | Ranked snippets from the vault notes. |
+| `ws sessions search "<words>"` | Search your past Claude Code and Codex conversations on this machine. Read-only, redacted snippets. |
+| `ws digest <file>` | Deterministic summary of a big log or JSON file. |
+
+## Measure and maintain
+
+| Command | Does |
+|---|---|
+| `ws run log <task> <step> --provider P [--tokens-in N ...]` / `ws run report [task]` | Per-step log of who did what, tokens, seconds and result. |
+| `ws validate` / `ws status` | Health check / overview. |
+| `ws feedback add "<text>"` / `list` / `submit N` / `sync` | Feedback about the workspace; `submit` turns one item into a GitHub issue after a redacted preview. |
+| `ws notices` | New release, fixed issues, unshared feedback. Your assistant runs it once per session and asks before doing anything. |
+| `ws update [--check]` | Update the kit (git clone) or print the pipx command (pipx install). |
+
+## MCP tools
+
+`mcp/server.py` exposes 19 tools to any MCP client: `find_task`, `read_task`, `new_task`, `claim_task`, `release_task`, `checkpoint`, `brief`, `nudge`, `search_vault`, `search_lessons`, `add_lesson`, `search_sessions`, `codebase_map`, `digest_file`, `add_feedback`, `log_step`, `notices`, `status`, `connect_client`. Setup, pack installation and feedback submission stay CLI-only on purpose.
