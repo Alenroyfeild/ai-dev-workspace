@@ -1,6 +1,6 @@
 ---
-name: resume
-description: Resume a workspace task from its saved next action.
+name: pickup
+description: Pick up a workspace task where the last session left off, from its saved next action.
 ---
 
 Run `ws brief`. Use the user's task ID or the task named there; ask if the task is ambiguous.
