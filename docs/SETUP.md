@@ -91,6 +91,8 @@ Automatic: your assistant checks `ws notices` at session start and asks before u
 
 ## Daily loop
 
+New workspaces include Claude Code and Codex project hooks. Approve their hook definitions in the client. SessionStart injects `ws brief`; Stop requests a checkpoint once when a claim is at least 30 minutes stale. `ws nudge` itself never writes task memory. PreCompact runs the same local check as advisory output; it does not inject assistant context or block compaction. Existing hook settings stay intact, with proposed settings staged as `.ws-new`.
+
 ```text
 ws task find <ticket>            # or MCP find_task
 ws claim <ID> --worker me
