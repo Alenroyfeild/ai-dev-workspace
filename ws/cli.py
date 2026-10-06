@@ -11,6 +11,11 @@ def out(value):
     print(value if isinstance(value, str) else json.dumps(value, indent=2, ensure_ascii=False))
 
 
+def collision_notices(result):
+    for message in result.get('collisions', []):
+        print(message, file=sys.stderr)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.')
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -62,6 +67,7 @@ def main(argv=None):
     try:
         if a.cmd == 'init':
             cfg = core.init(a.dir, a.name, a.pack, a.repo)
+            collision_notices(cfg)
             out(f"Workspace '{cfg['name']}' created in {Path(a.dir).resolve()} (packs: {', '.join(cfg['packs']) or 'none'}).\n"
                 f"Next: cd {a.dir} && ws status   — then see docs/SETUP.md for Claude, Codex and MCP.")
             return 0
@@ -82,7 +88,10 @@ def main(argv=None):
             out(core.doctor(root)); return 0
         root = core.find_root()
         if a.cmd == 'status': out(core.status(root))
-        elif a.cmd == 'pack': out(core.pack_add(root, a.name))
+        elif a.cmd == 'pack':
+            result = core.pack_add(root, a.name)
+            collision_notices(result)
+            out(result)
         elif a.cmd == 'notices':
             out('\n'.join(f"- {n['message']} → {n['suggest']}" for n in core.notices(root)) or 'Nothing to report.')
         elif a.cmd == 'validate':

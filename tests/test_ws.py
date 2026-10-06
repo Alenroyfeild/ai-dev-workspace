@@ -27,6 +27,53 @@ class Base(unittest.TestCase):
 
 
 class TaskTests(Base):
+    def test_init_preserves_existing_files_and_stages_collisions(self):
+        target = Path(self.tmp.name) / 'existing'
+        files = ['AGENTS.md', 'CLAUDE.md', '.mcp.json', 'vault/Runbooks/iOS build triage.md']
+        for name in files:
+            path = target / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'user content\r\n')
+        result = core.init(target, 'demo', ['ios'])
+        for name in files:
+            path = target / name
+            self.assertEqual(path.read_bytes(), b'user content\r\n')
+            self.assertTrue(path.with_name(path.name + '.ws-new').is_file())
+        self.assertEqual(len(result['collisions']), 4)
+
+    def test_pack_add_preserves_rules_runbooks_and_existing_sidecar(self):
+        book = self.root / 'vault/Runbooks/iOS build triage.md'
+        book.write_text('user runbook')
+        sidecar = book.with_name(book.name + '.ws-new')
+        sidecar.write_text('user sidecar')
+        rules = (self.root / 'AGENTS.md').read_bytes()
+        core.pack_add(self.root, 'ios')
+        self.assertEqual(book.read_text(), 'user runbook')
+        self.assertEqual(sidecar.read_text(), 'user sidecar')
+        self.assertTrue(book.with_name(book.name + '.ws-new.1').is_file())
+        core.pack_add(self.root, 'obsidian')
+        after = (self.root / 'AGENTS.md').read_bytes()
+        self.assertTrue(after.startswith(rules.rstrip(b'\n')))
+        self.assertIn(b'## Obsidian pack', after)
+        core.pack_add(self.root, 'obsidian')
+        self.assertEqual((self.root / 'AGENTS.md').read_bytes(), after)
+
+    def test_interrupted_init_can_retry_without_overwriting(self):
+        target = Path(self.tmp.name) / 'retry'
+        target.mkdir()
+        (target / 'CLAUDE.md').write_text('user rules')
+        write = core.write_preserving
+        def interrupted(path, data, collisions):
+            if Path(path).name == 'AGENTS.md':
+                raise OSError('synthetic interruption')
+            return write(path, data, collisions)
+        with mock.patch.object(core, 'write_preserving', side_effect=interrupted), self.assertRaises(OSError):
+            core.init(target, 'demo')
+        self.assertFalse((target / 'workspace.json').exists())
+        core.init(target, 'demo')
+        self.assertEqual((target / 'CLAUDE.md').read_text(), 'user rules')
+        self.assertTrue(core.validate(target)['valid'])
+
     def test_init_installs_template_pack_and_mcp_config(self):
         self.assertTrue((self.root / 'vault/Runbooks/iOS build triage.md').exists())
         self.assertIn('## iOS pack', (self.root / 'AGENTS.md').read_text())
@@ -80,7 +127,7 @@ class TaskTests(Base):
         claim = core.claim(self.root, 'T-1', 'terra')
         stored = self.root / '.ws/claims/T-1.json'
         self.assertEqual(json.loads(stored.read_text()), {'worker': 'terra', 'token': claim['token']})
-        reply = server.handle(self.root, {'method': 'tools/call', 'id': 1, 'params': {
+        reply = server.handle(self.root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
             'name': 'checkpoint', 'arguments': {'id': 'T-1', 'status': 'in_progress', 'next': 'Run the tests'}}})
         self.assertFalse(reply['result']['isError'])
         core.checkpoint(self.root, 'T-1', 'review', 'Review the change')
