@@ -563,7 +563,34 @@ class ReleaseFeedbackTests(Base):
 
     def test_notices_offline_makes_no_network_calls(self):
         with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}), mock.patch.object(core, '_get_json', side_effect=AssertionError):
-            self.assertEqual([n['kind'] for n in core.notices(self.root)], ['feedback'])
+            kinds = [n['kind'] for n in core.notices(self.root)]
+        self.assertIn('offline', kinds)
+
+    def test_offline_blocks_update_check(self):
+        with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}), mock.patch.object(core, '_get_json', side_effect=AssertionError) as net:
+            result = core.check_update(force=True)
+        self.assertTrue(result['offline'])
+        net.assert_not_called()
+
+    def test_offline_blocks_update_pull(self):
+        with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}), mock.patch.object(core.subprocess, 'run', side_effect=AssertionError) as run:
+            result = core.update_kit()
+        self.assertTrue(result['offline'])
+        run.assert_not_called()
+
+    def test_offline_blocks_feedback_submit(self):
+        with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}), mock.patch.object(core.subprocess, 'run', side_effect=AssertionError) as run:
+            result = core.feedback_submit(self.root, 1, yes=True, use_gh='/usr/bin/gh')
+        self.assertTrue(result['offline'])
+        run.assert_not_called()
+
+    def test_offline_blocks_feedback_sync(self):
+        core.feedback_link(self.root, 1, 'https://github.com/acme/kit/issues/7')
+        fetch = mock.Mock(side_effect=AssertionError)
+        with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}):
+            result = core.feedback_sync(self.root, fetch=fetch)
+        self.assertTrue(result['offline'])
+        fetch.assert_not_called()
 
 
 if __name__ == '__main__':

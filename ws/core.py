@@ -847,8 +847,14 @@ def _get_json(url):
         return json.load(resp)
 
 
+def _offline(action):
+    return {'offline': True, 'message': f'Offline mode: {action} is disabled while WS_OFFLINE=1.'}
+
+
 def check_update(force=False):
     """Compare the local kit version with the latest GitHub release; cached so it costs at most one call a day."""
+    if os.environ.get('WS_OFFLINE') == '1':
+        return _offline('update checks')
     meta = kit_meta()
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     if not force and cache.is_file():
@@ -870,6 +876,8 @@ def check_update(force=False):
 
 def update_kit():
     """Fast-forward the kit's own git checkout; refuses if the user has local changes."""
+    if os.environ.get('WS_OFFLINE') == '1':
+        return _offline('kit updates')
     if not (KIT / '.git').exists():
         raise WsError(f'{KIT} is not a git clone; download the new release from GitHub instead.')
     dirty = subprocess.run(['git', '-C', str(KIT), 'status', '--porcelain'], capture_output=True, text=True).stdout.strip()
@@ -914,6 +922,8 @@ def feedback_submit(root, n, yes=False, use_gh=None):
     preview = {'title': title, 'body': body, 'note': 'Check it contains nothing private, then re-run with --yes.'}
     if not yes:
         return preview
+    if os.environ.get('WS_OFFLINE') == '1':
+        return _offline('feedback submission')
     repo = _repo()
     gh = shutil.which('gh') if use_gh is None else use_gh
     if gh:
@@ -945,6 +955,8 @@ def feedback_link(root, n, url):
 
 def feedback_sync(root, fetch=None):
     """Tick feedback whose GitHub issue is closed."""
+    if os.environ.get('WS_OFFLINE') == '1':
+        return dict(_offline('feedback sync'), closed=[])
     fetch = fetch or _get_json
     closed = []
     with lock(root):
@@ -971,6 +983,8 @@ def notices(root):
     """
     out = []
     offline = os.environ.get('WS_OFFLINE') == '1'
+    if offline:
+        out.append({'kind': 'offline', 'message': _offline('update and feedback checks')['message'], 'suggest': ''})
     if not offline:
         upd = check_update()
         if upd.get('update_available'):
