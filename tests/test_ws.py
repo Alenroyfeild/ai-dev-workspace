@@ -648,16 +648,29 @@ class InterfaceTests(Base):
                 replies = list(map(json.loads, proc.stdout.splitlines()))
                 self.assertIn(replies[0]['error']['code'], (-32600, -32602))
                 self.assertEqual(replies[-1], {'jsonrpc': '2.0', 'id': 2, 'result': {}})
-    def test_stop_hook_does_not_repeat_checkpoint_request(self):
+    def test_stop_hook_ignores_idle_claude_transcript(self):
         with mock.patch.object(core, 'now', return_value='2020-01-01T00:00:00+00:00'):
             core.claim(self.root, 'T-1', 'synthetic')
-        for active in (False, True):
-            proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook'],
-                                  cwd=self.root, input=json.dumps({'hook_event_name': 'Stop', 'stop_hook_active': active}),
-                                  capture_output=True, text=True)
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            reply = json.loads(proc.stdout)
-            self.assertEqual(reply, {} if active else {'decision': 'block', 'reason': core.nudge(self.root)})
+        idle = self.root / 'idle.jsonl'
+        idle.write_text(json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': 'hi'}]}}) + '\n')
+        used = self.root / 'used.jsonl'
+        used.write_text(json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Bash'}]}}) + '\n')
+        for payload, expected in (
+            ({'hook_event_name': 'Stop', 'transcript_path': str(idle)}, {}),
+            ({'hook_event_name': 'Stop', 'transcript_path': str(used)}, {'decision': 'block'}),
+            ({'hook_event_name': 'Stop', 'transcript_path': str(self.root / 'missing.jsonl')}, {'decision': 'block'}),
+            ({'hook_event_name': 'Stop', 'stop_hook_active': True}, {}),
+        ):
+            with self.subTest(payload=payload):
+                proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook'],
+                                      cwd=self.root, input=json.dumps(payload), capture_output=True, text=True)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                reply = json.loads(proc.stdout)
+                if expected:
+                    self.assertEqual(reply['decision'], expected['decision'])
+                    self.assertIn('checkpoint', reply['reason'])
+                else:
+                    self.assertEqual(reply, {})
 
     def run_cli(self, *args):
         return subprocess.run([sys.executable, str(KIT / 'bin/ws'), *args], cwd=self.root, capture_output=True, text=True)

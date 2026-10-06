@@ -17,6 +17,36 @@ def collision_notices(result):
         print(message, file=sys.stderr)
 
 
+def claude_tool_calls(transcript_path):
+    """Return Claude Code tool-use count, or None when the transcript is unusable."""
+    if not isinstance(transcript_path, str) or not transcript_path:
+        return None
+    path = Path(transcript_path)
+    try:
+        if path.stat().st_size > 50 * 1024 * 1024:
+            return None
+        transcript = path.open(encoding='utf-8')
+    except OSError:
+        return None
+    recognized = False
+    calls = 0
+    try:
+        with transcript:
+            for line in transcript:
+                try:
+                    entry = json.loads(line)
+                    content = entry['message']['content'] if entry.get('type') == 'assistant' else None
+                except (KeyError, TypeError, json.JSONDecodeError):
+                    continue
+                if not isinstance(content, list):
+                    continue
+                recognized = True
+                calls += sum(isinstance(item, dict) and item.get('type') == 'tool_use' for item in content)
+    except OSError:
+        return None
+    return calls if recognized else None
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.')
     sub = p.add_subparsers(dest='cmd', required=True)
@@ -124,7 +154,8 @@ def main(argv=None):
             message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
             if a.hook and a.cmd == 'nudge':
                 if payload.get('hook_event_name') == 'Stop':
-                    out({'decision': 'block', 'reason': message} if message and not payload.get('stop_hook_active') else {})
+                    idle = claude_tool_calls(payload.get('transcript_path')) == 0
+                    out({'decision': 'block', 'reason': message} if message and not payload.get('stop_hook_active') and not idle else {})
                 elif message:
                     out({'systemMessage': message})
             elif message:
