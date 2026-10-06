@@ -132,7 +132,7 @@ def handle(root, msg):
             return rpc_error(mid, -32602, str(exc))
         result = {'protocolVersion': params.get('protocolVersion', PROTOCOL),
                   'capabilities': {'tools': {}},
-                  'serverInfo': {'name': 'ai-dev-workspace', 'version': '0.1.0'}}
+                  'serverInfo': {'name': 'ai-dev-workspace', 'version': core.kit_meta()['version']}}
     elif method == 'tools/list':
         result = {'tools': [{'name': n, 'description': d, 'inputSchema': s} for n, (d, s, _) in TOOLS.items()]}
     elif method == 'tools/call':

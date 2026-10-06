@@ -287,6 +287,24 @@ class TaskTests(Base):
         ws('feedback', 'add', 'The loop was easy to run', '--kind', 'friction')
         ws('release', 'T-1')
 
+    def test_readme_quick_start_uses_folder_name_and_user_worker(self):
+        root = Path(self.tmp.name) / 'myapp-ws'
+        repo = Path(self.tmp.name) / 'myapp'
+        repo.mkdir()
+        env = dict(os.environ, USER='quickstart-user', HOME=self.tmp.name)
+
+        def ws(*args):
+            return subprocess.run([sys.executable, str(KIT / 'bin/ws'), *args], cwd=root,
+                                  env=env, text=True, capture_output=True, check=True)
+
+        subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'init', str(root), '--repo', str(repo)],
+                       cwd=self.tmp.name, env=env, text=True, capture_output=True, check=True)
+        ws('connect', 'claude')
+        ws('task', 'new', 'APP-123', 'Fix login crash')
+        ws('claim', 'APP-123')
+        self.assertEqual(core.config(root)['name'], 'myapp-ws')
+        self.assertEqual(core.task_read(root, 'APP-123', ['Next action'])['meta']['claimed_by'], 'quickstart-user')
+
     def test_concurrent_claim_has_one_winner(self):
         barrier = threading.Barrier(4)
 
@@ -544,6 +562,7 @@ class InterfaceTests(Base):
         replies = {r['id']: r for r in map(json.loads, proc.stdout.splitlines())}
         self.assertEqual(set(replies), {1, 2, 3, 4, 5})  # no reply to the notification
         self.assertEqual(replies[1]['result']['serverInfo']['name'], 'ai-dev-workspace')
+        self.assertEqual(replies[1]['result']['serverInfo']['version'], core.kit_meta()['version'])
         names = {t['name'] for t in replies[2]['result']['tools']}
         self.assertTrue({'find_task', 'checkpoint', 'search_vault', 'log_step'} <= names)
         for tool in replies[2]['result']['tools']:

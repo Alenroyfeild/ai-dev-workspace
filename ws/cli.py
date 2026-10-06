@@ -1,6 +1,7 @@
 """`ws` command line. Every command prints JSON or plain text and exits non-zero on error."""
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,7 @@ def main(argv=None):
     sub = p.add_subparsers(dest='cmd', required=True)
 
     s = sub.add_parser('init', help='create a workspace')
-    s.add_argument('dir'); s.add_argument('--name', required=True)
+    s.add_argument('dir'); s.add_argument('--name')
     s.add_argument('--pack', action='append', default=[], help=f'domain pack: {", ".join(core.available_packs())}')
     s.add_argument('--repo', action='append', default=[], help='code checkout this workspace serves')
     sub.add_parser('packs', help='list available packs')
@@ -41,7 +42,7 @@ def main(argv=None):
     s = t.add_parser('find'); s.add_argument('ref')
     s = t.add_parser('show'); s.add_argument('id'); s.add_argument('--section', action='append')
 
-    s = sub.add_parser('claim'); s.add_argument('id'); s.add_argument('--worker', required=True)
+    s = sub.add_parser('claim'); s.add_argument('id'); s.add_argument('--worker')
     s = sub.add_parser('release'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
     s = sub.add_parser('checkpoint'); s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
     s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
@@ -75,7 +76,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     try:
         if a.cmd == 'init':
-            cfg = core.init(a.dir, a.name, a.pack, a.repo)
+            cfg = core.init(a.dir, a.name or Path(a.dir).expanduser().resolve().name, a.pack, a.repo)
             collision_notices(cfg)
             for connection in cfg.get('connections', []):
                 if connection['client'] == 'codex':
@@ -142,7 +143,11 @@ def main(argv=None):
             else:
                 res = core.task_read(root, a.id, a.section)
                 out(res['text'] if 'text' in res else res)
-        elif a.cmd == 'claim': out(core.claim(root, a.id, a.worker))
+        elif a.cmd == 'claim':
+            worker = a.worker or os.environ.get('USER')
+            if not worker:
+                raise core.WsError('Set USER or pass --worker.')
+            out(core.claim(root, a.id, worker))
         elif a.cmd == 'release': out(core.release(root, a.id, a.worker, a.token))
         elif a.cmd == 'checkpoint':
             notes = dict(n.split('=', 1) for n in a.note)

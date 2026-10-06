@@ -33,9 +33,9 @@ No pasting old chats, no "where were we". The same memory works from Codex or an
 
 ```bash
 pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace     # 1. install
-ws init ~/work/myapp-ws --name myapp --repo ~/code/myapp              # 2. create a workspace
+ws init ~/work/myapp-ws --repo ~/code/myapp                            # 2. create a workspace
 cd ~/work/myapp-ws && ws connect claude                                # 3. connect your assistant
-ws task new APP-123 "Fix login crash" && ws claim APP-123 --worker me  # 4. start a task
+ws task new APP-123 "Fix login crash" && ws claim APP-123              # 4. start a task
 ```
 
 Open the workspace folder in Claude Code (add your code folder as a working directory) and work as usual. End a session with `/handoff`; start the next one with anything, or `/pickup`.

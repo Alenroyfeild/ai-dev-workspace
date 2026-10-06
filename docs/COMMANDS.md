@@ -6,7 +6,7 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). Most
 
 | Command | Does |
 |---|---|
-| `ws init <dir> --name N [--repo R] [--pack P]` | Create a workspace. Never overwrites your files: conflicts are written beside them as `.ws-new`. With `--repo`, also writes the codebase map. |
+| `ws init <dir> [--name N] [--repo R] [--pack P]` | Create a workspace named for its folder unless `--name` is supplied. Never overwrites your files: conflicts are written beside them as `.ws-new`. With `--repo`, also writes the codebase map. |
 | `ws connect claude\|codex\|cursor` | Connect an assistant: MCP config, plus the `/handoff`, `/pickup`, `/lesson` and `/thinkbeforeact` skills for Claude and Codex (existing skill names are kept). Codex: prints the config block; `--write` appends it with a backup. |
 | `ws doctor` | What is installed, which assistants are connected, what is missing. |
 | `ws packs` / `ws pack add <name>` | List and add optional packs. |
@@ -17,7 +17,7 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). Most
 | Command | Does |
 |---|---|
 | `ws task new <ID> "<title>"` / `find` / `list` / `show <ID> --section "Next action"` | Task records. `show --section` reads only what you need. |
-| `ws claim <ID> --worker me` | Take the task. The claim is remembered locally, so the next commands need no token. |
+| `ws claim <ID> [--worker W]` | Take the task as `$USER` unless `--worker` is supplied. The claim is remembered locally, so the next commands need no token. |
 | `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Evidence=..."]` | Save progress and the exact next step. |
 | `ws release <ID>` | Give the task back. |
 | `ws brief` | The in-progress task's next action, blockers and matching lessons, in under 200 words. The session-start hook runs this. |
