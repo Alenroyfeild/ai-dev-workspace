@@ -148,6 +148,31 @@ class TaskTests(Base):
             hooks = json.loads((self.root / name).read_text())['hooks']
             self.assertEqual(set(hooks), {'SessionStart', 'PreCompact', 'Stop'})
 
+    def test_generated_codex_session_start_reads_saved_memory_without_writes(self):
+        root = Path(self.tmp.name) / 'Codex proof with spaces'
+        home = Path(self.tmp.name) / 'isolated-home'
+        home.mkdir()
+        with mock.patch.object(Path, 'home', return_value=home):
+            core.init(root, 'Synthetic Codex proof')
+        core.task_new(root, 'T-1', 'Synthetic violet guard')
+        core.claim(root, 'T-1', 'synthetic')
+        core.checkpoint(root, 'T-1', 'in_progress', 'Verify the synthetic violet guard',
+                        notes={'Evidence': 'Synthetic fixture only', 'Blockers': 'None'})
+        before = {p.relative_to(root): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+        hook = json.loads((root / '.codex/hooks.json').read_text())['hooks']['SessionStart'][0]['hooks'][0]
+        run = subprocess.run(hook['command'], shell=True, cwd=root, input=json.dumps({
+            'hook_event_name': 'SessionStart', 'source': 'startup', 'cwd': str(root)}),
+            env=dict(os.environ, HOME=str(home), WS_OFFLINE='1'),
+            capture_output=True, text=True, timeout=10)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn('Next action: Verify the synthetic violet guard', run.stdout)
+        self.assertIn('ask before starting work', run.stdout)
+        self.assertLess(len(run.stdout.split()), 200)
+        self.assertEqual(before, {p.relative_to(root): p.read_bytes()
+                                  for p in root.rglob('*') if p.is_file()})
+        self.assertFalse((home / '.agents').exists())
+        self.assertFalse((home / '.codex').exists())
+
     def test_hook_settings_collision_keeps_user_content(self):
         target = Path(self.tmp.name) / 'hooks'
         settings = target / '.claude/settings.json'

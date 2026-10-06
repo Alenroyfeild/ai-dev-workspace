@@ -95,9 +95,13 @@ Automatic: your assistant checks `ws notices` at session start and asks before u
 
 ## Daily loop
 
-Run `ws connect claude` once to link the kit skills into `~/.claude/skills`, or `ws connect codex` for `~/.agents/skills`. Existing names are kept; check the command's notice. Restart the client after connecting. With `ws` on PATH, `/handoff` saves the current task's next action, evidence and blockers, `/pickup` reads that task memory in a new session, and `/lesson` records a requested rule. These skills use the CLI without MCP. Init and MCP connection calls do not install global skill links.
+Run `ws connect claude` once to link the kit skills into `~/.claude/skills`, or `ws connect codex` for `~/.agents/skills`. Existing names are kept; check the command's notice. Restart the client after connecting. With `ws` on PATH, Claude's `/handoff` saves the current task's next action, evidence and blockers, `/pickup` reads that task memory in a new session, and `/lesson` records a requested rule. In Codex, use `$handoff`, `$pickup`, and `$lesson` (or select them with `/skills`). These skills use the CLI without MCP. Init and MCP connection calls do not install global skill links.
 
 New workspaces include Claude Code and Codex project hooks. Approve their hook definitions in the client. SessionStart injects `ws brief`; Stop requests a checkpoint once when a claim is at least 30 minutes stale. `ws nudge` itself never writes task memory. PreCompact runs the same local check as advisory output; it does not inject assistant context or block compaction. Existing hook settings stay intact, with proposed settings staged as `.ws-new`.
+
+For Codex, trust the workspace when prompted, then use `/hooks` to review and trust the generated `.codex/hooks.json`. Changed hook definitions need review again. A fresh session receives the saved next action and asks before starting it. See the current [Codex hooks docs](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks) and [skills docs](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
+
+To try the skills without personal links, put symlinks to the kit's `skills/handoff`, `skills/pickup` and `skills/lesson` directories under a throwaway workspace's `.agents/skills/`. Run Codex from that workspace with `ws` on PATH. For headless proof, use separate `codex exec --ephemeral` calls: first `$handoff <ID>` with an exact next action, then `$pickup` without supplying that action. Review hooks interactively first; `--dangerously-bypass-hook-trust` is only for automation that has already vetted every active hook. It does not replace project trust. `WS_OFFLINE=1` disables workspace network checks, not the Codex model session.
 
 ```text
 ws task find <ticket>            # or MCP find_task
