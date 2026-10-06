@@ -107,6 +107,47 @@ class TaskTests(Base):
             self.assertEqual(core.nudge(self.root), '')
         core.release(self.root, 'T-1', 'synthetic', token)
         self.assertEqual(core.nudge(self.root), '')
+    def test_connect_clients_and_doctor_status(self):
+        core.connect(self.root, 'cursor')
+        rep = core.doctor(self.root)['clients']
+        self.assertTrue(rep['claude'])
+        self.assertTrue(rep['cursor'])
+        config = json.loads((self.root / '.cursor/mcp.json').read_text())
+        self.assertIn('ai-dev-workspace', config['mcpServers'])
+        self.assertEqual(core.connect(self.root, 'cursor')['connected'], True)
+
+    def test_connect_preserves_conflicting_project_configuration(self):
+        path = self.root / '.mcp.json'
+        path.write_text('{"mcpServers": {"synthetic": {}}}')
+        before = path.read_bytes()
+        result = core.connect(self.root, 'claude')
+        self.assertFalse(result['connected'])
+        self.assertEqual(path.read_bytes(), before)
+        self.assertTrue(path.with_name('.mcp.json.ws-new').exists())
+
+    def test_codex_connect_prints_then_writes_with_backup(self):
+        with mock.patch.object(Path, 'home', return_value=Path(self.tmp.name)):
+            path = Path(self.tmp.name) / '.codex/config.toml'
+            path.parent.mkdir()
+            path.write_text('# synthetic user settings\n')
+            original = path.read_bytes()
+            preview = core.connect(self.root, 'codex')
+            self.assertIn('[mcp_servers.ai-dev-workspace]', preview['config'])
+            self.assertEqual(path.read_bytes(), original)
+            result = core.connect(self.root, 'codex', write=True)
+            self.assertEqual(Path(result['backup']).read_bytes(), original)
+            self.assertTrue(core.doctor(self.root)['clients']['codex'])
+            self.assertTrue(core.connect(self.root, 'codex', write=True)['connected'])
+
+    def test_codex_connect_refuses_conflicting_global_entry(self):
+        with mock.patch.object(Path, 'home', return_value=Path(self.tmp.name)):
+            path = Path(self.tmp.name) / '.codex/config.toml'
+            path.parent.mkdir()
+            for content in ("[mcp_servers.'ai-dev-workspace']\ncommand = 'other'\n", 'mcp_servers = {}\n'):
+                path.write_text(content)
+                with self.assertRaises(core.WsError):
+                    core.connect(self.root, 'codex', write=True)
+                self.assertEqual(path.read_text(), content)
 
     def test_init_installs_template_pack_and_mcp_config(self):
         self.assertTrue((self.root / 'vault/Runbooks/iOS build triage.md').exists())

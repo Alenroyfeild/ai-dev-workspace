@@ -27,6 +27,8 @@ Existing files are kept. Proposed kit content goes beside them as `.ws-new`; rev
 
 ## 3. Connect your assistant
 
+Run `ws connect claude`, `ws connect cursor`, or `ws connect codex`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints the exact global-config block; `ws connect codex --write` appends it with a backup, refusing conflicting entries. Init prepares Claude's config and detects the other clients. `ws doctor` reports matching configuration; approve the server in the client before using its tools.
+
 **Claude Code** – open the workspace folder. `CLAUDE.md` loads `AGENTS.md`; `.mcp.json` registers the MCP server. Claude Code asks once to approve the project MCP server; approve it (or check with `claude mcp list`). To work on code in another folder, add that folder as an additional working directory.
 
 **Codex** – open the workspace folder; Codex reads `AGENTS.md`. For MCP tools, add to `~/.codex/config.toml`:
