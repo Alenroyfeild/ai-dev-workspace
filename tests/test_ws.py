@@ -512,6 +512,26 @@ class KnowledgeTests(Base):
         self.assertNotIn('stop: two failed attempts', core.brief(self.root))
         self.assertEqual(core.nudge(self.root), '')
 
+    def test_repeat_guard_ignores_finished_tasks_and_torn_lines(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Inspect the synthetic guard')
+        core.run_log(self.root, 'T-1', 'first', 'codex', result='failed')
+        with (self.root / 'vault/Runs/T-1.jsonl').open('a') as stream:
+            stream.write('{torn line\n')
+        core.run_log(self.root, 'T-1', 'second', 'codex', result='failed')
+        self.assertIn('stop: two failed attempts', core.brief(self.root))
+        core.checkpoint(self.root, 'T-1', 'done', 'Nothing left')
+        self.assertNotIn('stop: two failed attempts', core.brief(self.root))
+        self.assertEqual(core.nudge(self.root), '')
+
+    def test_doctor_mcp_reports_unexecutable_command(self):
+        script = Path(self.tmp.name) / 'not-executable'
+        script.write_text('#!/bin/sh\n')
+        path = self.root / '.mcp.json'
+        config = json.loads(path.read_text())
+        config['mcpServers']['ai-dev-workspace']['command'] = str(script)
+        path.write_text(json.dumps(config))
+        self.assertEqual(core.doctor(self.root, mcp=True)['mcp'][0]['step'], 'launch')
+
     def test_mcp_log_step_metadata_and_trace(self):
         reply = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
             'params': {'name': 'log_step', 'arguments': {'task': 'T-1', 'step': 'review',

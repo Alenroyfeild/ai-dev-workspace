@@ -839,12 +839,22 @@ def run_entries(root, task_id):
     path = vault(root) / 'Runs' / f'{task_id}.jsonl'
     if not path.exists():
         return []
+    entries = []
     with path.open() as stream:
-        return [json.loads(line) for line in stream if line.strip()]
+        for line in stream:
+            try:
+                entries.append(json.loads(line))
+            except ValueError:
+                continue  # A torn or hand-edited line must not break session hooks.
+    return [e for e in entries if isinstance(e, dict)]
 
 
 def repeat_guard(root):
+    # Only open work can warn; finished or abandoned tasks must not block every later session.
+    open_tasks = {t['id'] for t in task_list(root) if t['status'] in ('in_progress', 'review', 'blocked')}
     for path in sorted((vault(root) / 'Runs').glob('*.jsonl')):
+        if path.stem not in open_tasks:
+            continue
         entries = run_entries(root, path.stem)[-2:]
         def failed(entry):
             return (entry.get('result') in ('failed', 'rejected')
@@ -986,7 +996,7 @@ def mcp_doctor(root, clients=('claude', 'cursor')):
         try:
             run = subprocess.run(command, input=''.join(json.dumps(message) + '\n' for message in messages),
                                  capture_output=True, text=True, timeout=10)
-        except FileNotFoundError as exc:
+        except OSError as exc:
             report.update(step='launch', stderr=str(exc)[-400:])
             checks.append(report)
             continue
