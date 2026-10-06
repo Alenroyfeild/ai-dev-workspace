@@ -26,6 +26,8 @@ def string(desc, optional=False):
 
 
 TOOLS = {
+    'search_sessions': ('Search local Claude Code and Codex transcripts; returned snippets are redacted.',
+                        S(query=string('words or phrase to find')), lambda r, a: core.session_search(a['query'])),
     'codebase_map': ('Write a compact codebase map for the configured or supplied repository.',
                      S(repo=string('repository path', True)), lambda r, a: core.codebase_map(r, a.get('repo'))),
     'brief': ('Short local task memory: next action, blockers and matching lessons.', S(), lambda r, a: core.brief(r)),

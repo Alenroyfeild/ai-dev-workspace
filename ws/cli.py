@@ -48,6 +48,8 @@ def main(argv=None):
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
 
     s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query')
+    sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
+    s = sessions.add_parser('search'); s.add_argument('query')
     l = sub.add_parser('lesson').add_subparsers(dest='action', required=True)
     s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
     s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
@@ -101,6 +103,8 @@ def main(argv=None):
             except core.WsError:
                 root = None
             out(core.doctor(root)); return 0
+        if a.cmd == 'sessions':
+            out(core.session_search(a.query)); return 0
         root = core.find_root()
         if a.cmd == 'status': out(core.status(root))
         elif a.cmd == 'map': out(core.codebase_map(root, a.repo))
