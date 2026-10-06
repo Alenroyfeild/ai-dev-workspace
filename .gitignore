@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 packs/codex-worker/runtime/
 .ws/
+build/
+dist/
+*.egg-info/

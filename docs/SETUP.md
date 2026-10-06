@@ -4,6 +4,8 @@ Every step after 2 is optional. `ws doctor` tells you what is missing and how to
 
 ## 1. Install the kit
 
+For an isolated CLI, use `pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace`. This includes templates, packs, skills and the MCP server; generated client configs and hooks use the install's Python environment. `ws update` prints `pipx upgrade ai-dev-workspace` for this installation. It does not run pipx for you; `ws update --check` still checks release notes. A plain venv installation uses that venv's pip with the original source to update. The git-clone alternative follows:
+
 ```bash
 git clone https://github.com/Alenroyfeild/ai-dev-workspace.git ~/ai-dev-workspace
 echo 'export PATH="$HOME/ai-dev-workspace/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc

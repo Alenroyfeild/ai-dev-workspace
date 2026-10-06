@@ -14,6 +14,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.parse
@@ -21,7 +22,15 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-KIT = Path(__file__).resolve().parents[1]
+PACKAGE_DIR = Path(__file__).resolve().parent
+PACKAGED = (PACKAGE_DIR / 'kit.json').is_file()
+KIT = PACKAGE_DIR if PACKAGED else PACKAGE_DIR.parent
+
+
+def python_command():
+    return sys.executable if PACKAGED else 'python3'
+
+
 REQUIRED = ('Objective', 'Acceptance criteria', 'Evidence', 'Checks', 'Blockers', 'Next action', 'Handoff')
 STATUSES = ('backlog', 'ready', 'in_progress', 'review', 'blocked', 'done')
 ID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
@@ -267,7 +276,7 @@ def codebase_map(root, repo=None):
 
 
 def install_memory_hooks(root, collisions):
-    command = 'env WS_ROOT=' + shlex.quote(str(root)) + ' python3 ' + shlex.quote(str(KIT / 'bin/ws'))
+    command = 'env WS_ROOT=' + shlex.quote(str(root)) + ' ' + shlex.quote(python_command()) + ' ' + shlex.quote(str(KIT / 'bin/ws'))
     hooks = {'hooks': {event: [{'hooks': [{'type': 'command', 'timeout': 10,
                          'command': command + (' brief --hook' if event == 'SessionStart' else ' nudge --hook')}]}]
                        for event in ('SessionStart', 'PreCompact', 'Stop')}}
@@ -277,7 +286,7 @@ def install_memory_hooks(root, collisions):
 
 
 def mcp_command(root):
-    return {'command': 'python3', 'args': [str(KIT / 'mcp/server.py'), '--root', str(Path(root).resolve())]}
+    return {'command': python_command(), 'args': [str(KIT / 'mcp/server.py'), '--root', str(Path(root).resolve())]}
 
 
 def client_connected(root, client):
@@ -310,7 +319,7 @@ def connect(root, client, write=False):
         raise WsError('--write applies only to the Codex global configuration.')
     server = mcp_command(root)
     if client == 'codex':
-        block = '[mcp_servers.ai-dev-workspace]\ncommand = "python3"\nargs = ' + json.dumps(server['args']) + '\n'
+        block = '[mcp_servers.ai-dev-workspace]\ncommand = ' + json.dumps(server['command']) + '\nargs = ' + json.dumps(server['args']) + '\n'
         result = {'client': client, 'connected': client_connected(root, client), 'config': block}
         if not write or result['connected']:
             return result
@@ -876,6 +885,10 @@ def check_update(force=False):
 
 def update_kit():
     """Fast-forward the kit's own git checkout; refuses if the user has local changes."""
+    if PACKAGED:
+        return {'installation': 'package', 'command': 'pipx upgrade ai-dev-workspace',
+                'note': 'Run this outside ws to update the pipx environment from its original install source. '
+                        'For a pip-managed venv, use its pip to reinstall from the original source.'}
     if os.environ.get('WS_OFFLINE') == '1':
         return _offline('kit updates')
     if not (KIT / '.git').exists():
@@ -983,8 +996,6 @@ def notices(root):
     """
     out = []
     offline = os.environ.get('WS_OFFLINE') == '1'
-    if offline:
-        out.append({'kind': 'offline', 'message': _offline('update and feedback checks')['message'], 'suggest': ''})
     if not offline:
         upd = check_update()
         if upd.get('update_available'):

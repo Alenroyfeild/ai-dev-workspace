@@ -89,6 +89,8 @@ def main(argv=None):
         if a.cmd == 'version':
             out(core.kit_meta()['version']); return 0
         if a.cmd == 'update':
+            if core.PACKAGED and not a.check:
+                out(core.update_kit()); return 0
             res = core.check_update(force=True)
             if a.check or not res.get('update_available'):
                 out(res); return 0

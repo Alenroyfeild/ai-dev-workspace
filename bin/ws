@@ -2,6 +2,7 @@
 """Entry point: put this repo's bin/ on PATH, or run python3 bin/ws."""
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+kit = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(kit.parent if (kit / 'core.py').is_file() else kit))
 from ws.cli import main
 sys.exit(main())
