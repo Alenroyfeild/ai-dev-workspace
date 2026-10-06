@@ -84,8 +84,10 @@ def _install_pack(target, name):
         shutil.copytree(src / 'vault', target / 'vault', dirs_exist_ok=True)
     snippet = src / 'AGENTS.snippet.md'
     rules = target / 'AGENTS.md'
-    if snippet.is_file() and snippet.read_text().strip() not in rules.read_text():
-        rules.write_text(rules.read_text().rstrip('\n') + '\n' + snippet.read_text().replace('<kit>', str(KIT)))
+    if snippet.is_file():
+        rendered = snippet.read_text().replace('<kit>', str(KIT))
+        if rendered.strip() not in rules.read_text():
+            rules.write_text(rules.read_text().rstrip('\n') + '\n' + rendered)
 
 
 def pack_add(root, name):
