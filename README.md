@@ -38,7 +38,7 @@ cd ~/work/myapp-ws && ws connect claude                                # 3. conn
 ws task new APP-123 "Fix login crash" && ws claim APP-123              # 4. start a task
 ```
 
-Open the workspace folder in Claude Code (add your code folder as a working directory) and work as usual. End a session with `/handoff`; start the next one with anything, or `/pickup`.
+Open the workspace folder in Claude Code (add your code folder as a working directory) and work as usual. End a session with `/handoff`; start the next one with anything, or `/pickup`. In Codex the same skills are `$handoff` and `$pickup` (proven in fresh `codex exec` sessions).
 
 No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-workspace` and put `~/ai-dev-workspace/bin` on your PATH. Codex and Cursor: `ws connect codex` / `ws connect cursor`. Full guide: [docs/SETUP.md](docs/SETUP.md).
 
