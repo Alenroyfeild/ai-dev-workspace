@@ -31,6 +31,7 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). Most
 | Command | Does |
 |---|---|
 | `ws run log <task> <step> --provider P [--tokens-in N ...]` / `ws run report [task]` | Per-step log of who did what, tokens, seconds and result. |
+| `ws trace <task>` | Read-only Markdown timeline, including reported checks, verdicts and total tokens. Redirect stdout to save it. |
 | `ws validate` / `ws status` | Health check / overview. |
 | `ws feedback add "<text>"` / `list` / `submit N` / `sync` | Feedback about the workspace; `submit` turns one item into a GitHub issue after a redacted preview. |
 | `ws notices` | New release, fixed issues, unshared feedback. Your assistant runs it once per session and asks before doing anything. |
@@ -38,4 +39,6 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). Most
 
 ## MCP tools
 
-`mcp/server.py` exposes 19 tools to any MCP client: `find_task`, `read_task`, `new_task`, `claim_task`, `release_task`, `checkpoint`, `brief`, `nudge`, `search_vault`, `search_lessons`, `add_lesson`, `search_sessions`, `codebase_map`, `digest_file`, `add_feedback`, `log_step`, `notices`, `status`, `connect_client`. Setup, pack installation and feedback submission stay CLI-only on purpose.
+`ws run log` also accepts `--worker-role`, `--effort`, repeated `--check "<command>=<exit code>"`, `--files N`, `--verdict accepted|changes|rejected`, and `--findings N`. Counts must be nonnegative. Checks are caller-reported; commands are never executed. Records append to `vault/Runs/<task>.jsonl`; old records remain readable. Two consecutive steps on one task with failed/rejected results, changes/rejected verdicts, or nonzero check codes make `ws brief` and `ws nudge` warn: "stop: two failed attempts, re-diagnose before trying again". A later nonfailing step clears that task's warning; another task's steps do not. This is an advisory guard, not execution enforcement. Log actual token counts only when available; omitted counts retain the existing zero defaults.
+
+`mcp/server.py` exposes 20 tools to any MCP client: `find_task`, `read_task`, `new_task`, `claim_task`, `release_task`, `checkpoint`, `brief`, `nudge`, `search_vault`, `search_lessons`, `add_lesson`, `search_sessions`, `codebase_map`, `digest_file`, `add_feedback`, `log_step`, `trace`, `notices`, `status`, `connect_client`. MCP `log_step` accepts the same metadata (`checks` is an array of `command=exit code` strings); `trace` takes `task`. Setup, pack installation and feedback submission stay CLI-only on purpose.

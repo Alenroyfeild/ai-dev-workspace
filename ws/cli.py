@@ -71,7 +71,11 @@ def main(argv=None):
     s = r.add_parser('log'); s.add_argument('task'); s.add_argument('step'); s.add_argument('--provider', required=True)
     s.add_argument('--model', default=''); s.add_argument('--tokens-in', type=int, default=0); s.add_argument('--tokens-out', type=int, default=0)
     s.add_argument('--seconds', type=float, default=0); s.add_argument('--result', default='ok'); s.add_argument('--note', default='')
+    s.add_argument('--worker-role', default=''); s.add_argument('--effort', default='')
+    s.add_argument('--check', action='append', default=[]); s.add_argument('--files', type=int)
+    s.add_argument('--verdict', choices=('accepted', 'changes', 'rejected'), default=''); s.add_argument('--findings', type=int)
     s = r.add_parser('report'); s.add_argument('task', nargs='?')
+    s = sub.add_parser('trace', help='read-only Markdown timeline of reported orchestration steps'); s.add_argument('task')
 
     a = p.parse_args(argv)
     try:
@@ -163,9 +167,11 @@ def main(argv=None):
             else: out([f"{i['n']}. {'[x]' if i['done'] else '[ ]'} {i['kind']}: {i['text']}" + (f" ({i['issue']})" if i['issue'] else '')
                        for i in core.feedback_items(root) if a.all or not i['done']] or 'No open feedback.')
         elif a.cmd == 'digest': out(core.digest_file(a.file))
+        elif a.cmd == 'trace': out(core.trace(root, a.task))
         elif a.cmd == 'run':
             if a.action == 'log':
-                out(core.run_log(root, a.task, a.step, a.provider, a.model, a.tokens_in, a.tokens_out, a.seconds, a.result, a.note))
+                out(core.run_log(root, a.task, a.step, a.provider, a.model, a.tokens_in, a.tokens_out, a.seconds, a.result, a.note,
+                                 a.worker_role, a.effort, a.check, a.files, a.verdict, a.findings))
             else: out(core.run_report(root, a.task))
         return 0
     except (core.WsError, FileNotFoundError, json.JSONDecodeError) as exc:

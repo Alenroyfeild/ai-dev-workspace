@@ -478,6 +478,51 @@ class KnowledgeTests(Base):
         with self.assertRaises(core.WsError):
             core.run_log(self.root, 'T-1', 'x', 'codex', result='great')
 
+    def test_trace_preserves_legacy_and_records_verification(self):
+        legacy = core.run_log(self.root, 'T-1', 'old', 'codex', 'legacy', 10, 2)
+        path = core.vault(self.root) / 'Runs/T-1.jsonl'
+        before = path.read_bytes()
+        entry = core.run_log(self.root, 'T-1', 'review', 'claude', 'synthetic', 20, 3,
+                             worker_role='reviewer', effort='high', checks=['probe=0', 'retry=-1'],
+                             files=2, verdict='changes', findings=1)
+        self.assertTrue(path.read_bytes().startswith(before))
+        self.assertEqual(entry['checks'], [{'command': 'probe', 'exit_code': 0},
+                                           {'command': 'retry', 'exit_code': -1}])
+        trace = core.trace(self.root, 'T-1')
+        for value in ('old', 'legacy', 'reviewer', 'high', 'probe', 'retry', 'changes', 'findings: 1'):
+            self.assertIn(value, trace)
+        self.assertIn('Total tokens: 35', trace)
+        self.assertEqual(json.loads(path.read_text().splitlines()[0]), legacy)
+        for options in ({'checks': ['probe=no']}, {'files': -1}, {'findings': True}, {'verdict': 'great'}):
+            with self.subTest(options=options), self.assertRaises(core.WsError):
+                core.run_log(self.root, 'T-1', 'invalid', 'codex', **options)
+
+    def test_repeat_guard_is_per_task_and_clears_after_success(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Inspect the synthetic guard')
+        core.task_new(self.root, 'T-2', 'Other task')
+        core.run_log(self.root, 'T-1', 'first', 'codex', result='failed')
+        core.run_log(self.root, 'T-2', 'other', 'codex', result='failed')
+        self.assertNotIn('stop: two failed attempts', core.brief(self.root))
+        core.run_log(self.root, 'T-1', 'second', 'codex', verdict='changes')
+        for message in (core.brief(self.root), core.nudge(self.root)):
+            self.assertIn('T-1', message)
+            self.assertIn('stop: two failed attempts, re-diagnose before trying again', message)
+        self.assertLess(len(core.brief(self.root).split()), 200)
+        core.run_log(self.root, 'T-1', 'diagnosed', 'codex', verdict='accepted')
+        self.assertNotIn('stop: two failed attempts', core.brief(self.root))
+        self.assertEqual(core.nudge(self.root), '')
+
+    def test_mcp_log_step_metadata_and_trace(self):
+        reply = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+            'params': {'name': 'log_step', 'arguments': {'task': 'T-1', 'step': 'review',
+                'provider': 'codex', 'worker_role': 'worker', 'effort': 'medium',
+                'checks': ['synthetic=0'], 'files': 1, 'verdict': 'accepted', 'findings': 0}}})
+        self.assertNotIn('error', reply)
+        self.assertFalse(reply['result'].get('isError', False), reply)
+        reply = server.handle(self.root, {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call',
+            'params': {'name': 'trace', 'arguments': {'task': 'T-1'}}})
+        self.assertIn('synthetic', str(reply))
+
     def test_doctor_recommends_missing_optional_tools(self):
         with mock.patch.object(core.shutil, 'which', return_value=None), mock.patch.object(core, '_has_app', return_value=False):
             rep = core.doctor(self.root)
