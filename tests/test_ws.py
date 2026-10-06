@@ -284,6 +284,24 @@ class TaskTests(Base):
 
 
 class KnowledgeTests(Base):
+    def test_session_search_reads_claude_and_codex_fixtures(self):
+        claude = Path(self.tmp.name) / 'claude'
+        codex = Path(self.tmp.name) / 'codex'
+        claude.mkdir(); codex.mkdir()
+        (claude / 'session.jsonl').write_text(json.dumps({
+            'timestamp': '2026-10-01T10:00:00Z', 'message': {'content': 'Release decision: token=abcdefghijklmnop1234'}}) + '\n')
+        (codex / 'session.jsonl').write_text(json.dumps({
+            'timestamp': '2026-10-02T10:00:00Z', 'payload': {
+                'type': 'message', 'content': [{'type': 'input_text', 'text': 'The release decision is to wait.'}]}}) + '\n')
+        hits = core.session_search('release decision', {'claude': claude, 'codex': codex})
+        self.assertEqual([hit['tool'] for hit in hits], ['codex', 'claude'])
+        self.assertEqual([hit['date'] for hit in hits], ['2026-10-02', '2026-10-01'])
+        self.assertNotIn('abcdefghijklmnop1234', hits[1]['snippet'])
+        with mock.patch.object(core, 'session_search', return_value=hits):
+            reply = server.handle(self.root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
+                'name': 'search_sessions', 'arguments': {'query': 'release decision'}}})
+        self.assertFalse(reply['result']['isError'])
+
     def test_search_returns_snippets_ranked(self):
         hits = core.search(self.root, 'simulator logs')
         self.assertEqual(hits[0]['path'], 'vault/Runbooks/iOS Simulator debugging.md')

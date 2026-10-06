@@ -578,6 +578,65 @@ def search(root, query, limit=20):
     return hits[:limit]
 
 
+def _session_text(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return ' '.join(_session_text(item) for item in value)
+    if isinstance(value, dict):
+        return ' '.join(_session_text(value[key]) for key in ('text', 'content', 'message') if key in value)
+    return ''
+
+
+def _session_file(path):
+    try:
+        return '~/' + str(path.relative_to(Path.home()))
+    except ValueError:
+        return str(path)
+
+
+def session_search(query, roots=None):
+    """Search local Claude Code and Codex JSONL transcripts without loading whole files."""
+    query = ' '.join(query.split())
+    if not query:
+        raise WsError('Session search needs words to find.')
+    roots = roots or {'claude': Path.home() / '.claude/projects', 'codex': Path.home() / '.codex/sessions'}
+    hits = []
+    for tool, root in roots.items():
+        root = Path(root)
+        if not root.is_dir():
+            continue
+        for path in root.rglob('*.jsonl'):
+            if path.stat().st_size > 50 * 1024 * 1024:
+                continue
+            with path.open(errors='replace') as stream:
+                for line in stream:
+                    if query.lower() not in line.lower():
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    payload = record.get('payload', {}) if isinstance(record, dict) else {}
+                    message = record.get('message', {}) if isinstance(record, dict) else {}
+                    text = _session_text(message.get('content', '') if isinstance(message, dict) else '')
+                    if not text:
+                        text = _session_text(payload.get('content', payload.get('message', payload.get('text', ''))) if isinstance(payload, dict) else '')
+                    if query.lower() not in text.lower():
+                        continue
+                    timestamp = record.get('timestamp') or (payload.get('timestamp') if isinstance(payload, dict) else '')
+                    timestamp = timestamp or datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat()
+                    compact = ' '.join(redact(text).split())
+                    at = compact.lower().find(query.lower())
+                    snippet = compact[max(0, at - 80):at + len(query) + 160]
+                    hits.append({'date': str(timestamp)[:10], 'tool': tool, 'session_file': _session_file(path),
+                                 'snippet': snippet, '_sort': str(timestamp)})
+    hits.sort(key=lambda hit: hit['_sort'], reverse=True)
+    for hit in hits:
+        del hit['_sort']
+    return hits[:20]
+
+
 def _append_line(root, rel, line):
     path = root / rel
     with lock(root):
