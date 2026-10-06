@@ -119,7 +119,11 @@ def main(argv=None):
             elif message:
                 out(message)
         elif a.cmd == 'connect':
-            result = core.connect(root, a.client, a.write)
+            result = core.connect(root, a.client, a.write, skills=True)
+            if 'skills' in result:
+                linked = ', '.join(result['skills']['linked']) or 'none'
+                kept = ', '.join(result['skills']['kept']) or 'none'
+                print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}. Start a new session.", file=sys.stderr)
             out(result['config'] if a.client == 'codex' and not a.write else result)
         elif a.cmd == 'notices':
             out('\n'.join(f"- {n['message']} → {n['suggest']}" for n in core.notices(root)) or 'Nothing to report.')
