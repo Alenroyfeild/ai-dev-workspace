@@ -96,4 +96,5 @@ ws claim <ID> --worker me
 ws checkpoint <ID> --status <s> --next "<exact next action>"
 ws lesson add "what happened → rule"      # when something went wrong
 ws feedback add "..." --kind friction     # when the workspace got in the way
+ws release <ID>
 ```

@@ -201,6 +201,23 @@ def task_path(root, task_id):
     return vault(root) / 'Tasks' / f'{task_id}.md'
 
 
+def _local_claim_path(root, task_id):
+    if not ID_RE.fullmatch(task_id or ''):
+        raise WsError('Task IDs use letters, digits, dot, dash or underscore (e.g. JIRA-123, fix-login).')
+    return root / '.ws' / 'claims' / f'{task_id}.json'
+
+
+def _claim_defaults(root, task_id, worker, token):
+    if worker is not None and token is not None:
+        return worker, token
+    path = _local_claim_path(root, task_id)
+    try:
+        local = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return worker, token
+    return worker if worker is not None else local.get('worker'), token if token is not None else local.get('token')
+
+
 def task_new(root, task_id, title, objective='', branch='', repo=''):
     title = redacted_line(title, 'Title')
     branch = redacted_line(branch, 'Branch')
@@ -260,17 +277,20 @@ def claim(root, task_id, worker):
             raise WsError(f'{task_id} is done; reopen it with a checkpoint first.')
         token = uuid.uuid4().hex
         atomic_write(path, set_meta(text, {'claimed_by': worker, 'claim_token': token, 'claimed_at': now()}))
+        atomic_write(_local_claim_path(root, task_id), json.dumps({'worker': worker, 'token': token}) + '\n')
     return {'task': task_id, 'worker': worker, 'token': token}
 
 
-def release(root, task_id, worker, token):
+def release(root, task_id, worker=None, token=None):
     with lock(root):
+        worker, token = _claim_defaults(root, task_id, worker, token)
         path = task_path(root, task_id)
         text = path.read_text()
         meta = parse_meta(text)
         if meta.get('claimed_by') != worker or meta.get('claim_token') != token:
             raise WsError('Worker/token do not match the claim; nothing changed.')
         atomic_write(path, set_meta(text, {'claimed_by': '', 'claim_token': '', 'claimed_at': ''}))
+        _local_claim_path(root, task_id).unlink(missing_ok=True)
     return {'task': task_id, 'released': True}
 
 
@@ -280,6 +300,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     if not next_action.strip():
         raise WsError('Next action is required: say exactly what the next person or AI should do.')
     with lock(root):
+        worker, token = _claim_defaults(root, task_id, worker, token)
         path = task_path(root, task_id)
         text = path.read_text()
         meta = parse_meta(text)
