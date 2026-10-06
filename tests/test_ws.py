@@ -271,8 +271,7 @@ class TaskTests(Base):
 
     def test_claim_checkpoint_release(self):
         token = core.claim(self.root, 'T-1', 'claude')['token']
-        with self.assertRaises(core.WsError):
-            core.claim(self.root, 'T-1', 'codex')
+        self.assertEqual(core.claim(self.root, 'T-1', 'codex')['token'], token)  # same workspace: resumed
         with self.assertRaises(core.WsError):
             core.checkpoint(self.root, 'T-1', 'in_progress', 'x', worker='codex', token='bad')
         core.checkpoint(self.root, 'T-1', 'in_progress', 'Add guard', worker='claude', token=token,
@@ -341,7 +340,24 @@ class TaskTests(Base):
                 return None
         with concurrent.futures.ThreadPoolExecutor(4) as pool:
             results = list(pool.map(attempt, ['a', 'b', 'c', 'd']))
-        self.assertEqual(sum(r is not None for r in results), 1)
+        # One new claim; later callers in the same workspace resume it rather than minting a second token.
+        claims = [r for r in results if r is not None]  # None: the non-blocking lock was busy
+        self.assertEqual(sum(not r.get('resumed') for r in claims), 1)
+        self.assertEqual(len({r['token'] for r in claims}), 1)
+
+    def test_claim_resumes_own_workspace_claim_but_not_a_foreign_one(self):
+        first = core.claim(self.root, 'T-1', 'dev')
+        again = core.claim(self.root, 'T-1', 'claude-main')
+        self.assertTrue(again['resumed'])
+        self.assertEqual((again['worker'], again['token']), ('dev', first['token']))
+        self.assertIn('claimed in this workspace', core.task_find(self.root, 'T-1')[0]['claim'])
+        self.assertIn('claimed in this workspace', core.task_read(self.root, 'T-1', ['Next action'])['claim'])
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Continue')
+        self.assertIn('Claim: claimed in this workspace', core.brief(self.root))
+        (self.root / '.ws/claims/T-1.json').unlink()  # as on another machine: no local claim file
+        self.assertIn('ask before taking over', core.task_find(self.root, 'T-1')[0]['claim'])
+        with self.assertRaises(core.WsError):
+            core.claim(self.root, 'T-1', 'claude-main')
 
     def test_stale_checkpoint_rejected_and_next_required(self):
         sha = core.task_read(self.root, 'T-1')['sha']

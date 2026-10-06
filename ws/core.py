@@ -505,6 +505,19 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     return {'task': task_id, 'path': str(path.relative_to(root))}
 
 
+def claim_note(root, task_id, meta):
+    """Tell readers whether a claim was made from this workspace (local claim file matches)."""
+    if not meta.get('claimed_by'):
+        return ''
+    try:
+        local = json.loads(_local_claim_path(root, task_id).read_text())
+    except (OSError, ValueError, WsError):
+        local = {}
+    if local.get('token') and local.get('token') == meta.get('claim_token'):
+        return 'claimed in this workspace: continue; ws claim resumes it'
+    return f"claimed elsewhere by {meta['claimed_by']}: ask before taking over"
+
+
 def task_list(root):
     out = []
     for path in sorted((vault(root) / 'Tasks').glob('*.md')):
@@ -513,6 +526,7 @@ def task_list(root):
         title = re.search(r'^# (.+)$', text, re.M)
         out.append({'id': meta.get('id', path.stem), 'title': title.group(1) if title else path.stem,
                     'status': meta.get('status', 'unknown'), 'claimed_by': meta.get('claimed_by', ''),
+                    'claim': claim_note(root, meta.get('id', path.stem), meta),
                     'branch': meta.get('branch', ''), 'next': section(text, 'Next action')[:200]})
     return out
 
@@ -529,7 +543,8 @@ def task_read(root, task_id, sections=None):
     text = path.read_text()
     if not sections:
         return {'task': task_id, 'sha': digest_text(text), 'text': text}
-    return {'task': task_id, 'sha': digest_text(text), 'meta': parse_meta(text),
+    meta = parse_meta(text)
+    return {'task': task_id, 'sha': digest_text(text), 'meta': meta, 'claim': claim_note(root, task_id, meta),
             'sections': {s: section(text, s) for s in sections}}
 
 
@@ -541,6 +556,13 @@ def claim(root, task_id, worker):
         text = path.read_text()
         meta = parse_meta(text)
         if meta.get('claimed_by'):
+            # The local claim file (gitignored) proves this workspace made the claim: a later session here resumes it.
+            try:
+                local = json.loads(_local_claim_path(root, task_id).read_text())
+            except (OSError, ValueError):
+                local = {}
+            if local.get('token') and local.get('token') == meta.get('claim_token'):
+                return {'task': task_id, 'worker': meta['claimed_by'], 'token': local['token'], 'resumed': True}
             raise WsError(f'{task_id} is claimed by {meta["claimed_by"]} since {meta.get("claimed_at")}. '
                           'Release it first (only after checking that session has stopped).')
         if meta.get('status') == 'done':
@@ -710,6 +732,8 @@ def brief(root):
              f"Task {task['id']}: {words(task['title'], 15)}",
              'Next action: ' + words(record['sections']['Next action'], 60),
              'Blockers: ' + words(record['sections']['Blockers'], 25)]
+    if record['claim']:
+        lines.append('Claim: ' + record['claim'])
     lessons = lesson_search(root, task['title'])
     query = set(re.findall(r'\w{3,}', task['title'].lower()))
     lessons.sort(key=lambda line: -sum(line.lower().count(w) for w in query))

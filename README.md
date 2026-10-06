@@ -29,6 +29,8 @@ claude:  I've got a task waiting from your earlier session:
 
 No pasting old chats, no "where were we". The same memory works from Codex or any MCP client.
 
+**Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+
 ## Quick start
 
 ```bash

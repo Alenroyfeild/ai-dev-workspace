@@ -4,7 +4,7 @@ This folder is the shared memory for AI-assisted work on the code checkouts list
 
 ## Start of a session
 1. Find the task: `ws task find <ticket-or-branch>` (MCP: `find_task`). Read only that record's Next action, Blockers and Handoff first. No record: `ws task new <ID> "<title>"`.
-2. Claim it before changing anything: `ws claim <ID> --worker <label>`. One writer per checkout.
+2. Claim it before changing anything: `ws claim <ID>`. A claim made earlier in this workspace is resumed; a claim by another machine or person means stop and ask. One writer per checkout.
 3. Run `ws notices` (MCP: `notices`) once. For each notice, tell the user in one short line and offer the suggested command; run it only on their yes. Nothing to report: say nothing.
 4. Look things up instead of re-discovering them: `ws search "<words>"` (product, project, runbooks, past analysis) and `ws lesson search "<words>"`.
 
