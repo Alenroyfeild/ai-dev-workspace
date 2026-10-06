@@ -29,6 +29,7 @@ def main(argv=None):
     sub.add_parser('status', help='workspace overview')
     sub.add_parser('validate', help='check task records, links and secrets')
     sub.add_parser('doctor', help='check which tools are installed')
+    s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
 
     t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
     s = t.add_parser('new'); s.add_argument('id'); s.add_argument('title')
@@ -88,6 +89,7 @@ def main(argv=None):
             out(core.doctor(root)); return 0
         root = core.find_root()
         if a.cmd == 'status': out(core.status(root))
+        elif a.cmd == 'map': out(core.codebase_map(root, a.repo))
         elif a.cmd == 'pack':
             result = core.pack_add(root, a.name)
             collision_notices(result)

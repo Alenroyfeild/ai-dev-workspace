@@ -25,6 +25,8 @@ def string(desc, optional=False):
 
 
 TOOLS = {
+    'codebase_map': ('Write a compact codebase map for the configured or supplied repository.',
+                     S(repo=string('repository path', True)), lambda r, a: core.codebase_map(r, a.get('repo'))),
     'find_task': ('Find task records by ticket key, branch or title words. Start every session with this.',
                   S(ref=string('ticket key, branch name or title words')),
                   lambda r, a: core.task_find(r, a['ref'])),

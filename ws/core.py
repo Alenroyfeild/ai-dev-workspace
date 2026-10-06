@@ -174,7 +174,90 @@ def init(target, name, packs=(), repos=()):
            'args': [str(KIT / 'mcp' / 'server.py'), '--root', str(target)]}}}
     write_preserving(target / '.mcp.json', (json.dumps(mcp, indent=2) + '\n').encode(), collisions)
     write_preserving(target / 'workspace.json', (json.dumps(cfg, indent=2) + '\n').encode(), collisions)
+    if repos:
+        codebase_map(target, repos[0])
     return dict(cfg, collisions=collisions)
+
+
+def _map_commands(repo):
+    commands = []
+    package = repo / 'package.json'
+    if package.is_file():
+        try:
+            scripts = json.loads(package.read_text()).get('scripts', {})
+            commands.extend(f'npm run {name}' for name in scripts if any(x in name.lower() for x in ('build', 'test', 'run', 'start', 'dev')))
+        except json.JSONDecodeError:
+            pass
+    makefile = next((p for p in (repo / 'Makefile', repo / 'makefile') if p.is_file()), None)
+    if makefile:
+        commands.extend(f'make {m.group(1)}' for m in re.finditer(r'^([A-Za-z][\w.-]*):', makefile.read_text(), re.M)
+                        if any(x in m.group(1).lower() for x in ('build', 'test', 'run', 'start')))
+    if (repo / 'Podfile').is_file(): commands.append('pod install')
+    if any((repo / p).is_file() for p in ('build.gradle', 'build.gradle.kts', 'gradlew')):
+        commands.extend(('./gradlew build', './gradlew test', './gradlew run'))
+    pyproject = repo / 'pyproject.toml'
+    if pyproject.is_file():
+        data = pyproject.read_text()
+        if 'pytest' in data: commands.append('python -m pytest')
+        if '[build-system]' in data: commands.append('python -m build')
+    if (repo / 'Cargo.toml').is_file(): commands.extend(('cargo build', 'cargo test', 'cargo run'))
+    if (repo / 'go.mod').is_file(): commands.extend(('go build ./...', 'go test ./...', 'go run .'))
+    return list(dict.fromkeys(commands))[:20]
+
+
+SKIP_DIRS = {'.git', 'node_modules', 'Pods', 'build', 'DerivedData', 'dist', '.venv', 'venv', '__pycache__', 'Carthage', '.build'}
+
+
+def _repo_files(repo):
+    # Tracked files respect .gitignore; fall back to a walk that skips dependency and build folders.
+    run = subprocess.run(['git', '-C', str(repo), 'ls-files', '-z'], capture_output=True, check=False)
+    if run.returncode == 0 and run.stdout:
+        return [repo / n for n in run.stdout.decode(errors='replace').split('\0') if n]
+    return [p for p in repo.rglob('*') if p.is_file() and not SKIP_DIRS.intersection(p.relative_to(repo).parts)]
+
+
+def codebase_map(root, repo=None):
+    root = Path(root).resolve()
+    repos = config(root).get('repos', [])
+    selected = repo or (repos[0] if repos else None)
+    if not selected:
+        raise WsError('Codebase map needs a repository path: `ws map /path/to/repo`.')
+    repo = Path(selected).expanduser().resolve()
+    if not repo.is_dir():
+        raise WsError('Codebase map needs a repository path: `ws map /path/to/repo`.')
+    files = _repo_files(repo)
+    names = {'.py': 'Python', '.js': 'JavaScript', '.ts': 'TypeScript', '.swift': 'Swift', '.go': 'Go', '.rs': 'Rust', '.java': 'Java', '.kt': 'Kotlin', '.rb': 'Ruby'}
+    languages = {}
+    for path in files:
+        language = names.get(path.suffix.lower())
+        if language: languages[language] = languages.get(language, 0) + 1
+    folders = {}
+    for path in files:
+        parts = path.relative_to(repo).parts
+        if len(parts) > 1:
+            folders[parts[0]] = folders.get(parts[0], 0) + 1
+    changed = {}
+    run = subprocess.run(['git', '-C', str(repo), 'log', '--since=90.days', '--name-only', '--format='], capture_output=True, text=True, check=False)
+    for name in run.stdout.splitlines():
+        if name: changed[name] = changed.get(name, 0) + 1
+    readme = next((p for p in repo.glob('README*') if p.is_file()), None)
+    heading = next((line[2:].strip() for line in readme.read_text(errors='replace').splitlines() if line.startswith('# ')), 'No README heading') if readme else 'No README found'
+    section = ['<!-- ws:codebase-map:start -->', f'Repository: `{repo}`', '', f'## README\n{heading}', '', '## Languages']
+    section.extend([f'- {name}: {count}' for name, count in sorted(languages.items(), key=lambda x: (-x[1], x[0]))] or ['- None detected'])
+    section.extend(['', '## Commands'])
+    section.extend([f'- `{c}`' for c in _map_commands(repo)] or ['- None found'])
+    section.extend(['', '## Top-level folders'])
+    section.extend([f'- {name}: {count} files' for name, count in sorted(folders.items())] or ['- None'])
+    section.extend(['', '## Most changed (90 days)'])
+    section.extend([f'- {name}: {count}' for name, count in sorted(changed.items(), key=lambda x: (-x[1], x[0]))[:15]] or ['- No Git history'])
+    section.append('<!-- ws:codebase-map:end -->')
+    rendered = '\n'.join(section) + '\n'
+    path = vault(root) / 'Project' / 'Codebase map.md'
+    existing = path.read_text() if path.exists() else '# Codebase map\n'
+    pattern = r'<!-- ws:codebase-map:start -->.*?<!-- ws:codebase-map:end -->\n?'
+    text = re.sub(pattern, rendered, existing, flags=re.S) if re.search(pattern, existing, re.S) else existing.rstrip() + '\n\n' + rendered
+    with lock(root): atomic_write(path, text)
+    return {'repo': str(repo), 'path': str(path.relative_to(root)), 'words': len(rendered.split())}
 
 
 # --- files -----------------------------------------------------------------------

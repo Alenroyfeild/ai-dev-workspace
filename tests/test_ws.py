@@ -289,6 +289,42 @@ class KnowledgeTests(Base):
         self.assertTrue(all('install' in r for r in rep['recommended']))
 
 
+class MapTests(unittest.TestCase):
+    def test_map_fixture_preserves_notes_and_is_available_over_mcp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo, root = tmp / 'repo', tmp / 'workspace'
+            (repo / 'src').mkdir(parents=True)
+            (repo / 'README.md').write_text('# Fixture app\n')
+            (repo / 'package.json').write_text(json.dumps({'scripts': {'build': 'vite build', 'test': 'vitest', 'dev': 'vite'}}))
+            (repo / 'Makefile').write_text('test:\n\tpytest\n')
+            (repo / 'src/app.py').write_text('print("app")\n')
+            (repo / 'src/util.py').write_text('print("util")\n')
+            (repo / 'node_modules/dep').mkdir(parents=True)
+            (repo / 'node_modules/dep/index.js').write_text('ignored')
+            (repo / '.gitignore').write_text('node_modules/\n')
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(repo), '-c', 'user.name=fixture', '-c',
+                            'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'], check=True)
+            core.init(root, 'fixture', repos=[repo])
+            path = root / 'vault/Project/Codebase map.md'
+            text = path.read_text()
+            self.assertIn('Fixture app', text)
+            self.assertIn('Python: 2', text)
+            self.assertIn('npm run build', text)
+            self.assertIn('make test', text)
+            self.assertNotIn('JavaScript', text)
+            self.assertNotIn('node_modules', text)
+            path.write_text(text + '\n## User notes\nKeep this.\n')
+            result = core.codebase_map(root)
+            self.assertEqual(result['repo'], str(repo.resolve()))
+            self.assertIn('Keep this.', path.read_text())
+            reply = server.handle(root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
+                'name': 'codebase_map', 'arguments': {}}})
+            self.assertFalse(reply['result']['isError'])
+
+
 class InterfaceTests(Base):
     def test_mcp_invalid_inputs_keep_server_alive(self):
         bad = [[], None, {'id': 1, 'method': 'ping'},
