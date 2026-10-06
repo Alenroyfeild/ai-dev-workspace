@@ -1,6 +1,6 @@
 ---
 name: thinkbeforeact
-description: Think before act — before changing code, check whether it is needed, which working flows could break (flag/version gate), reuse, a verified plan and cheap delegation, with proof instead of claims. Use when the user types /thinkbeforeact or asks to think before acting.
+description: Plan requested code changes with checks for need, reuse, risk and verification.
 argument-hint: <what you want changed or built>
 ---
 

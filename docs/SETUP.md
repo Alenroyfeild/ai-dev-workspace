@@ -95,6 +95,8 @@ Automatic: your assistant checks `ws notices` at session start and asks before u
 
 ## Daily loop
 
+Run `ws connect claude` once to link the kit skills into `~/.claude/skills`, or `ws connect codex` for `~/.agents/skills`. Existing names are kept; check the command's notice. Restart the client after connecting. With `ws` on PATH, `/handoff` saves the current task's next action, evidence and blockers, `/resume` reads that task memory in a new session, and `/lesson` records a requested rule. These skills use the CLI without MCP. In local Claude sessions this `/resume` replaces the built-in command; `claude --resume` still resumes a conversation transcript. Init and MCP connection calls do not install global skill links.
+
 New workspaces include Claude Code and Codex project hooks. Approve their hook definitions in the client. SessionStart injects `ws brief`; Stop requests a checkpoint once when a claim is at least 30 minutes stale. `ws nudge` itself never writes task memory. PreCompact runs the same local check as advisory output; it does not inject assistant context or block compaction. Existing hook settings stay intact, with proposed settings staged as `.ws-new`.
 
 ```text

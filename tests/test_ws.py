@@ -62,6 +62,32 @@ class Base(unittest.TestCase):
 
 
 class TaskTests(Base):
+    def test_explicit_connect_links_skills_without_overwriting_names(self):
+        home = Path(self.tmp.name) / 'home'
+        destination = home / '.claude/skills'
+        (destination / 'lesson').mkdir(parents=True)
+        (destination / 'lesson/SKILL.md').write_text('user skill')
+        (destination / 'resume').symlink_to(home / 'missing', target_is_directory=True)
+        with mock.patch.object(Path, 'home', return_value=home):
+            result = core.connect(self.root, 'claude', skills=True)
+            self.assertIn('handoff', result['skills']['linked'])
+            self.assertEqual((destination / 'handoff').resolve(), (KIT / 'skills/handoff').resolve())
+            self.assertEqual((destination / 'lesson/SKILL.md').read_text(), 'user skill')
+            self.assertEqual(os.readlink(destination / 'resume'), str(home / 'missing'))
+            core.connect(self.root, 'claude', skills=True)
+            self.assertEqual((destination / 'lesson/SKILL.md').read_text(), 'user skill')
+            self.assertEqual(os.readlink(destination / 'resume'), str(home / 'missing'))
+
+    def test_codex_connect_links_to_current_user_skill_directory(self):
+        home = Path(self.tmp.name) / 'home'
+        with mock.patch.object(Path, 'home', return_value=home):
+            result = core.connect(self.root, 'codex', skills=True)
+            self.assertIn('handoff', result['skills']['linked'])
+            for name in ('handoff', 'resume', 'lesson', 'thinkbeforeact'):
+                self.assertTrue((home / '.agents/skills' / name).is_symlink())
+            self.assertFalse((home / '.codex/config.toml').exists())
+            self.assertFalse((home / '.codex/skills').exists())
+
     def test_init_preserves_existing_files_and_stages_collisions(self):
         target = Path(self.tmp.name) / 'existing'
         files = ['AGENTS.md', 'CLAUDE.md', '.mcp.json', 'vault/Runbooks/iOS build triage.md']
@@ -454,6 +480,14 @@ class MapTests(unittest.TestCase):
 
 
 class InterfaceTests(Base):
+    def test_connect_cli_installs_skills_in_isolated_home(self):
+        home = Path(self.tmp.name) / 'home'
+        with mock.patch.dict(os.environ, {'HOME': str(home)}):
+            proc = self.run_cli('connect', 'claude')
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('handoff', json.loads(proc.stdout)['skills']['linked'])
+        self.assertTrue((home / '.claude/skills/resume/SKILL.md').is_file())
+
     def test_mcp_invalid_inputs_keep_server_alive(self):
         bad = [[], None, {'id': 1, 'method': 'ping'},
                {'jsonrpc': '2.0', 'id': True, 'method': 'ping'},

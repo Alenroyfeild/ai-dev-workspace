@@ -312,7 +312,33 @@ def client_connected(root, client):
         return False
 
 
-def connect(root, client, write=False):
+def link_skills(client):
+    location = '.claude/skills' if client == 'claude' else '.agents/skills'
+    directory = Path.home() / location
+    linked, kept = [], []
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        for source in sorted((KIT / 'skills').iterdir()):
+            if not source.is_dir() or not (source / 'SKILL.md').is_file():
+                continue
+            try:
+                (directory / source.name).symlink_to(source.resolve(), target_is_directory=True)
+                linked.append(source.name)
+            except FileExistsError:
+                kept.append(source.name)
+    except OSError as exc:
+        raise WsError(f'Could not link skills into {directory}: {exc}. Existing names were kept.')
+    return {'directory': str(directory), 'linked': linked, 'kept': kept}
+
+
+def connect(root, client, write=False, skills=False):
+    result = _connect_config(root, client, write)
+    if skills and client in ('claude', 'codex'):
+        result['skills'] = link_skills(client)
+    return result
+
+
+def _connect_config(root, client, write=False):
     if client not in ('claude', 'codex', 'cursor'):
         raise WsError('Client must be claude, codex or cursor.')
     if write and client != 'codex':
