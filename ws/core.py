@@ -331,10 +331,12 @@ def link_skills(client):
     return {'directory': str(directory), 'linked': linked, 'kept': kept}
 
 
-def connect(root, client, write=False, skills=False):
+def connect(root, client, write=False, skills=False, verify=False):
     result = _connect_config(root, client, write)
     if skills and client in ('claude', 'codex'):
         result['skills'] = link_skills(client)
+    if verify and client in ('claude', 'cursor'):
+        result['mcp'] = mcp_doctor(root, (client,))[0]
     return result
 
 
@@ -892,7 +894,64 @@ RECOMMENDED = [
 ]
 
 
-def doctor(root=None):
+def _mcp_config(root, client):
+    path = root / ('.mcp.json' if client == 'claude' else '.cursor/mcp.json')
+    if not path.exists():
+        return None
+    try:
+        server = json.loads(path.read_text())['mcpServers']['ai-dev-workspace']
+        command, args = server['command'], server.get('args', [])
+        if not isinstance(command, str) or not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
+            raise ValueError('command and args must be strings')
+        return path, [command, *args]
+    except (KeyError, ValueError, json.JSONDecodeError) as exc:
+        return path, str(exc)
+
+
+def mcp_doctor(root, clients=('claude', 'cursor')):
+    checks = []
+    messages = [
+        {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 'ws-doctor', 'version': '1'}}},
+        {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'},
+        {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'status', 'arguments': {}}},
+    ]
+    for client in clients:
+        config = _mcp_config(root, client)
+        if config is None:
+            continue
+        path, command = config
+        report = {'client': client, 'config': str(path.relative_to(root)), 'ok': False}
+        if isinstance(command, str):
+            report.update(step='config', stderr=command)
+            checks.append(report)
+            continue
+        try:
+            run = subprocess.run(command, input=''.join(json.dumps(message) + '\n' for message in messages),
+                                 capture_output=True, text=True, timeout=10)
+        except FileNotFoundError as exc:
+            report.update(step='launch', stderr=str(exc)[-400:])
+            checks.append(report)
+            continue
+        except subprocess.TimeoutExpired as exc:
+            report.update(step='timeout', stderr=(exc.stderr or '')[-400:])
+            checks.append(report)
+            continue
+        try:
+            replies = {reply.get('id'): reply for reply in map(json.loads, run.stdout.splitlines())}
+        except (AttributeError, json.JSONDecodeError):
+            replies = {}
+        for ident, step in ((1, 'initialize'), (2, 'tools/list'), (3, 'status')):
+            reply = replies.get(ident, {})
+            if 'error' in reply or reply.get('result', {}).get('isError') or 'result' not in reply:
+                report.update(step=step, stderr=run.stderr[-400:])
+                break
+        else:
+            report.update(ok=True, steps=['initialize', 'tools/list', 'status'])
+        checks.append(report)
+    return checks
+
+
+def doctor(root=None, mcp=False):
     """What is installed, what each plugged pack still needs, and recommended extras."""
     report = {'core': {'python3': True, 'git': bool(shutil.which('git'))}, 'packs': [], 'recommended': []}
     packs = config(root).get('packs', []) if root else []
@@ -910,6 +969,8 @@ def doctor(root=None):
         report['workspace'] = str(root)
         report['valid'] = validate(root)['valid']
         report['clients'] = {client: client_connected(root, client) for client in ('claude', 'codex', 'cursor')}
+        if mcp:
+            report['mcp'] = mcp_doctor(root)
     return report
 
 

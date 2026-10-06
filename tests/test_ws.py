@@ -485,6 +485,18 @@ class KnowledgeTests(Base):
         self.assertEqual(needs, {'ollama', 'Obsidian', 'codex'})
         self.assertTrue(all('install' in r for r in rep['recommended']))
 
+    def test_doctor_mcp_runs_configured_server_and_reports_bad_command(self):
+        report = core.doctor(self.root, mcp=True)['mcp']
+        self.assertTrue(report[0]['ok'])
+        self.assertEqual(report[0]['steps'], ['initialize', 'tools/list', 'status'])
+        path = self.root / '.mcp.json'
+        config = json.loads(path.read_text())
+        config['mcpServers']['ai-dev-workspace']['command'] = 'missing-mcp-command'
+        path.write_text(json.dumps(config))
+        broken = core.doctor(self.root, mcp=True)['mcp'][0]
+        self.assertFalse(broken['ok'])
+        self.assertEqual(broken['step'], 'launch')
+
 
 class MapTests(unittest.TestCase):
     def test_map_fixture_preserves_notes_and_is_available_over_mcp(self):
@@ -528,7 +540,9 @@ class InterfaceTests(Base):
         with mock.patch.dict(os.environ, {'HOME': str(home)}):
             proc = self.run_cli('connect', 'claude')
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn('handoff', json.loads(proc.stdout)['skills']['linked'])
+        result = json.loads(proc.stdout)
+        self.assertIn('handoff', result['skills']['linked'])
+        self.assertTrue(result['mcp']['ok'])
         self.assertTrue((home / '.claude/skills/pickup/SKILL.md').is_file())
 
     def test_mcp_invalid_inputs_keep_server_alive(self):

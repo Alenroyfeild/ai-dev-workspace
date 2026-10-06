@@ -29,7 +29,7 @@ def main(argv=None):
     s = sub.add_parser('pack', help='plug a pack into this workspace'); s.add_argument('action', choices=['add']); s.add_argument('name')
     sub.add_parser('status', help='workspace overview')
     sub.add_parser('validate', help='check task records, links and secrets')
-    sub.add_parser('doctor', help='check which tools are installed')
+    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor'))
@@ -103,7 +103,7 @@ def main(argv=None):
                 root = core.find_root()
             except core.WsError:
                 root = None
-            out(core.doctor(root)); return 0
+            out(core.doctor(root, a.mcp)); return 0
         if a.cmd == 'sessions':
             out(core.session_search(a.query)); return 0
         root = core.find_root()
@@ -126,7 +126,7 @@ def main(argv=None):
             elif message:
                 out(message)
         elif a.cmd == 'connect':
-            result = core.connect(root, a.client, a.write, skills=True)
+            result = core.connect(root, a.client, a.write, skills=True, verify=True)
             if 'skills' in result:
                 linked = ', '.join(result['skills']['linked']) or 'none'
                 kept = ', '.join(result['skills']['kept']) or 'none'
