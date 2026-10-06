@@ -1,6 +1,7 @@
 import concurrent.futures
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,40 @@ KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT))
 from ws import core  # noqa: E402
 from mcp import server  # noqa: E402
+
+
+class PackagingTests(unittest.TestCase):
+    def test_installed_layout_finds_assets_and_uses_its_interpreter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            package = base / 'site/ws'
+            ignore = shutil.ignore_patterns('__pycache__', '*.pyc', 'runtime')
+            shutil.copytree(KIT / 'ws', package, ignore=ignore)
+            for name in ('template', 'packs', 'skills', 'mcp', 'bin'):
+                shutil.copytree(KIT / name, package / name, ignore=ignore)
+            shutil.copy2(KIT / 'kit.json', package / 'kit.json')
+            script = ('from pathlib import Path; import sys; from ws import core; '
+                      'root=Path("workspace"); core.init(root, "synthetic"); '
+                      'core.pack_add(root, "obsidian"); '
+                      'assert core.KIT == Path(core.__file__).resolve().parent; '
+                      'assert core.mcp_command(root)["command"] == sys.executable; '
+                      'assert (core.KIT / "skills/thinkbeforeact/SKILL.md").is_file(); '
+                      'assert (root / "vault/.obsidian/app.json").is_file(); '
+                      'print(core.brief(root))')
+            proc = subprocess.run([sys.executable, '-c', script], cwd=base,
+                                  env={**os.environ, 'PYTHONPATH': str(base / 'site'), 'WS_OFFLINE': '1'},
+                                  capture_output=True, text=True, timeout=20)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn('No in-progress task', proc.stdout)
+
+    def test_package_update_prints_pipx_guidance_without_network(self):
+        from ws import cli
+        with mock.patch.object(core, 'PACKAGED', True, create=True), \
+                mock.patch.object(core, 'check_update', side_effect=AssertionError('network check')), \
+                mock.patch.object(core.subprocess, 'run', side_effect=AssertionError('git command')), \
+                mock.patch('builtins.print') as output:
+            self.assertEqual(cli.main(['update']), 0)
+            self.assertIn('pipx upgrade ai-dev-workspace', output.call_args[0][0])
 
 
 class Base(unittest.TestCase):

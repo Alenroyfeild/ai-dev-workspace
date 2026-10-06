@@ -9,7 +9,8 @@ import math
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+kit = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(kit.parent if (kit / 'core.py').is_file() else kit))
 from ws import core  # noqa: E402
 
 PROTOCOL = '2025-06-18'

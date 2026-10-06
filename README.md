@@ -18,6 +18,8 @@ Everything is optional and pluggable. The core needs only Python 3.9+ and git.
 
 ## Quick start (2 minutes)
 
+With pipx available, install the isolated CLI with `pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace`. Templates, packs, skills and the MCP server are bundled. The clone-based setup below remains supported.
+
 ```bash
 git clone https://github.com/Alenroyfeild/ai-dev-workspace.git ~/ai-dev-workspace
 export PATH="$HOME/ai-dev-workspace/bin:$PATH"     # add to your shell profile
