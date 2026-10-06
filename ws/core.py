@@ -696,9 +696,10 @@ def lesson_search(root, query):
 
 
 def brief(root):
+    guard = repeat_guard(root)
     active = [t for t in task_list(root) if t['status'] == 'in_progress']
     if not active:
-        return 'No in-progress task. Find or create the task before working.'
+        return guard or 'No in-progress task. Find or create the task before working.'
     task = next((t for t in active if t['claimed_by']), active[0])
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     def words(text, limit):
@@ -711,10 +712,13 @@ def brief(root):
     query = set(re.findall(r'\w{3,}', task['title'].lower()))
     lessons.sort(key=lambda line: -sum(line.lower().count(w) for w in query))
     lines += ['Lesson: ' + words(line, 12) for line in lessons[:3]]
-    return '\n'.join(lines)
+    return '\n'.join(([guard] if guard else []) + lines)
 
 
 def nudge(root):
+    guard = repeat_guard(root)
+    if guard:
+        return guard
     current = datetime.datetime.fromisoformat(now())
     for task in task_list(root):
         if not task['claimed_by']:
@@ -793,7 +797,7 @@ def digest_file(path, max_lines=60):
 # --- orchestration run tracking ---------------------------------------------------
 
 def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, seconds=0.0,
-            result='ok', note=''):
+            result='ok', note='', worker_role='', effort='', checks=(), files=None, verdict='', findings=None):
     """Append one orchestration step (who did what, cost, outcome) to vault/Runs/<task>.jsonl."""
     task_path(root, task_id)
     if result not in ('ok', 'failed', 'rejected', 'accepted', 'skipped'):
@@ -802,12 +806,66 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
              'provider': redacted_line(provider, 'Provider'), 'model': redacted_line(model, 'Model'),
              'tokens_in': int(tokens_in), 'tokens_out': int(tokens_out), 'seconds': float(seconds),
              'result': result, 'note': redact(note)[:300]}
+    if verdict not in ('', 'accepted', 'changes', 'rejected'):
+        raise WsError('verdict is accepted, changes or rejected.')
+    for key, value in (('files', files), ('findings', findings)):
+        if value is not None:
+            if type(value) is not int or value < 0:
+                raise WsError(f'{key} must be a nonnegative integer.')
+            entry[key] = value
+    for key, value in (('worker_role', worker_role), ('effort', effort), ('verdict', verdict)):
+        if value:
+            entry[key] = redacted_line(value, key)
+    parsed = []
+    for check in checks:
+        command, separator, code = redacted_line(check, 'Check').rpartition('=')
+        if not separator or not command.strip() or not re.fullmatch(r'-?\d+', code):
+            raise WsError('Check must be <command>=<integer exit code>; commands are recorded, not executed.')
+        parsed.append({'command': command, 'exit_code': int(code)})
+    if parsed:
+        entry['checks'] = parsed
     path = vault(root) / 'Runs' / f'{task_id}.jsonl'
     with lock(root):
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('a') as stream:
             stream.write(json.dumps(entry) + '\n')
     return entry
+
+
+def run_entries(root, task_id):
+    task_path(root, task_id)
+    path = vault(root) / 'Runs' / f'{task_id}.jsonl'
+    if not path.exists():
+        return []
+    with path.open() as stream:
+        return [json.loads(line) for line in stream if line.strip()]
+
+
+def repeat_guard(root):
+    for path in sorted((vault(root) / 'Runs').glob('*.jsonl')):
+        entries = run_entries(root, path.stem)[-2:]
+        def failed(entry):
+            return (entry.get('result') in ('failed', 'rejected')
+                    or entry.get('verdict') in ('changes', 'rejected')
+                    or any(check['exit_code'] != 0 for check in entry.get('checks', [])))
+        if len(entries) == 2 and all(failed(entry) for entry in entries):
+            return f'Task {path.stem}: stop: two failed attempts, re-diagnose before trying again'
+    return ''
+
+
+def trace(root, task_id):
+    entries = run_entries(root, task_id)
+    lines = [f'# Trace: {task_id}', '', 'Checks and verdicts are reported by the caller; ws does not execute checks.']
+    for number, entry in enumerate(entries, 1):
+        lines += ['', f"## {number}. {entry['at']} — {entry['step']}",
+                  f"- Who: {entry['provider']}; role: {entry.get('worker_role', 'unspecified')}; model: {entry['model'] or 'unspecified'}; effort: {entry.get('effort', 'unspecified')}",
+                  f"- Tokens: {entry['tokens_in']} in / {entry['tokens_out']} out; seconds: {entry['seconds']}",
+                  f"- Result: {entry['result']}; verdict: {entry.get('verdict', 'unspecified')}; files: {entry.get('files', 'unspecified')}; findings: {entry.get('findings', 'unspecified')}"]
+        lines += [f"- Check: {check['command']} = {check['exit_code']}" for check in entry.get('checks', [])]
+        if entry.get('note'):
+            lines.append('- Note: ' + ' '.join(entry['note'].split()))
+    lines += ['', 'Total tokens: ' + str(sum(e['tokens_in'] + e['tokens_out'] for e in entries))]
+    return redact('\n'.join(lines))
 
 
 def run_report(root, task_id=None):
