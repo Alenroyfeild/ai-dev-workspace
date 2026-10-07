@@ -486,7 +486,7 @@ def atomic_write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
     try:
-        with os.fdopen(fd, 'w') as stream:
+        with os.fdopen(fd, 'wb' if isinstance(text, bytes) else 'w') as stream:
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
@@ -1323,7 +1323,12 @@ def doctor(root=None, mcp=False):
               'skill_duplicates': []}
     packs = config(root).get('packs', []) if root else []
     for name in packs:
-        report['packs'] += requirement_status(pack_manifest(name))
+        local = config(root).get('local_packs', {}).get(name)
+        if local:
+            from .packs import load
+            manifest = load(local['path'])[1]
+        else: manifest = pack_manifest(name)
+        report['packs'] += requirement_status(manifest)
     listed_tools = tools(root)
     missing_tools = [tool for tool in listed_tools if tool['level'] == 'recommended' and not tool['installed']
                      and tool_policy(root, tool)['mode'] != 'off']
