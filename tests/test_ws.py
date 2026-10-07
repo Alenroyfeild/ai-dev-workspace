@@ -706,7 +706,7 @@ class KnowledgeTests(Base):
         fake_bin = Path(self.tmp.name) / 'bin'
         fake_bin.mkdir()
         for name in ('codeburn', 'graphify'):
-            path = fake_bin / name
+            path = fake_bin / (name + '.cmd' if os.name == 'nt' else name)
             path.write_text('#!/bin/sh\n')
             path.chmod(0o755)
         with mock.patch.dict(os.environ, {'PATH': str(fake_bin)}, clear=False):
