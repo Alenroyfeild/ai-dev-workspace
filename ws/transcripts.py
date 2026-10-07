@@ -52,6 +52,6 @@ def records(stream, client):
             text = content if isinstance(content, str) else ' '.join(p if isinstance(p, str) else p.get('text', '') for p in content if isinstance(p, (str, dict)))
             blocks = [{'type': 'text', 'text': text}]
             if entry.get('toolCalls'): blocks.append({'type': 'tool_use'})
-            yield {'type': 'assistant' if entry.get('type') == 'gemini' else 'user', 'message': {'content': blocks}}
+            yield {'type': 'assistant' if entry.get('type') == 'gemini' else 'user', 'timestamp': entry.get('timestamp'), 'message': {'content': blocks}}
         else:
             yield dict(entry, type=entry.get('type', entry.get('role')))  # Cursor and Codex chat transcripts are Claude-shaped.

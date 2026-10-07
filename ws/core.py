@@ -744,45 +744,58 @@ def _session_file(path):
         return str(path)
 
 
+def _search_session_records(stream, tool):
+    if tool in ('cursor', 'gemini'):
+        from .transcripts import records
+        for record in records(stream, tool):
+            if record.get('type') not in ('user', 'assistant') or record.get('channel') == 'analysis': continue
+            message = record.get('message', {})
+            if not isinstance(message, dict): continue
+            content = message.get('content', '')
+            if isinstance(content, list):
+                content = [p for p in content if isinstance(p, str) or isinstance(p, dict) and p.get('type') == 'text']
+            yield _session_text(content), record.get('timestamp')
+    else:
+        for line in stream:
+            try: record = json.loads(line)
+            except ValueError: continue
+            if not isinstance(record, dict): continue
+            payload, message = record.get('payload', {}), record.get('message', {})
+            text = _session_text(message.get('content', '')) if isinstance(message, dict) else ''
+            if not text and isinstance(payload, dict):
+                text = _session_text(payload.get('content', payload.get('message', payload.get('text', ''))))
+            yield text, record.get('timestamp') or (payload.get('timestamp') if isinstance(payload, dict) else '')
+
+
 def session_search(query, roots=None):
-    """Search local Claude Code and Codex JSONL transcripts without loading whole files."""
+    """Search bounded local transcripts; return redacted conversation snippets."""
     query = ' '.join(query.split())
-    if not query:
-        raise WsError('Session search needs words to find.')
-    roots = roots or {'claude': Path.home() / '.claude/projects', 'codex': Path.home() / '.codex/sessions'}
+    if not query: raise WsError('Session search needs words to find.')
+    roots = roots if roots is not None else {'claude': Path.home() / '.claude/projects', 'codex': Path.home() / '.codex/sessions',
+                                           'cursor': Path.home() / '.cursor/projects', 'gemini': Path.home() / '.gemini/tmp'}
     hits = []
     for tool, root in roots.items():
         root = Path(root)
-        if not root.is_dir():
-            continue
-        for path in root.rglob('*.jsonl'):
-            if path.stat().st_size > 50 * 1024 * 1024:
-                continue
-            with path.open(errors='replace') as stream:
-                for line in stream:
-                    if query.lower() not in line.lower():
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    payload = record.get('payload', {}) if isinstance(record, dict) else {}
-                    message = record.get('message', {}) if isinstance(record, dict) else {}
-                    text = _session_text(message.get('content', '') if isinstance(message, dict) else '')
-                    if not text:
-                        text = _session_text(payload.get('content', payload.get('message', payload.get('text', ''))) if isinstance(payload, dict) else '')
-                    if query.lower() not in text.lower():
-                        continue
-                    timestamp = record.get('timestamp') or (payload.get('timestamp') if isinstance(payload, dict) else '')
-                    timestamp = timestamp or datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat()
-                    compact = ' '.join(redact(text).split())
-                    at = compact.lower().find(query.lower())
-                    snippet = compact[max(0, at - 80):at + len(query) + 160]
-                    hits.append({'date': str(timestamp)[:10], 'tool': tool, 'session_file': _session_file(path),
-                                 'snippet': snippet, '_sort': str(timestamp)})
+        if not root.is_dir() or root.is_symlink(): continue
+        extensions = ('.jsonl', '.json') if tool == 'gemini' else ('.jsonl', '.txt') if tool == 'cursor' else ('.jsonl',)
+        for path in root.rglob('*'):
+            if path.suffix not in extensions or path.is_symlink(): continue
+            try:
+                if not path.is_file() or path.stat().st_size > 50 * 1024 * 1024: continue
+                fallback = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat()
+                with path.open(encoding='utf-8', errors='replace') as stream:
+                    for text, timestamp in _search_session_records(stream, tool):
+                        if query.lower() not in text.lower(): continue
+                        timestamp = timestamp or fallback
+                        compact = ' '.join(redact(text).split())
+                        at = compact.lower().find(query.lower())
+                        snippet = compact[max(0, at - 80):at + len(query) + 160]
+                        hits.append({'date': str(timestamp)[:10], 'tool': tool, 'session_file': _session_file(path),
+                                     'snippet': snippet, '_sort': str(timestamp)})
+            except (OSError, ValueError, TypeError, AttributeError, KeyError, IndexError):
+                continue  # A broken transcript must not hide other sessions.
     hits.sort(key=lambda hit: hit['_sort'], reverse=True)
-    for hit in hits:
-        del hit['_sort']
+    for hit in hits: del hit['_sort']
     return hits[:20]
 
 

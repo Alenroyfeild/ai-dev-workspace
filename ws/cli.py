@@ -85,6 +85,7 @@ def main(argv=None):
     s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search'); s.add_argument('query')
+    s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
     l = sub.add_parser('lesson').add_subparsers(dest='action', required=True)
     s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
     s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
@@ -155,7 +156,15 @@ def main(argv=None):
                 root = None
             out(core.doctor(root, a.mcp)); return 0
         if a.cmd == 'sessions':
-            out(core.session_search(a.query)); return 0
+            roots = None
+            if a.root:
+                roots = {}
+                for value in a.root:
+                    client, separator, directory = value.partition('=')
+                    if client not in ('claude', 'codex', 'cursor', 'gemini') or not separator or not directory:
+                        raise core.WsError('Use ws sessions search <query> --root cursor=<dir> (or claude, codex, gemini).')
+                    roots[client] = Path(directory).expanduser()
+            out(core.session_search(a.query, roots)); return 0
         root = core.find_root()
         if a.cmd == 'route':
             result = orchestration.route(root, a.role); out(result); return 0 if result['available'] else 2
