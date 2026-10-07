@@ -12,11 +12,11 @@ echo 'export PATH="$HOME/ai-dev-workspace/bin:$PATH"' >> ~/.zshrc && source ~/.z
 ws --help
 ```
 
-Requires Python 3.9+ and git. No pip packages.
+macOS and Linux only; Windows not supported yet (file locking uses fcntl). Requires Python 3.9+ and git. No pip packages.
 
 ## 2. Create a workspace
 
-One workspace per product (it can serve several repos):
+One workspace per product (it can serve several repos). `ws map` also links an existing `graphify-out/GRAPH_REPORT.md` and its top headings; `ws search` searches that report. The kit never runs Graphify. [Graphify PR #13](https://github.com/Alenroyfeild/ai-dev-workspace/pull/13) is pending review.
 
 ```bash
 ws init ~/work/myapp-workspace --name myapp --repo ~/code/myapp --pack obsidian
@@ -91,13 +91,13 @@ ws pack add codex-worker
 
 ## Updates and feedback
 
-Automatic: your assistant checks `ws notices` at session start and asks before updating or sharing anything. For no network at all: `export WS_OFFLINE=1`.
+Automatic: your assistant checks `ws notices` at session start and asks before updating or sharing anything. `ws tools` shows recommended, optional and caution tools; nothing installs automatically. Set `tool_profile` in `workspace.json` to `lean`, `standard` or `full`, and `tool_overrides` to per-tool `on`, `off` or `ask`. `ws tools --cost` measures MCP schemas, skill/plugin metadata and cached Codeburn use. `ws assist` asks before applying suggestions. Use `ws run import codeburn` to import local usage and update an existing entry when a session grows. Pending review: [assist #14](https://github.com/Alenroyfeild/ai-dev-workspace/pull/14), [tool cost profiles #16](https://github.com/Alenroyfeild/ai-dev-workspace/pull/16), [Codeburn import #15](https://github.com/Alenroyfeild/ai-dev-workspace/pull/15) and update #17. For no network at all: `export WS_OFFLINE=1`.
 
 ## Daily loop
 
 Run `ws connect claude` once to link the kit skills into `~/.claude/skills`, or `ws connect codex` for `~/.agents/skills`. Existing names are kept; check the command's notice. Restart the client after connecting. With `ws` on PATH, Claude's `/handoff` saves the current task's next action, evidence and blockers, `/pickup` reads that task memory in a new session, and `/lesson` records a requested rule. In Codex, use `$handoff`, `$pickup`, and `$lesson` (or select them with `/skills`). These skills use the CLI without MCP. Init and MCP connection calls do not install global skill links.
 
-New workspaces include Claude Code and Codex project hooks. Approve their hook definitions in the client. SessionStart injects `ws brief`; Stop requests a checkpoint once when a claim is at least 30 minutes stale. Plain `ws nudge` is read-only. Its Stop/PreCompact hooks also capture Claude transcript memory after tool use: cue-bearing user sentences and the last assistant summary/next step, redacted and capped at 150 words per dated Captured block, appended to Handoff and Evidence. Existing text and Next action stay intact; repeated identical captures are skipped. Capture requires exactly one locally owned, unfinished claim; missing/unreadable or other transcript formats are skipped. Captured text is unverified and may omit nuance; use `/handoff` for precise memory. PreCompact's reminder stays advisory; it does not inject assistant context or block compaction. Existing hook settings stay intact, with proposed settings staged as `.ws-new`.
+New workspaces include Claude Code and Codex project hooks. Approve their hook definitions in the client. SessionStart injects `ws brief`; Stop requests a checkpoint once when a claim is at least 30 minutes stale. Plain `ws nudge` is read-only. Its Stop/PreCompact hooks also capture memory from Claude transcripts only, after tool use: cue-bearing user sentences and the last assistant summary/next step, redacted and capped at 150 words per dated Captured block, appended to Handoff and Evidence. Existing text and Next action stay intact; repeated identical captures are skipped. Capture requires exactly one locally owned, unfinished claim; missing/unreadable or other transcript formats are skipped. Captured text is unverified and may omit nuance; use `/handoff` for precise memory. PreCompact's reminder stays advisory; it does not inject assistant context or block compaction. Existing hook settings stay intact, with proposed settings staged as `.ws-new`.
 
 For Codex, trust the workspace when prompted, then use `/hooks` to review and trust the generated `.codex/hooks.json`. Changed hook definitions need review again. A fresh session receives the saved next action and asks before starting it. See the current [Codex hooks docs](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks) and [skills docs](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
 
