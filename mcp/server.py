@@ -11,7 +11,7 @@ from pathlib import Path
 
 kit = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(kit.parent if (kit / 'core.py').is_file() else kit))
-from ws import core  # noqa: E402
+from ws import core, assist  # noqa: E402
 
 PROTOCOL = '2025-06-18'
 
@@ -26,6 +26,7 @@ def string(desc, optional=False):
 
 
 TOOLS = {
+    'assist': ('At most two local improvement suggestions. Ask before applying; never installs or changes config.', S(), lambda r, a: assist.suggestions(r)),
     'search_sessions': ('Search local Claude Code and Codex transcripts; returned snippets are redacted.',
                         S(query=string('words or phrase to find')), lambda r, a: core.session_search(a['query'])),
     'codebase_map': ('Write a compact codebase map for the configured or supplied repository.',

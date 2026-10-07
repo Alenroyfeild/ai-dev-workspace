@@ -13,7 +13,7 @@ from unittest import mock
 
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT))
-from ws import core  # noqa: E402
+from ws import core, assist  # noqa: E402
 from mcp import server  # noqa: E402
 
 
@@ -55,6 +55,8 @@ class PackagingTests(unittest.TestCase):
 
 class Base(unittest.TestCase):
     def setUp(self):
+        patch = mock.patch.object(assist, 'cost_data', return_value=({}, {}))
+        patch.start(); self.addCleanup(patch.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / 'w'
         core.init(self.root, 'demo', ['ios'])
@@ -897,7 +899,8 @@ class ReleaseFeedbackTests(Base):
         self.assertIn('Faster search', kinds['update']['message'])
         self.assertEqual(kinds['update']['suggest'], 'ws update')
         self.assertEqual(kinds['fixed']['suggest'], 'ws update --check')
-        self.assertEqual(kinds['feedback']['suggest'], 'ws feedback submit 1')  # item 1 unshared; praise not nagged
+        self.assertEqual(len(kinds), 2)
+        self.assertEqual(next(n for n in again if n['kind'] == 'feedback')['suggest'], 'ws feedback submit 1')
         self.assertNotIn('fixed', {n['kind'] for n in again})
         self.assertEqual(net.call_count, 2)  # one release check + one issue sync, then cached
 
