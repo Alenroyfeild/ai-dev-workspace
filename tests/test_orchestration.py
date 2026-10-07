@@ -17,9 +17,15 @@ class OrchestrationTests(Base):
         with self.fake():
             binding = orchestration.route(self.root, 'explorer')
             self.assertEqual((binding['provider'], binding['family'], binding['effort']), ('codex', 'luna', 'high'))
+            planner = orchestration.route(self.root, 'planner')  # claude preferred but absent: visible fallback to codex
+            self.assertEqual((planner['provider'], planner['family'], planner['available']), ('codex', 'sol', True))
+            self.assertEqual(planner['skipped'], [{'provider': 'claude', 'reason': 'CLI not on PATH'}])
+            path = self.root / 'routing.json'; d = json.loads(path.read_text())
+            d['role_overrides']['planner'] = {'provider': 'claude'}  # an explicitly pinned provider never falls back
+            path.write_text(json.dumps(d))
             self.assertFalse(orchestration.route(self.root, 'planner')['available'])
             with self.assertRaises(core.WsError): orchestration.delegate(self.root, 'T-1', 'planner')
-            path = self.root / 'routing.json'; d = json.loads(path.read_text())
+            d['role_overrides'] = {}
             d['role_overrides']['explorer'] = {'provider': 'codex', 'model': 'gpt-6.1-sol', 'effort': 'low'}
             path.write_text(json.dumps(d))
             self.assertEqual(orchestration.route(self.root, 'explorer')['model'], 'gpt-6.1-sol')
