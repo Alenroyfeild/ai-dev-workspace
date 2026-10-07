@@ -117,11 +117,11 @@ def review_diff(repo, revision):
     try:
         for ref in re.split(r'\.\.\.?', revision):
             subprocess.run(['git', 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}'], cwd=repo, capture_output=True, check=True, timeout=10)
-        parts = []
+        parts = {}
         for label, flag, limit in (('Diff stat', '--stat', 2000), ('Changed files', '--name-only', 2000), ('Bounded hunks', '--unified=3', 8000)):
             result = subprocess.run(['git', 'diff', '--no-ext-diff', '--no-textconv', flag, revision, '--'], cwd=repo, capture_output=True, text=True, check=True, timeout=10)
-            parts.append(label + ':\n' + core.redact(result.stdout[:limit]))
-        return '\n'.join(parts)
+            parts[label] = core.redact(result.stdout[:limit])
+        return parts
     except (OSError, subprocess.SubprocessError):
         raise core.WsError('Review range unavailable; run git log --oneline in the task repository.')
 
@@ -150,11 +150,13 @@ def delegate(root, task_id, role, run=False, diff=None):
     body += '\n## Allowed paths\n' + '\n'.join(map(str, paths)) + '\n\n## Output contract\nUNVERIFIED findings with file:line and checks actually performed; report blockers. Do not implement, commit, accept or change task memory.\n'
     if role == 'reviewer': body += 'Each finding must be one plain line: UNVERIFIED file:line: problem. fix. No Markdown headings or bullets. Review regressions only; never claim acceptance.\n'
     if diff is not None:
-        budget = 390 - len(body.split()); body += '\n## Diff\n'
-        for line in review_diff(paths[0], diff).splitlines():
-            words = len(line.split())
-            if words > budget: body += '[diff truncated; inspect changed files read-only]\n'; break
-            body += line + '\n'; budget -= words
+        budget = max(0, (385 - len(body.split())) // 3)
+        for label, text in review_diff(paths[0], diff).items():
+            body += '\n## ' + label + '\n'; remaining = budget
+            for line in text.splitlines():
+                words = len(line.split())
+                if words > remaining: body += '[truncated]\n'; break
+                body += line + '\n'; remaining -= words
     if len(body.split()) > 400: raise core.WsError('Brief scope exceeds 400 words; shorten repository paths.')
     identifier = task_id + '-' + role + '-' + core.uuid.uuid4().hex[:8]
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')

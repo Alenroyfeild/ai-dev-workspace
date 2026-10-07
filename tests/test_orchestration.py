@@ -31,6 +31,11 @@ class OrchestrationTests(Base):
             core.task_new(self.root, 'OUTSIDE-1', 'Unauthorized diff', repo=str(outside))
             with self.assertRaisesRegex(core.WsError, 'outside'):
                 orchestration.delegate(self.root, 'OUTSIDE-1', 'reviewer', diff='HEAD')
+            with mock.patch.object(orchestration.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout='large change line\n' * 1000)):
+                large = orchestration.delegate(self.root, 'DIFF-1', 'reviewer', diff='HEAD~1..HEAD')
+            text = Path(large['brief']).read_text()
+            for label in ('Diff stat', 'Changed files', 'Bounded hunks'): self.assertIn(label, text)
+            self.assertLessEqual(len(text.split()), 400)
 
     def fake(self, code='import sys; print("UNVERIFIED sample.py:1 synthetic finding")'):
         directory = self.root / 'bin'; directory.mkdir(exist_ok=True)
