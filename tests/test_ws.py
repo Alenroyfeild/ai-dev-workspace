@@ -600,6 +600,21 @@ class KnowledgeTests(Base):
 
 
 class MapTests(unittest.TestCase):
+    def test_map_and_search_include_existing_graphify_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            repo, root = tmp / 'repo', tmp / 'workspace'
+            report = repo / 'graphify-out' / 'GRAPH_REPORT.md'
+            report.parent.mkdir(parents=True)
+            report.write_text('# Graph report\n\n## God nodes\n\nGraph bridge fixture finding.\n\n## Communities\n')
+            (repo / 'README.md').write_text('# Fixture app\n')
+            core.init(root, 'fixture', repos=[repo])
+            mapped = (root / 'vault/Project/Codebase map.md').read_text()
+            self.assertIn('[Graphify report]', mapped)
+            self.assertIn('God nodes', mapped)
+            hits = core.search(root, 'graph bridge')
+            self.assertIn(str(report.resolve()), [hit['path'] for hit in hits])
+
     def test_map_fixture_preserves_notes_and_is_available_over_mcp(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)

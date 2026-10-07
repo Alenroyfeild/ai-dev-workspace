@@ -231,6 +231,11 @@ def _repo_files(repo):
     return [p for p in repo.rglob('*') if p.is_file() and not SKIP_DIRS.intersection(p.relative_to(repo).parts)]
 
 
+def _graphify_report(repo):
+    path = repo / 'graphify-out' / 'GRAPH_REPORT.md'
+    return path if path.is_file() else None
+
+
 def codebase_map(root, repo=None):
     root = Path(root).resolve()
     repos = config(root).get('repos', [])
@@ -265,6 +270,17 @@ def codebase_map(root, repo=None):
     section.extend([f'- {name}: {count} files' for name, count in sorted(folders.items())] or ['- None'])
     section.extend(['', '## Most changed (90 days)'])
     section.extend([f'- {name}: {count}' for name, count in sorted(changed.items(), key=lambda x: (-x[1], x[0]))[:15]] or ['- No Git history'])
+    report = _graphify_report(repo)
+    if report:
+        headings = []
+        with report.open(errors='replace') as source:
+            for line in source:
+                if line.startswith('#'):
+                    headings.append(line.lstrip('#').strip())
+                if len(headings) == 5:
+                    break
+        section.extend(['', '## Graphify report', f'- [Graphify report]({report})'])
+        section.extend([f'- {heading}' for heading in headings])
     section.append('<!-- ws:codebase-map:end -->')
     rendered = '\n'.join(section) + '\n'
     path = vault(root) / 'Project' / 'Codebase map.md'
@@ -617,21 +633,26 @@ def search(root, query, limit=20):
     words = [w.lower() for w in re.findall(r'\w{3,}', query)]
     if not words:
         raise WsError('Search needs at least one word of 3+ letters.')
-    hits = []
+    hits, paths = [], []
     for path in vault(root).rglob('*.md'):
-        if '.ws' in path.parts or 'Runs' in path.parts:
-            continue
-        lines = path.read_text(errors='replace').splitlines()
+        if '.ws' not in path.parts and 'Runs' not in path.parts:
+            paths.append((path, str(path.relative_to(root))))
+    for repo in config(root).get('repos', []):
+        report = _graphify_report(Path(repo).expanduser())
+        if report:
+            paths.append((report, str(report)))
+    for path, shown in paths:
         score, best = 0, []
-        for i, line in enumerate(lines, 1):
-            low = line.lower()
-            n = sum(low.count(w) for w in words)
-            if n:
-                score += n + (3 if line.startswith('#') else 0)
-                best.append((n, i, line.strip()[:160]))
+        with path.open(errors='replace') as source:
+            for i, line in enumerate(source, 1):
+                low = line.lower()
+                n = sum(low.count(w) for w in words)
+                if n:
+                    score += n + (3 if line.startswith('#') else 0)
+                    best.append((n, i, line.strip()[:160]))
         if score:
             best.sort(reverse=True)
-            hits.append({'path': str(path.relative_to(root)), 'score': score,
+            hits.append({'path': shown, 'score': score,
                          'lines': [f'{i}: {t}' for _, i, t in best[:3]]})
     hits.sort(key=lambda h: -h['score'])
     return hits[:limit]
