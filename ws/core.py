@@ -950,10 +950,35 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
         if source:
             if source != 'codeburn' or not re.fullmatch(r'[a-f0-9]{64}', import_id):
                 raise WsError('Imported usage requires a Codeburn source and stable import ID.')
-            # ponytail: scan keys under the append lock; add an index if large imports become slow.
-            if any(e.get('import_id') == import_id for p in (vault(root) / 'Runs').glob('*.jsonl') for e in run_entries(root, p.stem)):
-                return None
             entry.update(source=source, import_id=import_id)
+            if path.is_file():
+                lines = path.read_text().splitlines(keepends=True)
+                matches = []
+                for raw in lines:
+                    try:
+                        old = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if isinstance(old, dict) and old.get('import_id') == import_id:
+                        matches.append(old)
+                if matches:
+                    if len(matches) == 1 and matches[0] == entry:
+                        return None
+                    replaced, rendered = False, []
+                    for raw in lines:
+                        try:
+                            old = json.loads(raw)
+                        except ValueError:
+                            rendered.append(raw)
+                            continue
+                        if isinstance(old, dict) and old.get('import_id') == import_id:
+                            if not replaced:
+                                rendered.append(json.dumps(entry) + '\n')
+                                replaced = True
+                        else:
+                            rendered.append(raw)
+                    atomic_write(path, ''.join(rendered))
+                    return entry
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('a') as stream:
             stream.write(json.dumps(entry) + '\n')
