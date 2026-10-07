@@ -1,0 +1,16 @@
+{
+"date": "2026-10-07T18:38:21.216769+00:00",
+"provider": "codex",
+"model": "gpt-6-luna",
+"scenario": "decisions",
+"n": 3,
+"kit": "722bb898bfbda83ddc5a22eb5ef2733e19ecafdd",
+"session1": {"baseline": {"completed": true, "exit_code": 0, "tool_calls": 5, "input_tokens": 105165, "output_tokens": 1729, "cache_read_tokens": 85504, "cost_usd": null, "seconds": 130.36}, "workspace": {"completed": true, "exit_code": 0, "tool_calls": 16, "input_tokens": 195761, "output_tokens": 3823, "cache_read_tokens": 178176, "cost_usd": null, "seconds": 105.71}},
+"runs": [
+{"completed": true, "exit_code": 0, "tool_calls": 10, "input_tokens": 123428, "output_tokens": 1865, "cache_read_tokens": 99072, "cost_usd": null, "seconds": 72.32, "arm": "baseline", "trial": 1, "tests_pass": true, "checks": {"empty_is_missing_email": false, "blank_is_missing_email": false, "malformed_is_invalid_email": false, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": false}, "success": false},
+{"completed": true, "exit_code": 0, "tool_calls": 15, "input_tokens": 161451, "output_tokens": 2360, "cache_read_tokens": 135424, "cost_usd": null, "seconds": 78.14, "arm": "baseline", "trial": 2, "tests_pass": true, "checks": {"empty_is_missing_email": false, "blank_is_missing_email": false, "malformed_is_invalid_email": false, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": false}, "success": false},
+{"completed": true, "exit_code": 0, "tool_calls": 8, "input_tokens": 159230, "output_tokens": 1956, "cache_read_tokens": 134912, "cost_usd": null, "seconds": 43.02, "arm": "baseline", "trial": 3, "tests_pass": true, "checks": {"empty_is_missing_email": false, "blank_is_missing_email": false, "malformed_is_invalid_email": false, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": false}, "success": false},
+{"completed": true, "exit_code": 0, "tool_calls": 16, "input_tokens": 208739, "output_tokens": 4423, "cache_read_tokens": 179456, "cost_usd": null, "seconds": 126.63, "arm": "workspace", "trial": 1, "tests_pass": true, "checks": {"empty_is_missing_email": true, "blank_is_missing_email": true, "malformed_is_invalid_email": true, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": true}, "success": true},
+{"completed": true, "exit_code": 0, "tool_calls": 13, "input_tokens": 220194, "output_tokens": 4534, "cache_read_tokens": 193280, "cost_usd": null, "seconds": 71.76, "arm": "workspace", "trial": 2, "tests_pass": true, "checks": {"empty_is_missing_email": true, "blank_is_missing_email": true, "malformed_is_invalid_email": true, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": true}, "success": true},
+{"completed": true, "exit_code": 0, "tool_calls": 17, "input_tokens": 259176, "output_tokens": 4701, "cache_read_tokens": 214784, "cost_usd": null, "seconds": 121.12, "arm": "workspace", "trial": 3, "tests_pass": true, "checks": {"empty_is_missing_email": true, "blank_is_missing_email": true, "malformed_is_invalid_email": true, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": true}, "success": true}
+]}
