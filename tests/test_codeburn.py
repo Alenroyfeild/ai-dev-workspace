@@ -50,3 +50,15 @@ class CodeburnTests(Base):
         with mock.patch.object(core.shutil, 'which', return_value=None), self.assertRaisesRegex(core.WsError, 'npm install -g codeburn'):
             core.import_codeburn(self.root)
         with self.assertRaises(core.WsError): core.import_codeburn(self.root, since='not-a-date')
+
+    def test_reimport_updates_the_existing_session_entry(self):
+        data, export = self.fixture()
+        with mock.patch.object(core.shutil, 'which', return_value='codeburn'), \
+                mock.patch.object(core.subprocess, 'run', side_effect=export):
+            self.assertEqual(core.import_codeburn(self.root)['imported'], 1)
+            data['records'][0].update(inputTokens=40, outputTokens=8, cacheReadTokens=50, cacheWriteTokens=10)
+            data['records'][0]['timestamp'] = core.now()
+            self.assertEqual(core.import_codeburn(self.root)['imported'], 1)
+        entries = [entry for entry in core.run_entries(self.root, 'T-1') if entry.get('source') == 'codeburn']
+        self.assertEqual(len(entries), 1)
+        self.assertEqual((entries[0]['tokens_in'], entries[0]['tokens_out']), (100, 8))
