@@ -2,6 +2,8 @@
 
 A pack is a folder in `packs/<name>/`. Only `pack.json` is required.
 
+`codex-worker` is legacy; it remains for existing ACP users. The supported worker path is `ws delegate`, whose hostile selftest passed Codex on macOS on 2026-10-07: positive token read, patch/shell/Python/absolute/symlink/parent-path writes and a Git commit attempt, with unchanged disk state. Run `ws delegate --selftest --provider codex` after CLI or sandbox changes; this proof does not establish every platform or future version. Claude execution has not been verified.
+
 ```text
 packs/android/
   pack.json             manifest (required)
