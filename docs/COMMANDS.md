@@ -8,11 +8,14 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). Most
 |---|---|
 | `ws init <dir> [--name N] [--repo R] [--pack P]` | Create a workspace named for its folder unless `--name` is supplied. Never overwrites your files: conflicts are written beside them as `.ws-new`. With `--repo`, also writes the codebase map. |
 | `ws connect claude\|codex\|cursor` | Connect an assistant: MCP config, plus the `/handoff`, `/pickup`, `/lesson` and `/thinkbeforeact` skills for Claude and Codex (existing skill names are kept). Codex: prints the config block; `--write` appends it with a backup. |
-| `ws doctor` | What is installed, which assistants are connected, what is missing. |
+| `ws tools [--cost]` | List recommended, optional and caution tools; `--cost` reports MCP schema bytes, skill/plugin metadata size and cached Codeburn use over 30 days. |
+| `ws doctor` | What is installed, which assistants are connected, what is missing under the active tool profile and overrides. |
 | `ws packs` / `ws pack add <name>` | List and add optional packs. |
-| `ws map [<repo>]` | Rewrite the codebase map (languages, build/test commands, folders, most-changed files). No model involved. |
+| `ws map [<repo>]` | Rewrite the codebase map; link an existing `graphify-out/GRAPH_REPORT.md` and its top headings. `ws search` includes that report. The kit never runs Graphify. |
 
 ## Daily loop
+
+Claude Stop and PreCompact hooks capture cue-bearing decisions and the latest assistant summary from Claude transcripts only. Captures are redacted, appended and unverified; use `/handoff` for precise notes. [Decision-capture PR #11](https://github.com/Alenroyfeild/ai-dev-workspace/pull/11) remains under review.
 
 | Command | Does |
 |---|---|
@@ -26,10 +29,12 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). Most
 | `ws sessions search "<words>"` | Search your past Claude Code and Codex conversations on this machine. Read-only, redacted snippets. |
 | `ws digest <file>` | Deterministic summary of a big log or JSON file. |
 
+Toolbox levels: recommended tools are suggested for most workspaces, optional tools add specific capabilities, and caution tools can change routing or configuration. Nothing is installed automatically.
+
 ## Measure and maintain
 
-`ws assist` offers at most two local suggestions with evidence, command, safety and estimated saving. `ws assist decide <id> accepted|declined|snoozed|always [--until YYYY-MM-DD]` remembers permission in `.ws/assist.json`; declined hides it for 30 days. `ws assist apply <id>` executes only an accepted/always map or trace action. Other commands are shown for review, never executed. Always does not schedule automatic work. Notices offer suggestions once, at most two total. Cost advice uses local Codeburn reports and a 30-day connector-use export, filters protected/in-use servers and Graphy-related findings, and never runs optimize --apply. Missing usage evidence suppresses connector advice. Checkpoint/session counters begin with this version; a transcript over 2 MB prompts a handoff/fresh session.
-`ws run import codeburn [--since YYYY-MM-DD] [--task ID]` imports `codeburn.export.v2` records from a temporary local export. Matches require canonical repository paths and task windows (claim/creation through completion, or now for unfinished work); ambiguous matches are skipped. Explicit task selection still checks path/time. Imports append source-tagged, deduplicated usage entries; task text is unchanged. Input totals include cache reads/writes; reasoning tokens are not counted again. Usage does not reset the repeat guard. Missing Codeburn prints its install command but never installs it. Raw exports and project paths are not retained in run logs. MCP `import_usage` accepts `since` and `task`. Existing imported records are snapshots; later revisions to an already-imported call are skipped. Codeburn's default export covers 30 days; use --since for a wider/custom window. See [official export implementation](https://github.com/getagentseal/codeburn/blob/main/src/export.ts).
+`ws assist` offers at most two local suggestions and asks before applying. `ws assist decide <id> accepted|declined|snoozed|always [--until YYYY-MM-DD]` remembers permission in `.ws/assist.json`; declined hides it for 30 days. `ws assist apply <id>` runs only an accepted/always map or trace action. Other commands stay for review. Notices offer suggestions once, at most two total. Daily Codeburn cache data guides cost advice; protected built-ins, the workspace server, Graphy tools, in-use servers and tools pinned `on` are excluded. It never runs `codeburn optimize --apply`. [Assist PR #14](https://github.com/Alenroyfeild/ai-dev-workspace/pull/14) and [tool profiles/cost PR #16](https://github.com/Alenroyfeild/ai-dev-workspace/pull/16) are pending review. Configure `tool_profile` as `lean` (core only), `standard` (recommended tools) or `full`; `tool_overrides` maps tool names to `on`, `off` or `ask`. These settings guide assist and doctor and never remove software.
+`ws run import codeburn [--since YYYY-MM-DD] [--task ID]` imports local `codeburn.export.v2` records. Matches use canonical repo paths and task windows; ambiguous records are skipped. Input totals include cache reads/writes; reasoning tokens are not counted again. Re-importing a grown session updates its existing entry (task/session/provider/model key); task text stays unchanged, and run logs retain no raw exports or project paths. Missing Codeburn prints its install command but never installs it. Codeburn defaults to 30 days; use `--since` for more. See [its export implementation](https://github.com/getagentseal/codeburn/blob/main/src/export.ts). [Import PR #15](https://github.com/Alenroyfeild/ai-dev-workspace/pull/15) and [update PR #17](https://github.com/Alenroyfeild/ai-dev-workspace/pull/17) are pending review.
 
 | Command | Does |
 |---|---|
