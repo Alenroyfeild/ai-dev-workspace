@@ -686,20 +686,27 @@ class InterfaceTests(Base):
         self.assertTrue(core.capture_decisions(self.root, str(transcript)))
         after = path.read_text()
         record = core.task_read(self.root, 'T-1', ['Handoff', 'Evidence', 'Next action'])
-        for name in ('Handoff', 'Evidence'):
-            body = record['sections'][name]
-            self.assertIn('Captured', body)
-            self.assertIn('use violet', body)
-            self.assertIn('Next step: test empty input', body)
-            self.assertIn('[REDACTED]', body)
-            self.assertNotIn('syntheticsecret123456', body)
-            self.assertNotIn('capture tool output', body)
-            self.assertLessEqual(len(body[body.index('Captured'):].split()), 150)
+        body = record['sections']['Handoff']
+        self.assertTrue(body.startswith('Existing  human text.'))
+        self.assertIn('use violet', body)
+        self.assertIn('Next step: test empty input', body)
+        self.assertIn('[REDACTED]', body)
+        self.assertNotIn('syntheticsecret123456', body)
+        self.assertNotIn('capture tool output', body)
+        self.assertLessEqual(len(body[body.index('Captured'):].split()), 150)
+        self.assertEqual(record['sections']['Evidence'], 'Existing evidence.')
         self.assertEqual(record['sections']['Next action'], 'Keep this exact next action')
-        self.assertFalse(core.capture_decisions(self.root, str(transcript)))
+        self.assertFalse(core.capture_decisions(self.root, str(transcript)))  # same session, same content
         self.assertEqual(after, path.read_text())
-        stripped = re.sub(r'\n<!-- ws:captured:[^>]+ -->\n.*?<!-- /ws:captured -->\n', '', after, flags=re.S)
-        self.assertEqual(stripped, before)
+        # The Stop hook fires every turn: a growing session updates its own block, never adds another.
+        with transcript.open('a') as stream:
+            stream.write('\n' + entry('user', [{'type': 'text', 'text': 'Also: always log rejections.'}]) + '\n')
+        self.assertTrue(core.capture_decisions(self.root, str(transcript)))
+        handoff = core.task_read(self.root, 'T-1', ['Handoff'])['sections']['Handoff']
+        self.assertEqual(handoff.count('### Captured'), 1)
+        self.assertIn('always log rejections', handoff)
+        self.assertIn('Captured last session (unverified):', core.brief(self.root))
+        self.assertIn('use violet', core.brief(self.root))
 
     def test_decision_capture_skips_idle_missing_foreign_and_nonclaude(self):
         transcript = self.root / 'skip.jsonl'

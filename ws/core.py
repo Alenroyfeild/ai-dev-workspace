@@ -734,6 +734,9 @@ def brief(root):
              'Blockers: ' + words(record['sections']['Blockers'], 25)]
     if record['claim']:
         lines.append('Claim: ' + record['claim'])
+    captured = re.findall(r'### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->', task_read(root, task['id'], ['Handoff'])['sections']['Handoff'], re.S)
+    if captured:
+        lines.append('Captured last session (unverified): ' + words(captured[-1], 60))
     lessons = lesson_search(root, task['title'])
     query = set(re.findall(r'\w{3,}', task['title'].lower()))
     lessons.sort(key=lambda line: -sum(line.lower().count(w) for w in query))
@@ -779,8 +782,9 @@ def capture_decisions(root, transcript_path):
     body = 'User constraints: ' + ' '.join(redact(' '.join(decisions)).split()[:95])
     steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+', summary) if re.search(r'\bnext (step|action)\b', s, re.I)]
     body += '\nLast assistant summary / next step: ' + ' '.join((' '.join(steps) + ' ' + summary).split()[:35])
-    marker = '<!-- ws:captured:' + digest_text(body) + ' -->'
-    block = '\n' + marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
+    # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
+    marker = '<!-- ws:captured:' + digest_text(str(Path(transcript_path).resolve()))[:16] + ' -->'
+    block = marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
     with lock(root):
         owned = []
         for task in task_list(root):
@@ -794,12 +798,16 @@ def capture_decisions(root, transcript_path):
             return False
         path, original = owned[0]
         text = original
-        for name in ('Handoff', 'Evidence'):
-            match = re.search(rf'^## {name}[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
-            if not match:
-                return False
-            if marker not in match.group():
-                text = text[:match.end()] + block + text[match.end():]
+        match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
+        if not match:
+            return False
+        section_text = match.group()
+        own = re.search(re.escape(marker) + r'.*?<!-- /ws:captured -->\n?', section_text, re.S)
+        if own:
+            section_text = section_text[:own.start()] + block + section_text[own.end():]
+        else:
+            section_text = section_text.rstrip('\n') + '\n\n' + block
+        text = text[:match.start()] + section_text + text[match.end():]
         if text == original:
             return False
         atomic_write(path, text)
@@ -1044,7 +1052,21 @@ def requirement_status(manifest):
 def tools():
     """Catalog entries with their current executable state; never install anything."""
     entries = json.loads((KIT / 'tools.json').read_text())
-    return [dict(entry, installed=bool(shutil.which(entry['detect']))) for entry in entries]
+    return [dict(entry, installed=_detected(entry['detect'])) for entry in entries]
+
+
+def _detected(checks):
+    # A check is a command on PATH, 'app:<Name>' for a macOS app, or a '~/' path (plugins and skills).
+    for check in ([checks] if isinstance(checks, str) else checks):
+        if check.startswith('app:'):
+            found = _has_app(check[4:])
+        elif check.startswith('~/'):
+            found = Path(check).expanduser().exists()
+        else:
+            found = bool(shutil.which(check))
+        if found:
+            return True
+    return False
 
 
 def _mcp_config(root, client):
