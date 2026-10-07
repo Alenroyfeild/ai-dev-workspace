@@ -22,7 +22,7 @@ def skills():
 
 def fingerprint(root):
     from .orchestration import routing_template
-    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text() + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(core.memory_hooks(root), sort_keys=True))
+    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text() + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps([core.memory_hooks(root, c) for c in ('claude', 'codex', 'cursor', 'gemini')], sort_keys=True))
 
 
 def markdown(old, new):
@@ -34,7 +34,7 @@ def markdown(old, new):
     return candidate if re.search(pattern, old, re.S) else None
 
 
-MANAGED_HOOK = re.compile(r'(?:^|\s)(?:brief|nudge) --hook$')
+MANAGED_HOOK = re.compile(r'(?:^|\s)(?:brief|nudge) --hook(?: --client (?:codex|cursor|gemini))?$')
 
 
 def hooks(old, new):
@@ -43,13 +43,16 @@ def hooks(old, new):
         data, desired = json.loads(old), json.loads(new)['hooks']
         found, changed = {}, False
         for event, groups in data.get('hooks', {}).items():
-            for group in groups:
+            for index, group in enumerate(groups):
                 for i, hook in enumerate(group.get('hooks', [])):
                     if event in desired and isinstance(hook.get('command'), str) and MANAGED_HOOK.search(hook['command']):
                         found[event] = found.get(event, 0) + 1
                         want = desired[event][0]['hooks'][0]
                         changed |= hook != want
                         group['hooks'][i] = want
+                if event in desired and isinstance(group.get('command'), str) and MANAGED_HOOK.search(group['command']):
+                    found[event] = found.get(event, 0) + 1
+                    want = desired[event][0]; changed |= group != want; groups[index] = want
         if set(found) != set(desired) or any(n != 1 for n in found.values()):
             return None  # missing or duplicated managed hooks: stage a proposal instead of guessing
         return json.dumps(data, indent=2) + '\n' if changed else old
@@ -86,8 +89,9 @@ def upgrade(root, dry_run=False):
         rules = block((core.KIT / 'template/AGENTS.md').read_text())
         for pack in cfg.get('packs', []): rules = core.pack_rules(rules, pack)
         from .orchestration import routing_template
-        desired = {'AGENTS.md': rules, 'routing.json': routing_template(), **{p: json.dumps(core.memory_hooks(root), indent=2) + '\n'
-                   for p in ('.claude/settings.json', '.codex/hooks.json')}, **skills()}
+        clients = {'.claude/settings.json': 'claude', '.codex/hooks.json': 'codex', '.cursor/hooks.json': 'cursor', '.gemini/settings.json': 'gemini'}
+        desired = {'AGENTS.md': rules, 'routing.json': routing_template(), **{p: json.dumps(core.memory_hooks(root, c), indent=2) + '\n'
+                   for p, c in clients.items() if c in ('claude', 'codex') or (root / p).exists()}, **skills()}
         pending, operations = [], []
         for relative, candidate in desired.items():
             path = root / relative; safe(path)

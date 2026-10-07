@@ -296,14 +296,19 @@ def codebase_map(root, repo=None):
     return {'repo': str(repo), 'path': str(path.relative_to(root)), 'words': len(rendered.split())}
 
 
-def memory_hooks(root):
+def memory_hooks(root, client='claude'):
     command = 'env WS_ROOT=' + shlex.quote(str(root)) + ' ' + shlex.quote(python_command()) + ' ' + shlex.quote(str(KIT / 'bin/ws'))
-    return {'hooks': {event: [{'hooks': [{'type': 'command', 'timeout': 10,
-                         'command': command + (' brief --hook' if event == 'SessionStart' else ' nudge --hook')}]}]
-                       for event in ('SessionStart', 'PreCompact', 'Stop')}}
+    events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop')
+    result = {'hooks': {}}
+    if client == 'cursor': result['version'] = 1
+    for event in events:
+        hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
+                'command': command + (' brief --hook' if event.lower() == 'sessionstart' else ' nudge --hook') + ('' if client == 'claude' else ' --client ' + client)}
+        result['hooks'][event] = [hook if client == 'cursor' else {'hooks': [hook]}]
+    return result
 def install_memory_hooks(root, collisions):
-    data = (json.dumps(memory_hooks(root), indent=2) + '\n').encode()
-    for relative in ('.claude/settings.json', '.codex/hooks.json'):
+    for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
+        data = (json.dumps(memory_hooks(root, client), indent=2) + '\n').encode()
         write_preserving(root / relative, data, collisions)
 
 
@@ -367,7 +372,17 @@ def link_skills(client, root):
 
 
 def connect(root, client, write=False, skills=False, verify=False):
-    result = _connect_config(root, client, write)
+    result = {'client': client, 'connected': False, 'note': 'Lifecycle hooks only; rules and MCP setup are separate.'} if client == 'gemini' and not write else _connect_config(root, client, write)
+    if client in ('cursor', 'gemini', 'codex'):
+        from .upgrade import hooks
+        relative = {'cursor': '.cursor/hooks.json', 'gemini': '.gemini/settings.json', 'codex': '.codex/hooks.json'}[client]
+        path = root / relative; candidate = json.dumps(memory_hooks(root, client), indent=2) + '\n'
+        with lock(root):
+            merged = hooks(path.read_text(), candidate) if path.exists() else candidate
+            collisions = []
+            if merged is not None: atomic_write(path, merged)
+            else: write_preserving(path, candidate.encode(), collisions)
+        result['hooks'] = {'path': str(path), 'collisions': collisions}
     if skills and client in ('claude', 'codex'):
         result['skills'] = link_skills(client, root)
     if verify and client in ('claude', 'cursor'):
@@ -784,8 +799,8 @@ def brief(root):
     return '\n'.join(([guard] if guard else []) + lines)
 
 
-def capture_decisions(root, transcript_path):
-    """Append bounded, unverified Claude transcript memory to a locally owned task."""
+def capture_decisions(root, transcript_path, client='claude'):
+    """Capture bounded, unverified transcript memory to a locally owned task."""
     if not isinstance(transcript_path, str) or not transcript_path:
         return False
     decisions, summary, worked = [], '', False
@@ -795,9 +810,10 @@ def capture_decisions(root, transcript_path):
             return False
         # ponytail: scan at most 50 MB per hook; add incremental reads if sessions outgrow this.
         with path.open(encoding='utf-8') as stream:
-            for line in stream:
+            from .transcripts import records
+            for line in stream if client == 'claude' else records(stream, client):
                 try:
-                    entry = json.loads(line)
+                    entry = json.loads(line) if client == 'claude' else line
                     kind, message = entry.get('type'), entry.get('message', {})
                     content = message.get('content')
                 except (ValueError, AttributeError):
@@ -815,7 +831,8 @@ def capture_decisions(root, transcript_path):
                 else:
                     decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+', text)
                                      if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
-    except (OSError, UnicodeError):
+    except (OSError, UnicodeError, ValueError, TypeError, AttributeError, KeyError) as error:
+        if client == 'claude' and not isinstance(error, (OSError, UnicodeError)): raise
         return False
     if not worked or not (decisions or summary):
         return False

@@ -48,7 +48,7 @@ No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-wo
 
 ## What you get
 
-- **Task memory that writes itself.** One record per ticket: objective, evidence, blockers and next step. Claude hooks capture from Claude transcripts only; captures are unverified. Skills: `/handoff`, `/pickup`, `/lesson`.
+- **Task memory that writes itself.** One record per ticket: objective, evidence, blockers and next step. Claude and Codex hooks capture bounded, unverified decisions into Handoff. Cursor/Gemini hooks are wired and fixture-tested, but their clients remain untested. Other MCP clients use rules plus MCP only. Skills: `/handoff`, `/pickup`, `/lesson`.
 - **Lessons.** "What happened → rule", matched to the task and shown before the assistant starts, so a mistake made once is not made again.
 - **An instant codebase map.** `ws map` writes languages and commands, links an existing Graphify report, and indexes it for `ws search`; it never runs Graphify.
 - **Toolbox and assist.** `ws tools` lists recommended everyday tools, optional extras and caution tools that change routing/config. `ws assist` asks before applying; `ws tools --cost` measures schemas and skill/plugin size. Workspace profiles are `lean`, `standard` and `full`, with per-tool `on`, `off` or `ask` overrides.
