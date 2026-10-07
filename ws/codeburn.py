@@ -64,10 +64,10 @@ def import_usage(root, since=None, task_id=None):
     # One run entry per task, session, provider and model: per-call rows would bury ws trace in thousands of lines.
     sessions = {}
     for identifier, provider, model, incoming, outgoing, at, session in pending:
-        group = sessions.setdefault((identifier, provider, model, session), [0, 0, at])
+        group = sessions.setdefault((identifier, provider, model, session[1]), [0, 0, at])
         group[0] += incoming; group[1] += outgoing; group[2] = max(group[2], at)
     pending = [(identifier, provider, model, incoming, outgoing, at,
-                core.digest_text(json.dumps([*session, provider, model, incoming, outgoing, at])))
+                core.digest_text(json.dumps([identifier, session, provider, model])))
                for (identifier, provider, model, session), (incoming, outgoing, at) in sessions.items()]
     imported = 0
     for identifier, provider, model, incoming, outgoing, at, key in pending:
