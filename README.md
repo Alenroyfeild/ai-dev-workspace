@@ -64,8 +64,8 @@ All commands: [docs/COMMANDS.md](docs/COMMANDS.md).
 |---|---|---|---|---|---|
 | Rules | proven | proven | documented, untested | documented, untested | documented, untested |
 | MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
-| Hooks | proven | proven | documented, untested | documented, untested | documented, untested |
-| Skills | proven | proven | documented, untested | documented, untested | documented, untested |
+| Hooks | proven | proven | not wired yet (client supports hooks) | not wired yet (client supports hooks) | not wired yet (client supports hooks) |
+| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
 | Automatic capture | proven | not available | not available | not available | not available |
 
 ## Optional packs

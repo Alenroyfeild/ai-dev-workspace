@@ -318,6 +318,11 @@ def mcp_command(root):
     return {'command': python_command(), 'args': [str(KIT / 'mcp/server.py'), '--root', str(Path(root).resolve())]}
 
 
+# Project MCP config per client: (file, key holding the server map).
+MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
+                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
+
+
 def client_connected(root, client):
     if client == 'codex':
         path = Path.home() / '.codex/config.toml'
@@ -333,8 +338,7 @@ def client_connected(root, client):
             except (ValueError, SyntaxError):
                 return False
         return fields == mcp_command(root)
-    locations = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
-                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
+    locations = MCP_LOCATIONS
     path, key = (root / locations[client][0], locations[client][1]) if client in locations else (None, None)
     if path is None: return False
     try:
@@ -411,8 +415,7 @@ def _connect_config(root, client, write=False):
         atomic_write(path, original.rstrip('\n') + '\n\n' + block)
         result['connected'] = True
         return result
-    locations = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
-                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
+    locations = MCP_LOCATIONS
     relative, key = locations[client]
     path = root / relative
     if client_connected(root, client):
@@ -1214,8 +1217,7 @@ def _detected(checks):
 
 
 def _mcp_config(root, client):
-    locations = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
-                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
+    locations = MCP_LOCATIONS
     if client not in locations: return None
     relative, key = locations[client]
     path = root / relative
