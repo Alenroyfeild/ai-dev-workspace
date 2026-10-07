@@ -64,10 +64,12 @@ All commands: [docs/COMMANDS.md](docs/COMMANDS.md).
 |---|---|---|
 | `obsidian` | Open the memory as a linked, searchable Obsidian vault | [Obsidian](https://obsidian.md) |
 | `local-llm` | Free on-device log triage | [Ollama](https://ollama.com) and a small model |
-| `codex-worker` | Codex as a **read-only** second AI, with a hostile self-test | Node, `acpx`, a Codex sign-in |
+| `codex-worker` | Legacy ACP read-only worker; retained for existing users | Node, `acpx`, a Codex sign-in |
 | `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |
 
 `ws pack add <name>`. Your own domain (Android, web, backend) is a folder with a `pack.json`: [docs/PACKS.md](docs/PACKS.md).
+
+`ws delegate` is the supported read-only worker path. Run `ws delegate --selftest --provider codex` in your workspace to check the sandbox with a positive read control and hostile writes in throwaway directories; `ws doctor` shows the latest provider result. Codex passed these probes on macOS on 2026-10-07; rerun after changing the CLI or sandbox.
 
 ## Privacy
 
