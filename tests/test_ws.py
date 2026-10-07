@@ -66,6 +66,68 @@ class Base(unittest.TestCase):
         self.tmp.cleanup()
 
 
+class ToolCostTests(Base):
+    def test_profiles_and_overrides_filter_assist_and_doctor(self):
+        entries = [
+            {'name': 'codeburn', 'level': 'recommended', 'detect': 'codeburn', 'installed': False, 'install': {'codex': 'codeburn'}},
+            {'name': 'graphify', 'level': 'recommended', 'detect': 'graphify', 'installed': False, 'install': {'codex': 'graphify'}},
+            {'name': 'ponytail', 'level': 'optional', 'detect': 'ponytail', 'installed': False, 'install': {'codex': 'ponytail'}},
+        ]
+        with mock.patch.object(core, 'tools', return_value=entries), \
+                mock.patch.object(core, '_detected', return_value=False):
+            cfg_path = self.root / 'workspace.json'
+            cfg = json.loads(cfg_path.read_text())
+            cfg.update(tool_profile='lean', tool_overrides={'codeburn': 'on', 'graphify': 'off', 'ponytail': 'ask'})
+            cfg_path.write_text(json.dumps(cfg))
+            suggestions = assist.suggestions(self.root, True)
+            self.assertEqual([item['id'] for item in suggestions], ['tool-codeburn'])
+            report = core.doctor(self.root)
+            self.assertEqual([item['name'] for item in report['toolbox']], ['codeburn'])
+            self.assertEqual(report['tool_profile'], 'lean')
+            cfg['tool_profile'] = 'full'
+            cfg['tool_overrides'] = {}
+            cfg_path.write_text(json.dumps(cfg))
+            self.assertEqual(core.tool_policy(self.root, entries[2])['mode'], 'on')
+            cfg['tool_profile'] = 'standard'
+            cfg['tool_overrides'] = {'ponytail': 'ask'}
+            cfg_path.write_text(json.dumps(cfg))
+            self.assertEqual(core.tool_policy(self.root, entries[2])['mode'], 'ask')
+
+    def test_cost_reports_mcp_schemas_and_skill_metadata_bytes(self):
+        home = Path(self.tmp.name) / 'home'
+        skill = home / '.codex/plugins/cache/ponytail/SKILL.md'
+        skill.parent.mkdir(parents=True)
+        skill.write_text('fixture skill')
+        entries = [{'name': 'codeburn', 'level': 'recommended', 'detect': 'codeburn'},
+                   {'name': 'ponytail', 'level': 'optional', 'detect': ['~/.codex/plugins/cache/ponytail']}]
+        with mock.patch.object(core, 'tools', return_value=entries), \
+                mock.patch.object(Path, 'home', return_value=home), \
+                mock.patch.object(assist, 'cost_data', return_value=({}, {'mcp': [{'Server': 'codeburn', 'Calls': 4}]})):
+            result = core.tool_costs(self.root)
+        self.assertGreater(result['mcp_schema_bytes'], 0)
+        ponytail = next(item for item in result['tools'] if item['name'] == 'ponytail')
+        self.assertEqual(ponytail['skill_plugin_bytes'], len('fixture skill'))
+        codeburn = next(item for item in result['tools'] if item['name'] == 'codeburn')
+        self.assertEqual(codeburn['uses_last_30_days'], 4)
+
+    def test_assist_never_suggests_pinned_or_graphy_tools(self):
+        cfg_path = self.root / 'workspace.json'
+        cfg = json.loads(cfg_path.read_text())
+        cfg['tool_overrides'] = {'headroom': 'on'}
+        cfg_path.write_text(json.dumps(cfg))
+        findings = {'findings': [
+            {'id': 'remove-headroom', 'title': 'Remove headroom MCP', 'explanation': 'unused', 'class': 'review'},
+            {'id': 'remove-graphify', 'title': 'Remove graphify tool', 'explanation': 'unused', 'class': 'review'},
+            {'id': 'remove-ccd', 'title': 'Remove ccd_terminal', 'explanation': 'unused', 'class': 'review'},
+            {'id': 'remove-chrome', 'title': 'Remove claude-in-chrome', 'explanation': 'unused', 'class': 'review'},
+            {'id': 'remove-workspace', 'title': 'Remove ai-dev-workspace server', 'explanation': 'unused', 'class': 'review'},
+        ]}
+        with mock.patch.object(assist, 'cost_data', return_value=(findings, {'mcp': []})):
+            suggestions = assist.suggestions(self.root, True)
+        protected = ('cost-remove-headroom', 'cost-remove-graphify', 'cost-remove-ccd', 'cost-remove-chrome', 'cost-remove-workspace')
+        self.assertFalse(any(item['id'] in protected for item in suggestions))
+
+
 class TaskTests(Base):
     def test_explicit_connect_links_skills_without_overwriting_names(self):
         home = Path(self.tmp.name) / 'home'

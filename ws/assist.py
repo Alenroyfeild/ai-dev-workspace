@@ -78,7 +78,7 @@ def suggestions(root, include_hidden=False):
     def add(identifier, why, command, safety, saving='unmeasured'):
         items.append(dict(id=identifier, why=' '.join(core.redact(why).split()), command=command, safety=safety, estimated_saving=saving))
     for tool in core.tools():
-        if tool['level'] == 'recommended' and not tool['installed']:
+        if tool['level'] == 'recommended' and not tool['installed'] and core.tool_policy(root, tool)['mode'] != 'off':
             add('tool-' + tool['name'], 'Recommended executable missing: ' + tool['name'], tool['install']['codex'], 'installs')
     repos = core.config(root).get('repos', [])
     mapped = core.vault(root) / 'Project/Codebase map.md'
@@ -102,9 +102,10 @@ def suggestions(root, include_hidden=False):
         items.insert(0, items.pop())
     report, usage = cost_data()
     used = [row['Server'].lower() for row in usage.get('mcp', []) if row.get('Calls', 0) > 0]
+    pinned = [name.lower() for name, value in core.config(root).get('tool_overrides', {}).items() if value == 'on']
     for finding in report.get('findings', []):
         text = json.dumps(finding).lower()
-        if any(name in text for name in ['ccd_', 'claude-in-chrome', 'ai-dev-workspace', 'workspace', 'graphy', *used]):
+        if any(name in text for name in ['ccd_', 'claude-in-chrome', 'ai-dev-workspace', 'workspace', 'graphy', 'graphif', *used, *pinned]):
             continue
         if 'mcp' in text and 'mcp' not in usage:
             continue  # Missing usage evidence: fail closed for connector advice.
