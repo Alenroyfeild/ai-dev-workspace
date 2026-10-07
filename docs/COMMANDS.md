@@ -28,6 +28,8 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). Most
 
 ## Measure and maintain
 
+`ws assist` offers at most two local suggestions with evidence, command, safety and estimated saving. `ws assist decide <id> accepted|declined|snoozed|always [--until YYYY-MM-DD]` remembers permission in `.ws/assist.json`; declined hides it for 30 days. `ws assist apply <id>` executes only an accepted/always map or trace action. Other commands are shown for review, never executed. Always does not schedule automatic work. Notices offer suggestions once, at most two total. Cost advice uses local Codeburn reports and a 30-day connector-use export, filters protected/in-use servers and Graphy-related findings, and never runs optimize --apply. Missing usage evidence suppresses connector advice. Checkpoint/session counters begin with this version; a transcript over 2 MB prompts a handoff/fresh session.
+
 | Command | Does |
 |---|---|
 | `ws run log <task> <step> --provider P [--tokens-in N ...]` / `ws run report [task]` | Per-step log of who did what, tokens, seconds and result. |

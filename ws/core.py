@@ -600,7 +600,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
             raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; pass its worker and token.')
         if expected_sha and expected_sha != digest_text(text):
             raise WsError('Task changed since you read it; read it again before checkpointing.')
-        text = set_meta(text, {'status': status, 'updated': now(), 'checkpoint_at': now()})
+        text = set_meta(text, {'status': status, 'updated': now(), 'checkpoint_at': now(), 'checkpoint_count': int(meta.get('checkpoint_count', 0)) + 1})
         text = set_section(text, 'Next action', redact(next_action))
         for name, body in (notes or {}).items():
             if name not in REQUIRED and name not in ('Findings', 'Failures', 'Risks', 'Do not redo'):
@@ -1331,16 +1331,9 @@ def notices(root):
             for url in feedback_sync(root)['closed']:
                 out.append({'kind': 'fixed', 'message': f'Your reported issue was closed: {url}. Update to get the fix if it is released.',
                             'suggest': 'ws update --check'})
-    stamp = root / '.ws' / 'toolbox.json'
-    seen = json.loads(stamp.read_text()) if stamp.is_file() else []
-    missing = [tool for tool in tools() if tool['level'] == 'recommended' and not tool['installed'] and tool['name'] not in seen]
-    if missing:
-        stamp.parent.mkdir(exist_ok=True)
-        stamp.write_text(json.dumps(seen + [tool['name'] for tool in missing]))
-        out += [{'kind': 'toolbox', 'tool': tool['name'], 'message': f"Recommended tool missing: {tool['name']}.",
-                 'suggest': 'Claude: ' + tool['install']['claude'] + '\\nCodex: ' + tool['install']['codex']} for tool in missing]
     unsent = [i for i in feedback_items(root) if not i['done'] and not i['issue'] and i['kind'] != 'praise']
     if unsent:
         out.append({'kind': 'feedback', 'message': f'{len(unsent)} feedback note(s) not shared with the maintainers yet '
                     f'(oldest: "{unsent[0]["text"][:80]}").', 'suggest': f'ws feedback submit {unsent[0]["n"]}'})
-    return out
+    from . import assist
+    return assist.notices(root, 2, out)
