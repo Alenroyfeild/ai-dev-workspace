@@ -151,6 +151,8 @@ def main(argv=None):
             payload = json.load(sys.stdin) if a.hook else {}
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
+            if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop'):
+                core.capture_decisions(root, payload.get('transcript_path'))
             message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
             if a.hook and a.cmd == 'nudge':
                 if payload.get('hook_event_name') == 'Stop':

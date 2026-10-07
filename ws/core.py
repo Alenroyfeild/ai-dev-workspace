@@ -741,6 +741,71 @@ def brief(root):
     return '\n'.join(([guard] if guard else []) + lines)
 
 
+def capture_decisions(root, transcript_path):
+    """Append bounded, unverified Claude transcript memory to a locally owned task."""
+    if not isinstance(transcript_path, str) or not transcript_path:
+        return False
+    decisions, summary, worked = [], '', False
+    try:
+        path = Path(transcript_path)
+        if path.stat().st_size > 50 * 1024 * 1024:
+            return False
+        # ponytail: scan at most 50 MB per hook; add incremental reads if sessions outgrow this.
+        with path.open(encoding='utf-8') as stream:
+            for line in stream:
+                try:
+                    entry = json.loads(line)
+                    kind, message = entry.get('type'), entry.get('message', {})
+                    content = message.get('content')
+                except (ValueError, AttributeError):
+                    continue
+                if kind not in ('user', 'assistant') or entry.get('isMeta') or entry.get('isCompactSummary'):
+                    continue
+                text = content if isinstance(content, str) else ''
+                if isinstance(content, list):
+                    text = _session_text([item for item in content if isinstance(item, dict) and item.get('type') == 'text'])
+                text = redact(text)
+                if kind == 'assistant':
+                    worked |= isinstance(content, list) and any(isinstance(item, dict) and item.get('type') == 'tool_use' for item in content)
+                    if text.strip():
+                        summary = text
+                else:
+                    decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+', text)
+                                     if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
+    except (OSError, UnicodeError):
+        return False
+    if not worked or not (decisions or summary):
+        return False
+    body = 'User constraints: ' + ' '.join(redact(' '.join(decisions)).split()[:95])
+    steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+', summary) if re.search(r'\bnext (step|action)\b', s, re.I)]
+    body += '\nLast assistant summary / next step: ' + ' '.join((' '.join(steps) + ' ' + summary).split()[:35])
+    marker = '<!-- ws:captured:' + digest_text(body) + ' -->'
+    block = '\n' + marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
+    with lock(root):
+        owned = []
+        for task in task_list(root):
+            worker, token = _claim_defaults(root, task['id'], None, None)
+            path = task_path(root, task['id'])
+            text = path.read_bytes().decode('utf-8')
+            meta = parse_meta(text)
+            if task['status'] != 'done' and token and worker == meta.get('claimed_by') and token == meta.get('claim_token'):
+                owned.append((path, text))
+        if len(owned) != 1:
+            return False
+        path, original = owned[0]
+        text = original
+        for name in ('Handoff', 'Evidence'):
+            match = re.search(rf'^## {name}[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
+            if not match:
+                return False
+            if marker not in match.group():
+                text = text[:match.end()] + block + text[match.end():]
+        if text == original:
+            return False
+        atomic_write(path, text)
+    return True
+
+
 def nudge(root):
     guard = repeat_guard(root)
     if guard:
