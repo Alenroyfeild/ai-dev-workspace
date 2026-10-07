@@ -192,7 +192,8 @@ def main(argv=None):
             if 'skills' in result:
                 linked = ', '.join(result['skills']['linked']) or 'none'
                 kept = ', '.join(result['skills']['kept']) or 'none'
-                print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}. Start a new session.", file=sys.stderr)
+                skipped = ', '.join(result['skills']['skipped']) or 'none'
+                print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; skipped workspace-provided: {skipped}. Start a new session.", file=sys.stderr)
             out(result['config'] if a.client == 'codex' and not a.write else result)
         elif a.cmd == 'notices':
             out('\n'.join(f"- {n['message']} → {n['suggest']}" for n in core.notices(root)) or 'Nothing to report.')

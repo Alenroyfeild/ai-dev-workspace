@@ -66,6 +66,39 @@ class Base(unittest.TestCase):
         self.tmp.cleanup()
 
 
+class SkillDuplicateTests(Base):
+    def test_connect_skips_workspace_skill_names_and_preserves_user_skills(self):
+        home = Path(self.tmp.name) / 'home'
+        user_skill = home / '.claude/skills/handoff/SKILL.md'
+        user_skill.parent.mkdir(parents=True)
+        user_skill.write_text('user-owned skill')
+        with mock.patch.object(Path, 'home', return_value=home):
+            result = core.connect(self.root, 'claude', skills=True)
+        self.assertIn('handoff', result['skills']['skipped'])
+        self.assertNotIn('handoff', result['skills']['linked'])
+        self.assertEqual(user_skill.read_text(), 'user-owned skill')
+
+    def test_doctor_reports_workspace_and_user_skill_duplicates_read_only(self):
+        home = Path(self.tmp.name) / 'home'
+        user_skill = home / '.agents/skills/pickup/SKILL.md'
+        user_skill.parent.mkdir(parents=True)
+        user_skill.write_text('user-owned skill')
+        before = user_skill.read_bytes()
+        with mock.patch.object(Path, 'home', return_value=home):
+            report = core.doctor(self.root)
+        self.assertIn({'client': 'codex', 'name': 'pickup'}, report['skill_duplicates'])
+        self.assertEqual(user_skill.read_bytes(), before)
+
+    def test_doctor_lists_role_bindings_and_path_availability(self):
+        def executable(name): return '/fake/' + name if name == 'codex' else None
+        with mock.patch.object(core.shutil, 'which', side_effect=executable):
+            report = core.doctor(self.root)
+        self.assertEqual(set(report['routes']), {'lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'})
+        self.assertEqual(report['routes']['explorer']['provider'], 'codex')
+        self.assertTrue(report['routes']['explorer']['available'])
+        self.assertEqual(report['routes']['lead']['model'], 'gpt-6.1-sol')
+
+
 class ToolCostTests(Base):
     def test_profiles_and_overrides_filter_assist_and_doctor(self):
         entries = [
@@ -137,8 +170,8 @@ class TaskTests(Base):
         (destination / 'pickup').symlink_to(home / 'missing', target_is_directory=True)
         with mock.patch.object(Path, 'home', return_value=home):
             result = core.connect(self.root, 'claude', skills=True)
-            self.assertIn('handoff', result['skills']['linked'])
-            self.assertEqual((destination / 'handoff').resolve(), (KIT / 'skills/handoff').resolve())
+            self.assertTrue({'handoff', 'pickup', 'lesson'} <= set(result['skills']['skipped']))
+            self.assertNotIn('handoff', result['skills']['linked'])
             self.assertEqual((destination / 'lesson/SKILL.md').read_text(), 'user skill')
             self.assertEqual(os.readlink(destination / 'pickup'), str(home / 'missing'))
             core.connect(self.root, 'claude', skills=True)
@@ -149,9 +182,9 @@ class TaskTests(Base):
         home = Path(self.tmp.name) / 'home'
         with mock.patch.object(Path, 'home', return_value=home):
             result = core.connect(self.root, 'codex', skills=True)
-            self.assertIn('handoff', result['skills']['linked'])
-            for name in ('handoff', 'pickup', 'lesson', 'thinkbeforeact'):
-                self.assertTrue((home / '.agents/skills' / name).is_symlink())
+            self.assertTrue({'handoff', 'pickup', 'lesson'} <= set(result['skills']['skipped']))
+            self.assertEqual(result['skills']['linked'], ['thinkbeforeact'])
+            self.assertTrue((home / '.agents/skills/thinkbeforeact').is_symlink())
             self.assertFalse((home / '.codex/config.toml').exists())
             self.assertFalse((home / '.codex/skills').exists())
 
@@ -721,9 +754,10 @@ class InterfaceTests(Base):
             proc = self.run_cli('connect', 'claude')
         self.assertEqual(proc.returncode, 0, proc.stderr)
         result = json.loads(proc.stdout)
-        self.assertIn('handoff', result['skills']['linked'])
+        self.assertIn('handoff', result['skills']['skipped'])
+        self.assertIn('skipped workspace-provided: handoff, lesson, pickup', proc.stderr)
         self.assertTrue(result['mcp']['ok'])
-        self.assertTrue((home / '.claude/skills/pickup/SKILL.md').is_file())
+        self.assertFalse((home / '.claude/skills/pickup').exists())
 
     def test_mcp_invalid_inputs_keep_server_alive(self):
         bad = [[], None, {'id': 1, 'method': 'ping'},

@@ -339,14 +339,22 @@ def client_connected(root, client):
         return False
 
 
-def link_skills(client):
+def link_skills(client, root):
     location = '.claude/skills' if client == 'claude' else '.agents/skills'
     directory = Path.home() / location
-    linked, kept = [], []
+    project = Path(root) / location
+    workspace_names = {p.name for p in project.iterdir()
+                       if p.is_dir() and (p / 'SKILL.md').is_file()} if project.is_dir() else set()
+    linked, kept, skipped = [], [], []
     try:
         directory.mkdir(parents=True, exist_ok=True)
         for source in sorted((KIT / 'skills').iterdir()):
             if not source.is_dir() or not (source / 'SKILL.md').is_file():
+                continue
+            if source.name in workspace_names:
+                skipped.append(source.name)
+                if (directory / source.name).exists() or (directory / source.name).is_symlink():
+                    kept.append(source.name)
                 continue
             try:
                 (directory / source.name).symlink_to(source.resolve(), target_is_directory=True)
@@ -355,13 +363,13 @@ def link_skills(client):
                 kept.append(source.name)
     except OSError as exc:
         raise WsError(f'Could not link skills into {directory}: {exc}. Existing names were kept.')
-    return {'directory': str(directory), 'linked': linked, 'kept': kept}
+    return {'directory': str(directory), 'linked': linked, 'kept': kept, 'skipped': skipped}
 
 
 def connect(root, client, write=False, skills=False, verify=False):
     result = _connect_config(root, client, write)
     if skills and client in ('claude', 'codex'):
-        result['skills'] = link_skills(client)
+        result['skills'] = link_skills(client, root)
     if verify and client in ('claude', 'cursor'):
         result['mcp'] = mcp_doctor(root, (client,))[0]
     return result
@@ -1256,7 +1264,8 @@ def mcp_doctor(root, clients=('claude', 'cursor')):
 
 def doctor(root=None, mcp=False):
     """What is installed, what each plugged pack still needs, and recommended extras."""
-    report = {'core': {'python3': True, 'git': bool(shutil.which('git'))}, 'packs': [], 'recommended': []}
+    report = {'core': {'python3': True, 'git': bool(shutil.which('git'))}, 'packs': [], 'recommended': [],
+              'skill_duplicates': []}
     packs = config(root).get('packs', []) if root else []
     for name in packs:
         report['packs'] += requirement_status(pack_manifest(name))
@@ -1275,6 +1284,17 @@ def doctor(root=None, mcp=False):
         report['workspace'] = str(root)
         report['valid'] = validate(root)['valid']
         report['clients'] = {client: client_connected(root, client) for client in ('claude', 'codex', 'cursor')}
+        from . import orchestration
+        report['routes'] = {role: orchestration.route(root, role)
+                            for role in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local')}
+        for client, location in (('claude', '.claude/skills'), ('codex', '.agents/skills')):
+            project = root / location
+            user = Path.home() / location
+            if project.is_dir() and user.is_dir():
+                project_names = {p.name for p in project.iterdir() if p.is_dir() and (p / 'SKILL.md').is_file()}
+                user_names = {p.name for p in user.iterdir() if p.is_dir() and (p / 'SKILL.md').is_file()}
+                report['skill_duplicates'].extend({'client': client, 'name': name}
+                                                  for name in sorted(project_names & user_names))
         if mcp:
             report['mcp'] = mcp_doctor(root)
     return report
