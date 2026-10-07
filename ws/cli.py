@@ -56,7 +56,7 @@ def main(argv=None):
     s.add_argument('--pack', action='append', default=[], help=f'domain pack: {", ".join(core.available_packs())}')
     s.add_argument('--repo', action='append', default=[], help='code checkout this workspace serves')
     sub.add_parser('packs', help='list available packs')
-    sub.add_parser('tools', help='list recommended and optional local tools')
+    s = sub.add_parser('tools', help='list local tools and load estimates'); s.add_argument('--cost', action='store_true')
     s = sub.add_parser('pack', help='plug a pack into this workspace'); s.add_argument('action', choices=['add']); s.add_argument('name')
     sub.add_parser('status', help='workspace overview')
     sub.add_parser('validate', help='check task records, links and secrets')
@@ -129,7 +129,11 @@ def main(argv=None):
         if a.cmd == 'packs':
             out({n: core.pack_manifest(n)['description'] for n in core.available_packs()}); return 0
         if a.cmd == 'tools':
-            out(core.tools()); return 0
+            try:
+                root = core.find_root()
+            except core.WsError:
+                root = None
+            out(core.tool_costs(root) if a.cost else core.tools(root)); return 0
         if a.cmd == 'version':
             out(core.kit_meta()['version']); return 0
         if a.cmd == 'update':

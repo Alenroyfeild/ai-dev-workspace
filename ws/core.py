@@ -1083,10 +1083,65 @@ def requirement_status(manifest):
     return out
 
 
-def tools():
+def tool_policy(root, entry):
+    cfg = config(root) if root else {}
+    profile = cfg.get('tool_profile', 'standard')
+    if profile not in ('lean', 'standard', 'full'):
+        profile = 'standard'
+    default = profile == 'full' or (profile == 'standard' and entry['level'] == 'recommended')
+    override = cfg.get('tool_overrides', {}).get(entry['name'])
+    mode = override if override in ('on', 'off', 'ask') else ('on' if default else 'off')
+    return {'profile': profile, 'override': override, 'mode': mode}
+
+
+def tool_costs(root=None, usage=None):
+    """Measure the kit's MCP schemas and local skill/plugin metadata without changing them."""
+    from mcp import server
+    reply = server.handle(root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
+    schemas = reply['result']['tools']
+    schema_costs = [{'name': item['name'], 'bytes': len(json.dumps(item['inputSchema'], separators=(',', ':')).encode()),
+                     'approx_tokens': (len(json.dumps(item['inputSchema'], separators=(',', ':')).encode()) + 3) // 4}
+                    for item in schemas]
+    if usage is None:
+        from . import assist
+        _, cached = assist.cost_data()
+        rows = cached.get('mcp', [])
+        usage = {str(row.get('Server', '')).lower(): row.get('Calls', 0) for row in rows}
+    report = []
+    for entry in tools():
+        metadata_bytes = len(json.dumps(entry, separators=(',', ':')).encode())
+        metadata_files = set()
+        checks = [entry['detect']] if isinstance(entry['detect'], str) else entry['detect']
+        for check in checks:
+            if check.startswith('~/'):
+                path = Path.home() / check[2:]
+            elif check.startswith('/'):
+                path = Path(check)
+            else:
+                continue
+            if path.is_file():
+                metadata_files.add(path.resolve())
+            elif path.is_dir():
+                metadata_files.update(p.resolve() for p in path.rglob('*') if p.is_file() and
+                                      p.name in ('SKILL.md', 'plugin.json'))
+        file_bytes = sum(path.stat().st_size for path in metadata_files)
+        key = entry['name'].lower()
+        calls = next((count for name, count in usage.items() if key in name), None)
+        report.append(dict(entry, policy=tool_policy(root, entry), catalog_bytes=metadata_bytes,
+                           skill_plugin_bytes=file_bytes, approx_tokens=(metadata_bytes + file_bytes + 3) // 4,
+                           uses_last_30_days=calls))
+    schema_bytes = sum(item['bytes'] for item in schema_costs)
+    return {'profile': config(root).get('tool_profile', 'standard') if root else 'standard',
+            'mcp_schema_bytes': schema_bytes, 'mcp_schema_approx_tokens': (schema_bytes + 3) // 4,
+            'mcp_tools': schema_costs, 'tools': report,
+            'usage_source': 'Codeburn daily cache, last 30 days' if usage else 'unavailable'}
+
+
+def tools(root=None):
     """Catalog entries with their current executable state; never install anything."""
     entries = json.loads((KIT / 'tools.json').read_text())
-    return [dict(entry, installed=_detected(entry['detect'])) for entry in entries]
+    return [dict(entry, installed=_detected(entry['detect']), **({'policy': tool_policy(root, entry)} if root else {}))
+            for entry in entries]
 
 
 def _detected(checks):
@@ -1166,9 +1221,13 @@ def doctor(root=None, mcp=False):
     packs = config(root).get('packs', []) if root else []
     for name in packs:
         report['packs'] += requirement_status(pack_manifest(name))
-    missing_tools = [tool for tool in tools() if tool['level'] == 'recommended' and not tool['installed']]
+    listed_tools = tools(root)
+    missing_tools = [tool for tool in listed_tools if tool['level'] == 'recommended' and not tool['installed']
+                     and tool_policy(root, tool)['mode'] != 'off']
     report['recommended'] = missing_tools
     report['toolbox'] = missing_tools
+    report['tool_profile'] = config(root).get('tool_profile', 'standard') if root else 'standard'
+    report['tools'] = listed_tools
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     report['kit'] = {'version': kit_meta()['version']}
     if cache.is_file():
