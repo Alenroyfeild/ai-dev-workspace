@@ -35,11 +35,11 @@ Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vs
 |---|---|---|---|---|---|
 | Rules | proven | proven | documented, untested | documented, untested | documented, untested |
 | MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
-| Hooks | proven | proven | documented, untested | documented, untested | documented, untested |
-| Skills | proven | proven | documented, untested | documented, untested | documented, untested |
+| Hooks | proven | proven | not wired yet (client supports hooks) | not wired yet (client supports hooks) | not wired yet (client supports hooks) |
+| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
 | Automatic capture | proven | not available | not available | not available | not available |
 
-Only Claude Code and Codex have been tested with rules, MCP tools, hooks and skills. Automatic capture is proven for Claude Code only. `documented, untested` cells reflect client docs, not a live compatibility test.
+Only Claude Code and Codex have been tested with rules, MCP tools, hooks and skills. Automatic capture is proven for Claude Code only. `documented, untested` means the client's docs support it and `ws connect` sets it up, but nobody has run it yet. `not wired yet` means the client supports the feature but the workspace does not install it for that client yet.
 
 **Claude Code** – open the workspace folder. `CLAUDE.md` loads `AGENTS.md`; `.mcp.json` registers the MCP server. Claude Code asks once to approve the project MCP server; approve it (or check with `claude mcp list`). To work on code in another folder, add that folder as an additional working directory.
 
