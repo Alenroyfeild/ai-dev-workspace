@@ -305,7 +305,7 @@ def codebase_map(root, repo=None):
     path = vault(root) / 'Project' / 'Codebase map.md'
     existing = path.read_text(encoding='utf-8') if path.exists() else '# Codebase map\n'
     pattern = r'<!-- ws:codebase-map:start -->.*?<!-- ws:codebase-map:end -->\n?'
-    text = re.sub(pattern, rendered, existing, flags=re.S) if re.search(pattern, existing, re.S) else existing.rstrip() + '\n\n' + rendered
+    text = re.sub(pattern, lambda _: rendered, existing, flags=re.S) if re.search(pattern, existing, re.S) else existing.rstrip() + '\n\n' + rendered
     with lock(root): atomic_write(path, text)
     return {'repo': str(repo), 'path': path.relative_to(root).as_posix(), 'words': len(rendered.split())}
 

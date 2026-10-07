@@ -210,10 +210,10 @@ class TaskTests(Base):
             self.assertTrue({'handoff', 'pickup', 'lesson'} <= set(result['skills']['skipped']))
             self.assertNotIn('handoff', result['skills']['linked'])
             self.assertEqual((destination / 'lesson/SKILL.md').read_text(), 'user skill')
-            self.assertEqual(os.readlink(destination / 'pickup'), str(home / 'missing'))
+            self.assertEqual((destination / 'pickup').resolve(), (home / 'missing').resolve())
             core.connect(self.root, 'claude', skills=True)
             self.assertEqual((destination / 'lesson/SKILL.md').read_text(), 'user skill')
-            self.assertEqual(os.readlink(destination / 'pickup'), str(home / 'missing'))
+            self.assertEqual((destination / 'pickup').resolve(), (home / 'missing').resolve())
 
     def test_codex_connect_links_to_current_user_skill_directory(self):
         home = Path(self.tmp.name) / 'home'
