@@ -4,7 +4,8 @@
 
 AI coding assistants forget everything between sessions. Every new chat re-reads the same files, re-discovers the same rules and repeats the same mistakes, and you pay for it in tokens and time. AI Dev Workspace gives Claude Code, Codex, Cursor and any MCP client one shared memory: plain Markdown files in a folder you own, a small CLI and an MCP server.
 
-macOS and Linux only; Windows not supported yet (file locking uses fcntl). Requires Python 3.9+ and git. No API keys, account or telemetry.
+macOS, Linux and Windows. Requires Python 3.9+ and git. No API keys, account or telemetry.
+On Windows, run `python bin/ws <command>` from the kit checkout; see [Windows notes](docs/WINDOWS.md).
 
 **Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
 

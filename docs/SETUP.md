@@ -12,7 +12,7 @@ echo 'export PATH="$HOME/ai-dev-workspace/bin:$PATH"' >> ~/.zshrc && source ~/.z
 ws --help
 ```
 
-macOS and Linux only; Windows not supported yet (file locking uses fcntl). Requires Python 3.9+ and git. No pip packages.
+macOS, Linux and Windows. Requires Python 3.9+ and git. No pip packages.
 
 ## 2. Create a workspace
 
