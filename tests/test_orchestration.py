@@ -9,17 +9,24 @@ from mcp import server
 
 
 class OrchestrationTests(Base):
+    def executable(self, directory, name, code):
+        import sys
+        path = directory / (name + '.cmd' if os.name == 'nt' else name)
+        if os.name == 'nt':
+            script = directory / (name + '.py'); script.write_text(code + '\n')
+            path.write_text('@echo off\n"' + sys.executable + '" "' + str(script) + '" %*\n')
+        else:
+            path.write_text('#!' + sys.executable + '\n' + code + '\n'); path.chmod(0o755)
+        return path
+
     def fake(self, code='import sys; print("UNVERIFIED sample.py:1 synthetic finding")'):
         directory = self.root / 'bin'; directory.mkdir(exist_ok=True)
-        for name in ('codex', 'ollama'):
-            p = directory / name; p.write_text('#!' + __import__('sys').executable + '\n' + code + '\n'); p.chmod(0o755)
+        for name in ('codex', 'ollama'): self.executable(directory, name, code)
         return mock.patch.dict(os.environ, {'PATH': str(directory)})
 
     def fake_provider(self, name, code):
         directory = self.root / 'fake-bin'; directory.mkdir(exist_ok=True)
-        path = directory / name
-        path.write_text('#!' + __import__('sys').executable + '\n' + code + '\n')
-        path.chmod(0o755)
+        self.executable(directory, name, code)
         return mock.patch.dict(os.environ, {'PATH': str(directory)})
 
     def test_codex_delegate_logs_turn_usage_and_keeps_output_readable(self):
@@ -110,7 +117,8 @@ class OrchestrationTests(Base):
         for code, verdict, exit_code in cases:
             with self.subTest(verdict=verdict), self.fake(code):
                 binary = Path(os.environ['PATH']) / 'git'
-                if not binary.exists(): binary.symlink_to(git)
+                if os.name == 'nt': self.executable(binary.parent, 'git', 'import subprocess,sys; sys.exit(subprocess.call([' + repr(git) + ', *sys.argv[1:]]))')
+                elif not binary.exists(): binary.symlink_to(git)
                 result = orchestration.selftest(self.root, 'codex')
                 self.assertEqual((result['result'], result['exit_code']), (verdict, exit_code))
                 self.assertEqual(core.doctor(self.root)['delegate_selftests']['codex']['result'], verdict)
@@ -120,7 +128,8 @@ class OrchestrationTests(Base):
             result = orchestration.selftest(self.root, 'codex', run=False)
             self.assertIn('read-only', result['command'])
             shutil.rmtree(result['directory'])
-            Path(os.environ['PATH'], 'claude').symlink_to(Path(os.environ['PATH'], 'codex'))
+            suffix = '.cmd' if os.name == 'nt' else ''
+            shutil.copy2(Path(os.environ['PATH'], 'codex' + suffix), Path(os.environ['PATH'], 'claude' + suffix))
             with mock.patch.object(orchestration, 'worker_run', side_effect=AssertionError('must not run Claude')):
                 prepared = orchestration.selftest(self.root, 'claude', run=False)
             self.assertIn('Read,Glob,Grep', prepared['command'])

@@ -16,7 +16,7 @@ def skill(text, name):
 
 
 def skills():
-    return {f'{client}/skills/{p.parent.name}/SKILL.md': skill(p.read_text(), p.parent.name)
+    return {f'{client}/skills/{p.parent.name}/SKILL.md': skill(p.read_text(encoding='utf-8'), p.parent.name)
             for client in ('.claude', '.agents') for p in sorted((core.KIT / 'skills').glob('*/SKILL.md')) if p.parent.name in ('handoff', 'pickup', 'lesson')}
 
 
@@ -27,7 +27,7 @@ def pointer_files():
 
 def fingerprint(root):
     from .orchestration import routing_template
-    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text() + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(pointer_files(), sort_keys=True) + json.dumps([core.memory_hooks(root, c) for c in ('claude', 'codex', 'cursor', 'gemini')], sort_keys=True))
+    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text(encoding='utf-8') + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(pointer_files(), sort_keys=True) + json.dumps([core.memory_hooks(root, c) for c in ('claude', 'codex', 'cursor', 'gemini')], sort_keys=True))
 
 
 def markdown(old, new):
@@ -91,7 +91,7 @@ def upgrade(root, dry_run=False):
     with (core.contextlib.nullcontext() if dry_run else core.lock(root)):
         cfg = core.config(root)
         if cfg.get('schema_version', 1) > 2: raise core.WsError('Workspace schema is newer than this upgrade supports.')
-        rules = block((core.KIT / 'template/AGENTS.md').read_text())
+        rules = block((core.KIT / 'template/AGENTS.md').read_text(encoding='utf-8'))
         for pack in cfg.get('packs', []): rules = core.pack_rules(rules, pack)
         from .orchestration import routing_template
         clients = {'.claude/settings.json': 'claude', '.codex/hooks.json': 'codex', '.cursor/hooks.json': 'cursor', '.gemini/settings.json': 'gemini'}
@@ -120,9 +120,9 @@ def upgrade(root, dry_run=False):
         before = path.read_bytes(); after = (json.dumps(cfg, indent=2) + '\n').encode()
         if before != after: operations.append((path, before, after))
         claims = root / '.ws/claims'; safe(claims)
-        changes = [dict(path=str(p.relative_to(root)), action='write', diff=''.join(difflib.unified_diff(
+        changes = [dict(path=p.relative_to(root).as_posix(), action='write', diff=''.join(difflib.unified_diff(
             old.decode(errors='replace').splitlines(True), new.decode().splitlines(True),
-            fromfile=str(p.relative_to(root)), tofile=str(p.relative_to(root))))) for p, old, new in operations]
+            fromfile=p.relative_to(root).as_posix(), tofile=p.relative_to(root).as_posix()))) for p, old, new in operations]
         backups = []
         if not dry_run and changes:
             stamp = core.now().replace(':', '').replace('+', '-') + '-' + core.uuid.uuid4().hex[:8]
@@ -130,7 +130,7 @@ def upgrade(root, dry_run=False):
                 if path.exists() and path.read_bytes() != old: raise core.WsError('File changed during upgrade; run dry-run again.')
                 if old:
                     backup = root / '.ws/backups' / stamp / path.relative_to(root); safe(backup)
-                    core.atomic_write(backup, old.decode('utf-8')); backups.append(str(backup.relative_to(root)))
+                    core.atomic_write(backup, old.decode('utf-8')); backups.append(backup.relative_to(root).as_posix())
                 core.atomic_write(path, new.decode('utf-8'))
         if not dry_run:
             claims.mkdir(parents=True, exist_ok=True)  # local, gitignored state: created silently, not reported as an upgrade

@@ -14,13 +14,13 @@ from . import core
 
 
 def routing_template():
-    return (core.KIT / 'template/routing.json').read_text().replace('{{kit_version}}', core.kit_meta()['version'])
+    return (core.KIT / 'template/routing.json').read_text(encoding='utf-8').replace('{{kit_version}}', core.kit_meta()['version'])
 
 
 def route(root, role='lead', provider=None):
     if role not in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'): raise core.WsError('Unknown orchestration role.')
     try:
-        cfg = json.loads((root / 'routing.json').read_text()); defaults = cfg['_ws_managed']
+        cfg = json.loads((root / 'routing.json').read_text(encoding='utf-8')); defaults = cfg['_ws_managed']
         definition = defaults['roles'][role]; override = cfg.get('role_overrides', {}).get(role, {})
         if provider: override = dict(override, provider=provider)
         # An explicit provider override pins one provider; otherwise the first available in the preference order wins,
@@ -104,7 +104,9 @@ def worker_run(binding, repo, body):
         process = subprocess.Popen(worker_command(binding, repo), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
         try: stdout, stderr = process.communicate(body, timeout=binding['timeout_seconds']); code = process.returncode
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL); stdout, stderr = process.communicate(); stderr += f"\nWorker timed out after {binding['timeout_seconds']} seconds."
+            if os.name == 'nt': subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)], capture_output=True)
+            else: os.killpg(process.pid, signal.SIGKILL)
+            stdout, stderr = process.communicate(); stderr += f"\nWorker timed out after {binding['timeout_seconds']} seconds."
         rendered, tokens_in, tokens_out, known = _worker_output(binding['provider'], stdout)
         return code, core.redact(rendered + ('\n' + stderr[-1000:] if code else ''))[:24000], tokens_in, tokens_out, known
     except OSError:
@@ -138,7 +140,7 @@ def delegate(root, task_id, role, run=False):
     started = time.monotonic(); code, rendered, tokens_in, tokens_out, usage_known = worker_run(binding, paths[0], body)
     with core.lock(root):
         core.atomic_write(output, 'UNVERIFIED worker output\n' + rendered)
-        path = core.task_path(root, task_id); text = path.read_text(); current = core.parse_meta(text)
+        path = core.task_path(root, task_id); text = path.read_text(encoding='utf-8'); current = core.parse_meta(text)
         if current.get('claimed_by') and (worker != current['claimed_by'] or token != current.get('claim_token')):
             raise core.WsError('Claim changed during delegation; output saved, task evidence not changed.')
         match = re.search(r'^## Evidence[^\n]*\n.*?(?=^## |\Z)', text, re.M | re.S)
@@ -207,7 +209,7 @@ Print one outcome per step. Never touch any other path. Missing tools must be re
     if (root / '.ws').is_symlink(): raise core.WsError('Selftest refuses symlinked metadata directory.')
     with core.lock(root):
         path = root / '.ws/delegate-selftests.json'
-        records = json.loads(path.read_text()) if path.exists() else {}
+        records = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
         records[result['provider']] = {k: v for k, v in result.items() if k not in ('directory', 'command', 'output', 'binding')}
         core.atomic_write(path, json.dumps(records, indent=2) + '\n')
     return result

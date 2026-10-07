@@ -49,6 +49,7 @@ def claude_tool_calls(transcript_path):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.')
+    p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True)
 
     s = sub.add_parser('init', help='create a workspace')
@@ -156,7 +157,7 @@ def main(argv=None):
             out(core.doctor(root, a.mcp)); return 0
         if a.cmd == 'sessions':
             out(core.session_search(a.query)); return 0
-        root = core.find_root()
+        root = core.find_root(a.workspace_root)
         if a.cmd == 'route':
             result = orchestration.route(root, a.role); out(result); return 0 if result['available'] else 2
         if a.cmd == 'delegate':
