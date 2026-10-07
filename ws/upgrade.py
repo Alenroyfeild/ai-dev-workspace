@@ -92,36 +92,44 @@ def upgrade(root, dry_run=False):
         cfg = core.config(root)
         if cfg.get('schema_version', 1) > 2: raise core.WsError('Workspace schema is newer than this upgrade supports.')
         rules = block((core.KIT / 'template/AGENTS.md').read_text())
-        for pack in cfg.get('packs', []): rules = core.pack_rules(rules, pack)
+        for pack in cfg.get('packs', []):
+            if pack not in cfg.get('local_packs', {}): rules = core.pack_rules(rules, pack)
         from .orchestration import routing_template
         clients = {'.claude/settings.json': 'claude', '.codex/hooks.json': 'codex', '.cursor/hooks.json': 'cursor', '.gemini/settings.json': 'gemini'}
         desired = {'AGENTS.md': rules, 'routing.json': routing_template(), **{p: json.dumps(core.memory_hooks(root, c), indent=2) + '\n'
                    for p, c in clients.items() if c in ('claude', 'codex') or (root / p).exists()}, **skills(), **pointer_files()}
+        from . import packs
+        private = packs.desired(root, cfg, desired)
         pending, operations = [], []
         for relative, candidate in desired.items():
             path = root / relative; safe(path)
             if path.is_dir(): raise core.WsError('Upgrade expected a file: ' + relative)
             before = path.read_bytes() if path.exists() else b''
             if path.exists():
-                try: merged = routing(before.decode(), candidate) if relative == 'routing.json' else hooks(before.decode(), candidate) if relative.endswith('.json') else markdown(before.decode(), candidate)
+                try:
+                    if relative in private:
+                        merged = candidate if core.hashlib.sha256(before).hexdigest() == private[relative] else None
+                    else:
+                        merged = routing(before.decode(), candidate) if relative == 'routing.json' else hooks(before.decode(), candidate) if relative.endswith('.json') else markdown(before.decode(), candidate)
+                        if relative == 'AGENTS.md': merged = packs.merge_rules(before.decode(), merged, cfg)
                 except UnicodeError: merged = None
                 if merged is None:
                     pending.append(relative)
                     number = 0
                     while True:
                         path = root / (relative + '.ws-new' + (f'.{number}' if number else '')); safe(path)
-                        if not path.exists() or path.read_bytes() == candidate.encode(): break
+                        if not path.exists() or path.read_bytes() == (candidate if isinstance(candidate, bytes) else candidate.encode('utf-8')): break
                         number += 1
                     before = path.read_bytes() if path.exists() else b''
                 else: candidate = merged
-            if before != candidate.encode(): operations.append((path, before, candidate.encode()))
+            if before != (candidate if isinstance(candidate, bytes) else candidate.encode('utf-8')): operations.append((path, before, (candidate if isinstance(candidate, bytes) else candidate.encode('utf-8'))))
         cfg.update(schema_version=2, kit_version=core.kit_meta()['version'], content_version=fingerprint(root), upgrade_pending=pending)
         path = root / 'workspace.json'; safe(path)
         before = path.read_bytes(); after = (json.dumps(cfg, indent=2) + '\n').encode()
         if before != after: operations.append((path, before, after))
         claims = root / '.ws/claims'; safe(claims)
         changes = [dict(path=str(p.relative_to(root)), action='write', diff=''.join(difflib.unified_diff(
-            old.decode(errors='replace').splitlines(True), new.decode().splitlines(True),
+            old.decode(errors='replace').splitlines(True), new.decode(errors='replace').splitlines(True),
             fromfile=str(p.relative_to(root)), tofile=str(p.relative_to(root))))) for p, old, new in operations]
         backups = []
         if not dry_run and changes:
@@ -130,8 +138,8 @@ def upgrade(root, dry_run=False):
                 if path.exists() and path.read_bytes() != old: raise core.WsError('File changed during upgrade; run dry-run again.')
                 if old:
                     backup = root / '.ws/backups' / stamp / path.relative_to(root); safe(backup)
-                    core.atomic_write(backup, old.decode('utf-8')); backups.append(str(backup.relative_to(root)))
-                core.atomic_write(path, new.decode('utf-8'))
+                    core.atomic_write(backup, old); backups.append(str(backup.relative_to(root)))
+                core.atomic_write(path, new)
         if not dry_run:
             claims.mkdir(parents=True, exist_ok=True)  # local, gitignored state: created silently, not reported as an upgrade
         return dict(dry_run=dry_run, changes=changes, pending=pending, backups=backups)
