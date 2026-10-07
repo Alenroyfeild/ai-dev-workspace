@@ -136,7 +136,7 @@ def main(argv=None):
             out({n: core.pack_manifest(n)['description'] for n in core.available_packs()}); return 0
         if a.cmd == 'tools':
             try:
-                root = core.find_root()
+                root = core.find_root(a.workspace_root)
             except core.WsError:
                 root = None
             out(core.tool_costs(root) if a.cost else core.tools(root)); return 0
@@ -151,7 +151,7 @@ def main(argv=None):
             out(core.update_kit()); return 0
         if a.cmd == 'doctor':
             try:
-                root = core.find_root()
+                root = core.find_root(a.workspace_root)
             except core.WsError:
                 root = None
             out(core.doctor(root, a.mcp)); return 0
