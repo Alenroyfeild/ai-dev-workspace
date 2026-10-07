@@ -8,8 +8,80 @@ from pathlib import Path
 from . import core, assist, orchestration
 
 
+COMMAND_GROUPS = (
+    ('Setup', ('init', 'connect', 'packs', 'pack')),
+    ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'search', 'sessions', 'lesson')),
+    ('Orchestration', ('route', 'delegate')),
+    ('Measure', ('tools', 'digest', 'run', 'trace')),
+    ('Maintain', ('doctor', 'validate', 'map', 'feedback', 'update', 'version', 'upgrade', 'notices', 'assist')),
+)
+
+
+class GroupedHelpFormatter(argparse.HelpFormatter):
+    def _format_action(self, action):
+        if isinstance(action, argparse._SubParsersAction) and action.dest == 'cmd':
+            choices = {item.dest: item for item in action._choices_actions}
+            output = []
+            for label, commands in COMMAND_GROUPS:
+                output.append(' ' * self._current_indent + label + ':\n')
+                self._indent()
+                output.extend(argparse.HelpFormatter._format_action(self, choices[name])
+                              for name in commands if name in choices)
+                self._dedent()
+            extra = choices.keys() - {name for _, commands in COMMAND_GROUPS for name in commands}
+            if extra:
+                output.append(' ' * self._current_indent + 'Other:\n')
+                self._indent()
+                output.extend(argparse.HelpFormatter._format_action(self, choices[name]) for name in sorted(extra))
+                self._dedent()
+            return ''.join(output)
+        return super()._format_action(action)
+
+
 def out(value):
     print(value if isinstance(value, str) else json.dumps(value, indent=2, ensure_ascii=False))
+
+
+def text_status(report):
+    lines = [f"Workspace: {report['workspace']}"]
+    tasks = ', '.join(f'{name} {count}' for name, count in sorted(report['tasks'].items())) or 'none'
+    lines.append('Tasks: ' + tasks)
+    for label, key in (('Active claims', 'active_claims'), ('Blocked', 'blocked')):
+        lines.append(label + ': ' + ('; '.join(report[key]) or 'none'))
+    lines.extend((f"Open feedback: {report['open_feedback']}", f"Lessons: {report['lessons']}",
+                  f"Recent runs: {report['runs']['steps']}"))
+    return '\n'.join(lines)
+
+
+def text_route(report):
+    model = f" / {report['model']}" if report.get('model') else ''
+    lines = [f"Role: {report['role']}", f"Provider: {report['provider']}{model}",
+             'Available: ' + ('yes' if report['available'] else 'no')]
+    if report.get('reason'):
+        lines.append('Reason: ' + report['reason'])
+    if report.get('skipped'):
+        lines.append('Skipped: ' + '; '.join(f"{item['provider']} ({item['reason']})" for item in report['skipped']))
+    return '\n'.join(lines)
+
+
+def text_doctor(report):
+    core = report.get('core', {})
+    lines = [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
+    if report.get('workspace'):
+        lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
+    clients = report.get('clients', {})
+    if clients:
+        lines.append('Connected clients: ' + (', '.join(name for name, connected in clients.items() if connected) or 'none'))
+    routes = report.get('routes', {})
+    if routes:
+        rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"
+                    for name, value in routes.items() if isinstance(value, dict) and 'provider' in value]
+        lines.append('Routes: ' + (', '.join(rendered) or routes.get('error', 'unavailable')))
+    missing = [item['name'] for item in report.get('toolbox', [])]
+    lines.append('Missing recommended tools: ' + (', '.join(missing) or 'none'))
+    if 'mcp' in report:
+        lines.append('MCP checks: ' + (', '.join(f"{item['client']} {'ok' if item['ok'] else 'failed'}" for item in report['mcp']) or 'none configured'))
+    return '\n'.join(lines)
 
 
 def collision_notices(result):
@@ -48,8 +120,9 @@ def claude_tool_calls(transcript_path):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.')
-    sub = p.add_subparsers(dest='cmd', required=True)
+    p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
+                                formatter_class=GroupedHelpFormatter)
+    sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
 
     s = sub.add_parser('init', help='create a workspace')
     s.add_argument('dir'); s.add_argument('--name')
@@ -58,12 +131,12 @@ def main(argv=None):
     sub.add_parser('packs', help='list available packs')
     s = sub.add_parser('tools', help='list local tools and load estimates'); s.add_argument('--cost', action='store_true')
     s = sub.add_parser('pack', help='plug a pack into this workspace'); s.add_argument('action', choices=['add']); s.add_argument('name')
-    sub.add_parser('status', help='workspace overview')
-    s = sub.add_parser('route', help='resolve an explicit role binding; PATH availability only'); s.add_argument('role', nargs='?', default='lead')
+    s = sub.add_parser('status', help='workspace overview'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s = sub.add_parser('route', help='resolve an explicit role binding; PATH availability only'); s.add_argument('role', nargs='?', default='lead'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('delegate', help='prepare bounded work or test the read-only worker'); s.add_argument('task', nargs='?'); s.add_argument('--role'); s.add_argument('--run', action='store_true')
     s.add_argument('--selftest', action='store_true'); s.add_argument('--provider', choices=('codex', 'claude'))
     sub.add_parser('validate', help='check task records, links and secrets')
-    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks')
+    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'vscode', 'gemini'))
@@ -76,19 +149,19 @@ def main(argv=None):
     s = t.add_parser('find'); s.add_argument('ref')
     s = t.add_parser('show'); s.add_argument('id'); s.add_argument('--section', action='append')
 
-    s = sub.add_parser('claim'); s.add_argument('id'); s.add_argument('--worker')
-    s = sub.add_parser('release'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
-    s = sub.add_parser('checkpoint'); s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
+    s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker')
+    s = sub.add_parser('release', help='release a task claim'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
+    s = sub.add_parser('checkpoint', help='save task status and next action'); s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
     s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
 
     s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search'); s.add_argument('query')
-    l = sub.add_parser('lesson').add_subparsers(dest='action', required=True)
+    l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
     s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
     s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
-    f = sub.add_parser('feedback').add_subparsers(dest='action', required=True)
+    f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
     s = f.add_parser('add'); s.add_argument('text'); s.add_argument('--kind', default='idea'); s.add_argument('--source', default='user')
     s = f.add_parser('list'); s.add_argument('--all', action='store_true')
     s = f.add_parser('submit', help='turn item N into a GitHub issue (preview first)'); s.add_argument('n', type=int); s.add_argument('--yes', action='store_true')
@@ -153,12 +226,14 @@ def main(argv=None):
                 root = core.find_root()
             except core.WsError:
                 root = None
-            out(core.doctor(root, a.mcp)); return 0
+            report = core.doctor(root, a.mcp)
+            out(text_doctor(report) if a.text else report); return 0
         if a.cmd == 'sessions':
             out(core.session_search(a.query)); return 0
         root = core.find_root()
         if a.cmd == 'route':
-            result = orchestration.route(root, a.role); out(result); return 0 if result['available'] else 2
+            result = orchestration.route(root, a.role)
+            out(text_route(result) if a.text else result); return 0 if result['available'] else 2
         if a.cmd == 'delegate':
             if a.selftest:
                 if a.task or a.role: raise core.WsError('Selftest takes no task or role.')
@@ -173,7 +248,9 @@ def main(argv=None):
             out({'pending_review': result['pending'], 'backups': result['backups']}); return 0
         if a.cmd == 'assist':
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
-        if a.cmd == 'status': out(core.status(root))
+        if a.cmd == 'status':
+            result = core.status(root)
+            out(text_status(result) if a.text else result)
         elif a.cmd == 'map': out(core.codebase_map(root, a.repo))
         elif a.cmd == 'pack':
             result = core.pack_add(root, a.name)
@@ -250,7 +327,10 @@ def main(argv=None):
             else: out(core.run_report(root, a.task))
         return 0
     except (core.WsError, FileNotFoundError, json.JSONDecodeError) as exc:
-        print(f'ws: {exc}', file=sys.stderr)
+        message = str(exc)
+        if isinstance(exc, core.WsError) and not any(hint in message.lower() for hint in ('`ws ', 'run ws ', 'see ws ', 'next:')):
+            message += ' Next: run `ws --help` for the relevant command.'
+        print(f'ws: {message}', file=sys.stderr)
         if not isinstance(exc, core.WsError):
             print('If this looks like a bug in ws, record it: ws feedback add "<what you ran and saw>" --kind bug', file=sys.stderr)
         return 2
