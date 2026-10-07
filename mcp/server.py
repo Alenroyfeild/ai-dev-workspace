@@ -11,7 +11,7 @@ from pathlib import Path
 
 kit = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(kit.parent if (kit / 'core.py').is_file() else kit))
-from ws import core, assist  # noqa: E402
+from ws import core, assist, orchestration  # noqa: E402
 
 PROTOCOL = '2025-06-18'
 
@@ -26,6 +26,8 @@ def string(desc, optional=False):
 
 
 TOOLS = {
+    'route': ('Resolve explicit role/model/effort and CLI availability; no fallback or credential reads.', S(role=string('role', True)), lambda r, a: orchestration.route(r, a.get('role', 'lead'))),
+    'delegate': ('Prepare an unverified bounded brief and command only; never runs a provider.', S(task=string('task ID'), role=string('role')), lambda r, a: orchestration.delegate(r, a['task'], a['role'])),
     'assist': ('At most two local improvement suggestions. Ask before applying; never installs or changes config.', S(), lambda r, a: assist.suggestions(r)),
     'import_usage': ('Import local Codeburn usage; skips ambiguous project/time matches and duplicates.',
                      S(since=string('YYYY-MM-DD', True), task=string('task ID', True)), lambda r, a: core.import_codeburn(r, a.get('since'), a.get('task'))),
