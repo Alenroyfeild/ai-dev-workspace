@@ -62,6 +62,7 @@ def main(argv=None):
     s = sub.add_parser('route', help='resolve an explicit role binding; PATH availability only'); s.add_argument('role', nargs='?', default='lead')
     s = sub.add_parser('delegate', help='prepare bounded work or test the read-only worker'); s.add_argument('task', nargs='?'); s.add_argument('--role'); s.add_argument('--run', action='store_true')
     s.add_argument('--selftest', action='store_true'); s.add_argument('--provider', choices=('codex', 'claude'))
+    s.add_argument('--diff', help='reviewer-only Git range, e.g. HEAD~1..HEAD')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
@@ -161,12 +162,12 @@ def main(argv=None):
             result = orchestration.route(root, a.role); out(result); return 0 if result['available'] else 2
         if a.cmd == 'delegate':
             if a.selftest:
-                if a.task or a.role: raise core.WsError('Selftest takes no task or role.')
+                if a.task or a.role or a.diff: raise core.WsError('Selftest takes no task, role or diff; run ws delegate --help.')
                 binding = orchestration.route(root, 'explorer', a.provider)
                 result = orchestration.selftest(root, a.provider, run=binding['provider'] != 'claude' or a.run)
                 out(result); return result['exit_code']
             if not a.task or not a.role or a.provider: raise core.WsError('Delegate requires task and --role; --provider is selftest-only.')
-            result = orchestration.delegate(root, a.task, a.role, a.run); out(result); return 0 if result.get('exit_code', 0) == 0 else 2
+            result = orchestration.delegate(root, a.task, a.role, a.run, a.diff); out(result); return 0 if result.get('exit_code', 0) == 0 else 2
         if a.cmd == 'upgrade':
             result = core.upgrade_workspace(root, a.dry_run)
             out('\n'.join(c['diff'] for c in result['changes']) or 'No changes.')
