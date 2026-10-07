@@ -16,7 +16,7 @@ macOS and Linux only; Windows not supported yet (file locking uses fcntl). Requi
 
 ## 2. Create a workspace
 
-One workspace per product (it can serve several repos). `ws map` also links an existing `graphify-out/GRAPH_REPORT.md` and its top headings; `ws search` searches that report. The kit never runs Graphify. [Graphify PR #13](https://github.com/Alenroyfeild/ai-dev-workspace/pull/13) is pending review.
+One workspace per product (it can serve several repos). `ws map` also links an existing `graphify-out/GRAPH_REPORT.md` and its top headings; `ws search` searches that report. The kit never runs Graphify. is pending review.
 
 ```bash
 ws init ~/work/myapp-workspace --name myapp --repo ~/code/myapp --pack obsidian
@@ -91,7 +91,7 @@ ws pack add codex-worker
 
 ## Updates and feedback
 
-Automatic: your assistant checks `ws notices` at session start and asks before updating or sharing anything. `ws tools` shows recommended, optional and caution tools; nothing installs automatically. Set `tool_profile` in `workspace.json` to `lean`, `standard` or `full`, and `tool_overrides` to per-tool `on`, `off` or `ask`. `ws tools --cost` measures MCP schemas, skill/plugin metadata and cached Codeburn use. `ws assist` asks before applying suggestions. Use `ws run import codeburn` to import local usage and update an existing entry when a session grows. Pending review: [assist #14](https://github.com/Alenroyfeild/ai-dev-workspace/pull/14), [tool cost profiles #16](https://github.com/Alenroyfeild/ai-dev-workspace/pull/16), [Codeburn import #15](https://github.com/Alenroyfeild/ai-dev-workspace/pull/15) and update #17. For no network at all: `export WS_OFFLINE=1`.
+Automatic: your assistant checks `ws notices` at session start and asks before updating or sharing anything. `ws tools` shows recommended, optional and caution tools; nothing installs automatically. Set `tool_profile` in `workspace.json` to `lean`, `standard` or `full`, and `tool_overrides` to per-tool `on`, `off` or `ask`. `ws tools --cost` measures MCP schemas, skill/plugin metadata and cached Codeburn use. `ws assist` asks before applying suggestions. Use `ws run import codeburn` to import local usage and update an existing entry when a session grows.
 
 ## Daily loop
 
