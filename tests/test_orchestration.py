@@ -13,6 +13,48 @@ class OrchestrationTests(Base):
             p = directory / name; p.write_text('#!' + __import__('sys').executable + '\n' + code + '\n'); p.chmod(0o755)
         return mock.patch.dict(os.environ, {'PATH': str(directory)})
 
+    def fake_provider(self, name, code):
+        directory = self.root / 'fake-bin'; directory.mkdir(exist_ok=True)
+        path = directory / name
+        path.write_text('#!' + __import__('sys').executable + '\n' + code + '\n')
+        path.chmod(0o755)
+        return mock.patch.dict(os.environ, {'PATH': str(directory)})
+
+    def test_codex_delegate_logs_turn_usage_and_keeps_output_readable(self):
+        events = [
+            {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': 'UNVERIFIED sample.py:1 finding'}},
+            {'type': 'turn.completed', 'usage': {'input_tokens': 31, 'output_tokens': 9}},
+        ]
+        code = 'import json,sys; assert "--json" in sys.argv; print("\\n".join(map(json.dumps, ' + repr(events) + ')))'
+        with self.fake_provider('codex', code):
+            result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        entry = core.run_entries(self.root, 'T-1')[-1]
+        self.assertEqual((entry['tokens_in'], entry['tokens_out']), (31, 9))
+        self.assertIn('Total tokens: 40', core.trace(self.root, 'T-1'))
+        self.assertIn('UNVERIFIED sample.py:1 finding', __import__('pathlib').Path(result['output']).read_text())
+
+    def test_claude_delegate_logs_json_usage(self):
+        payload = {'type': 'result', 'result': 'UNVERIFIED sample.py:2 finding',
+                   'usage': {'input_tokens': 17, 'output_tokens': 6}}
+        code = 'import json,sys; assert sys.argv[sys.argv.index("--output-format") + 1] == "json"; print(json.dumps(' + repr(payload) + '))'
+        cfg = json.loads((self.root / 'routing.json').read_text())
+        cfg['role_overrides']['explorer'] = {'provider': 'claude'}
+        (self.root / 'routing.json').write_text(json.dumps(cfg))
+        with self.fake_provider('claude', code):
+            result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        entry = core.run_entries(self.root, 'T-1')[-1]
+        self.assertEqual((entry['tokens_in'], entry['tokens_out']), (17, 6))
+        self.assertIn('UNVERIFIED sample.py:2 finding', __import__('pathlib').Path(result['output']).read_text())
+
+    def test_unknown_usage_logs_zero_with_note(self):
+        event = {'type': 'item.completed', 'item': {'type': 'agent_message', 'text': 'Synthetic result'}}
+        code = 'import json; print(json.dumps(' + repr(event) + '))'
+        with self.fake_provider('codex', code):
+            orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        entry = core.run_entries(self.root, 'T-1')[-1]
+        self.assertEqual((entry['tokens_in'], entry['tokens_out']), (0, 0))
+        self.assertIn('usage unavailable', entry['note'])
+
     def test_binding_overrides_no_fallback_and_upgrade(self):
         with self.fake():
             binding = orchestration.route(self.root, 'explorer')
