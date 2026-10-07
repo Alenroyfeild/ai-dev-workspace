@@ -4,30 +4,7 @@
 
 AI coding assistants forget everything between sessions. Every new chat re-reads the same files, re-discovers the same rules and repeats the same mistakes, and you pay for it in tokens and time. AI Dev Workspace gives Claude Code, Codex, Cursor and any MCP client one shared memory: plain Markdown files in a folder you own, a small CLI and an MCP server.
 
-No API keys, no server, no account, no telemetry. Python 3.9+ and git are all it needs.
-
-## What it looks like
-
-A real run, lightly trimmed (Claude Code, synthetic task). Session 1 ends with:
-
-```text
-you:     /handoff DEMO-1. Crash reproduced; cause is a force-unwrap of email in
-         LoginValidator.swift:42. Next: add an empty-email guard and run LoginValidatorTests.
-claude:  (saves the checkpoint with `ws`)
-```
-
-The next day, a brand-new session that remembers nothing:
-
-```text
-you:     hi
-claude:  I've got a task waiting from your earlier session:
-         DEMO-1: Fix login crash on empty email
-         Next action: Add empty-email guard in LoginValidator.validate()
-         (LoginValidator.swift:42) and run LoginValidatorTests
-         Ready to pick up where you left off?
-```
-
-No pasting old chats, no "where were we". The same memory works from Codex or any MCP client.
+macOS and Linux only; Windows not supported yet (file locking uses fcntl). Requires Python 3.9+ and git. No API keys, account or telemetry.
 
 **Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
 
@@ -46,14 +23,15 @@ No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-wo
 
 ## What you get
 
-- **Task memory that writes itself.** One record per ticket: objective, evidence, blockers, the exact next step. A session-start hook feeds it to the assistant; a stop hook asks for a checkpoint when one is overdue. Skills: `/handoff`, `/pickup`, `/lesson`.
+- **Task memory that writes itself.** One record per ticket: objective, evidence, blockers and next step. Claude hooks capture from Claude transcripts only; captures are unverified. Skills: `/handoff`, `/pickup`, `/lesson`.
 - **Lessons.** "What happened → rule", matched to the task and shown before the assistant starts, so a mistake made once is not made again.
-- **An instant codebase map.** `ws init --repo` writes the languages, build and test commands, folders and most-changed files, with no model and no tokens spent.
-- **Search instead of re-reading.** Vault notes, lessons, big logs (`ws digest`), and your past Claude and Codex conversations (`ws sessions search "why did we drop X"`).
+- **An instant codebase map.** `ws map` writes languages and commands, links an existing Graphify report, and indexes it for `ws search`; it never runs Graphify.
+- **Toolbox and assist.** `ws tools` lists recommended everyday tools, optional extras and caution tools that change routing/config. `ws assist` asks before applying; `ws tools --cost` measures schemas and skill/plugin size. Workspace profiles are `lean`, `standard` and `full`, with per-tool `on`, `off` or `ask` overrides.
+- **Search and cost records.** Search vault notes, lessons and past chats; import Codeburn usage with `ws run import codeburn` and inspect it with `ws run report`.
 - **Safe by default.** Your existing files are never overwritten; conflicts are written beside them as `.ws-new`. One claim per task, with stale-write protection.
 - **Measured, not assumed.** `ws run log` / `ws run report` record which assistant did what, with tokens and time.
 
-All commands: [docs/COMMANDS.md](docs/COMMANDS.md).
+All commands: [docs/COMMANDS.md](docs/COMMANDS.md). Pending review: [assist #14](https://github.com/Alenroyfeild/ai-dev-workspace/pull/14), [tool costs #16](https://github.com/Alenroyfeild/ai-dev-workspace/pull/16), [Codeburn import #15](https://github.com/Alenroyfeild/ai-dev-workspace/pull/15) and [updates #17](https://github.com/Alenroyfeild/ai-dev-workspace/pull/17), [Graphify #13](https://github.com/Alenroyfeild/ai-dev-workspace/pull/13).
 
 ## Optional packs
 
