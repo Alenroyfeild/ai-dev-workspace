@@ -174,7 +174,7 @@ def main(argv=None):
         if a.cmd == 'assist':
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
         if a.cmd == 'status': out(core.status(root))
-        elif a.cmd == 'map': out(core.codebase_map(root, a.repo))
+        elif a.cmd == 'map': out(core.codebase_map(root, a.repo, allow_external=bool(a.repo)))
         elif a.cmd == 'pack':
             result = core.pack_add(root, a.name)
             collision_notices(result)

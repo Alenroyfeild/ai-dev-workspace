@@ -20,7 +20,7 @@ def routing_template():
 def route(root, role='lead', provider=None):
     if role not in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'): raise core.WsError('Unknown orchestration role.')
     try:
-        cfg = json.loads((root / 'routing.json').read_text()); defaults = cfg['_ws_managed']
+        cfg = json.loads(core.read_text(root / 'routing.json', [root])); defaults = cfg['_ws_managed']
         definition = defaults['roles'][role]; override = cfg.get('role_overrides', {}).get(role, {})
         if provider: override = dict(override, provider=provider)
         # An explicit provider override pins one provider; otherwise the first available in the preference order wins,

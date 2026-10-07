@@ -72,7 +72,7 @@ TOOLS = {
                      S(text=string('feedback'), kind=string('idea|bug|friction|praise', True)),
                      lambda r, a: core.feedback_add(r, a['text'], a.get('kind', 'idea'), 'assistant')),
     'digest_file': ('Summarise a big log or JSON file deterministically (problem lines deduplicated, or JSON shape). Read this instead of the file.',
-                    S(path=string('absolute file path')), lambda r, a: core.digest_file(a['path'])),
+                    S(path=string('absolute file path')), lambda r, a: core.digest_file(a['path'], root=r)),
     'log_step': ('Record one orchestration step (who did it, model, tokens, seconds, result) for later cost/quality reports.',
                  S(task=string('task ID'), step=string('step name'), provider=string('claude|codex|ollama|...'),
                    model=string('model id', True), tokens_in={'type': 'integer', 'optional': True},
