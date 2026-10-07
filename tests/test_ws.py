@@ -17,6 +17,12 @@ from ws import core, assist  # noqa: E402
 from mcp import server  # noqa: E402
 
 
+def slow_subprocess(test):
+    """Mark integration-style tests that start separate Python/CLI/MCP processes."""
+    test.slow_subprocess = True
+    return test
+
+
 class PackagingTests(unittest.TestCase):
     def test_installed_layout_finds_assets_and_uses_its_interpreter(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -285,6 +291,7 @@ class TaskTests(Base):
             hooks = json.loads((self.root / name).read_text())['hooks']
             self.assertEqual(set(hooks), {'SessionStart', 'PreCompact', 'Stop'})
 
+    @slow_subprocess
     def test_generated_codex_session_start_reads_saved_memory_without_writes(self):
         root = Path(self.tmp.name) / 'Codex proof with spaces'
         home = Path(self.tmp.name) / 'isolated-home'
@@ -431,6 +438,7 @@ class TaskTests(Base):
         core.release(self.root, 'T-1')
         self.assertFalse(stored.exists())
 
+    @slow_subprocess
     def test_setup_daily_loop_runs_in_a_fresh_workspace(self):
         root = Path(self.tmp.name) / 'daily-loop'
 
@@ -448,6 +456,7 @@ class TaskTests(Base):
         ws('feedback', 'add', 'The loop was easy to run', '--kind', 'friction')
         ws('release', 'T-1')
 
+    @slow_subprocess
     def test_readme_quick_start_uses_folder_name_and_user_worker(self):
         root = Path(self.tmp.name) / 'myapp-ws'
         repo = Path(self.tmp.name) / 'myapp'
@@ -755,6 +764,7 @@ class MapTests(unittest.TestCase):
             hits = core.search(root, 'graph bridge')
             self.assertIn(str(report.resolve()), [hit['path'] for hit in hits])
 
+    @slow_subprocess
     def test_map_fixture_preserves_notes_and_is_available_over_mcp(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
@@ -791,6 +801,7 @@ class MapTests(unittest.TestCase):
 
 
 class InterfaceTests(Base):
+    @slow_subprocess
     def test_connect_cli_installs_skills_in_isolated_home(self):
         home = Path(self.tmp.name) / 'home'
         with mock.patch.dict(os.environ, {'HOME': str(home)}):
@@ -802,6 +813,7 @@ class InterfaceTests(Base):
         self.assertTrue(result['mcp']['ok'])
         self.assertFalse((home / '.claude/skills/pickup').exists())
 
+    @slow_subprocess
     def test_mcp_invalid_inputs_keep_server_alive(self):
         bad = [[], None, {'id': 1, 'method': 'ping'},
                {'jsonrpc': '2.0', 'id': True, 'method': 'ping'},
@@ -897,6 +909,7 @@ class InterfaceTests(Base):
             self.assertIn('Only synthetic violet', handoff)
             self.assertEqual(handoff.count('Captured'), 1)
 
+    @slow_subprocess
     def test_stop_hook_ignores_idle_claude_transcript(self):
         with mock.patch.object(core, 'now', return_value='2020-01-01T00:00:00+00:00'):
             core.claim(self.root, 'T-1', 'synthetic')
