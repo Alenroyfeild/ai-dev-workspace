@@ -25,6 +25,8 @@ Numbers here are measured, with the method, so you can judge them yourself. Smal
 
 Without the workspace every run fixed the crash and passed the visible tests, but with the generic `invalid_email` and no audit event: work that looks done and is wrong. With it, every run followed all four decisions. The workspace session costs about $0.06 more; the baseline would need the developer to re-explain the decisions and redo the work.
 
+**Automatic capture, no `/handoff` (2026-10-07).** Same setup, but session 1 got exactly the baseline prompt, with no instruction to save anything. The session-end hook captured the decisions from the transcript on its own. Session 2, n=5: all six decisions met in **5/5** runs, mean $0.251 per session (baseline 0/5, $0.176).
+
 **What it took.** The first runs of this measurement exposed three bugs, all fixed before the result above: the session-start brief and `/pickup` told the model to ask instead of doing a given task, and a new session could not take over its own workspace's claim. The final runs used the fixed version.
 
 **Also measured.** On an easy task whose failing tests point straight at the bug, the workspace gave no cost saving (mean $0.196 vs $0.189, n=3): when rediscovery is cheap, memory has little to save.
