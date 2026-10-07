@@ -173,18 +173,21 @@ def init(target, name, packs=(), repos=()):
     target.mkdir(parents=True, exist_ok=True)
     collisions = []
     copy_preserving(KIT / 'template', target, collisions, skip=('AGENTS.md',))
-    rules = (KIT / 'template' / 'AGENTS.md').read_text()
+    from . import upgrade
+    rules = upgrade.block((KIT / 'template' / 'AGENTS.md').read_text())
     for pack in packs:
         _install_pack(target, pack, collisions, install_rules=False)
         rules = pack_rules(rules, pack)
     write_preserving(target / 'AGENTS.md', rules.encode(), collisions)
-    cfg = {'schema_version': 1, 'name': name, 'vault': 'vault', 'packs': list(packs),
+    cfg = {'schema_version': 2, 'kit_version': kit_meta()['version'], 'content_version': upgrade.fingerprint(target), 'upgrade_pending': [], 'name': name, 'vault': 'vault', 'packs': list(packs),
            'repos': [str(Path(r).expanduser().resolve()) for r in repos], 'created': now()}
     # Claude Code reads the project .mcp.json; other detected clients are connected or previewed.
     connections = [connect(target, 'claude')]
     if not connections[0]['connected']:
         collisions.append(f"Kept .mcp.json; kit content is in {Path(connections[0]['path']).name}")
     install_memory_hooks(target, collisions)
+    for relative, text in upgrade.skills().items():
+        write_preserving(target / relative, text.encode(), collisions)
     write_preserving(target / 'workspace.json', (json.dumps(cfg, indent=2) + '\n').encode(), collisions)
     for client in ('cursor', 'codex'):
         if shutil.which(client) or (client == 'cursor' and _has_app('Cursor')):
@@ -291,14 +294,20 @@ def codebase_map(root, repo=None):
     return {'repo': str(repo), 'path': str(path.relative_to(root)), 'words': len(rendered.split())}
 
 
-def install_memory_hooks(root, collisions):
+def memory_hooks(root):
     command = 'env WS_ROOT=' + shlex.quote(str(root)) + ' ' + shlex.quote(python_command()) + ' ' + shlex.quote(str(KIT / 'bin/ws'))
-    hooks = {'hooks': {event: [{'hooks': [{'type': 'command', 'timeout': 10,
+    return {'hooks': {event: [{'hooks': [{'type': 'command', 'timeout': 10,
                          'command': command + (' brief --hook' if event == 'SessionStart' else ' nudge --hook')}]}]
                        for event in ('SessionStart', 'PreCompact', 'Stop')}}
-    data = (json.dumps(hooks, indent=2) + '\n').encode()
+def install_memory_hooks(root, collisions):
+    data = (json.dumps(memory_hooks(root), indent=2) + '\n').encode()
     for relative in ('.claude/settings.json', '.codex/hooks.json'):
         write_preserving(root / relative, data, collisions)
+
+
+def upgrade_workspace(root, dry_run=False):
+    from .upgrade import upgrade
+    return upgrade(root, dry_run)
 
 
 def mcp_command(root):

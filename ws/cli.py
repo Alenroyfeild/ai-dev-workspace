@@ -93,6 +93,7 @@ def main(argv=None):
     f.add_parser('sync', help='tick items whose issue is closed')
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
     sub.add_parser('version')
+    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
     s = sub.add_parser('assist', help='suggest improvements; apply only after explicit permission')
     s.add_argument('action', nargs='?', choices=('apply', 'decide')); s.add_argument('id', nargs='?')
@@ -152,6 +153,10 @@ def main(argv=None):
         if a.cmd == 'sessions':
             out(core.session_search(a.query)); return 0
         root = core.find_root()
+        if a.cmd == 'upgrade':
+            result = core.upgrade_workspace(root, a.dry_run)
+            out('\n'.join(c['diff'] for c in result['changes']) or 'No changes.')
+            out({'pending_review': result['pending'], 'backups': result['backups']}); return 0
         if a.cmd == 'assist':
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
         if a.cmd == 'status': out(core.status(root))
