@@ -28,6 +28,8 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). Most
 
 ## Measure and maintain
 
+`ws run import codeburn [--since YYYY-MM-DD] [--task ID]` imports `codeburn.export.v2` records from a temporary local export. Matches require canonical repository paths and task windows (claim/creation through completion, or now for unfinished work); ambiguous matches are skipped. Explicit task selection still checks path/time. Imports append source-tagged, deduplicated usage entries; task text is unchanged. Input totals include cache reads/writes; reasoning tokens are not counted again. Usage does not reset the repeat guard. Missing Codeburn prints its install command but never installs it. Raw exports and project paths are not retained in run logs. MCP `import_usage` accepts `since` and `task`. Existing imported records are snapshots; later revisions to an already-imported call are skipped. Codeburn's default export covers 30 days; use --since for a wider/custom window. See [official export implementation](https://github.com/getagentseal/codeburn/blob/main/src/export.ts).
+
 | Command | Does |
 |---|---|
 | `ws run log <task> <step> --provider P [--tokens-in N ...]` / `ws run report [task]` | Per-step log of who did what, tokens, seconds and result. |

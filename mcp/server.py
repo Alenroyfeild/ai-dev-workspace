@@ -26,6 +26,8 @@ def string(desc, optional=False):
 
 
 TOOLS = {
+    'import_usage': ('Import local Codeburn usage; skips ambiguous project/time matches and duplicates.',
+                     S(since=string('YYYY-MM-DD', True), task=string('task ID', True)), lambda r, a: core.import_codeburn(r, a.get('since'), a.get('task'))),
     'search_sessions': ('Search local Claude Code and Codex transcripts; returned snippets are redacted.',
                         S(query=string('words or phrase to find')), lambda r, a: core.session_search(a['query'])),
     'codebase_map': ('Write a compact codebase map for the configured or supplied repository.',
