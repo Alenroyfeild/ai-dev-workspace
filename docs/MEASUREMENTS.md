@@ -1,5 +1,16 @@
 # Measurements
 
+## Public Codex continuity run (2026-10-07 UTC)
+
+`python3 bench/run.py --provider codex -n 3`: gpt-6-luna/high, kit base 722bb89, 55-file decision fixture. One investigation per arm, followed by three fresh completion sessions from the same arm snapshot. Reference: 6/6 hidden checks; initial fixture: 2/6. Both arms use isolated temporary HOME/CODEX_HOME. The workspace retains memory; baseline does not. Prompts are identical, and hidden checks remain outside the worker fixture.
+
+| Session 2 | Baseline | Workspace |
+|---|---|---|
+| All six checks / visible tests | 0/3 / 3/3 | 3/3 / 3/3 |
+| Mean seconds | 64.5 | 106.5 |
+
+This measures decision retention, not savings or statistical significance. Codex reports tokens but no USD price; cost is unknown, not zero. [Raw metrics and table](../bench/results/2026-10-07-codex.json), [reproducible method](../bench/README.md). Claude transport is unverified in this public runner; historical results below used the private harness.
+
 Numbers here are measured, with the method, so you can judge them yourself. Small samples: read them as indications, not guarantees.
 
 ## Decisions made in conversation survive into the next session (2026-10-06)

@@ -92,3 +92,5 @@ Beta (0.1.0-beta.1): tested (`python3 -m unittest discover -s tests`), and chang
 ## License
 
 MIT. The `codex-worker` pack downloads and patches `@agentclientprotocol/codex-acp` (Apache-2.0) on your machine; nothing of it is redistributed here.
+
+Measured continuity: Codex met conversation-only decisions in **3/3 workspace completions versus 0/3 baseline** (n=3, 2026-10-07 UTC); both arms passed visible tests. Workspace runs took longer, so this is a quality result, not a savings claim. Reproduce it with [bench/](bench/README.md); see [measurements and limits](docs/MEASUREMENTS.md).
