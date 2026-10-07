@@ -14,6 +14,17 @@ sys.path.insert(0, str(kit.parent if (kit / 'core.py').is_file() else kit))
 from ws import core, assist, orchestration  # noqa: E402
 
 PROTOCOL = '2025-06-18'
+PROMPTS = {'handoff': 'Save verified progress and the next action.',
+           'pickup': 'Resume from saved task memory.',
+           'lesson': 'Record a verified mistake-to-rule lesson.'}
+
+
+def resources(root):
+    result = [{'uri': 'workspace://brief', 'name': 'brief', 'mimeType': 'text/plain'}]
+    result += [{'uri': 'workspace://tasks/' + task['id'], 'name': task['id'], 'mimeType': 'text/markdown'}
+               for task in core.task_list(root) if task['claimed_by']
+               and task['claim'].startswith('claimed in this workspace:')]
+    return result
 
 
 def S(**props):
@@ -144,8 +155,39 @@ def handle(root, msg):
         except ValueError as exc:
             return rpc_error(mid, -32602, str(exc))
         result = {'protocolVersion': params.get('protocolVersion', PROTOCOL),
-                  'capabilities': {'tools': {}},
+                  'capabilities': {'tools': {}, 'prompts': {}, 'resources': {}},
                   'serverInfo': {'name': 'ai-dev-workspace', 'version': core.kit_meta()['version']}}
+    elif method == 'prompts/list':
+        result = {'prompts': [{'name': name, 'description': description} for name, description in PROMPTS.items()]}
+    elif method == 'prompts/get':
+        try:
+            validate_input(params, S(name={'type': 'string', 'enum': list(PROMPTS)},
+                                     arguments={'type': 'object', 'additionalProperties': False, 'optional': True}))
+        except ValueError as exc:
+            return rpc_error(mid, -32602, str(exc))
+        try:
+            text = (core.KIT / 'skills' / params['name'] / 'SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
+        except (OSError, IndexError) as exc:
+            return rpc_error(mid, -32603, str(exc))
+        result = {'description': PROMPTS[params['name']], 'messages': [
+            {'role': 'user', 'content': {'type': 'text', 'text': text}}]}
+    elif method in ('resources/list', 'resources/read'):
+        try:
+            if method == 'resources/read':
+                validate_input(params, S(uri=string('resource URI')))
+            listed = resources(root)
+            if method == 'resources/list':
+                result = {'resources': listed}
+            else:
+                resource = next((r for r in listed if r['uri'] == params['uri']), None)
+                if resource is None:
+                    return rpc_error(mid, -32002, 'Resource not found')
+                text = core.brief(root) if resource['name'] == 'brief' else core.task_read(root, resource['name'])['text']
+                result = {'contents': [{'uri': resource['uri'], 'mimeType': resource['mimeType'], 'text': core.redact(text)}]}
+        except ValueError as exc:
+            return rpc_error(mid, -32602, str(exc))
+        except (core.WsError, OSError) as exc:
+            return rpc_error(mid, -32603, str(exc))
     elif method == 'tools/list':
         result = {'tools': [{'name': n, 'description': d, 'inputSchema': s} for n, (d, s, _) in TOOLS.items()]}
     elif method == 'tools/call':
