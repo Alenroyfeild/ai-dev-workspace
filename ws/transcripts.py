@@ -39,7 +39,7 @@ def records(stream, client):
         if not isinstance(entry, dict): continue
         if client == 'codex' and entry.get('type') == 'response_item':
             item = entry.get('payload', {})
-            if item.get('type') in ('function_call', 'custom_tool_call'):
+            if item.get('type') in ('function_call', 'custom_tool_call') and isinstance(item.get('name'), str):
                 yield {'type': 'assistant', 'message': {'content': [{'type': 'tool_use'}]}}
             elif item.get('type') == 'message' and item.get('role') in ('user', 'assistant') and item.get('channel') != 'analysis':
                 kinds = item.get('internal_chat_message_metadata_passthrough', {}).get('content_item_kinds')
@@ -51,7 +51,8 @@ def records(stream, client):
             content = entry.get('content', '')
             text = content if isinstance(content, str) else ' '.join(p if isinstance(p, str) else p.get('text', '') for p in content if isinstance(p, (str, dict)))
             blocks = [{'type': 'text', 'text': text}]
-            if entry.get('toolCalls'): blocks.append({'type': 'tool_use'})
+            calls = entry.get('toolCalls')
+            if isinstance(calls, list) and any(isinstance(c, dict) and isinstance(c.get('name'), str) for c in calls): blocks.append({'type': 'tool_use'})
             yield {'type': 'assistant' if entry.get('type') == 'gemini' else 'user', 'message': {'content': blocks}}
         else:
             yield dict(entry, type=entry.get('type', entry.get('role')))  # Cursor and Codex chat transcripts are Claude-shaped.
