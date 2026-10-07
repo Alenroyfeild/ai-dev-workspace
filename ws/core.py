@@ -1273,6 +1273,8 @@ def doctor(root=None, mcp=False):
         report['kit'].update(json.loads(cache.read_text())['result'])
     if root:
         report['workspace'] = str(root)
+        selftests = root / '.ws/delegate-selftests.json'
+        report['delegate_selftests'] = json.loads(selftests.read_text()) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
         report['clients'] = {client: client_connected(root, client) for client in ('claude', 'codex', 'cursor')}
         if mcp:
