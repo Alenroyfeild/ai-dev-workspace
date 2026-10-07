@@ -917,12 +917,13 @@ def digest_file(path, max_lines=60):
 # --- orchestration run tracking ---------------------------------------------------
 
 def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, seconds=0.0,
-            result='ok', note='', worker_role='', effort='', checks=(), files=None, verdict='', findings=None):
+            result='ok', note='', worker_role='', effort='', checks=(), files=None, verdict='', findings=None,
+            source='', import_id='', at=None):
     """Append one orchestration step (who did what, cost, outcome) to vault/Runs/<task>.jsonl."""
     task_path(root, task_id)
     if result not in ('ok', 'failed', 'rejected', 'accepted', 'skipped'):
         raise WsError('result is ok, failed, rejected, accepted or skipped.')
-    entry = {'at': now(), 'task': task_id, 'step': redacted_line(step, 'Step'),
+    entry = {'at': at or now(), 'task': task_id, 'step': redacted_line(step, 'Step'),
              'provider': redacted_line(provider, 'Provider'), 'model': redacted_line(model, 'Model'),
              'tokens_in': int(tokens_in), 'tokens_out': int(tokens_out), 'seconds': float(seconds),
              'result': result, 'note': redact(note)[:300]}
@@ -946,10 +947,22 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
         entry['checks'] = parsed
     path = vault(root) / 'Runs' / f'{task_id}.jsonl'
     with lock(root):
+        if source:
+            if source != 'codeburn' or not re.fullmatch(r'[a-f0-9]{64}', import_id):
+                raise WsError('Imported usage requires a Codeburn source and stable import ID.')
+            # ponytail: scan keys under the append lock; add an index if large imports become slow.
+            if any(e.get('import_id') == import_id for p in (vault(root) / 'Runs').glob('*.jsonl') for e in run_entries(root, p.stem)):
+                return None
+            entry.update(source=source, import_id=import_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open('a') as stream:
             stream.write(json.dumps(entry) + '\n')
     return entry
+
+
+def import_codeburn(root, since=None, task_id=None):
+    from .codeburn import import_usage
+    return import_usage(root, since, task_id)
 
 
 def run_entries(root, task_id):
@@ -973,7 +986,7 @@ def repeat_guard(root):
     for path in sorted((vault(root) / 'Runs').glob('*.jsonl')):
         if path.stem not in open_tasks:
             continue
-        entries = run_entries(root, path.stem)[-2:]
+        entries = [e for e in run_entries(root, path.stem) if e.get('source') != 'codeburn'][-2:]
         def failed(entry):
             return (entry.get('result') in ('failed', 'rejected')
                     or entry.get('verdict') in ('changes', 'rejected')

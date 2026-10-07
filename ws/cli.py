@@ -109,6 +109,7 @@ def main(argv=None):
     s.add_argument('--check', action='append', default=[]); s.add_argument('--files', type=int)
     s.add_argument('--verdict', choices=('accepted', 'changes', 'rejected'), default=''); s.add_argument('--findings', type=int)
     s = r.add_parser('report'); s.add_argument('task', nargs='?')
+    s = r.add_parser('import'); s.add_argument('source', choices=('codeburn',)); s.add_argument('--since'); s.add_argument('--task')
     s = sub.add_parser('trace', help='read-only Markdown timeline of reported orchestration steps'); s.add_argument('task')
 
     a = p.parse_args(argv)
@@ -211,6 +212,7 @@ def main(argv=None):
         elif a.cmd == 'digest': out(core.digest_file(a.file))
         elif a.cmd == 'trace': out(core.trace(root, a.task))
         elif a.cmd == 'run':
+            if a.action == 'import': out(core.import_codeburn(root, a.since, a.task)); return 0
             if a.action == 'log':
                 out(core.run_log(root, a.task, a.step, a.provider, a.model, a.tokens_in, a.tokens_out, a.seconds, a.result, a.note,
                                  a.worker_role, a.effort, a.check, a.files, a.verdict, a.findings))
