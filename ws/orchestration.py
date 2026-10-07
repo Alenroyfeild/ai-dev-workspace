@@ -49,14 +49,51 @@ def route(root, role='lead', provider=None):
         raise core.WsError('Invalid or missing routing.json binding; run ws upgrade and review routing configuration.')
 
 
+def _worker_output(provider, stdout):
+    tokens_in = tokens_out = 0
+    known = False
+    messages = []
+    if provider == 'codex':
+        turns = unknown = False
+        for line in stdout.splitlines():
+            try: event = json.loads(line)
+            except ValueError: continue
+            if not isinstance(event, dict): continue
+            item = event.get('item', {})
+            if not isinstance(item, dict): item = {}
+            if event.get('type') == 'item.completed' and item.get('type') == 'agent_message':
+                if isinstance(item.get('text'), str): messages.append(item['text'])
+            if event.get('type') == 'turn.completed':
+                turns = True
+                usage = event.get('usage', {})
+                if not isinstance(usage, dict): usage = {}
+                incoming, outgoing = usage.get('input_tokens'), usage.get('output_tokens')
+                if type(incoming) is int and incoming >= 0 and type(outgoing) is int and outgoing >= 0:
+                    tokens_in += incoming; tokens_out += outgoing
+                else: unknown = True
+        known = turns and not unknown
+        if not known: tokens_in = tokens_out = 0
+    elif provider == 'claude':
+        try: payload = json.loads(stdout)
+        except ValueError: payload = {}
+        if not isinstance(payload, dict): payload = {}
+        if isinstance(payload.get('result'), str): messages.append(payload['result'])
+        usage = payload.get('usage', {})
+        if not isinstance(usage, dict): usage = {}
+        incoming, outgoing = usage.get('input_tokens'), usage.get('output_tokens')
+        if type(incoming) is int and incoming >= 0 and type(outgoing) is int and outgoing >= 0:
+            tokens_in, tokens_out, known = incoming, outgoing, True
+    return '\n'.join(messages) or stdout, tokens_in, tokens_out, known
+
+
 def worker_command(binding, repo):
     exe, model, effort = binding['executable'], binding['model'], binding['effort']
     if binding['provider'] == 'codex':
-        return [exe, 'exec', '-s', 'read-only', '--ephemeral', '--ignore-user-config', '--disable', 'hooks', '--disable', 'apps', '--disable', 'plugins',
+        return [exe, 'exec', '--json', '-s', 'read-only', '--ephemeral', '--ignore-user-config', '--disable', 'hooks', '--disable', 'apps', '--disable', 'plugins',
                 '-c', 'approval_policy="never"', '-m', model, '-c', 'model_reasoning_effort=' + json.dumps(effort), '--skip-git-repo-check', '-C', str(repo), '-']
     if binding['provider'] == 'claude':
         # Project-only settings preserve subscription login without loading user hooks.
-        return [exe, '-p', '--setting-sources', 'project', '--model', model, '--effort', effort, '--tools', 'Read,Glob,Grep', '--allowedTools', 'Read,Glob,Grep',
+        return [exe, '-p', '--output-format', 'json', '--setting-sources', 'project', '--model', model, '--effort', effort, '--tools', 'Read,Glob,Grep', '--allowedTools', 'Read,Glob,Grep',
                 '--permission-mode', 'dontAsk', '--mcp-config', '{"mcpServers":{}}', '--strict-mcp-config', '--no-session-persistence']
     return [exe, 'run', model]
 
@@ -68,9 +105,10 @@ def worker_run(binding, repo, body):
         try: stdout, stderr = process.communicate(body, timeout=binding['timeout_seconds']); code = process.returncode
         except subprocess.TimeoutExpired:
             os.killpg(process.pid, signal.SIGKILL); stdout, stderr = process.communicate(); stderr += f"\nWorker timed out after {binding['timeout_seconds']} seconds."
-        return code, core.redact(stdout + ('\n' + stderr[-1000:] if code else ''))[:24000]
+        rendered, tokens_in, tokens_out, known = _worker_output(binding['provider'], stdout)
+        return code, core.redact(rendered + ('\n' + stderr[-1000:] if code else ''))[:24000], tokens_in, tokens_out, known
     except OSError:
-        return code, 'Selected provider could not launch; no fallback.'
+        return code, 'Selected provider could not launch; no fallback.', 0, 0, False
 
 
 def delegate(root, task_id, role, run=False):
@@ -97,7 +135,7 @@ def delegate(root, task_id, role, run=False):
     with core.lock(root): core.atomic_write(brief, core.redact(body))
     result = dict(binding=binding, brief=str(brief), output=str(output), command=shlex.join(command) + ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)))
     if not run: return result
-    started = time.monotonic(); code, rendered = worker_run(binding, paths[0], body)
+    started = time.monotonic(); code, rendered, tokens_in, tokens_out, usage_known = worker_run(binding, paths[0], body)
     with core.lock(root):
         core.atomic_write(output, 'UNVERIFIED worker output\n' + rendered)
         path = core.task_path(root, task_id); text = path.read_text(); current = core.parse_meta(text)
@@ -108,7 +146,8 @@ def delegate(root, task_id, role, run=False):
         summary = f'\nDelegated {role} ({model}, {effort}), exit {code}, unverified: ' + ' '.join(rendered.split()[:45]) + '\n'
         core.atomic_write(path, text[:match.end()] + summary + text[match.end():])
     core.run_log(root, task_id, 'delegate ' + role, binding['provider'], model, seconds=time.monotonic()-started,
-                 result='ok' if code == 0 else 'failed', worker_role=role, effort=effort, note='Worker output unverified; lead must review.')
+                 tokens_in=tokens_in, tokens_out=tokens_out, result='ok' if code == 0 else 'failed', worker_role=role,
+                 effort=effort, note='Worker output unverified; lead must review.' + ('' if usage_known else ' usage unavailable.'))
     return dict(result, exit_code=code)
 
 
@@ -154,7 +193,7 @@ Print one outcome per step. Never touch any other path. Missing tools must be re
                         data = os.readlink(path) if path.is_symlink() else hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else 'directory'
                         state[str(path.relative_to(directory))] = (stat.st_mode, stat.st_mtime_ns, data)
                     return state
-                before = snapshot(); code, output = worker_run(binding, repo, body)
+                before = snapshot(); code, output, _, _, _ = worker_run(binding, repo, body)
                 try: changed = before != snapshot()
                 except OSError: changed = True
                 read = token in output

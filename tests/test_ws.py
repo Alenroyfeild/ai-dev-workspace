@@ -683,6 +683,12 @@ class KnowledgeTests(Base):
         self.assertEqual({notice['tool'] for notice in first}, {'codeburn', 'graphify'})
         self.assertEqual(second, [])
 
+    def test_doctor_survives_workspace_without_routing(self):
+        (self.root / 'routing.json').unlink()  # workspaces created before O1
+        report = core.doctor(self.root)
+        self.assertIn('error', report['routes'])
+        self.assertTrue(report['valid'])
+
     def test_doctor_mcp_runs_configured_server_and_reports_bad_command(self):
         report = core.doctor(self.root, mcp=True)['mcp']
         self.assertTrue(report[0]['ok'])
