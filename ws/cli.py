@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import core
+from . import core, assist
 
 
 def out(value):
@@ -94,6 +94,9 @@ def main(argv=None):
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
     sub.add_parser('version')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
+    s = sub.add_parser('assist', help='suggest improvements; apply only after explicit permission')
+    s.add_argument('action', nargs='?', choices=('apply', 'decide')); s.add_argument('id', nargs='?')
+    s.add_argument('decision', nargs='?', choices=('accepted', 'declined', 'snoozed', 'always')); s.add_argument('--until')
     for command in ('brief', 'nudge'):
         s = sub.add_parser(command, help='local task memory for assistant sessions')
         s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
@@ -144,6 +147,8 @@ def main(argv=None):
         if a.cmd == 'sessions':
             out(core.session_search(a.query)); return 0
         root = core.find_root()
+        if a.cmd == 'assist':
+            out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
         if a.cmd == 'status': out(core.status(root))
         elif a.cmd == 'map': out(core.codebase_map(root, a.repo))
         elif a.cmd == 'pack':
@@ -154,6 +159,7 @@ def main(argv=None):
             payload = json.load(sys.stdin) if a.hook else {}
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
+            if a.hook: assist.observe(root, payload)
             if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop'):
                 core.capture_decisions(root, payload.get('transcript_path'))
             message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
