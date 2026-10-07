@@ -1287,8 +1287,11 @@ def doctor(root=None, mcp=False):
         report['valid'] = validate(root)['valid']
         report['clients'] = {client: client_connected(root, client) for client in ('claude', 'codex', 'cursor')}
         from . import orchestration
-        report['routes'] = {role: orchestration.route(root, role)
-                            for role in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local')}
+        try:
+            report['routes'] = {role: orchestration.route(root, role)
+                                for role in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local')}
+        except WsError as exc:  # workspaces created before routing.json: doctor still reports everything else
+            report['routes'] = {'error': str(exc)}
         for client, location in (('claude', '.claude/skills'), ('codex', '.agents/skills')):
             project = root / location
             user = Path.home() / location
