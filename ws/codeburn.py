@@ -59,9 +59,16 @@ def import_usage(root, since=None, task_id=None):
         if len(matches) > 1:
             ambiguous += 1; continue
         if not matches: continue
-        key = core.digest_text(json.dumps([project, row['sessionId'], row['timestamp'], provider, model,
-                                          row.get('category'), row.get('supplementary', False)]))
-        pending.append((matches[0], provider, model, counts[0] + counts[2] + counts[3], counts[1], row['timestamp'], key))
+        pending.append((matches[0], provider, model, counts[0] + counts[2] + counts[3], counts[1], row['timestamp'],
+                        (project, row['sessionId'])))
+    # One run entry per task, session, provider and model: per-call rows would bury ws trace in thousands of lines.
+    sessions = {}
+    for identifier, provider, model, incoming, outgoing, at, session in pending:
+        group = sessions.setdefault((identifier, provider, model, session), [0, 0, at])
+        group[0] += incoming; group[1] += outgoing; group[2] = max(group[2], at)
+    pending = [(identifier, provider, model, incoming, outgoing, at,
+                core.digest_text(json.dumps([*session, provider, model, incoming, outgoing, at])))
+               for (identifier, provider, model, session), (incoming, outgoing, at) in sessions.items()]
     imported = 0
     for identifier, provider, model, incoming, outgoing, at, key in pending:
         entry = core.run_log(root, identifier, 'Codeburn usage', provider, model, incoming, outgoing,
