@@ -19,19 +19,28 @@ def route(root, role='lead'):
     try:
         cfg = json.loads((root / 'routing.json').read_text()); defaults = cfg['_ws_managed']
         definition = defaults['roles'][role]; override = cfg.get('role_overrides', {}).get(role, {})
-        provider = override.get('provider') or override.get('preference', definition['preference'])[0]
-        if provider not in ('claude', 'codex', 'ollama'): raise ValueError()
-        settings = defaults['providers'][provider]
-        tier = settings['tiers'][override.get('tier', definition['tier'])]
-        family = override.get('family', tier['family']); effort = override.get('effort', tier['effort'])
-        model = override['model'] if 'model' in override else settings['models'].get(family)
-        if effort not in ('low', 'medium', 'high', 'not_applicable'): raise ValueError()
-        if model is not None and (not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,120}', model)): raise ValueError()
-        executable = core.shutil.which(provider)
-        return dict(role=role, provider=provider, family=family, model=model, effort=effort,
-                    available=bool(executable and model), executable=executable,
-                    reason='' if executable and model else 'Selected CLI or model unavailable; configure explicitly, no fallback.',
-                    preference=override.get('preference', definition['preference']))
+        # An explicit provider override pins one provider; otherwise the first available in the preference order wins,
+        # and every skipped provider is reported (an explicit, visible fallback, never a silent one).
+        preference = [override['provider']] if override.get('provider') else override.get('preference', definition['preference'])
+        skipped, chosen = [], None
+        for provider in preference:
+            if provider not in ('claude', 'codex', 'ollama'): raise ValueError()
+            settings = defaults['providers'][provider]
+            tier = settings['tiers'][override.get('tier', definition['tier'])]
+            family = override.get('family', tier['family']); effort = override.get('effort', tier['effort'])
+            model = override['model'] if 'model' in override else settings['models'].get(family)
+            if effort not in ('low', 'medium', 'high', 'not_applicable'): raise ValueError()
+            if model is not None and (not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,120}', model)): raise ValueError()
+            executable = core.shutil.which(provider)
+            candidate = dict(role=role, provider=provider, family=family, model=model, effort=effort, executable=executable)
+            if executable and model:
+                chosen = candidate; break
+            skipped.append({'provider': provider, 'reason': 'CLI not on PATH' if not executable else 'no model configured'})
+            chosen = chosen or candidate
+        available = bool(chosen['executable'] and chosen['model'])
+        return dict(chosen, available=available, preference=preference, skipped=skipped,
+                    timeout_seconds=int(cfg.get('timeout_seconds', 600)),
+                    reason='' if available else 'No provider in the preference order is available; configure routing.json.')
     except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
         raise core.WsError('Invalid or missing routing.json binding; run ws upgrade and review routing configuration.')
 
@@ -61,7 +70,8 @@ def delegate(root, task_id, role, run=False):
         command = [exe, 'exec', '-s', 'read-only', '--ephemeral', '--ignore-user-config', '--disable', 'hooks', '--disable', 'apps', '--disable', 'plugins',
                    '-c', 'approval_policy="never"', '-m', model, '-c', 'model_reasoning_effort=' + json.dumps(effort), '--skip-git-repo-check', '-C', str(paths[0]), '-']
     elif binding['provider'] == 'claude':
-        command = [exe, '-p', '--bare', '--model', model, '--effort', effort, '--tools', 'Read,Glob,Grep', '--allowedTools', 'Read,Glob,Grep',
+        # Not --bare: it accepts only an API key, so subscription logins would fail.
+        command = [exe, '-p', '--setting-sources', 'project', '--model', model, '--effort', effort, '--tools', 'Read,Glob,Grep', '--allowedTools', 'Read,Glob,Grep',
                    '--permission-mode', 'dontAsk', '--mcp-config', '{"mcpServers":{}}', '--strict-mcp-config', '--no-session-persistence']
     else: command = [exe, 'run', model]
     with core.lock(root): core.atomic_write(brief, core.redact(body))
@@ -70,9 +80,9 @@ def delegate(root, task_id, role, run=False):
     started = time.monotonic(); code = 1; rendered = ''
     try:
         process = subprocess.Popen(command, cwd=paths[0], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
-        try: stdout, stderr = process.communicate(body, timeout=120); code = process.returncode
+        try: stdout, stderr = process.communicate(body, timeout=binding['timeout_seconds']); code = process.returncode
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL); stdout, stderr = process.communicate(); stderr += '\nWorker timed out after 120 seconds.'
+            os.killpg(process.pid, signal.SIGKILL); stdout, stderr = process.communicate(); stderr += f"\nWorker timed out after {binding['timeout_seconds']} seconds."
         rendered = core.redact(stdout + ('\n' + stderr[-1000:] if code else ''))[:24000]
     except OSError:
         rendered = 'Selected provider could not launch; no fallback.'
