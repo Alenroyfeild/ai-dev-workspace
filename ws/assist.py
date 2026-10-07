@@ -21,6 +21,22 @@ def save(root, data):
 def cost_data():
     if not core.shutil.which('codeburn'):
         return {}, {}
+    # notices runs at every session start: reuse one Codeburn scan per day instead of ~30 s of subprocesses.
+    cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'codeburn-assist.json'
+    try:
+        cached = json.loads(cache.read_text())
+        if cached.get('day') == core.now()[:10]:
+            return cached['report'], cached['usage']
+    except (OSError, ValueError, KeyError, AttributeError):
+        pass
+    report, usage = _scan()
+    if report or usage:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        core.atomic_write(cache, json.dumps({'day': core.now()[:10], 'report': report, 'usage': usage}))
+    return report, usage
+
+
+def _scan():
     try:
         report = subprocess.run(['codeburn', 'optimize', '--format', 'json'], capture_output=True, text=True, timeout=15)
         since = (datetime.date.fromisoformat(core.now()[:10]) - datetime.timedelta(days=30)).isoformat()
