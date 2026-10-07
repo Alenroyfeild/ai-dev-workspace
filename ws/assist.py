@@ -53,7 +53,7 @@ def observe(root, payload):
         return
     with core.lock(root):
         data = state(root)
-        if payload.get('hook_event_name') == 'SessionStart' and payload.get('session_id'):
+        if payload.get('hook_event_name') in ('SessionStart', 'sessionStart') and payload.get('session_id'):
             data.pop('long_session_bytes', None)
             for task in core.task_list(root):
                 if not task['claimed_by']:
@@ -73,10 +73,37 @@ def observe(root, payload):
         save(root, data)
 
 
+def feature_suggestions(root, add):
+    cfg = core.config(root)
+    pending = cfg.get('upgrade_pending') or any(p.is_file() for p in root.rglob('*.ws-new*'))
+    if core._vtuple(core.kit_meta()['version']) > core._vtuple(cfg.get('kit_version', '0')) or pending:
+        add('upgrade', 'Kit is newer than this workspace or .ws-new proposals await review', 'ws upgrade --dry-run', 'local-reversible')
+    from . import orchestration
+    path = root / '.ws/delegate-selftests.json'
+    try: records = json.loads(path.read_text()) if path.is_file() else {}
+    except (OSError, ValueError): records = {}
+    if not isinstance(records, dict): records = {}
+    seen = set()
+    for role in ('worker', 'explorer', 'reviewer'):
+        try: binding = orchestration.route(root, role)
+        except core.WsError: continue
+        provider = binding.get('provider')
+        record = records.get(provider, {})
+        if (binding.get('available') and provider in ('codex', 'claude') and provider not in seen
+                and core._detected(provider) and not (isinstance(record, dict) and record.get('executed'))):
+            add('selftest-' + provider, 'Routed read-only provider has no executed selftest: ' + provider,
+                'ws delegate --selftest --provider ' + provider, 'paid-run' if provider == 'codex' else 'local-reversible')
+        seen.add(provider)
+    for client, checks in (('cursor', ['cursor', 'app:Cursor']), ('vscode', ['code', 'app:Visual Studio Code']), ('gemini', ['gemini'])):
+        if core._detected(checks) and not core.client_connected(root, client):
+            add('connect-' + client, 'Installed client has no matching workspace connection: ' + client, 'ws connect ' + client, 'changes-config')
+
+
 def suggestions(root, include_hidden=False):
     data, items = state(root), []
     def add(identifier, why, command, safety, saving='unmeasured'):
         items.append(dict(id=identifier, why=' '.join(core.redact(why).split()), command=command, safety=safety, estimated_saving=saving))
+    feature_suggestions(root, add)
     for tool in core.tools():
         if tool['level'] == 'recommended' and not tool['installed'] and core.tool_policy(root, tool)['mode'] != 'off':
             add('tool-' + tool['name'], 'Recommended executable missing: ' + tool['name'], tool['install']['codex'], 'installs')
