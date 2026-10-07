@@ -44,7 +44,7 @@ ws task new APP-123 "Fix login crash" && ws claim APP-123              # 4. star
 
 Open the workspace folder in Claude Code (add your code folder as a working directory) and work as usual. End a session with `/handoff`; start the next one with anything, or `/pickup`. In Codex the same skills are `$handoff` and `$pickup` (proven in fresh `codex exec` sessions).
 
-No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-workspace` and put `~/ai-dev-workspace/bin` on your PATH. Codex and Cursor: `ws connect codex` / `ws connect cursor`. Full guide: [docs/SETUP.md](docs/SETUP.md).
+No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-workspace` and put `~/ai-dev-workspace/bin` on your PATH. Connect Codex, Cursor, Copilot or Gemini CLI with `ws connect codex|cursor|vscode|gemini`. Full guide: [docs/SETUP.md](docs/SETUP.md).
 
 ## What you get
 
@@ -57,6 +57,16 @@ No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-wo
 - **Measured, not assumed.** `ws run log` / `ws run report` record which assistant did what, with tokens and time.
 
 All commands: [docs/COMMANDS.md](docs/COMMANDS.md).
+
+## Client compatibility
+
+| Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI |
+|---|---|---|---|---|---|
+| Rules | proven | proven | documented, untested | documented, untested | documented, untested |
+| MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
+| Hooks | proven | proven | documented, untested | documented, untested | documented, untested |
+| Skills | proven | proven | documented, untested | documented, untested | documented, untested |
+| Automatic capture | proven | not available | not available | not available | not available |
 
 ## Optional packs
 
