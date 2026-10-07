@@ -25,13 +25,15 @@ class PackagingTests(unittest.TestCase):
             shutil.copytree(KIT / 'ws', package, ignore=ignore)
             for name in ('template', 'packs', 'skills', 'mcp', 'bin'):
                 shutil.copytree(KIT / name, package / name, ignore=ignore)
-            shutil.copy2(KIT / 'kit.json', package / 'kit.json')
+            for name in ('kit.json', 'tools.json'):
+                shutil.copy2(KIT / name, package / name)
             script = ('from pathlib import Path; import sys; from ws import core; '
                       'root=Path("workspace"); core.init(root, "synthetic"); '
                       'core.pack_add(root, "obsidian"); '
                       'assert core.KIT == Path(core.__file__).resolve().parent; '
                       'assert core.mcp_command(root)["command"] == sys.executable; '
                       'assert (core.KIT / "skills/thinkbeforeact/SKILL.md").is_file(); '
+                      'assert {tool["name"] for tool in core.tools()} >= {"codeburn", "graphify"}; '
                       'assert (root / "vault/.obsidian/app.json").is_file(); '
                       'print(core.brief(root))')
             proc = subprocess.run([sys.executable, '-c', script], cwd=base,
@@ -559,12 +561,29 @@ class KnowledgeTests(Base):
             'params': {'name': 'trace', 'arguments': {'task': 'T-1'}}})
         self.assertIn('synthetic', str(reply))
 
-    def test_doctor_recommends_missing_optional_tools(self):
+    def test_doctor_recommends_missing_toolbox_tools(self):
         with mock.patch.object(core.shutil, 'which', return_value=None), mock.patch.object(core, '_has_app', return_value=False):
             rep = core.doctor(self.root)
-        needs = {r['needs'] for r in rep['recommended']}
-        self.assertEqual(needs, {'ollama', 'Obsidian', 'codex'})
-        self.assertTrue(all('install' in r for r in rep['recommended']))
+        self.assertEqual({tool['name'] for tool in rep['toolbox']}, {'codeburn', 'graphify'})
+        self.assertTrue(all(set(tool['install']) == {'claude', 'codex'} for tool in rep['toolbox']))
+
+    def test_toolbox_catalog_uses_path_and_notices_once(self):
+        fake_bin = Path(self.tmp.name) / 'bin'
+        fake_bin.mkdir()
+        for name in ('codeburn', 'graphify'):
+            path = fake_bin / name
+            path.write_text('#!/bin/sh\n')
+            path.chmod(0o755)
+        with mock.patch.dict(os.environ, {'PATH': str(fake_bin)}, clear=False):
+            tools = {tool['name']: tool for tool in core.tools()}
+            self.assertTrue(tools['codeburn']['installed'])
+            self.assertTrue(tools['graphify']['installed'])
+            self.assertEqual(core.doctor(self.root)['toolbox'], [])
+        with mock.patch.dict(os.environ, {'PATH': str(Path(self.tmp.name) / 'empty')}, clear=False):
+            first = [notice for notice in core.notices(self.root) if notice['kind'] == 'toolbox']
+            second = [notice for notice in core.notices(self.root) if notice['kind'] == 'toolbox']
+        self.assertEqual({notice['tool'] for notice in first}, {'codeburn', 'graphify'})
+        self.assertEqual(second, [])
 
     def test_doctor_mcp_runs_configured_server_and_reports_bad_command(self):
         report = core.doctor(self.root, mcp=True)['mcp']

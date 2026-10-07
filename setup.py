@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def kit_files():
-    for name in ('template', 'packs', 'skills', 'mcp', 'bin', 'docs', 'kit.json', 'LICENSE'):
+    for name in ('template', 'packs', 'skills', 'mcp', 'bin', 'docs', 'kit.json', 'tools.json', 'LICENSE'):
         source = ROOT / name
         for path in source.rglob('*') if source.is_dir() else (source,):
             if path.is_file() and not ({'runtime', '__pycache__', '.git'} & set(path.relative_to(ROOT).parts)):

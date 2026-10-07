@@ -976,14 +976,10 @@ def requirement_status(manifest):
     return out
 
 
-RECOMMENDED = [
-    {'needs': 'ollama', 'cmd': 'ollama', 'why': 'free local model for log triage and extraction (pack local-llm)',
-     'install': 'brew install ollama && ollama pull qwen3.5:4b'},
-    {'needs': 'Obsidian', 'app': 'Obsidian', 'why': 'read and edit the vault comfortably (pack obsidian)',
-     'install': 'https://obsidian.md'},
-    {'needs': 'codex', 'cmd': 'acpx', 'why': 'optional second AI as read-only worker (pack codex-worker)',
-     'install': 'npm install -g acpx, then add pack codex-worker'},
-]
+def tools():
+    """Catalog entries with their current executable state; never install anything."""
+    entries = json.loads((KIT / 'tools.json').read_text())
+    return [dict(entry, installed=bool(shutil.which(entry['detect']))) for entry in entries]
 
 
 def _mcp_config(root, client):
@@ -1049,10 +1045,9 @@ def doctor(root=None, mcp=False):
     packs = config(root).get('packs', []) if root else []
     for name in packs:
         report['packs'] += requirement_status(pack_manifest(name))
-    for rec in RECOMMENDED:
-        ok = bool(shutil.which(rec['cmd'])) if 'cmd' in rec else _has_app(rec['app'])
-        if not ok:
-            report['recommended'].append({k: rec[k] for k in ('needs', 'why', 'install')})
+    missing_tools = [tool for tool in tools() if tool['level'] == 'recommended' and not tool['installed']]
+    report['recommended'] = missing_tools
+    report['toolbox'] = missing_tools
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     report['kit'] = {'version': kit_meta()['version']}
     if cache.is_file():
@@ -1249,6 +1244,14 @@ def notices(root):
             for url in feedback_sync(root)['closed']:
                 out.append({'kind': 'fixed', 'message': f'Your reported issue was closed: {url}. Update to get the fix if it is released.',
                             'suggest': 'ws update --check'})
+    stamp = root / '.ws' / 'toolbox.json'
+    seen = json.loads(stamp.read_text()) if stamp.is_file() else []
+    missing = [tool for tool in tools() if tool['level'] == 'recommended' and not tool['installed'] and tool['name'] not in seen]
+    if missing:
+        stamp.parent.mkdir(exist_ok=True)
+        stamp.write_text(json.dumps(seen + [tool['name'] for tool in missing]))
+        out += [{'kind': 'toolbox', 'tool': tool['name'], 'message': f"Recommended tool missing: {tool['name']}.",
+                 'suggest': 'Claude: ' + tool['install']['claude'] + '\\nCodex: ' + tool['install']['codex']} for tool in missing]
     unsent = [i for i in feedback_items(root) if not i['done'] and not i['issue'] and i['kind'] != 'praise']
     if unsent:
         out.append({'kind': 'feedback', 'message': f'{len(unsent)} feedback note(s) not shared with the maintainers yet '
