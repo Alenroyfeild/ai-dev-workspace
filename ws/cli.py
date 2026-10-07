@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import core, assist
+from . import core, assist, orchestration
 
 
 def out(value):
@@ -59,6 +59,8 @@ def main(argv=None):
     s = sub.add_parser('tools', help='list local tools and load estimates'); s.add_argument('--cost', action='store_true')
     s = sub.add_parser('pack', help='plug a pack into this workspace'); s.add_argument('action', choices=['add']); s.add_argument('name')
     sub.add_parser('status', help='workspace overview')
+    s = sub.add_parser('route', help='resolve an explicit role binding; PATH availability only'); s.add_argument('role', nargs='?', default='lead')
+    s = sub.add_parser('delegate', help='prepare bounded work; run only read-only explorer/reviewer'); s.add_argument('task'); s.add_argument('--role', required=True); s.add_argument('--run', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
@@ -153,6 +155,10 @@ def main(argv=None):
         if a.cmd == 'sessions':
             out(core.session_search(a.query)); return 0
         root = core.find_root()
+        if a.cmd == 'route':
+            result = orchestration.route(root, a.role); out(result); return 0 if result['available'] else 2
+        if a.cmd == 'delegate':
+            result = orchestration.delegate(root, a.task, a.role, a.run); out(result); return 0 if result.get('exit_code', 0) == 0 else 2
         if a.cmd == 'upgrade':
             result = core.upgrade_workspace(root, a.dry_run)
             out('\n'.join(c['diff'] for c in result['changes']) or 'No changes.')

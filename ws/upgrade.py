@@ -21,7 +21,8 @@ def skills():
 
 
 def fingerprint(root):
-    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text() + json.dumps(skills(), sort_keys=True) + json.dumps(core.memory_hooks(root), sort_keys=True))
+    from .orchestration import routing_template
+    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text() + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(core.memory_hooks(root), sort_keys=True))
 
 
 def markdown(old, new):
@@ -56,6 +57,18 @@ def hooks(old, new):
         return None
 
 
+def routing(old, new):
+    try:
+        json.loads(old); marker = r'"_ws_managed"\s*:\s*'
+        matches = list(re.finditer(marker, old))
+        if len(matches) != 1: return None
+        start = matches[0].end(); previous, end = json.JSONDecoder().raw_decode(old, start)
+        value = json.loads(new)['_ws_managed']
+        if previous == value: return old
+        return old[:start] + json.dumps(value, indent=2) + old[end:]
+    except (ValueError, KeyError): return None
+
+
 def upgrade(root, dry_run=False):
     root = Path(root).resolve()
     def safe(path):
@@ -72,7 +85,8 @@ def upgrade(root, dry_run=False):
         if cfg.get('schema_version', 1) > 2: raise core.WsError('Workspace schema is newer than this upgrade supports.')
         rules = block((core.KIT / 'template/AGENTS.md').read_text())
         for pack in cfg.get('packs', []): rules = core.pack_rules(rules, pack)
-        desired = {'AGENTS.md': rules, **{p: json.dumps(core.memory_hooks(root), indent=2) + '\n'
+        from .orchestration import routing_template
+        desired = {'AGENTS.md': rules, 'routing.json': routing_template(), **{p: json.dumps(core.memory_hooks(root), indent=2) + '\n'
                    for p in ('.claude/settings.json', '.codex/hooks.json')}, **skills()}
         pending, operations = [], []
         for relative, candidate in desired.items():
@@ -80,7 +94,7 @@ def upgrade(root, dry_run=False):
             if path.is_dir(): raise core.WsError('Upgrade expected a file: ' + relative)
             before = path.read_bytes() if path.exists() else b''
             if path.exists():
-                try: merged = hooks(before.decode(), candidate) if relative.endswith('.json') else markdown(before.decode(), candidate)
+                try: merged = routing(before.decode(), candidate) if relative == 'routing.json' else hooks(before.decode(), candidate) if relative.endswith('.json') else markdown(before.decode(), candidate)
                 except UnicodeError: merged = None
                 if merged is None:
                     pending.append(relative)

@@ -1,0 +1,20 @@
+{
+  "_ws_managed": {
+    "kit_version": "{{kit_version}}",
+    "priority_rule": "lead decides and reviews, workers do bounded work",
+    "roles": {
+      "lead": {"preference": ["claude", "codex", "ollama"], "tier": "planner"},
+      "planner": {"preference": ["claude", "codex", "ollama"], "tier": "planner"},
+      "worker": {"preference": ["codex", "claude", "ollama"], "tier": "worker"},
+      "explorer": {"preference": ["codex", "claude", "ollama"], "tier": "worker"},
+      "reviewer": {"preference": ["claude", "codex", "ollama"], "tier": "planner"},
+      "local": {"preference": ["ollama"], "tier": "worker"}
+    },
+    "providers": {
+      "claude": {"models": {"opus": "opus", "sonnet": "sonnet"}, "tiers": {"planner": {"family": "opus", "effort": "low"}, "worker": {"family": "sonnet", "effort": "high"}}},
+      "codex": {"models": {"sol": "gpt-6.1-sol", "luna": "gpt-6-luna"}, "tiers": {"planner": {"family": "sol", "effort": "low"}, "worker": {"family": "luna", "effort": "high"}}},
+      "ollama": {"models": {"local": null}, "tiers": {"planner": {"family": "local", "effort": "not_applicable"}, "worker": {"family": "local", "effort": "not_applicable"}}}
+    }
+  },
+  "role_overrides": {}
+}
