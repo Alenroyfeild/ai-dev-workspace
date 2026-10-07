@@ -56,7 +56,7 @@ No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-wo
 - **Safe by default.** Your existing files are never overwritten; conflicts are written beside them as `.ws-new`. One claim per task, with stale-write protection.
 - **Measured, not assumed.** `ws run log` / `ws run report` record which assistant did what, with tokens and time.
 
-All commands: [docs/COMMANDS.md](docs/COMMANDS.md).
+All commands: [docs/COMMANDS.md](docs/COMMANDS.md). See [Workspace concepts](docs/CONCEPTS.md) for a plain-language guide to tasks, memory and delegation.
 
 ## Client compatibility
 
