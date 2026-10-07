@@ -12,10 +12,12 @@ class UpgradeTests(Base):
 
     def test_old_fixture_preview_sidecars_and_second_run(self):
         self.root = Path(self.tmp.name) / 'old-workspace'
-        paths = subprocess.run(['git', 'ls-tree', '-r', '--name-only', '9853713', 'template'], cwd=KIT, capture_output=True, text=True, check=True).stdout.splitlines()
-        for source in paths:
-            path = self.root / source.removeprefix('template/'); path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(subprocess.run(['git', 'show', '9853713:' + source], cwd=KIT, capture_output=True, check=True).stdout)
+        # The first release's template (commit 9853713), stored as a fixture: CI checkouts are shallow.
+        fixture = KIT / 'tests/fixtures/template-0.1.0-beta.1'
+        for source in fixture.rglob('*'):
+            if source.is_file():
+                path = self.root / source.relative_to(fixture); path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(source.read_bytes())
         old = (self.root / 'AGENTS.md').read_bytes()
         rules = self.root / 'AGENTS.md'; rules.write_bytes(old + b'\nUser synthetic rule stays.\n')
         hooks = self.root / '.claude/settings.json'; hooks.parent.mkdir()

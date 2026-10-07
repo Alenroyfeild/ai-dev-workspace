@@ -974,7 +974,9 @@ class ReleaseFeedbackTests(Base):
         self.assertEqual(v('0.1.0'), v('v0.1.0'))
 
     def test_notices_offline_makes_no_network_calls(self):
-        with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}), mock.patch.object(core, '_get_json', side_effect=AssertionError):
+        # Tool detection is pinned so the result does not depend on what the machine has installed.
+        with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}), mock.patch.object(core, '_get_json', side_effect=AssertionError), \
+                mock.patch.object(core, '_detected', return_value=True):
             kinds = [n['kind'] for n in core.notices(self.root)]
         self.assertEqual(kinds, ['feedback'])
 
