@@ -32,7 +32,7 @@ def fingerprint(root):
 
 def markdown(old, new):
     name = re.search(r'<!--\s*ws:managed:([^:]+):', new).group(1)
-    pattern = rf'<!--\s*ws:managed:{re.escape(name)}:[^\n]*?-->\n.*?<!--\s*/ws:managed:{re.escape(name)}\s*-->\n?'
+    pattern = rf'<!--\s*ws:managed:{re.escape(name)}:[^\n]*?-->\r?\n.*?<!--\s*/ws:managed:{re.escape(name)}\s*-->(?:\r?\n)?'
     if len(re.findall(r'<!--\s*ws:managed:' + re.escape(name) + ':', old)) != 1 or len(re.findall(r'<!--\s*/ws:managed:' + re.escape(name) + r'\s*-->', old)) != 1:
         return None
     candidate = re.sub(pattern, lambda m: re.search(pattern, new, re.S).group(), old, count=1, flags=re.S)

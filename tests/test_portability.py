@@ -40,6 +40,12 @@ class PortabilityTests(Base):
                              capture_output=True, timeout=10, env={**os.environ, 'HOME': self.tmp.name, 'WS_OFFLINE': '1'})
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertIn('Inspect the synthetic violet guard', run.stdout)
+        pointer = root / 'GEMINI.md'
+        pointer.write_bytes(pointer.read_bytes().replace(b'Follow', b'Altered').replace(b'\n', b'\r\n'))
+        core.upgrade_workspace(root)
+        self.assertIn('Follow', pointer.read_text())
+        repo = root / ('repo' if os.name == 'nt' else r'repo\Users'); repo.mkdir()
+        core.codebase_map(root, repo); core.codebase_map(root, repo)
 
     def test_windows_command_quotes_metacharacter_and_drive_root_paths(self):
         with mock.patch.object(core, 'WINDOWS', True):
