@@ -20,9 +20,14 @@ def skills():
             for client in ('.claude', '.agents') for p in sorted((core.KIT / 'skills').glob('*/SKILL.md')) if p.parent.name in ('handoff', 'pickup', 'lesson')}
 
 
+def pointer_files():
+    return {'.github/copilot-instructions.md': block('Follow the repository root AGENTS.md for project rules.', 'copilot-instructions'),
+            'GEMINI.md': block('Follow the repository root AGENTS.md for project rules.', 'gemini-instructions')}
+
+
 def fingerprint(root):
     from .orchestration import routing_template
-    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text() + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(core.memory_hooks(root), sort_keys=True))
+    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text() + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(pointer_files(), sort_keys=True) + json.dumps(core.memory_hooks(root), sort_keys=True))
 
 
 def markdown(old, new):
@@ -87,7 +92,7 @@ def upgrade(root, dry_run=False):
         for pack in cfg.get('packs', []): rules = core.pack_rules(rules, pack)
         from .orchestration import routing_template
         desired = {'AGENTS.md': rules, 'routing.json': routing_template(), **{p: json.dumps(core.memory_hooks(root), indent=2) + '\n'
-                   for p in ('.claude/settings.json', '.codex/hooks.json')}, **skills()}
+                   for p in ('.claude/settings.json', '.codex/hooks.json')}, **skills(), **pointer_files()}
         pending, operations = [], []
         for relative, candidate in desired.items():
             path = root / relative; safe(path)

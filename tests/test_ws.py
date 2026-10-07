@@ -66,6 +66,43 @@ class Base(unittest.TestCase):
         self.tmp.cleanup()
 
 
+class MoreClientTests(Base):
+    def test_vscode_connect_writes_project_config_and_doctor_checks_it(self):
+        core.connect(self.root, 'vscode')
+        data = json.loads((self.root / '.vscode/mcp.json').read_text())
+        self.assertEqual(data['servers']['ai-dev-workspace'], core.mcp_command(self.root))
+        self.assertTrue(core.mcp_doctor(self.root, ('vscode',))[0]['ok'])
+        self.assertTrue(core.doctor(self.root)['clients']['vscode'])
+
+    def test_gemini_connect_writes_project_settings_and_doctor_checks_them(self):
+        core.connect(self.root, 'gemini')
+        data = json.loads((self.root / '.gemini/settings.json').read_text())
+        self.assertEqual(data['mcpServers']['ai-dev-workspace'], core.mcp_command(self.root))
+        self.assertTrue(core.mcp_doctor(self.root, ('gemini',))[0]['ok'])
+        self.assertTrue(core.doctor(self.root)['clients']['gemini'])
+
+    def test_pointer_files_are_managed_and_existing_files_are_preserved(self):
+        target = Path(self.tmp.name) / 'pointer-collision'
+        copilot = target / '.github/copilot-instructions.md'
+        gemini = target / 'GEMINI.md'
+        copilot.parent.mkdir(parents=True)
+        copilot.write_text('user copilot instructions')
+        gemini.write_text('user Gemini instructions')
+        core.init(target, 'pointer-proof')
+        self.assertEqual(copilot.read_text(), 'user copilot instructions')
+        self.assertEqual(gemini.read_text(), 'user Gemini instructions')
+        for path in (copilot.with_name(copilot.name + '.ws-new'), gemini.with_name(gemini.name + '.ws-new')):
+            self.assertIn('Follow', path.read_text())
+
+        fresh = Path(self.tmp.name) / 'pointer-upgrade'
+        core.init(fresh, 'pointer-proof')
+        path = fresh / '.github/copilot-instructions.md'
+        path.write_text(path.read_text().replace('Follow', 'Altered') + '\nUser note\n')
+        core.upgrade_workspace(fresh)
+        self.assertIn('Follow', path.read_text())
+        self.assertIn('User note', path.read_text())
+
+
 class SkillDuplicateTests(Base):
     def test_connect_skips_workspace_skill_names_and_preserves_user_skills(self):
         home = Path(self.tmp.name) / 'home'

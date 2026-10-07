@@ -190,6 +190,8 @@ def init(target, name, packs=(), repos=()):
     install_memory_hooks(target, collisions)
     for relative, text in upgrade.skills().items():
         write_preserving(target / relative, text.encode(), collisions)
+    for relative, text in upgrade.pointer_files().items():
+        write_preserving(target / relative, text.encode(), collisions)
     write_preserving(target / 'workspace.json', (json.dumps(cfg, indent=2) + '\n').encode(), collisions)
     for client in ('cursor', 'codex'):
         if shutil.which(client) or (client == 'cursor' and _has_app('Cursor')):
@@ -331,10 +333,13 @@ def client_connected(root, client):
             except (ValueError, SyntaxError):
                 return False
         return fields == mcp_command(root)
-    path = root / ('.mcp.json' if client == 'claude' else '.cursor/mcp.json')
+    locations = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
+                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
+    path, key = (root / locations[client][0], locations[client][1]) if client in locations else (None, None)
+    if path is None: return False
     try:
         data = json.loads(path.read_text())
-        return data.get('mcpServers', {}).get('ai-dev-workspace') == mcp_command(root)
+        return data.get(key, {}).get('ai-dev-workspace') == mcp_command(root)
     except (OSError, ValueError, AttributeError):
         return False
 
@@ -370,14 +375,14 @@ def connect(root, client, write=False, skills=False, verify=False):
     result = _connect_config(root, client, write)
     if skills and client in ('claude', 'codex'):
         result['skills'] = link_skills(client, root)
-    if verify and client in ('claude', 'cursor'):
+    if verify and client in ('claude', 'cursor', 'vscode', 'gemini'):
         result['mcp'] = mcp_doctor(root, (client,))[0]
     return result
 
 
 def _connect_config(root, client, write=False):
-    if client not in ('claude', 'codex', 'cursor'):
-        raise WsError('Client must be claude, codex or cursor.')
+    if client not in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
+        raise WsError('Client must be claude, codex, cursor, vscode or gemini.')
     if write and client != 'codex':
         raise WsError('--write applies only to the Codex global configuration.')
     server = mcp_command(root)
@@ -406,18 +411,21 @@ def _connect_config(root, client, write=False):
         atomic_write(path, original.rstrip('\n') + '\n\n' + block)
         result['connected'] = True
         return result
-    path = root / ('.mcp.json' if client == 'claude' else '.cursor/mcp.json')
+    locations = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
+                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
+    relative, key = locations[client]
+    path = root / relative
     if client_connected(root, client):
         return {'client': client, 'connected': True, 'path': str(path)}
-    data = {'mcpServers': {}}
+    data = {key: {}}
     if path.exists():
         try:
             existing = json.loads(path.read_text())
-            if isinstance(existing, dict) and isinstance(existing.get('mcpServers'), dict):
+            if isinstance(existing, dict) and isinstance(existing.get(key), dict):
                 data = existing
         except (OSError, ValueError):
             pass
-    data['mcpServers']['ai-dev-workspace'] = server
+    data[key]['ai-dev-workspace'] = server
     collision = path.exists()
     destination = path.with_name(path.name + '.ws-new') if collision else path
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -1206,11 +1214,15 @@ def _detected(checks):
 
 
 def _mcp_config(root, client):
-    path = root / ('.mcp.json' if client == 'claude' else '.cursor/mcp.json')
+    locations = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
+                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
+    if client not in locations: return None
+    relative, key = locations[client]
+    path = root / relative
     if not path.exists():
         return None
     try:
-        server = json.loads(path.read_text())['mcpServers']['ai-dev-workspace']
+        server = json.loads(path.read_text())[key]['ai-dev-workspace']
         command, args = server['command'], server.get('args', [])
         if not isinstance(command, str) or not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
             raise ValueError('command and args must be strings')
@@ -1219,7 +1231,7 @@ def _mcp_config(root, client):
         return path, str(exc)
 
 
-def mcp_doctor(root, clients=('claude', 'cursor')):
+def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
     checks = []
     messages = [
         {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 'ws-doctor', 'version': '1'}}},
@@ -1285,7 +1297,11 @@ def doctor(root=None, mcp=False):
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text()) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
-        report['clients'] = {client: client_connected(root, client) for client in ('claude', 'codex', 'cursor')}
+        report['clients'] = {client: client_connected(root, client)
+                             for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
+        report['client_instructions'] = {
+            name: {'path': path, 'present': (root / path).is_file()}
+            for name, path in (('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md'))}
         from . import orchestration
         try:
             report['routes'] = {role: orchestration.route(root, role)

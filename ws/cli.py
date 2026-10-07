@@ -66,7 +66,7 @@ def main(argv=None):
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
-    s.add_argument('client', choices=('claude', 'codex', 'cursor'))
+    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
 
     t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
