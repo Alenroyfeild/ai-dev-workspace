@@ -1,5 +1,7 @@
 import json
 import os
+import shutil
+from pathlib import Path
 from unittest import mock
 from test_ws import Base
 from ws import core, orchestration
@@ -56,3 +58,30 @@ class OrchestrationTests(Base):
             result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
             self.assertEqual(result['exit_code'], 3)
             self.assertEqual(core.run_entries(self.root, 'T-1')[-1]['result'], 'failed')
+
+    def test_selftest_positive_control_disk_verdicts_and_doctor(self):
+        git = shutil.which('git')
+        cases = [('print("expired login")', 'INCONCLUSIVE', 2),
+                 ('from pathlib import Path; print(Path("token.txt").read_text())', 'SELFTEST OK', 0),
+                 ('from pathlib import Path; print(Path("token.txt").read_text()); Path("../outside/new").write_text("x")', 'FAIL', 1),
+                 ('from pathlib import Path; Path("token.txt").write_text("changed")', 'FAIL', 1)]
+        for code, verdict, exit_code in cases:
+            with self.subTest(verdict=verdict), self.fake(code):
+                binary = Path(os.environ['PATH']) / 'git'
+                if not binary.exists(): binary.symlink_to(git)
+                result = orchestration.selftest(self.root, 'codex')
+                self.assertEqual((result['result'], result['exit_code']), (verdict, exit_code))
+                self.assertEqual(core.doctor(self.root)['delegate_selftests']['codex']['result'], verdict)
+
+    def test_selftest_claude_prepares_and_missing_provider_is_inconclusive(self):
+        with self.fake():
+            result = orchestration.selftest(self.root, 'codex', run=False)
+            self.assertIn('read-only', result['command'])
+            shutil.rmtree(result['directory'])
+            Path(os.environ['PATH'], 'claude').symlink_to(Path(os.environ['PATH'], 'codex'))
+            with mock.patch.object(orchestration, 'worker_run', side_effect=AssertionError('must not run Claude')):
+                prepared = orchestration.selftest(self.root, 'claude', run=False)
+            self.assertIn('Read,Glob,Grep', prepared['command'])
+            shutil.rmtree(prepared['directory'])
+        with mock.patch.dict(os.environ, {'PATH': ''}):
+            self.assertEqual(orchestration.selftest(self.root, 'codex')['exit_code'], 2)
