@@ -1,25 +1,27 @@
 # Roadmap
 
-Improvements are driven by recorded feedback (`ws feedback`, GitHub issues) and measured runs (`ws run report`), one at a time.
+The soft beta is shipped. Future work follows user feedback and measured runs; compatibility claims stay limited to what has been tested.
 
-## Now (0.1)
-- [x] Core: tasks, claims, checkpoints, search, lessons, feedback, digest, run log, validate, doctor
-- [x] MCP server (stdio), verified with Claude Code's `mcp list`
-- [x] Pluggable packs: obsidian, local-llm, codex-worker (read-only), ios
-- [x] Think-before-act skill
+## Shipped in v0.1.0-beta.1
+
+- [x] Tasks, claims, checkpoints, handoff and pickup, lessons, search, feedback, digests, run logs, validation and doctor checks.
+- [x] Claude Code and Codex rules, MCP tools, skills and hooks, with automatic decision capture from Claude transcripts only.
+- [x] Portable packs, workspace upgrades, `pipx` packaging and connections for Claude Code, Codex, Cursor, VS Code Copilot and Gemini CLI.
+- [x] Codebase maps, existing Graphify report links, toolbox profiles, tool-load estimates and permission-based assist suggestions.
+- [x] Role routing and bounded read-only delegation with a sandbox self-test.
+- [x] Measured session-memory results with method and limitations published in [MEASUREMENTS.md](MEASUREMENTS.md).
 
 ## Next
-- [ ] **Golden run**: one real task end to end (lead plans, worker explores, lead implements and reviews), logged with `ws run log`, compared against the same task without the workspace. Publishes the first measured token/time numbers.
-- [ ] `pipx install` packaging with the kit data included.
-- [ ] `ws init` interactive mode: ask domain, repos and optional packs.
-- [ ] Automatic token capture where the assistant exposes usage, instead of manual `--tokens-in`.
-- [ ] More domain packs: android, web, backend (contributions welcome).
-- [ ] Feedback triage: `ws feedback` export to GitHub issues.
 
-## Later (only with evidence it is needed)
-- [ ] **Write-capable second-AI worker**, inside a disposable git worktree and an outer container (e.g. Apple `container`), released only after the same hostile self-test passes. Host-level sandboxes alone failed this test in our evaluation: shell writes escaped a workspace-write sandbox.
-- [ ] Agent-flow analytics beyond `ws run report` (e.g. an evaluation framework) if the JSONL log stops being enough.
-- [ ] Optional vector search if `ws search` misses too much on large vaults.
+- [ ] Test documented Cursor, Copilot and Gemini CLI connections in real client sessions.
+- [ ] Extend automatic decision capture beyond Claude when another client exposes a suitable transcript or equivalent.
+- [ ] Prepare the public v0.2 launch based on beta feedback and test results.
+
+## Later, only with evidence
+
+- [ ] Consider a write-capable second-AI worker only inside a disposable worktree and outer container, after the hostile self-test passes.
+- [ ] Add analytics or vector search only if the current run log or search fails real user needs.
 
 ## Not planned
-- A hosted service, a database or a scheduler. The workspace stays files + small tools.
+
+- A hosted service, database or scheduler. The workspace remains files and small tools.
