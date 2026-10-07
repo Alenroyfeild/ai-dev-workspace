@@ -1121,7 +1121,10 @@ def tool_policy(root, entry):
 
 def tool_costs(root=None, usage=None):
     """Measure the kit's MCP schemas and local skill/plugin metadata without changing them."""
-    from mcp import server
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('ws_mcp_server', KIT / 'mcp' / 'server.py')
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)  # our server by path: a top-level 'mcp' import could pick up the unrelated MCP SDK
     reply = server.handle(root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
     schemas = reply['result']['tools']
     schema_costs = [{'name': item['name'], 'bytes': len(json.dumps(item['inputSchema'], separators=(',', ':')).encode()),

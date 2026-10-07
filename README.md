@@ -8,6 +8,31 @@ macOS and Linux only; Windows not supported yet (file locking uses fcntl). Requi
 
 **Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
 
+## What it looks like
+
+A real run, lightly trimmed (Claude Code, synthetic task). Session 1 ends with:
+
+```text
+you:     /handoff DEMO-1. Crash reproduced; cause is a force-unwrap of email in
+         LoginValidator.swift:42. Next: add an empty-email guard and run LoginValidatorTests.
+claude:  (saves the checkpoint with `ws`)
+```
+
+The next day, a brand-new session that remembers nothing:
+
+```text
+you:     hi
+claude:  I've got a task waiting from your earlier session:
+         DEMO-1: Fix login crash on empty email
+         Next action: Add empty-email guard in LoginValidator.validate()
+         (LoginValidator.swift:42) and run LoginValidatorTests
+         Ready to pick up where you left off?
+```
+
+No pasting old chats, no "where were we". The same memory works from Codex or any MCP client.
+
+**Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+
 ## Quick start
 
 ```bash
@@ -31,7 +56,7 @@ No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-wo
 - **Safe by default.** Your existing files are never overwritten; conflicts are written beside them as `.ws-new`. One claim per task, with stale-write protection.
 - **Measured, not assumed.** `ws run log` / `ws run report` record which assistant did what, with tokens and time.
 
-All commands: [docs/COMMANDS.md](docs/COMMANDS.md). Pending review: [assist #14](https://github.com/Alenroyfeild/ai-dev-workspace/pull/14), [tool costs #16](https://github.com/Alenroyfeild/ai-dev-workspace/pull/16), [Codeburn import #15](https://github.com/Alenroyfeild/ai-dev-workspace/pull/15) and [updates #17](https://github.com/Alenroyfeild/ai-dev-workspace/pull/17), [Graphify #13](https://github.com/Alenroyfeild/ai-dev-workspace/pull/13).
+All commands: [docs/COMMANDS.md](docs/COMMANDS.md).
 
 ## Optional packs
 
