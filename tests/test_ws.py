@@ -1,6 +1,7 @@
 import concurrent.futures
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -667,6 +668,72 @@ class InterfaceTests(Base):
                 replies = list(map(json.loads, proc.stdout.splitlines()))
                 self.assertIn(replies[0]['error']['code'], (-32600, -32602))
                 self.assertEqual(replies[-1], {'jsonrpc': '2.0', 'id': 2, 'result': {}})
+    def test_decision_capture_appends_redacts_caps_and_deduplicates(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Keep this exact next action',
+                        notes={'Handoff': 'Existing  human text.\n\n', 'Evidence': 'Existing evidence.'})
+        path = core.task_path(self.root, 'T-1')
+        before = path.read_text()
+        transcript = self.root / 'capture.jsonl'
+        def entry(kind, content):
+            return json.dumps({'type': kind, 'message': {'role': kind, 'content': content}})
+        transcript.write_text('\n'.join([
+            entry('user', [{'type': 'text', 'text': 'We decided: use violet. Never send api_key=syntheticsecret123456 outside.'}]),
+            entry('assistant', [{'type': 'tool_use', 'name': 'Read'}]),
+            entry('user', [{'type': 'tool_result', 'content': 'Must not capture tool output.'}]),
+            entry('assistant', [{'type': 'text', 'text': 'summary ' * 200 + '. Next step: test empty input.'}]),
+            '{torn']))
+        self.assertTrue(core.capture_decisions(self.root, str(transcript)))
+        after = path.read_text()
+        record = core.task_read(self.root, 'T-1', ['Handoff', 'Evidence', 'Next action'])
+        for name in ('Handoff', 'Evidence'):
+            body = record['sections'][name]
+            self.assertIn('Captured', body)
+            self.assertIn('use violet', body)
+            self.assertIn('Next step: test empty input', body)
+            self.assertIn('[REDACTED]', body)
+            self.assertNotIn('syntheticsecret123456', body)
+            self.assertNotIn('capture tool output', body)
+            self.assertLessEqual(len(body[body.index('Captured'):].split()), 150)
+        self.assertEqual(record['sections']['Next action'], 'Keep this exact next action')
+        self.assertFalse(core.capture_decisions(self.root, str(transcript)))
+        self.assertEqual(after, path.read_text())
+        stripped = re.sub(r'\n<!-- ws:captured:[^>]+ -->\n.*?<!-- /ws:captured -->\n', '', after, flags=re.S)
+        self.assertEqual(stripped, before)
+
+    def test_decision_capture_skips_idle_missing_foreign_and_nonclaude(self):
+        transcript = self.root / 'skip.jsonl'
+        task = core.task_path(self.root, 'T-1')
+        core.claim(self.root, 'T-1', 'synthetic')
+        before = task.read_bytes()
+        for records in ([{'type': 'assistant', 'message': {'content': [{'type': 'text', 'text': 'Must stay local'}]}}],
+                        [{'type': 'response_item', 'payload': {'role': 'assistant', 'content': 'Must stay local'}}]):
+            transcript.write_text('\n'.join(map(json.dumps, records)))
+            self.assertFalse(core.capture_decisions(self.root, str(transcript)))
+        self.assertFalse(core.capture_decisions(self.root, str(self.root / 'missing.jsonl')))
+        transcript.write_text(json.dumps({'type': 'assistant', 'message': {'content': [
+            {'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text': 'Next step: test'}]}}))
+        (self.root / '.ws/claims/T-1.json').unlink()
+        self.assertFalse(core.capture_decisions(self.root, str(transcript)))
+        self.assertEqual(task.read_bytes(), before)
+        core.release(self.root, 'T-1', 'synthetic', core.parse_meta(task.read_text())['claim_token'])
+        self.assertFalse(core.capture_decisions(self.root, str(transcript)))
+
+    def test_capture_runs_from_stop_and_precompact_hooks(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        transcript = self.root / 'hooks-capture.jsonl'
+        transcript.write_text(json.dumps({'type': 'user', 'message': {'content': 'Only synthetic violet is allowed.'}}) + '\n' +
+            json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Read'},
+                {'type': 'text', 'text': 'Next step: inspect empty input.'}]}}))
+        for event in ('PreCompact', 'Stop'):
+            run = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook'], cwd=self.root,
+                input=json.dumps({'hook_event_name': event, 'transcript_path': str(transcript)}),
+                capture_output=True, text=True)
+            self.assertEqual(run.returncode, 0, run.stderr)
+            handoff = core.task_read(self.root, 'T-1', ['Handoff'])['sections']['Handoff']
+            self.assertIn('Only synthetic violet', handoff)
+            self.assertEqual(handoff.count('Captured'), 1)
+
     def test_stop_hook_ignores_idle_claude_transcript(self):
         with mock.patch.object(core, 'now', return_value='2020-01-01T00:00:00+00:00'):
             core.claim(self.root, 'T-1', 'synthetic')
