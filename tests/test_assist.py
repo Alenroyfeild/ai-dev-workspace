@@ -7,6 +7,11 @@ from ws import core, assist
 
 
 class AssistTests(Base):
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(assist, 'feature_suggestions')
+        patch.start(); self.addCleanup(patch.stop)
+
     def test_filters_cost_findings_and_caps_suggestions(self):
         names = ['ccd_builtin', 'claude-in-chrome', 'ai-dev-workspace', 'recent', 'graphy-helper', 'idle']
         report = {'findings': [{'id': name, 'title': 'Remove ' + name, 'explanation': name,
