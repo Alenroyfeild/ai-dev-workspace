@@ -100,11 +100,27 @@ class PasteGuardTests(unittest.TestCase):
         code, stdout, stderr = self.invoke_hook('codex', {'hook_event_name': event, 'prompt': too_big})
         self.assertEqual(json.loads(stdout)['decision'], 'block')
         self.assertEqual(len(list((self.root / '.ws/inbox').glob('*.log'))), 1)
-        code, stdout, stderr = self.invoke_hook('codex', {'hook_event_name': event, 'prompt': too_big + '\n!raw'})
+        code, stdout, _ = self.invoke_hook('codex', {'hook_event_name': event, 'prompt': too_big + '\n!raw'})
+        self.assertEqual(json.loads(stdout)['decision'], 'block')
+        self.assertEqual(len(list((self.root / '.ws/inbox').glob('*.log'))), 2)
+        code, stdout, stderr = self.invoke_hook('codex', {'hook_event_name': event, 'prompt': '!raw\n' + too_big})
         self.assertEqual((code, stdout), (0, '{}\n'))
-        self.assertEqual(len(list((self.root / '.ws/inbox').glob('*.log'))), 1)
+        self.assertEqual(len(list((self.root / '.ws/inbox').glob('*.log'))), 2)
         code, stdout, _ = self.invoke_hook('codex', {'hook_event_name': event, 'prompt': 'short prompt'})
         self.assertEqual((code, stdout), (0, '{}\n'))
+
+    def test_block_response_survives_prompt_save_limit(self):
+        prompt = 'x' * (12 * 1024 + 1)
+        for client in ('claude', 'codex', 'cursor', 'gemini'):
+            with self.subTest(client=client), mock.patch.object(core, 'MAX_READ_BYTES', 3):
+                code, stdout, stderr = self.invoke_hook(client, {'hook_event_name': 'UserPromptSubmit', 'prompt': prompt})
+                response = stderr if client == 'claude' else json.loads(stdout)
+                self.assertIn('short question', str(response))
+                self.assertEqual(code, 2 if client == 'claude' else 0)
+                if client == 'codex': self.assertEqual(response['decision'], 'block')
+                if client == 'cursor': self.assertFalse(response['continue'])
+                if client == 'gemini': self.assertEqual(response['decision'], 'deny')
+        self.assertFalse(list((self.root / '.ws/inbox').glob('*.log')))
 
     def test_local_summary_is_gated_by_configured_pack(self):
         err = io.StringIO()
