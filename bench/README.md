@@ -1,5 +1,7 @@
 # Cross-session continuity benchmark
 
+For independent corrected-rollout investigations, run `python3 -m bench.rollout -n 5 --output /tmp/rollout.json` (POSIX, installed Codex `gpt-6-luna`, no installs). It pairs each randomized seed across fresh baseline, workspace and Markdown-handoff arms, keeps expected values and retry audit in parent memory, fixes fixture timestamps, and reports abstentions separately. Setup and completion usage/timing are retained; unavailable Codeburn pricing is null. The correction turn includes a read to exercise the worked-session capture contract.
+
 Run `python3 bench/run.py --provider codex -n 3`. The default is n=5; choose `--model` explicitly to compare models. Claude transport is available with `--provider claude --allow-claude` but is unverified here. No software is installed. Sign in beforehand; unavailable providers stop without fallback.
 
 Scenario data lives in `scenarios/`: fixture files, conversation-only decisions, session prompts and a reference solution. Hidden checks live in `checks/`, outside the worker's directory. Tests prove the initial decision fixture scores 2/6 and its reference fix scores 6/6 with visible tests passing. The 55-file synthetic fixture derives from the original golden run; it contains no customer data.
