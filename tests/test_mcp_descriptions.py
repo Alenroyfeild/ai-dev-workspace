@@ -27,7 +27,7 @@ class McpDescriptionTests(unittest.TestCase):
         self.assertEqual(len(names), 24)
         size = sum(len(json.dumps({key: item[key] for key in ('name', 'description', 'inputSchema')},
                                   separators=(',', ':')).encode()) for item in result)
-        self.assertLessEqual(size, 6046)
+        self.assertLessEqual(size, 6200)  # Includes optional lesson paths/area; keep the payload bounded.
         descriptions = ' '.join(item['description'] for item in result).lower()
         for intent in ('never execute', 'ask before', 'redacted', 'preview-only', 'skip ambiguous'):
             self.assertIn(intent, descriptions)
