@@ -2,6 +2,7 @@
 import difflib
 import json
 import re
+import shlex
 from pathlib import Path
 from . import core
 
@@ -39,7 +40,14 @@ def markdown(old, new):
     return candidate if re.search(pattern, old, re.S) else None
 
 
-MANAGED_HOOK = re.compile(r'(?:^|\s)(?:brief|nudge) --hook(?: --client (?:codex|cursor|gemini))?$')
+def managed_command(command):
+    try: parts = shlex.split(command)
+    except ValueError: return False
+    return (len(parts) in (6, 8) and parts[0] == 'env' and parts[1].startswith('WS_ROOT=')
+            and re.fullmatch(r'python(?:\d+(?:\.\d+)?)?(?:\.exe)?', Path(parts[2]).name) is not None
+            and Path(parts[3]).name == 'ws' and Path(parts[3]).parent.name == 'bin'
+            and parts[4] in ('brief', 'nudge') and parts[5] == '--hook'
+            and (len(parts) == 6 or parts[6] == '--client' and parts[7] in ('codex', 'cursor', 'gemini')))
 
 
 def hooks(old, new):
@@ -50,12 +58,12 @@ def hooks(old, new):
         for event, groups in data.get('hooks', {}).items():
             for index, group in enumerate(groups):
                 for i, hook in enumerate(group.get('hooks', [])):
-                    if event in desired and isinstance(hook.get('command'), str) and MANAGED_HOOK.search(hook['command']):
+                    if event in desired and isinstance(hook.get('command'), str) and managed_command(hook['command']):
                         found[event] = found.get(event, 0) + 1
                         want = desired[event][0]['hooks'][0]
                         changed |= hook != want
                         group['hooks'][i] = want
-                if event in desired and isinstance(group.get('command'), str) and MANAGED_HOOK.search(group['command']):
+                if event in desired and isinstance(group.get('command'), str) and managed_command(group['command']):
                     found[event] = found.get(event, 0) + 1
                     want = desired[event][0]; changed |= group != want; groups[index] = want
         if set(found) != set(desired) or any(n != 1 for n in found.values()):

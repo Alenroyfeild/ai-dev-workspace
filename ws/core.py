@@ -4,6 +4,7 @@ Standard library only. Every function takes the workspace root so the CLI, the M
 server and tests share one implementation.
 """
 import contextlib
+import io
 import ast
 import datetime
 import fcntl
@@ -13,6 +14,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -75,14 +77,53 @@ def config(root):
 
 
 def vault(root):
-    return root / config(root).get('vault', 'vault')
+    value = config(root).get('vault', 'vault')
+    if not isinstance(value, str) or Path(value).is_absolute() or '..' in Path(value).parts:
+        raise WsError('Vault must be a relative workspace directory; review workspace.json.')
+    return inside(root / value, [root])
+
+
+def inside(path, roots):
+    original = Path(path).expanduser()
+    try: path = original.resolve()
+    except (OSError, RuntimeError): raise WsError('Path cannot be resolved safely; check it, then run ws doctor.')
+    if not any(path == Path(r).resolve() or Path(r).resolve() in path.parents for r in roots):
+        raise WsError('Path is outside declared roots; review workspace.json repos or use an explicit CLI path.')
+    return original
+
+
+def read_roots(root):
+    repos = config(root).get('repos', [])
+    if not isinstance(repos, list) or any(not isinstance(p, str) or not p for p in repos):
+        raise WsError('Repos must be a list of paths; review workspace.json, then run ws doctor.')
+    return [root] + [Path(p).expanduser() for p in repos]
+
+
+MAX_READ_BYTES = 50 * 1024 * 1024
+
+
+def read_text(path, roots=None, errors='replace'):
+    try:
+        path = (inside(path, roots) if roots is not None else Path(path).expanduser()).resolve()
+        info = path.stat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_READ_BYTES: raise WsError('Read requires a regular file under 50 MB; run ws digest on a smaller file.')
+        fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_NOFOLLOW', 0))
+        with os.fdopen(fd, 'rb') as source:
+            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode): raise WsError('Non-regular file refused; run ws doctor.')
+            data = source.read(MAX_READ_BYTES + 1)
+        if len(data) > MAX_READ_BYTES: raise WsError('Read exceeds 50 MB; run ws digest on a smaller file.')
+        return data.decode('utf-8', errors=errors)
+    except (OSError, RuntimeError):
+        raise WsError('File cannot be read safely; check the path, then run ws doctor.')
 
 
 def pack_manifest(name):
+    if not isinstance(name, str) or not ID_RE.fullmatch(name): raise WsError('Invalid pack name; run ws pack list.')
     path = KIT / 'packs' / name / 'pack.json'
+    inside(path, [KIT / 'packs'])
     if not path.is_file():
         raise WsError(f'Unknown pack {name}. Available: {", ".join(available_packs())}')
-    return json.loads(path.read_text())
+    return json.loads(read_text(path, [KIT / 'packs']))
 
 
 def available_packs():
@@ -206,20 +247,20 @@ def _map_commands(repo):
     package = repo / 'package.json'
     if package.is_file():
         try:
-            scripts = json.loads(package.read_text()).get('scripts', {})
+            scripts = json.loads(_map_text(package, repo)).get('scripts', {})
             commands.extend(f'npm run {name}' for name in scripts if any(x in name.lower() for x in ('build', 'test', 'run', 'start', 'dev')))
         except json.JSONDecodeError:
             pass
     makefile = next((p for p in (repo / 'Makefile', repo / 'makefile') if p.is_file()), None)
     if makefile:
-        commands.extend(f'make {m.group(1)}' for m in re.finditer(r'^([A-Za-z][\w.-]*):', makefile.read_text(), re.M)
+        commands.extend(f'make {m.group(1)}' for m in re.finditer(r'^([A-Za-z][\w.-]*):', _map_text(makefile, repo), re.M)
                         if any(x in m.group(1).lower() for x in ('build', 'test', 'run', 'start')))
     if (repo / 'Podfile').is_file(): commands.append('pod install')
     if any((repo / p).is_file() for p in ('build.gradle', 'build.gradle.kts', 'gradlew')):
         commands.extend(('./gradlew build', './gradlew test', './gradlew run'))
     pyproject = repo / 'pyproject.toml'
     if pyproject.is_file():
-        data = pyproject.read_text()
+        data = _map_text(pyproject, repo)
         if 'pytest' in data: commands.append('python -m pytest')
         if '[build-system]' in data: commands.append('python -m build')
     if (repo / 'Cargo.toml').is_file(): commands.extend(('cargo build', 'cargo test', 'cargo run'))
@@ -228,6 +269,11 @@ def _map_commands(repo):
 
 
 SKIP_DIRS = {'.git', 'node_modules', 'Pods', 'build', 'DerivedData', 'dist', '.venv', 'venv', '__pycache__', 'Carthage', '.build'}
+
+
+def _map_text(path, repo):
+    try: return read_text(path, [repo])
+    except WsError: return ''
 
 
 def _repo_files(repo):
@@ -243,13 +289,14 @@ def _graphify_report(repo):
     return path if path.is_file() else None
 
 
-def codebase_map(root, repo=None):
+def codebase_map(root, repo=None, allow_external=False):
     root = Path(root).resolve()
     repos = config(root).get('repos', [])
     selected = repo or (repos[0] if repos else None)
     if not selected:
         raise WsError('Codebase map needs a repository path: `ws map /path/to/repo`.')
     repo = Path(selected).expanduser().resolve()
+    if not allow_external: inside(repo, read_roots(root))
     if not repo.is_dir():
         raise WsError('Codebase map needs a repository path: `ws map /path/to/repo`.')
     files = _repo_files(repo)
@@ -268,7 +315,7 @@ def codebase_map(root, repo=None):
     for name in run.stdout.splitlines():
         if name: changed[name] = changed.get(name, 0) + 1
     readme = next((p for p in repo.glob('README*') if p.is_file()), None)
-    heading = next((line[2:].strip() for line in readme.read_text(errors='replace').splitlines() if line.startswith('# ')), 'No README heading') if readme else 'No README found'
+    heading = next((line[2:].strip() for line in _map_text(readme, repo).splitlines() if line.startswith('# ')), 'No README heading') if readme else 'No README found'
     section = ['<!-- ws:codebase-map:start -->', f'Repository: `{repo}`', '', f'## README\n{heading}', '', '## Languages']
     section.extend([f'- {name}: {count}' for name, count in sorted(languages.items(), key=lambda x: (-x[1], x[0]))] or ['- None detected'])
     section.extend(['', '## Commands'])
@@ -280,7 +327,7 @@ def codebase_map(root, repo=None):
     report = _graphify_report(repo)
     if report:
         headings = []
-        with report.open(errors='replace') as source:
+        with io.StringIO(_map_text(report, repo)) as source:
             for line in source:
                 if line.startswith('#'):
                     headings.append(line.lstrip('#').strip())
@@ -289,9 +336,9 @@ def codebase_map(root, repo=None):
         section.extend(['', '## Graphify report', f'- [Graphify report]({report})'])
         section.extend([f'- {heading}' for heading in headings])
     section.append('<!-- ws:codebase-map:end -->')
-    rendered = '\n'.join(section) + '\n'
-    path = vault(root) / 'Project' / 'Codebase map.md'
-    existing = path.read_text() if path.exists() else '# Codebase map\n'
+    rendered = redact('\n'.join(section) + '\n')
+    path = inside(vault(root) / 'Project' / 'Codebase map.md', [root])
+    existing = read_text(path, [root]) if path.exists() else '# Codebase map\n'
     pattern = r'<!-- ws:codebase-map:start -->.*?<!-- ws:codebase-map:end -->\n?'
     text = re.sub(pattern, rendered, existing, flags=re.S) if re.search(pattern, existing, re.S) else existing.rstrip() + '\n\n' + rendered
     with lock(root): atomic_write(path, text)
@@ -388,7 +435,7 @@ def connect(root, client, write=False, skills=False, verify=False):
     if client in ('cursor', 'codex'):
         from .upgrade import hooks
         relative = {'cursor': '.cursor/hooks.json', 'codex': '.codex/hooks.json'}[client]
-        path = root / relative; candidate = json.dumps(memory_hooks(root, client), indent=2) + '\n'
+        path = inside(root / relative, [root]); candidate = json.dumps(memory_hooks(root, client), indent=2) + '\n'
         with lock(root):
             merged = hooks(path.read_text(), candidate) if path.exists() else candidate
             collisions = []
@@ -403,21 +450,24 @@ def connect(root, client, write=False, skills=False, verify=False):
 
 
 def _connect_gemini(root):
-    from .upgrade import MANAGED_HOOK
-    path = root / '.gemini/settings.json'
+    from .upgrade import managed_command
+    path = inside(root / '.gemini/settings.json', [root])
     with lock(root):
         try:
-            data = json.loads(path.read_text()) if path.exists() else {}
+            data = json.loads(read_text(path, [root])) if path.exists() else {}
             if not isinstance(data, dict): raise ValueError()
+            if not isinstance(data.get('mcpServers', {}), dict) or not isinstance(data.get('hooks', {}), dict): raise ValueError()
+            for groups in data.get('hooks', {}).values():
+                if not isinstance(groups, list) or any(not isinstance(g, dict) or not isinstance(g.get('hooks', []), list) or any(not isinstance(h, dict) for h in g.get('hooks', [])) for g in groups): raise ValueError()
         except (OSError, ValueError):
             collisions = []
             write_preserving(path, (json.dumps(dict(mcpServers={'ai-dev-workspace': mcp_command(root)}, **memory_hooks(root, 'gemini')), indent=2) + '\n').encode(), collisions)
-            return {'client': 'gemini', 'connected': False, 'path': str(path), 'note': 'Existing settings are not valid JSON; proposal written beside them.'}
+            return {'client': 'gemini', 'connected': False, 'path': str(path), 'note': 'Existing settings are invalid; review the proposal, then run ws doctor.'}
         servers = data.setdefault('mcpServers', {})
         servers['ai-dev-workspace'] = mcp_command(root)
         hooks = data.setdefault('hooks', {})
         for event, groups in memory_hooks(root, 'gemini')['hooks'].items():
-            kept = [g for g in hooks.get(event, []) if not any(isinstance(h.get('command'), str) and MANAGED_HOOK.search(h['command']) for h in g.get('hooks', []))]
+            kept = [g for g in hooks.get(event, []) if not any(isinstance(h.get('command'), str) and managed_command(h['command']) for h in g.get('hooks', []))]
             hooks[event] = kept + groups
         atomic_write(path, json.dumps(data, indent=2) + '\n')
     return {'client': 'gemini', 'connected': True, 'path': str(path), 'hooks': {'path': str(path), 'collisions': []}}
@@ -456,7 +506,7 @@ def _connect_config(root, client, write=False):
         return result
     locations = MCP_LOCATIONS
     relative, key = locations[client]
-    path = root / relative
+    path = inside(root / relative, [root])
     if client_connected(root, client):
         return {'client': client, 'connected': True, 'path': str(path)}
     data = {key: {}}
@@ -498,6 +548,7 @@ def atomic_write(path, text):
 
 @contextlib.contextmanager
 def lock(root):
+    inside(root / '.ws', [root]); inside(root / '.ws/lock', [root])
     (root / '.ws').mkdir(exist_ok=True)
     with (root / '.ws' / 'lock').open('a') as stream:
         try:
@@ -553,22 +604,23 @@ def digest_text(text):
 def task_path(root, task_id):
     if not ID_RE.fullmatch(task_id or ''):
         raise WsError('Task IDs use letters, digits, dot, dash or underscore (e.g. JIRA-123, fix-login).')
-    return vault(root) / 'Tasks' / f'{task_id}.md'
+    return inside(vault(root) / 'Tasks' / f'{task_id}.md', [root])
 
 
 def _local_claim_path(root, task_id):
     if not ID_RE.fullmatch(task_id or ''):
         raise WsError('Task IDs use letters, digits, dot, dash or underscore (e.g. JIRA-123, fix-login).')
-    return root / '.ws' / 'claims' / f'{task_id}.json'
+    return inside(root / '.ws' / 'claims' / f'{task_id}.json', [root])
 
 
 def _claim_defaults(root, task_id, worker, token):
     if worker is not None and token is not None:
         return worker, token
-    path = _local_claim_path(root, task_id)
     try:
-        local = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError):
+        path = _local_claim_path(root, task_id)
+        local = json.loads(read_text(path, [root]))
+        if not isinstance(local, dict): return worker, token
+    except (OSError, ValueError, RecursionError):
         return worker, token
     return worker if worker is not None else local.get('worker'), token if token is not None else local.get('token')
 
@@ -605,8 +657,10 @@ def claim_note(root, task_id, meta):
 
 def task_list(root):
     out = []
-    for path in sorted((vault(root) / 'Tasks').glob('*.md')):
-        text = path.read_text()
+    directory = inside(vault(root) / 'Tasks', [root])
+    for path in sorted(directory.glob('*.md')):
+        try: text = read_text(path, [root])
+        except WsError: continue
         meta = parse_meta(text)
         title = re.search(r'^# (.+)$', text, re.M)
         out.append({'id': meta.get('id', path.stem), 'title': title.group(1) if title else path.stem,
@@ -712,13 +766,15 @@ def search(root, query, limit=20):
             paths.append((report, str(report)))
     for path, shown in paths:
         score, best = 0, []
-        with path.open(errors='replace') as source:
+        try: contents = read_text(path, read_roots(root))
+        except WsError: continue
+        with io.StringIO(contents) as source:
             for i, line in enumerate(source, 1):
                 low = line.lower()
                 n = sum(low.count(w) for w in words)
                 if n:
                     score += n + (3 if line.startswith('#') else 0)
-                    best.append((n, i, line.strip()[:160]))
+                    best.append((n, i, redact(line.strip())[:160]))
         if score:
             best.sort(reverse=True)
             hits.append({'path': shown, 'score': score,
@@ -800,7 +856,7 @@ def session_search(query, roots=None):
 
 
 def _append_line(root, rel, line):
-    path = root / rel
+    path = inside(root / rel, [root])
     with lock(root):
         text = path.read_text() if path.exists() else ''
         atomic_write(path, text.rstrip('\n') + '\n' + line + '\n')
@@ -857,7 +913,7 @@ def capture_decisions(root, transcript_path, client='claude'):
         if path.stat().st_size > 50 * 1024 * 1024:
             return False
         # ponytail: scan at most 50 MB per hook; add incremental reads if sessions outgrow this.
-        with path.open(encoding='utf-8') as stream:
+        with io.StringIO(read_text(path, errors='strict')) as stream:
             from .transcripts import records
             for line in stream if client == 'claude' else records(stream, client):
                 try:
@@ -879,14 +935,16 @@ def capture_decisions(root, transcript_path, client='claude'):
                 else:
                     decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+', text)
                                      if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
-    except (OSError, UnicodeError, ValueError, TypeError, AttributeError, KeyError) as error:
-        if client == 'claude' and not isinstance(error, (OSError, UnicodeError)): raise
+    except WsError:
+        return False
+    except (OSError, UnicodeError, ValueError, TypeError, AttributeError, KeyError, RecursionError):
         return False
     if not worked or not (decisions or summary):
         return False
     body = 'User constraints: ' + ' '.join(redact(' '.join(decisions)).split()[:95])
     steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+', summary) if re.search(r'\bnext (step|action)\b', s, re.I)]
     body += '\nLast assistant summary / next step: ' + ' '.join((' '.join(steps) + ' ' + summary).split()[:35])
+    body = body.replace('<!--', '&lt;!--')
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
     marker = '<!-- ws:captured:' + digest_text(str(Path(transcript_path).resolve()))[:16] + ' -->'
     block = marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
@@ -973,10 +1031,10 @@ def _shape(value, depth=0):
 ERR_RE = re.compile(r'\b(error|fatal|failed|failure|exception|warning|denied|panic|traceback)\b', re.I)
 
 
-def digest_file(path, max_lines=60):
+def digest_file(path, max_lines=60, root=None):
     """Deterministic summary of a big file: JSON shape, or deduplicated error lines of a log."""
     path = Path(path)
-    raw = path.read_text(errors='replace')
+    raw = read_text(path, read_roots(root) if root is not None else None)
     out = {'file': redact(str(path)), 'bytes': len(raw), 'lines': raw.count('\n') + 1}
     try:
         out['json_shape'] = _shape(json.loads(raw))
