@@ -691,6 +691,12 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     title = redacted_line(title, 'Title')
     branch = redacted_line(branch, 'Branch')
     repo = redacted_line(repo, 'Repo')
+    configured_repos = config(root).get('repos', [])
+    if not repo and isinstance(configured_repos, list) and len(configured_repos) == 1:
+        candidate = configured_repos[0]
+        if isinstance(candidate, str):
+            normalized = redacted_line(candidate, 'Repo')
+            repo = normalized if normalized == candidate else ''
     path = task_path(root, task_id)
     if path.exists():
         raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
@@ -995,14 +1001,23 @@ def brief(root):
     guard = repeat_guard(root)
     active = [t for t in task_list(root) if t['status'] == 'in_progress']
     if not active:
-        return guard or 'No in-progress task. Find or create the task before working.'
+        claimed = [t for t in task_list(root) if t['status'] != 'done' and t['claim'] == 'claimed in this workspace: continue; ws claim resumes it']
+        if len(claimed) == 1:
+            active = claimed
+        else:
+            return guard or 'No in-progress task. Find or create the task before working.'
     task = next((t for t in active if t['claimed_by']), active[0])
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     def words(text, limit):
         return ' '.join(redact(text).split()[:limit])
+    next_action = record['sections']['Next action']
+    saved_next = bool(next_action.strip()) and (
+        record['meta'].get('checkpoint_count', 0) not in (0, '0', '')
+        or next_action.strip() != 'Read the code involved and fill Evidence.')
     lines = ['Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.',
              f"Task {task['id']}: {words(task['title'], 15)}",
-             'Next action: ' + words(record['sections']['Next action'], 60),
+             'Next action: ' + (words(next_action, 60) if saved_next
+                                else 'Not saved yet. Choose the next step before continuing.'),
              'Blockers: ' + words(record['sections']['Blockers'], 25)]
     if record['claim']:
         lines.append('Claim: ' + record['claim'])

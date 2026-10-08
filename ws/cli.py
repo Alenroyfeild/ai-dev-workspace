@@ -306,7 +306,17 @@ def main(argv=None):
                 linked = ', '.join(result['skills']['linked']) or 'none'
                 kept = ', '.join(result['skills']['kept']) or 'none'
                 skipped = ', '.join(result['skills']['skipped']) or 'none'
-                print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; skipped workspace-provided: {skipped}. Start a new session.", file=sys.stderr)
+                print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+                location = '.claude/skills' if a.client == 'claude' else '.agents/skills'
+                project_skills = Path(root) / location
+                if project_skills.is_dir() and any((p / 'SKILL.md').is_file() for p in project_skills.iterdir() if p.is_dir()):
+                    print(f'Project skills: available in {location}.', file=sys.stderr)
+                print('Restart or reopen the client; approve project MCP/hooks if prompted.', file=sys.stderr)
+            if a.client == 'codex':
+                if result['connected']:
+                    print('Codex MCP config: already configured for this workspace.', file=sys.stderr)
+                else:
+                    print('Codex MCP config: preview only; not applied. To apply it, run `ws connect codex --write` (an existing config is backed up).', file=sys.stderr)
             out(result['config'] if a.client == 'codex' and not a.write else result)
         elif a.cmd == 'notices':
             out('\n'.join(f"- {n['message']} → {n['suggest']}" for n in core.notices(root)) or 'Nothing to report.')
