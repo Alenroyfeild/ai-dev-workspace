@@ -262,7 +262,7 @@ def main(argv=None):
         if a.cmd == 'status':
             result = core.status(root)
             out(text_status(result) if a.text else result)
-        elif a.cmd == 'map': out(core.codebase_map(root, a.repo))
+        elif a.cmd == 'map': out(core.codebase_map(root, a.repo, allow_external=bool(a.repo)))
         elif a.cmd == 'pack':
             from . import packs
             if a.action == 'add' and a.source and not a.name: result = packs.add(root, a.source)
