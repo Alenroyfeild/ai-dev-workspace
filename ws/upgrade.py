@@ -43,7 +43,9 @@ def markdown(old, new):
 def managed_command(command):
     """Our hook command, in the old `env WS_ROOT=<dir> python bin/ws ...` form or the portable
     `python bin/ws --workspace-root <dir> ...` form (Windows-safe)."""
-    try: parts = shlex.split(command)
+    try:
+        parts = shlex.split(command)
+        if parts[:1] == ['powershell.exe']: parts = core.encoded_hook_args(parts)
     except ValueError: return False
     if len(parts) >= 2 and parts[0] == 'env' and parts[1].startswith('WS_ROOT='):
         parts = parts[2:]
