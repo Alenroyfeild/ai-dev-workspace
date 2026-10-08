@@ -16,7 +16,7 @@ macOS, Linux and Windows. Requires Python 3.9+ and git. No pip packages.
 
 ## 2. Create a workspace
 
-One workspace per product (it can serve several repos). `ws map` also links an existing `graphify-out/GRAPH_REPORT.md` and its top headings; `ws search` searches that report. The kit never runs Graphify. is pending review.
+One workspace per product (it can serve several repos). `ws map` also links an existing `graphify-out/GRAPH_REPORT.md` and its top headings; `ws search` searches that report. The kit never runs Graphify.
 
 ```bash
 ws init ~/work/myapp-workspace --name myapp --repo ~/code/myapp --pack obsidian
@@ -31,15 +31,17 @@ Existing files are kept. Proposed kit content goes beside them as `.ws-new`; rev
 
 Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, or `ws connect gemini`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints the exact global-config block; `ws connect codex --write` appends it with a backup, refusing conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
 
+### Client compatibility
+
 | Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI |
 |---|---|---|---|---|---|
 | Rules | proven | proven | documented, untested | documented, untested | documented, untested |
 | MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
-| Hooks | proven | proven | documented, untested | not wired yet (client supports hooks) | documented, untested |
-| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
+| Hooks | proven | proven | documented, untested | not available | documented, untested |
+| Skills | proven | proven | not available | not available | not available |
 | Automatic capture | proven | proven | documented, untested | not available | documented, untested |
 
-Only Claude Code and Codex have been tested with rules, MCP tools, hooks and skills. Automatic capture is proven for Claude Code only. `documented, untested` means the client's docs support it and `ws connect` sets it up, but nobody has run it yet. `not wired yet` means the client supports the feature but the workspace does not install it for that client yet.
+“Proven” means exercised with that client; “documented, untested” means configuration is provided but has not been tested in a live client. Captured text is always unverified and should be reviewed.
 
 **Claude Code** – open the workspace folder. `CLAUDE.md` loads `AGENTS.md`; `.mcp.json` registers the MCP server. Claude Code asks once to approve the project MCP server; approve it (or check with `claude mcp list`). To work on code in another folder, add that folder as an additional working directory.
 
@@ -51,7 +53,7 @@ command = "python3"
 args = ["/path/to/ai-dev-workspace/mcp/server.py", "--root", "/path/to/myapp-workspace"]
 ```
 
-**Any other MCP client** (Cursor, Windsurf, …) – use the same command and args as its stdio server config.
+For Cursor, Copilot and Gemini CLI, use the `ws connect` command above to write the client-specific project config. Other MCP clients can use the stdio command and arguments shown for Codex.
 
 **Think-before-act skill (Claude Code)**:
 
@@ -109,7 +111,7 @@ Run `ws connect claude` once to link the kit skills into `~/.claude/skills`, or 
 
 New workspaces include Claude Code and Codex project hooks. Approve their hook definitions in the client. SessionStart injects `ws brief`; Claude Stop requests a checkpoint once when a claim is at least 30 minutes stale. Plain `ws nudge` is read-only. Stop/PreCompact capture cue-bearing user sentences and the last assistant summary/next step after tool use, redacted and capped at 150 words per dated Captured block in Handoff only. Each session replaces its own block; existing human text, Evidence and Next action stay intact. Capture requires exactly one locally owned, unfinished claim. Claude behavior is unchanged; Codex supports chat JSONL and persisted response-item JSONL, excluding injected context by its metadata. Missing/unreadable, oversized (50 MB) or unsupported transcripts are skipped. Captured text remains unverified; use the handoff skill for precise memory.
 
-`ws connect cursor` adds project `.cursor/hooks.json`: sessionStart supplies additional context; stop, preCompact and sessionEnd capture from the provided transcript path. `ws connect gemini` currently adds lifecycle hooks only in `.gemini/settings.json`; rules/MCP connection is a separate setup step. SessionStart supplies context; AfterAgent captures each turn, with PreCompress/SessionEnd as additional opportunities. Gemini supports conversation JSON and append-only JSONL with content patches/rewinds; tool results and thoughts are excluded. Cursor/Gemini are documented and fixture-tested, not proven in their real clients. Cursor transcripts must be enabled; its sessionStart is fire-and-forget. Gemini SessionEnd/PreCompress are best-effort, so AfterAgent also saves. See [Cursor hooks](https://cursor.com/docs/hooks), [Gemini hooks](https://geminicli.com/docs/hooks/reference/), and [Gemini configuration](https://geminicli.com/docs/reference/configuration/). Other clients currently get rules plus MCP only, without automatic lifecycle memory in this kit.
+`ws connect cursor` writes its project MCP and hook settings; sessionStart supplies context, while stop, preCompact and sessionEnd can capture the provided transcript. `ws connect gemini` writes MCP settings and lifecycle hooks in `.gemini/settings.json`; SessionStart supplies context and AfterAgent captures each turn, with PreCompress/SessionEnd as additional opportunities. Gemini supports conversation JSON and append-only JSONL with content patches/rewinds; tool results and thoughts are excluded. Cursor and Gemini are fixture-tested, but their real clients remain untested. Cursor transcripts must be enabled; its sessionStart is fire-and-forget. Gemini SessionEnd/PreCompress are best-effort, so AfterAgent also saves. Copilot gets project rules and MCP configuration but no kit hooks or skills. See [Cursor hooks](https://cursor.com/docs/hooks), [Gemini hooks](https://geminicli.com/docs/hooks/reference/), and [Gemini configuration](https://geminicli.com/docs/reference/configuration/).
 
 `ws upgrade` updates recognized workspace hook commands for connected clients, preserves unrelated settings/handlers, and stages `.ws-new` proposals for ambiguous/unmarked hook files. Review proposed files and approve changed hooks again; disabled/untrusted hooks cannot capture. No global config is needed for lifecycle hooks.
 
