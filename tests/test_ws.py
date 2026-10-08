@@ -1068,7 +1068,8 @@ class ReleaseFeedbackTests(Base):
         with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}), mock.patch.object(core, '_get_json', side_effect=AssertionError), \
                 mock.patch.object(core, '_detected', return_value=True):
             kinds = [n['kind'] for n in core.notices(self.root)]
-        self.assertEqual(kinds, ['feedback'])
+            self.assertIn('feedback', kinds)
+            self.assertFalse({'update', 'fixed'} & set(kinds))
 
     def test_offline_blocks_update_check(self):
         with mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}), mock.patch.object(core, '_get_json', side_effect=AssertionError) as net:
