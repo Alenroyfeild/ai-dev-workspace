@@ -6,6 +6,7 @@ Run: python3 mcp/server.py --root <workspace>   (or set WS_ROOT). No dependencie
 import argparse
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -213,6 +214,8 @@ def handle(root, msg):
 
 
 def main():
+    if os.name == 'nt':
+        for stream in (sys.stdin, sys.stdout, sys.stderr): stream.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser()
     p.add_argument('--root', help='workspace directory (default: WS_ROOT or current directory)')
     root = core.find_root(p.parse_args().root)

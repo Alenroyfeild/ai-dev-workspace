@@ -211,15 +211,16 @@ class TaskTests(Base):
         (destination / 'lesson').mkdir(parents=True)
         (destination / 'lesson/SKILL.md').write_text('user skill')
         (destination / 'pickup').symlink_to(home / 'missing', target_is_directory=True)
+        original_target = os.readlink(destination / 'pickup')
         with mock.patch.object(Path, 'home', return_value=home):
             result = core.connect(self.root, 'claude', skills=True)
             self.assertTrue({'handoff', 'pickup', 'lesson'} <= set(result['skills']['skipped']))
             self.assertNotIn('handoff', result['skills']['linked'])
             self.assertEqual((destination / 'lesson/SKILL.md').read_text(), 'user skill')
-            self.assertEqual(os.readlink(destination / 'pickup'), str(home / 'missing'))
+            self.assertEqual(os.readlink(destination / 'pickup'), original_target)
             core.connect(self.root, 'claude', skills=True)
             self.assertEqual((destination / 'lesson/SKILL.md').read_text(), 'user skill')
-            self.assertEqual(os.readlink(destination / 'pickup'), str(home / 'missing'))
+            self.assertEqual(os.readlink(destination / 'pickup'), original_target)
 
     def test_codex_connect_links_to_current_user_skill_directory(self):
         home = Path(self.tmp.name) / 'home'
@@ -715,7 +716,7 @@ class KnowledgeTests(Base):
         fake_bin = Path(self.tmp.name) / 'bin'
         fake_bin.mkdir()
         for name in ('codeburn', 'graphify'):
-            path = fake_bin / name
+            path = fake_bin / (name + '.cmd' if os.name == 'nt' else name)
             path.write_text('#!/bin/sh\n')
             path.chmod(0o755)
         with mock.patch.dict(os.environ, {'PATH': str(fake_bin)}, clear=False):

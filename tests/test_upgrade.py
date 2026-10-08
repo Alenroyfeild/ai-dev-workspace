@@ -8,7 +8,7 @@ from ws import core
 
 class UpgradeTests(Base):
     def snapshot(self):
-        return {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        return {p.relative_to(self.root).as_posix(): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
 
     def test_old_fixture_preview_sidecars_and_second_run(self):
         self.root = Path(self.tmp.name) / 'old-workspace'
@@ -41,7 +41,7 @@ class UpgradeTests(Base):
 
     def test_managed_markdown_and_hook_objects_preserve_outside_bytes(self):
         rules = self.root / 'AGENTS.md'
-        rules.write_text('User prefix\n' + rules.read_text() + '\nUser suffix\n')
+        rules.write_bytes(('User prefix\n' + rules.read_text() + '\nUser suffix\n').encode())
         hook = self.root / '.claude/settings.json'
         text = hook.read_text()
         text = text[:-2] + ', "user": {"text": "braces { inside a string", "spaces":  3}\n}\n'
