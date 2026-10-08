@@ -1001,22 +1001,24 @@ def _capture_words(text, limit):
 
 
 def _constraint_clauses(text):
-    return re.split(r'(?<=[.!?])\s+|\n+|;\s*', text)
+    return re.split(r'(?<=[.!?])\s+|\n+', text)
 
 
-def _constraint_budget(clauses, limit):
+def _constraint_budget(clauses, limit, multiline=False):
     parts = []
     for clause in clauses:
-        if limit <= 0: break
+        if limit <= int(multiline): break
         if not clause.strip(): continue
-        clipped = _capture_words(clause, limit); parts.append(clipped)
+        clipped = _capture_words(clause, limit - int(multiline))
+        if multiline: clipped = '- ' + clipped
+        parts.append(clipped)
         limit -= len(clipped.split())
-    return '; '.join(parts)
+    return ('\n' if multiline else '; ').join(parts)
 
 
 def _captured_step(summary):
     latest = ''
-    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|,)\s*', summary, re.I):
+    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*', summary, re.I):
         if re.search(r'\b(?:no|not(?:\s+have)?|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I): continue
         latest = re.split(r'(?<=[.!?])\s+|\n+', summary[match.start():])[0]
     return latest
@@ -1041,11 +1043,13 @@ def brief(root):
     if captured:
         memory = captured[-1]
         constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
+        constraints = constraints.removeprefix('User constraints:').strip()
+        clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
         lines.append('Captured last session (unverified): User constraints: ' +
-                     _constraint_budget(_constraint_clauses(constraints.removeprefix('User constraints: ')), 28))
+                     _constraint_budget(clauses, 28))
         if separator:
             lines.append('Captured next step (unverified): ' + _capture_words(step, 25))
-            action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
+            action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
             def normalized(value):
                 return ' '.join(value.strip(' \t\n*_`.:').split()).casefold()
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
@@ -1093,7 +1097,7 @@ def capture_decisions(root, transcript_path, client='claude'):
     if not worked or not (decisions or summary):
         return False
     # Newest corrections get the budget first; captured memory never replaces verified sections.
-    body = 'User constraints: ' + _constraint_budget(reversed(decisions), 95)
+    body = 'User constraints:\n' + _constraint_budget(reversed(decisions), 95, multiline=True)
     body += '\nLast assistant summary / next step: ' + _capture_words(_captured_step(summary) or summary, 35)
     body = body.replace('<!--', '&lt;!--')
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
