@@ -39,6 +39,21 @@ class CaptureBudgetTests(Base):
         core.capture_decisions(self.root, str(path))
         self.assertIn('validate cobalt', core.brief(self.root))
 
+    def test_negation_and_long_clause_correction_survive(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Inspect amber.')
+        path = self.root / 'clauses.jsonl'
+        def capture(summary):
+            path.write_text('\n'.join(map(json.dumps, [
+                {'type': 'user', 'message': {'content': 'Do not always run migrations.'}},
+                {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text': summary}]}}
+            ]))); core.capture_decisions(self.root, str(path))
+        capture('Next step: ' + 'old ' * 60 + 'but validate cobalt instead.')
+        brief = core.brief(self.root)
+        self.assertIn('Do not always run migrations', brief); self.assertIn('validate cobalt', brief)
+        capture('We do not have a next step.')
+        self.assertNotIn('differs from saved checkpoint', core.brief(self.root))
+
     def test_newest_next_step_within_summary_wins(self):
         core.claim(self.root, 'T-1', 'synthetic')
         path = self.root / 'steps.jsonl'
