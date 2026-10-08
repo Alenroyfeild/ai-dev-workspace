@@ -9,7 +9,7 @@ An AI Dev Workspace is a local folder that keeps useful project context between 
 | Claim | A short lock showing who is working on a task. | `ws claim APP-1` |
 | Checkpoint | The status and next step saved for another session. | `ws checkpoint APP-1 --status in_progress --next "Add the guard"` |
 | Brief | A short summary of the active task and matching lessons. | `ws brief` |
-| Capture | Claude hooks can save decisions from its transcript; captured notes are unverified. | `ws connect claude` |
+| Capture | Claude Code and Codex hooks can capture supported transcript decisions; captured notes are unverified. | `ws connect claude` |
 | Lesson | A reusable rule saved after learning something. | `ws lesson add "Guard empty emails" --path "src/auth/*" --area auth` |
 | Routing | The configured provider choice for a role. | `ws route explorer` |
 | Delegate | Prepare a bounded, read-only worker request for review. | `ws delegate APP-1 --role explorer` |
