@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from unittest import mock
 from test_ws import Base, KIT
 from ws import core
 
@@ -40,3 +41,5 @@ class CaptureHealthTests(Base):
         path = self.root / 'idle.jsonl'
         path.write_text(json.dumps({'type': 'user', 'message': {'content': 'Only synthetic.'}}))
         self.assertEqual(self.hook(path)['reason'], 'no_work_or_memory')
+        with mock.patch('pathlib.Path.exists', side_effect=PermissionError('private details')):
+            self.assertEqual(core.capture_health(self.root)['reason'], 'unreadable_health')
