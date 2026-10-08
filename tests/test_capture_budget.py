@@ -51,3 +51,15 @@ class CaptureBudgetTests(Base):
         brief = core.brief(self.root)
         self.assertIn('must use cobalt', brief)
         self.assertNotIn('differs from saved checkpoint', brief)
+
+    def test_last_next_action_clause_without_colon(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Validate amber.')
+        path = self.root / 'clauses.jsonl'
+        path.write_text(json.dumps({'type': 'assistant', 'message': {'content': [
+            {'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text':
+                'The next step is ' + 'old ' * 60 + '; the next action is validate cobalt.'}]}}))
+        core.capture_decisions(self.root, str(path))
+        brief = core.brief(self.root)
+        self.assertIn('validate cobalt', brief)
+        self.assertIn('differs from saved checkpoint', brief)
