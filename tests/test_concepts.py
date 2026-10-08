@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ConceptsTests(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'ws connect links skills with symlinks, restricted on Windows')
     def test_examples_run_in_a_throwaway_workspace(self):
         page = ROOT / 'docs/CONCEPTS.md'
         text = page.read_text()

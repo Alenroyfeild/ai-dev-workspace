@@ -1,3 +1,4 @@
+import unittest
 import json
 import os
 import shutil
@@ -20,6 +21,7 @@ class OrchestrationTests(Base):
             path.write_text('#!' + sys.executable + '\n' + code + '\n'); path.chmod(0o755)
         return path
 
+    @unittest.skipIf(os.name == 'nt', 'the fake PATH symlinks git, restricted on Windows')
     def test_reviewer_diff_is_bounded_redacted_and_counted(self):
         repo = self.root / 'fixture'; repo.mkdir(); source = repo / 'calc.py'
         git = shutil.which('git'); subprocess.run([git, 'init', '-q', str(repo)], check=True)

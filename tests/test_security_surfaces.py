@@ -1,3 +1,4 @@
+import unittest
 import json
 import os
 import subprocess
@@ -40,6 +41,7 @@ class SurfaceSecurityTests(Base):
         claim=self.root/'.ws/claims/T-1.json';outside=self.root.parent/'claim.json';claim.rename(outside);claim.symlink_to(outside)
         self.assertEqual(core._claim_defaults(self.root,'T-1',None,None),(None,None))
 
+    @unittest.skipIf(os.name == 'nt', 'Windows has no mkfifo')
     def test_fifo_transcript_and_digest_do_not_block(self):
         fifo=self.root/'pipe';os.mkfifo(fifo)
         for call in ('core.capture_decisions(r,str(p))', 'core.digest_file(p)'):
@@ -87,6 +89,7 @@ class SurfaceSecurityTests(Base):
         with self.assertRaisesRegex(core.WsError,'outside'): core.connect(self.root,'cursor')
         self.assertEqual(list(outside.iterdir()),[])
 
+    @unittest.skipIf(os.name == 'nt', 'runs hooks through /bin/sh')
     def test_hook_quoting_uses_literal_workspace_and_sends_no_command(self):
         root=self.root.parent / "quoted' $(touch injected)";core.init(root,'Synthetic',[])
         command=core.memory_hooks(root)['hooks']['SessionStart'][0]['hooks'][0]['command']
