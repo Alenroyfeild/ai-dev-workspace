@@ -12,7 +12,7 @@
     },
     "providers": {
       "claude": {"models": {"opus": "opus", "sonnet": "sonnet"}, "tiers": {"planner": {"family": "opus", "effort": "low"}, "worker": {"family": "sonnet", "effort": "high"}}},
-      "codex": {"models": {"sol": "gpt-6.1-sol", "luna": "gpt-6-luna"}, "tiers": {"planner": {"family": "sol", "effort": "low"}, "worker": {"family": "luna", "effort": "high"}}},
+      "codex": {"models": {"sol": "gpt-6-sol", "luna": "gpt-6-luna"}, "tiers": {"planner": {"family": "sol", "effort": "low"}, "worker": {"family": "luna", "effort": "high"}}},
       "ollama": {"models": {"local": null}, "tiers": {"planner": {"family": "local", "effort": "not_applicable"}, "worker": {"family": "local", "effort": "not_applicable"}}}
     }
   },

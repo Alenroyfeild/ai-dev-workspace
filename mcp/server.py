@@ -39,7 +39,7 @@ def string(desc, optional=False):
 
 TOOLS = {
     'route': ('Resolve role/model and CLI availability; no fallback or credential reads.', S(role=string('', True)), lambda r, a: orchestration.route(r, a.get('role', 'lead'))),
-    'delegate': ('Prepare unverified bounded work (reviewer: optional git diff range); never execute.', S(task=string(''), role=string(''), diff=string('', True)), lambda r, a: orchestration.delegate(r, a['task'], a['role'], diff=a.get('diff'))),
+    'delegate': ('Prepare unverified bounded work (reviewer: git range); never execute.', S(task=string(''), role=string(''), diff=string('', True)), lambda r, a: orchestration.delegate(r, a['task'], a['role'], diff=a.get('diff'))),
     'assist': ('Up to two local suggestions; ask before applying. No installs/config edits.', S(), lambda r, a: assist.suggestions(r)),
     'import_usage': ('Import Codeburn usage; skip ambiguous matches and duplicates.',
                      S(since=string('YYYY-MM-DD', True), task=string('', True)), lambda r, a: core.import_codeburn(r, a.get('since'), a.get('task'))),

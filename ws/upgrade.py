@@ -41,13 +41,21 @@ def markdown(old, new):
 
 
 def managed_command(command):
+    """Our hook command, in the old `env WS_ROOT=<dir> python bin/ws ...` form or the portable
+    `python bin/ws --workspace-root <dir> ...` form (Windows-safe)."""
     try: parts = shlex.split(command)
     except ValueError: return False
-    return (len(parts) in (6, 8) and parts[0] == 'env' and parts[1].startswith('WS_ROOT=')
-            and re.fullmatch(r'python(?:\d+(?:\.\d+)?)?(?:\.exe)?', Path(parts[2]).name) is not None
-            and Path(parts[3]).name == 'ws' and Path(parts[3]).parent.name == 'bin'
-            and parts[4] in ('brief', 'nudge') and parts[5] == '--hook'
-            and (len(parts) == 6 or parts[6] == '--client' and parts[7] in ('codex', 'cursor', 'gemini')))
+    if len(parts) >= 2 and parts[0] == 'env' and parts[1].startswith('WS_ROOT='):
+        parts = parts[2:]
+    if len(parts) < 4 or re.fullmatch(r'python(?:\d+(?:\.\d+)?)?(?:\.exe)?', Path(parts[0]).name) is None:
+        return False
+    if Path(parts[1]).name != 'ws' or Path(parts[1]).parent.name != 'bin':
+        return False
+    rest = parts[2:]
+    if rest[:1] == ['--workspace-root']:
+        rest = rest[2:]
+    return (len(rest) in (2, 4) and rest[0] in ('brief', 'nudge') and rest[1] == '--hook'
+            and (len(rest) == 2 or rest[2] == '--client' and rest[3] in ('codex', 'cursor', 'gemini')))
 
 
 def hooks(old, new):

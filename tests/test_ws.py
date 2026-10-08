@@ -139,7 +139,7 @@ class SkillDuplicateTests(Base):
         self.assertEqual(set(report['routes']), {'lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'})
         self.assertEqual(report['routes']['explorer']['provider'], 'codex')
         self.assertTrue(report['routes']['explorer']['available'])
-        self.assertEqual(report['routes']['lead']['model'], 'gpt-6.1-sol')
+        self.assertEqual(report['routes']['lead']['model'], 'gpt-6-sol')
 
 
 class ToolCostTests(Base):
