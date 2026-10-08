@@ -710,16 +710,22 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     return {'task': task_id, 'path': path.relative_to(root).as_posix()}
 
 
-def claim_note(root, task_id, meta):
-    """Tell readers whether a claim was made from this workspace (local claim file matches)."""
+def _local_claim_matches(root, task_id, meta):
     if not meta.get('claimed_by'):
-        return ''
+        return False
     try:
         local = json.loads(_local_claim_path(root, task_id).read_text(encoding='utf-8'))
     except (OSError, ValueError, WsError):
         local = {}
-    if local.get('token') and local.get('token') == meta.get('claim_token'):
+    return bool(local.get('token')) and local.get('token') == meta.get('claim_token')
+
+
+def claim_note(root, task_id, meta):
+    """Tell readers whether a claim was made from this workspace (local claim file matches)."""
+    if _local_claim_matches(root, task_id, meta):
         return 'claimed in this workspace: continue; ws claim resumes it'
+    if not meta.get('claimed_by'):
+        return ''
     return f"claimed elsewhere by {meta['claimed_by']}: ask before taking over"
 
 
@@ -999,9 +1005,11 @@ def relevant_lessons(root, task):
 
 def brief(root):
     guard = repeat_guard(root)
-    active = [t for t in task_list(root) if t['status'] == 'in_progress']
+    tasks = task_list(root)
+    active = [t for t in tasks if t['status'] == 'in_progress']
     if not active:
-        claimed = [t for t in task_list(root) if t['status'] != 'done' and t['claim'] == 'claimed in this workspace: continue; ws claim resumes it']
+        claimed = [t for t in tasks if t['status'] != 'done' and
+                   _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
         if len(claimed) == 1:
             active = claimed
         else:
@@ -1011,9 +1019,11 @@ def brief(root):
     def words(text, limit):
         return ' '.join(redact(text).split()[:limit])
     next_action = record['sections']['Next action']
-    saved_next = bool(next_action.strip()) and (
-        record['meta'].get('checkpoint_count', 0) not in (0, '0', '')
-        or next_action.strip() != 'Read the code involved and fill Evidence.')
+    try:
+        checkpoint_count = int(record['meta'].get('checkpoint_count', 0))
+    except (TypeError, ValueError):
+        checkpoint_count = 0
+    saved_next = bool(next_action.strip()) and checkpoint_count > 0
     lines = ['Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.',
              f"Task {task['id']}: {words(task['title'], 15)}",
              'Next action: ' + (words(next_action, 60) if saved_next

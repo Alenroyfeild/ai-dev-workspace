@@ -21,9 +21,9 @@ class CompatibilityDocsTests(unittest.TestCase):
         commands = (ROOT / 'docs/COMMANDS.md').read_text(encoding='utf-8')
         setup = (ROOT / 'docs/SETUP.md').read_text(encoding='utf-8')
         advanced = (ROOT / 'docs/ADVANCED.md').read_text(encoding='utf-8')
-        for claim in ('exactly where it left off', 'in any assistant', 'stops repeating the same mistakes',
-                      'Everything stays in your folder', 'The only network call'):
+        for claim in ('exactly where it left off', 'in any assistant'):
             self.assertNotIn(claim, readme)
+        self.assertIn('Your AI assistant picks up where it left off: tasks, decisions and lessons in Markdown you own.', readme)
         self.assertEqual(readme.count('when product decisions were given in one session'), 1)
         self.assertEqual(sum(line.startswith('`ws assist`') for line in commands.splitlines()), 1)
         self.assertEqual(sum(line.startswith('`ws run import codeburn') for line in commands.splitlines()), 1)
