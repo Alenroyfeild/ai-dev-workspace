@@ -1102,9 +1102,9 @@ def _capture_decisions(root, transcript_path, client):
 
 def capture_health(root):
     path = root / '.ws/capture-health.json'
-    if not path.exists():
-        return {'outcome': 'not_run', 'reason': 'not_run'}
     try:
+        if not path.exists():
+            return {'outcome': 'not_run', 'reason': 'not_run'}
         health = json.loads(read_text(path, [root]))
         # Only our fixed diagnostic vocabulary can reach doctor; never echo arbitrary file text.
         if health['outcome'] not in ('captured', 'unchanged', 'skipped'): raise ValueError
@@ -1114,7 +1114,7 @@ def capture_health(root):
         if health['client'] not in ('claude', 'codex', 'cursor', 'gemini', 'vscode', 'unsupported'): raise ValueError
         if not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00', health['date']): raise ValueError
         return {key: health[key] for key in ('date', 'client', 'outcome', 'reason')}
-    except (WsError, ValueError, TypeError, KeyError):
+    except (WsError, OSError, ValueError, TypeError, KeyError):
         return {'outcome': 'unknown', 'reason': 'unreadable_health'}
 
 
