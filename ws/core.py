@@ -366,7 +366,7 @@ def memory_hooks(root, client='claude'):
     for event in events:
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
                 'command': command + (' brief --hook' if event.lower() == 'sessionstart' else ' nudge --hook') + ('' if client == 'claude' else ' --client ' + client)}
-        result['hooks'][event] = [hook if client == 'cursor' else {'hooks': [hook]}]
+        result['hooks'][event] = [hook if client in ('cursor', 'vscode') else {'hooks': [hook]}]
     return result
 def install_memory_hooks(root, collisions):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
@@ -445,9 +445,9 @@ def connect(root, client, write=False, skills=False, verify=False):
         # Gemini keeps MCP servers and hooks in one settings file: merge both, touching only our entries.
         return dict(_connect_gemini(root), **({'mcp': mcp_doctor(root, ('gemini',))[0]} if verify else {}))
     result = _connect_config(root, client, write)
-    if client in ('cursor', 'codex'):
+    if client in ('cursor', 'codex', 'vscode'):
         from .upgrade import hooks
-        relative = {'cursor': '.cursor/hooks.json', 'codex': '.codex/hooks.json'}[client]
+        relative = {'cursor': '.cursor/hooks.json', 'codex': '.codex/hooks.json', 'vscode': '.github/hooks/ai-dev-workspace.json'}[client]
         path = inside(root / relative, [root]); candidate = json.dumps(memory_hooks(root, client), indent=2) + '\n'
         with lock(root):
             merged = hooks(path.read_text(encoding='utf-8'), candidate) if path.exists() else candidate
