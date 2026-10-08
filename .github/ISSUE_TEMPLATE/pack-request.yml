@@ -1,0 +1,45 @@
+name: Pack request
+description: Suggest a reusable domain or workflow pack
+title: "[idea] Pack request: "
+labels:
+  - feedback
+  - pack-request
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Feedback kind
+      options:
+        - idea
+        - friction
+    validations:
+      required: true
+  - type: textarea
+    id: text
+    attributes:
+      label: Feedback text
+      description: Summarize the pack request as ws feedback add text; ws feedback submit uses this text.
+      placeholder: Include a suggested name, what work it should support, and why.
+    validations:
+      required: true
+  - type: input
+    id: recorded
+    attributes:
+      label: Recorded date
+      description: ws feedback submit fills this from the local feedback record.
+    validations:
+      required: false
+  - type: input
+    id: kit_version
+    attributes:
+      label: Kit version
+      description: ws feedback submit adds the current kit version.
+    validations:
+      required: false
+  - type: input
+    id: packs
+    attributes:
+      label: Enabled packs
+      description: ws feedback submit adds the workspace pack names.
+    validations:
+      required: false

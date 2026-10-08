@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a problem with the kit
+title: "[bug] "
+labels:
+  - feedback
+  - bug
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - bug
+    validations:
+      required: true
+  - type: textarea
+    id: text
+    attributes:
+      label: Feedback text
+      description: The text recorded by ws feedback add and included by ws feedback submit.
+      placeholder: Include what happened, expected behavior, exact command/error, and redacted ws doctor output.
+    validations:
+      required: true
+  - type: input
+    id: recorded
+    attributes:
+      label: Recorded date
+      description: ws feedback submit fills this from the local feedback record.
+    validations:
+      required: false
+  - type: input
+    id: kit_version
+    attributes:
+      label: Kit version
+      description: ws feedback submit adds the current kit version.
+    validations:
+      required: false
+  - type: input
+    id: packs
+    attributes:
+      label: Enabled packs
+      description: ws feedback submit adds the workspace pack names.
+    validations:
+      required: false
