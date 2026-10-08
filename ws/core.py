@@ -1007,10 +1007,12 @@ def brief(root):
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     def words(text, limit):
         return ' '.join(redact(text).split()[:limit])
+    next_action = record['sections']['Next action']
+    saved_next = (record['meta'].get('checkpoint_count', 0) not in (0, '0', '')
+                  or next_action.strip() not in ('', 'Read the code involved and fill Evidence.'))
     lines = ['Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.',
              f"Task {task['id']}: {words(task['title'], 15)}",
-             'Next action: ' + (words(record['sections']['Next action'], 60)
-                                if record['meta'].get('checkpoint_count', 0) not in (0, '0', '')
+             'Next action: ' + (words(next_action, 60) if saved_next
                                 else 'Not saved yet. Choose the next step before continuing.'),
              'Blockers: ' + words(record['sections']['Blockers'], 25)]
     if record['claim']:
