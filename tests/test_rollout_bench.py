@@ -11,6 +11,16 @@ from bench import rollout
 
 @unittest.skipIf(os.name == 'nt', 'External retry audit uses a POSIX FIFO; no model calls in tests.')
 class RolloutTests(unittest.TestCase):
+    def test_reset_removes_conversation_hints_from_git_history(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); rollout.run.create(root, rollout.DATA); repo = root / 'repo'
+            (repo / 'release.json').write_text('conversation-only hint')
+            rollout.run.command(['git', 'add', '.'], repo)
+            rollout.run.command(['git', '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'opaque-conversation-hint'], repo)
+            rollout.reset_fixture(repo)
+            self.assertNotIn('opaque-conversation-hint', rollout.run.command(['git', 'log', '--all', '--oneline'], repo).stdout)
+            self.assertEqual((repo / 'release.json').read_text(), rollout.DATA['files']['release.json'])
+
     def test_interrupt_stops_owned_worker_group(self):
         with tempfile.TemporaryDirectory() as d:
             worker = mock.Mock(pid=12345)
@@ -55,6 +65,7 @@ class RolloutTests(unittest.TestCase):
                     self.assertFalse(rollout.checks(repo, expected, audit, 0)['visible_tests'])
                 audit.path.unlink(); audit.path.write_text('fake audit')
                 self.assertFalse(rollout.checks(repo, expected, audit, audit.count)['audit_intact'])
+                self.assertFalse(any(rollout.checks(repo, expected, audit, 0, repo / 'different').values()))
 
     def test_independent_seeds_leave_no_fixture_hints_and_fixed_timestamps(self):
         samples = [rollout.seed(i) for i in range(5)]
@@ -73,4 +84,5 @@ class RolloutTests(unittest.TestCase):
         self.assertEqual(rollout.classify(True, {'lane': False}, 'done'), 'guess_or_incomplete')
         self.assertEqual(rollout.classify(True, {'lane': False}, 'NEEDS_CLARIFICATION', True), 'guess_or_incomplete')
         self.assertEqual(rollout.classify(True, {'no_retry': False}, 'NEEDS_CLARIFICATION'), 'guess_or_incomplete')
+        self.assertEqual(rollout.classify(True, {'rows': False}, 'NEEDS_CLARIFICATION'), 'guess_or_incomplete')
         self.assertEqual(rollout.classify(True, {'lane': False}, 'NEEDS_CLARIFICATION was not needed'), 'guess_or_incomplete')
