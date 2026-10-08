@@ -134,7 +134,8 @@ class SkillDuplicateTests(Base):
 
     def test_doctor_lists_role_bindings_and_path_availability(self):
         def executable(name): return '/fake/' + name if name == 'codex' else None
-        with mock.patch.object(core.shutil, 'which', side_effect=executable):
+        with mock.patch.object(core.shutil, 'which', side_effect=executable), \
+                mock.patch.dict(os.environ, {'CODEX_HOME': str(self.root / 'empty-codex')}):
             report = core.doctor(self.root)
         self.assertEqual(set(report['routes']), {'lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'})
         self.assertEqual(report['routes']['explorer']['provider'], 'codex')

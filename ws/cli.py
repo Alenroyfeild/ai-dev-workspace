@@ -59,6 +59,10 @@ def text_route(report):
              'Available: ' + ('yes' if report['available'] else 'no')]
     if report.get('reason'):
         lines.append('Reason: ' + report['reason'])
+    if report.get('model_source'):
+        lines.append('Model source: ' + report['model_source'])
+    if report.get('model_warning'):
+        lines.append('Model warning: ' + report['model_warning'])
     if report.get('skipped'):
         lines.append('Skipped: ' + '; '.join(f"{item['provider']} ({item['reason']})" for item in report['skipped']))
     return '\n'.join(lines)

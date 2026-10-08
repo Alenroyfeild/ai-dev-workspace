@@ -17,6 +17,27 @@ def routing_template():
     return (core.KIT / 'template/routing.json').read_text(encoding='utf-8').replace('{{kit_version}}', core.kit_meta()['version'])
 
 
+def codex_model(family, default):
+    """Resolve a family from the local catalog without credential reads or refreshes."""
+    cache = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex') / 'models_cache.json'
+    try:
+        if family not in ('sol', 'luna', 'astra') or cache.is_symlink(): raise ValueError()
+        catalog = json.loads(core.read_text(cache, errors='strict'))
+        if not isinstance(catalog, dict) or not isinstance(catalog.get('models'), list): raise ValueError()
+        candidates = []
+        for entry in catalog['models']:
+            if not isinstance(entry, dict) or entry.get('visibility') != 'list': continue
+            slug = entry.get('slug')
+            if not isinstance(slug, str) or len(slug) > 121: continue
+            match = re.fullmatch(r'gpt-(\d+(?:\.\d+)*)-' + family, slug)
+            if match: candidates.append((tuple(map(int, match[1].split('.'))), slug))
+        if candidates:
+            return max(candidates)[1], 'local Codex cache', 'Cached catalog only; current account/client access is not verified.'
+    except (core.WsError, OSError, ValueError, TypeError):
+        pass
+    return default, 'configured default', 'Local Codex cache missing, unknown or has no visible family match; keeping configured default. Access is not verified.'
+
+
 def route(root, role='lead', provider=None):
     if role not in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'): raise core.WsError('Unknown orchestration role.')
     try:
@@ -33,10 +54,14 @@ def route(root, role='lead', provider=None):
             tier = settings['tiers'][override.get('tier', definition['tier'])]
             family = override.get('family', tier['family']); effort = override.get('effort', tier['effort'])
             model = override['model'] if 'model' in override else settings['models'].get(family)
+            source, warning = ('explicit override' if 'model' in override else 'provider alias/default'), ''
+            if provider == 'codex' and 'model' not in override:
+                model, source, warning = codex_model(family, model)
             if effort not in ('low', 'medium', 'high', 'not_applicable'): raise ValueError()
             if model is not None and (not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,120}', model)): raise ValueError()
             executable = core.shutil.which(provider)
-            candidate = dict(role=role, provider=provider, family=family, model=model, effort=effort, executable=executable)
+            candidate = dict(role=role, provider=provider, family=family, model=model, effort=effort, executable=executable,
+                             model_source=source, model_warning=warning)
             if executable and model:
                 chosen = candidate; break
             skipped.append({'provider': provider, 'reason': 'CLI not on PATH' if not executable else 'no model configured'})
