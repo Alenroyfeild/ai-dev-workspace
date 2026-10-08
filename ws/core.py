@@ -397,6 +397,7 @@ def memory_hooks(root, client='claude'):
     arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root)]
     command = command_line(arguments)
     events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop')
+    prompt_event = {'claude': 'UserPromptSubmit', 'codex': 'UserPromptSubmit', 'cursor': 'beforeSubmitPrompt', 'gemini': 'BeforeAgent'}.get(client)
     result = {'hooks': {}}
     if client == 'cursor': result['version'] = 1
     for event in events:
@@ -404,6 +405,11 @@ def memory_hooks(root, client='claude'):
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
                 'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][event] = [hook if client in ('cursor', 'vscode') else {'hooks': [hook]}]
+    if prompt_event:
+        suffix = ['paste', '--hook', '--client', client]
+        hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
+                'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
+        result['hooks'][prompt_event] = [hook if client == 'cursor' else {'hooks': [hook]}]
     return result
 def install_memory_hooks(root, collisions):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
@@ -1167,11 +1173,16 @@ def _shape(value, depth=0):
 ERR_RE = re.compile(r'\b(error|fatal|failed|failure|exception|warning|denied|panic|traceback)\b', re.I)
 
 
-def digest_file(path, max_lines=60, root=None):
+def digest_file(path, max_lines=60, root=None, focus=None):
     """Deterministic summary of a big file: JSON shape, or deduplicated error lines of a log."""
     path = Path(path)
     raw = read_text(path, read_roots(root) if root is not None else None)
     out = {'file': redact(str(path)), 'bytes': len(raw), 'lines': raw.count('\n') + 1}
+    if focus is not None:
+        try: pattern = re.compile(focus)
+        except re.error as exc: raise WsError(f'Invalid focus regular expression: {exc}')
+        out['focus_matches'] = [f'L{i}: {redact(line.strip())[:200]}' for i, line in enumerate(raw.splitlines(), 1)
+                                if pattern.search(line)][:max_lines]
     try:
         out['json_shape'] = _shape(json.loads(raw))
         return out
@@ -1190,6 +1201,39 @@ def digest_file(path, max_lines=60, root=None):
     out['problems'] = [f'L{i} (x{seen[k]}): {redact(k)}' for i, k in picked[:max_lines]]
     out['tail'] = [redact(l)[:200] for l in raw.splitlines()[-5:]]
     return out
+
+
+def clipboard_text():
+    commands = [('pbpaste', []), ('wl-paste', ['--no-newline']), ('xclip', ['-selection', 'clipboard', '-o']),
+                ('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'])]
+    for executable, args in commands:
+        if shutil.which(executable):
+            try: result = subprocess.run([executable, *args], capture_output=True, text=True, timeout=5)
+            except (OSError, subprocess.TimeoutExpired): raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
+            if result.returncode == 0: return result.stdout
+            raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
+    raise WsError('No supported clipboard reader found; pipe text to `ws paste` instead.')
+
+
+def paste_save(root, text):
+    if not isinstance(text, str): raise WsError('Paste input must be text.')
+    text = redact(text)
+    if len(text.encode('utf-8')) > MAX_READ_BYTES: raise WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
+    inbox = inside(root / '.ws/inbox', [root])
+    with lock(root):
+        inbox.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+        path = inbox / (stamp + '.log')
+        suffix = 1
+        while path.exists():
+            suffix += 1
+            path = inbox / f'{stamp}-{suffix}.log'
+        atomic_write(path, text)
+    return {'path': path, 'digest': digest_file(path, root=root)}
+
+
+def prompt_is_large(prompt):
+    return isinstance(prompt, str) and (len(prompt.splitlines()) > 150 or len(prompt.encode('utf-8')) > 12 * 1024)
 
 
 # --- orchestration run tracking ---------------------------------------------------

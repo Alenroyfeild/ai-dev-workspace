@@ -2,6 +2,8 @@
 import argparse
 import json
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,7 +12,7 @@ from . import core, assist, orchestration
 
 COMMAND_GROUPS = (
     ('Setup', ('init', 'connect', 'packs', 'pack')),
-    ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'search', 'sessions', 'lesson')),
+    ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'lesson')),
     ('Orchestration', ('route', 'delegate')),
     ('Measure', ('tools', 'digest', 'run', 'trace')),
     ('Maintain', ('doctor', 'validate', 'map', 'feedback', 'update', 'version', 'upgrade', 'notices', 'assist')),
@@ -188,6 +190,11 @@ def main(argv=None):
         s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
         s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode'), default='claude')
     s = sub.add_parser('digest', help='summarise a big log/JSON file deterministically'); s.add_argument('file')
+    s.add_argument('--focus', help='show regex-matching lines before the deterministic summary')
+    s.add_argument('--local-summary', action='store_true', help='also use the configured local-llm pack')
+    s = sub.add_parser('paste', help='save clipboard or stdin to the private inbox and show its digest')
+    s.add_argument('--hook', action='store_true', help=argparse.SUPPRESS)
+    s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini'), default='claude')
     r = sub.add_parser('run', help='orchestration step tracking').add_subparsers(dest='action', required=True)
     s = r.add_parser('log'); s.add_argument('task'); s.add_argument('step'); s.add_argument('--provider', required=True)
     s.add_argument('--model', default=''); s.add_argument('--tokens-in', type=int, default=0); s.add_argument('--tokens-out', type=int, default=0)
@@ -348,7 +355,35 @@ def main(argv=None):
             elif a.action == 'sync': out(core.feedback_sync(root))
             else: out([f"{i['n']}. {'[x]' if i['done'] else '[ ]'} {i['kind']}: {i['text']}" + (f" ({i['issue']})" if i['issue'] else '')
                        for i in core.feedback_items(root) if a.all or not i['done']] or 'No open feedback.')
-        elif a.cmd == 'digest': out(core.digest_file(a.file))
+        elif a.cmd == 'digest':
+            if a.local_summary and 'local-llm' not in core.config(root).get('packs', []):
+                raise core.WsError('Local summary requires the local-llm pack; run `ws pack add local-llm` first.')
+            out(core.digest_file(a.file, focus=a.focus))
+            if a.local_summary:
+                try:
+                    result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file],
+                                            capture_output=True, text=True, timeout=180)
+                except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(f'Local summary failed: {exc}')
+                if result.returncode: raise core.WsError(result.stderr.strip() or 'Local summary failed.')
+                print(result.stdout, end='' if result.stdout.endswith('\n') else '\n')
+        elif a.cmd == 'paste':
+            if not a.hook:
+                text = sys.stdin.read() if not getattr(sys.stdin, 'isatty', lambda: False)() else core.clipboard_text()
+                out(core.paste_save(root, text)['digest'])
+            else:
+                payload = json.load(sys.stdin)
+                if not isinstance(payload, dict): raise core.WsError('Hook input must be a JSON object.')
+                prompt = payload.get('prompt', '')
+                if not core.prompt_is_large(prompt) or re.search(r'(?<!\S)!raw(?!\S)', prompt):
+                    out({}); return 0
+                path = core.paste_save(root, prompt)['path'].relative_to(root).as_posix()
+                reason = (f'Prompt saved, redacted, to {path}. Send a short question plus the relevant excerpt, '
+                          f'or run `ws digest {path} --focus "<pattern>"`; add !raw to bypass.')
+                if a.client == 'claude':
+                    print(reason, file=sys.stderr); return 2
+                if a.client == 'cursor': out({'continue': False, 'user_message': reason})
+                elif a.client == 'gemini': out({'decision': 'deny', 'reason': reason})
+                else: out({'decision': 'block', 'reason': reason})
         elif a.cmd == 'trace': out(core.trace(root, a.task))
         elif a.cmd == 'run':
             if a.action == 'import': out(core.import_codeburn(root, a.since, a.task)); return 0
