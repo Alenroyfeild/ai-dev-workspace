@@ -38,6 +38,10 @@ ai-dev-workspace/            the kit (this repo)
 
 ## Orchestration model
 
+Routing tiers store a family and effort. Codex families `sol`, `luna` and `astra` resolve at `ws route` time to the newest numerically versioned, visible ID in the local `~/.codex/models_cache.json` (`CODEX_HOME` when set). The `models` mapping holds fallback defaults, not pins; an explicit role `model` override wins and bypasses the cache. Missing/unknown catalogs keep that default and print a warning. No cache refresh, credentials or network requests are used. Cache presence does not prove current account/client access; availability still checks only the CLI on PATH. Claude `opus` and `sonnet` remain provider aliases.
+
+Sources: [Codex model selection](https://learn.chatgpt.com/docs/models), [account-specific catalogs and cached-catalog limits](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference), [Claude aliases](https://code.claude.com/docs/en/model-config).
+
 ```text
 user request
   → lead assistant (planner tier): find task, read lessons, think before act, plan
