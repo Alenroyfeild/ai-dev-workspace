@@ -12,17 +12,41 @@ class AssistTests(Base):
         patch = mock.patch.object(assist, 'feature_suggestions')
         patch.start(); self.addCleanup(patch.stop)
 
-    def test_default_assist_does_not_pitch_optional_tool_installations(self):
+    def test_tool_suggestions_wait_for_established_workspace_and_notice_once(self):
         entries = [
             {'name': 'codeburn', 'level': 'recommended', 'installed': False,
              'install': {'codex': 'codeburn install'}},
-            {'name': 'graphify', 'level': 'recommended', 'installed': False,
-             'install': {'codex': 'graphify install'}},
+            {'name': 'pony', 'level': 'optional', 'installed': False,
+             'install': {'codex': 'pony install'}},
         ]
         with mock.patch.object(core, 'tools', return_value=entries), \
-                mock.patch.object(assist, 'cost_data', return_value=({}, {})):
+                mock.patch.object(assist, 'cost_data', return_value=({}, {})), \
+                mock.patch.dict(os.environ, {'WS_OFFLINE': '1'}):
             ids = [item['id'] for item in assist.suggestions(self.root, True)]
-        self.assertFalse(any(item.startswith('tool-') for item in ids))
+            self.assertFalse(any(item.startswith('tool-') for item in ids))
+            self.assertFalse(any(notice['kind'] == 'toolbox' for notice in core.notices(self.root)))
+
+            core.task_new(self.root, 'T-2', 'Second fixture')
+            core.checkpoint(self.root, 'T-1', 'in_progress', 'First')
+            core.checkpoint(self.root, 'T-1', 'in_progress', 'Second')
+            core.checkpoint(self.root, 'T-2', 'in_progress', 'Third')
+            suggestions = assist.suggestions(self.root, True)
+            self.assertEqual([item['id'] for item in suggestions if item['id'].startswith('tool-')], ['tool-codeburn'])
+            notices = [notice for notice in core.notices(self.root) if notice['kind'] == 'toolbox']
+            self.assertEqual([notice['tool'] for notice in notices], ['codeburn'])
+            self.assertIn('ask before installing', notices[0]['message'])
+            self.assertFalse(any(notice['kind'] == 'toolbox' for notice in core.notices(self.root)))
+
+    def test_seven_day_workspace_age_also_enables_tool_suggestions(self):
+        cfg = core.config(self.root)
+        now = datetime.datetime(2026, 10, 8, tzinfo=datetime.timezone.utc)
+        cfg['created'] = (now.date() - datetime.timedelta(days=7)).isoformat()
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        entries = [{'name': 'codeburn', 'level': 'recommended', 'installed': False}]
+        with mock.patch.object(core, 'now', return_value=now.isoformat()), \
+                mock.patch.object(core, 'tools', return_value=entries), \
+                mock.patch.object(assist, 'cost_data', return_value=({}, {})):
+            self.assertIn('tool-codeburn', [item['id'] for item in assist.suggestions(self.root, True)])
 
     def test_filters_cost_findings_and_caps_suggestions(self):
         names = ['ccd_builtin', 'claude-in-chrome', 'ai-dev-workspace', 'recent', 'graphy-helper', 'idle']

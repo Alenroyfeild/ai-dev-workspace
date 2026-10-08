@@ -99,6 +99,23 @@ def feature_suggestions(root, add):
             add('connect-' + client, 'Installed client has no matching workspace connection: ' + client, 'ws connect ' + client, 'changes-config')
 
 
+def _workspace_established(root):
+    checkpoints = 0
+    for task in core.task_list(root):
+        try:
+            checkpoints += int(core.task_read(root, task['id'], ['Next action'])['meta'].get('checkpoint_count', 0))
+        except (TypeError, ValueError):
+            pass
+    if checkpoints >= 3:
+        return True
+    try:
+        created = datetime.date.fromisoformat(str(core.config(root).get('created', ''))[:10])
+        today = datetime.date.fromisoformat(core.now()[:10])
+        return today - created >= datetime.timedelta(days=7)
+    except ValueError:
+        return False
+
+
 def suggestions(root, include_hidden=False):
     data, items = state(root), []
     def add(identifier, why, command, safety, saving='unmeasured'):
@@ -118,6 +135,13 @@ def suggestions(root, include_hidden=False):
         count = core.task_read(root, task['id'], ['Next action'])['meta'].get('checkpoint_count', '0')
         if task['claimed_by'] and record.get('checkpoint') == count and record.get('count', 0) >= 3:
             add('checkpoint-' + task['id'], 'Claim has spanned 3 sessions without a new checkpoint: ' + task['id'], '/handoff (Claude) or $handoff (Codex)', 'local-reversible')
+    if _workspace_established(root):
+        for tool in core.tools(root):
+            if (tool['level'] == 'recommended' and not tool['installed']
+                    and core.tool_policy(root, tool)['mode'] != 'off'):
+                add('tool-' + tool['name'],
+                    'Recommended tool is missing: ' + tool['name'] + '. Review options and ask before installing.',
+                    'ws tools', 'changes-config')
     if data.get('long_session_bytes'):
         add('long-session', f"Transcript exceeded 2000000 bytes ({data['long_session_bytes']}); start fresh after handoff", '/handoff (Claude) or $handoff (Codex)', 'local-reversible')
     guard = core.repeat_guard(root)
@@ -175,4 +199,5 @@ def notices(root, limit, existing=()):
         items = [item for item in candidates if item['id'] not in seen and data.get('permissions', {}).get(item['id'], {}).get('until', '') <= core.now()[:10]][:limit]
         data['offered'] = seen + [item['id'] for item in items]; save(root, data)
     return [item['notice'] if 'notice' in item else dict(kind='toolbox' if item['id'].startswith('tool-') else 'assist', tool=item['id'].removeprefix('tool-'),
-                 message=item['why'] + ' Ask before applying.', suggest=item['command']) for item in items]
+                 message=item['why'] + (' Review options with ws tools before installing.' if item['id'].startswith('tool-') else ' Ask before applying.'),
+                 suggest=item['command']) for item in items]
