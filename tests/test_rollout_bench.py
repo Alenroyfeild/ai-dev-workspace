@@ -33,6 +33,11 @@ class RolloutTests(unittest.TestCase):
                 expected = rollout.seed(7)
                 rollout.reference(repo, expected)
                 self.assertTrue(all(rollout.checks(repo, expected, audit, 0).values()))
+                with tempfile.TemporaryDirectory() as outside:
+                    rollout.reference(Path(outside), expected)
+                    (repo / 'release.json').unlink(); (repo / 'release.json').symlink_to(Path(outside) / 'release.json')
+                    self.assertFalse(rollout.checks(repo, expected, audit, 0)['lane'])
+                    (repo / 'release.json').unlink()
                 for key in ('lane', 'receipt'):
                     rollout.reference(repo, expected)
                     data = json.loads((repo / 'release.json').read_text()); data[key] = 'wrong'
@@ -68,3 +73,4 @@ class RolloutTests(unittest.TestCase):
         self.assertEqual(rollout.classify(True, {'lane': False}, 'done'), 'guess_or_incomplete')
         self.assertEqual(rollout.classify(True, {'lane': False}, 'NEEDS_CLARIFICATION', True), 'guess_or_incomplete')
         self.assertEqual(rollout.classify(True, {'no_retry': False}, 'NEEDS_CLARIFICATION'), 'guess_or_incomplete')
+        self.assertEqual(rollout.classify(True, {'lane': False}, 'NEEDS_CLARIFICATION was not needed'), 'guess_or_incomplete')
