@@ -1013,7 +1013,10 @@ def brief(root):
         lines.append('Captured last session (unverified): ' + words(constraints, 30))
         if separator:
             lines.append('Captured next step (unverified): ' + words(step, 25))
-            if step.strip() and step.strip() != record['sections']['Next action'].strip():
+            action = re.search(r'\bnext (?:step|action)\s*[*_`]*:\s*[*_`]*(.*)', step, re.I)
+            def normalized(value):
+                return ' '.join(value.strip(' \t\n*_`.:').split()).casefold()
+            if action and normalized(action[1]) != normalized(record['sections']['Next action']):
                 lines.append('Captured plan differs from saved checkpoint; verify before replacing.')
     lines += ['Lesson: ' + words(line, 25) for line in relevant_lessons(root, task)]
     return '\n'.join(([guard] if guard else []) + lines)
@@ -1049,7 +1052,7 @@ def capture_decisions(root, transcript_path, client='claude'):
                     if text.strip():
                         summary = text
                 else:
-                    decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+', text)
+                    decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+|(?=\b(?:must|do not|decided|only|always|never)\b)', text, flags=re.I)
                                      if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
     except WsError:
         return False
@@ -1060,7 +1063,7 @@ def capture_decisions(root, transcript_path, client='claude'):
     # Newest corrections get the budget first; captured memory never replaces verified sections.
     body = 'User constraints: ' + ' '.join(redact(' '.join(reversed(decisions))).split()[:95])
     steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+', summary) if re.search(r'\bnext (step|action)\b', s, re.I)]
-    body += '\nLast assistant summary / next step: ' + ' '.join((' '.join(reversed(steps)) + ' ' + summary).split()[:35])
+    body += '\nLast assistant summary / next step: ' + ' '.join((steps[-1] if steps else summary).split()[:35])
     body = body.replace('<!--', '&lt;!--')
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
     marker = '<!-- ws:captured:' + digest_text(str(Path(transcript_path).resolve()))[:16] + ' -->'
