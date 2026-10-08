@@ -32,7 +32,7 @@ def run_trials(benchmark, args, auth):
 def main():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('-n', type=int, default=5)
     p.add_argument('--seed', type=int); p.add_argument('--output', type=Path, required=True); args = p.parse_args()
-    if os.name == 'nt' or args.n < 5 or not shutil.which('codex'): p.error('Needs POSIX FIFO, installed Codex and n >= 5; no installs or fallback.')
+    if os.name == 'nt' or args.n < 5 or not shutil.which('codex'): p.error('Needs POSIX local IPC, installed Codex and n >= 5; no installs or fallback.')
     from bench import rollout
     auth = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))) / 'auth.json'
     run_trials(rollout, args, auth)
