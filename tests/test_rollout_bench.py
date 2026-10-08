@@ -4,12 +4,22 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from bench import rollout
 
 
 @unittest.skipIf(os.name == 'nt', 'External retry audit uses a POSIX FIFO; no model calls in tests.')
 class RolloutTests(unittest.TestCase):
+    def test_interrupt_stops_owned_worker_group(self):
+        with tempfile.TemporaryDirectory() as d:
+            worker = mock.Mock(pid=12345)
+            worker.communicate.side_effect = [KeyboardInterrupt, ('', '')]
+            with mock.patch.object(rollout.subprocess, 'Popen', return_value=worker), mock.patch.object(rollout.os, 'killpg') as stop:
+                with self.assertRaises(KeyboardInterrupt):
+                    rollout.session(Path(d), Path(d) / 'home', 'synthetic', False, Path(d) / 'absent-auth')
+                stop.assert_called_once_with(12345, rollout.signal.SIGKILL)
+
     def test_resumed_usage_counts_only_increment(self):
         events = [{'type': 'turn.completed', 'usage': {'input_tokens': 17, 'output_tokens': 4, 'cached_input_tokens': 8}}]
         result = rollout.usage(events, 0, {'input_tokens': 12, 'output_tokens': 1, 'cache_read_tokens': 4})
@@ -34,6 +44,10 @@ class RolloutTests(unittest.TestCase):
                 self.assertFalse(rollout.checks(repo, expected, audit, 0)['no_retry'])
                 (repo / 'pricing.py').write_text('changed')
                 self.assertFalse(rollout.checks(repo, expected, audit, 0)['unchanged'])
+                (repo / 'pricing.py').write_bytes(b'\xff')
+                self.assertFalse(rollout.checks(repo, expected, audit, 0)['unchanged'])
+                with mock.patch.object(rollout.subprocess, 'run', side_effect=subprocess.TimeoutExpired('fixture', 15)):
+                    self.assertFalse(rollout.checks(repo, expected, audit, 0)['visible_tests'])
                 audit.path.unlink(); audit.path.write_text('fake audit')
                 self.assertFalse(rollout.checks(repo, expected, audit, audit.count)['audit_intact'])
 
@@ -53,3 +67,4 @@ class RolloutTests(unittest.TestCase):
         self.assertEqual(rollout.classify(True, {'lane': False}, 'NEEDS_CLARIFICATION'), 'abstention')
         self.assertEqual(rollout.classify(True, {'lane': False}, 'done'), 'guess_or_incomplete')
         self.assertEqual(rollout.classify(True, {'lane': False}, 'NEEDS_CLARIFICATION', True), 'guess_or_incomplete')
+        self.assertEqual(rollout.classify(True, {'no_retry': False}, 'NEEDS_CLARIFICATION'), 'guess_or_incomplete')
