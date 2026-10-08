@@ -56,8 +56,8 @@ def managed_command(command):
     rest = parts[2:]
     if rest[:1] == ['--workspace-root']:
         rest = rest[2:]
-    return (len(rest) in (2, 4) and rest[0] in ('brief', 'nudge') and rest[1] == '--hook'
-            and (len(rest) == 2 or rest[2] == '--client' and rest[3] in ('codex', 'cursor', 'gemini', 'vscode')))
+    return (len(rest) in (2, 4) and rest[0] in ('brief', 'nudge', 'paste') and rest[1] == '--hook'
+            and (len(rest) == 2 or rest[2] == '--client' and rest[3] in ('claude', 'codex', 'cursor', 'gemini', 'vscode')))
 
 
 def hooks(old, new):
@@ -76,8 +76,14 @@ def hooks(old, new):
                 if event in desired and isinstance(group.get('command'), str) and managed_command(group['command']):
                     found[event] = found.get(event, 0) + 1
                     want = desired[event][0]; changed |= group != want; groups[index] = want
-        if set(found) != set(desired) or any(n != 1 for n in found.values()):
-            return None  # missing or duplicated managed hooks: stage a proposal instead of guessing
+        additions = set(desired) - set(found)
+        if additions - {'UserPromptSubmit', 'beforeSubmitPrompt', 'BeforeAgent'} or any(n != 1 for n in found.values()):
+            return None  # Missing lifecycle hooks or duplicate handlers need review.
+        for event in additions:
+            groups = data.setdefault('hooks', {}).get(event, [])
+            if not isinstance(groups, list): return None
+            data['hooks'][event] = groups + desired[event]
+            changed = True
         return json.dumps(data, indent=2) + '\n' if changed else old
     except (ValueError, AttributeError, KeyError, TypeError, IndexError):
         return None
