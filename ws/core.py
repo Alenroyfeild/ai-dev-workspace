@@ -1023,7 +1023,8 @@ def brief(root):
         checkpoint_count = int(record['meta'].get('checkpoint_count', 0))
     except (TypeError, ValueError):
         checkpoint_count = 0
-    saved_next = bool(next_action.strip()) and checkpoint_count > 0
+    template_action = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Next action')
+    saved_next = bool(next_action.strip()) and (checkpoint_count > 0 or next_action.strip() != template_action)
     lines = ['Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.',
              f"Task {task['id']}: {words(task['title'], 15)}",
              'Next action: ' + (words(next_action, 60) if saved_next
