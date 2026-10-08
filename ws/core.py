@@ -1191,16 +1191,19 @@ def tool_policy(root, entry):
 
 
 def tool_costs(root=None, usage=None):
-    """Measure the kit's MCP schemas and local skill/plugin metadata without changing them."""
+    """Measure full MCP tool descriptors and local skill/plugin metadata without changing them."""
     import importlib.util
     spec = importlib.util.spec_from_file_location('ws_mcp_server', KIT / 'mcp' / 'server.py')
     server = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(server)  # our server by path: a top-level 'mcp' import could pick up the unrelated MCP SDK
     reply = server.handle(root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})
     schemas = reply['result']['tools']
-    schema_costs = [{'name': item['name'], 'bytes': len(json.dumps(item['inputSchema'], separators=(',', ':')).encode()),
-                     'approx_tokens': (len(json.dumps(item['inputSchema'], separators=(',', ':')).encode()) + 3) // 4}
-                    for item in schemas]
+    schema_costs = []
+    for item in schemas:
+        payload = json.dumps({key: item[key] for key in ('name', 'description', 'inputSchema')},
+                             separators=(',', ':')).encode()
+        schema_costs.append({'name': item['name'], 'bytes': len(payload),
+                             'approx_tokens': (len(payload) + 3) // 4})
     if usage is None:
         from . import assist
         _, cached = assist.cost_data()
@@ -1231,6 +1234,7 @@ def tool_costs(root=None, usage=None):
                            uses_last_30_days=calls))
     schema_bytes = sum(item['bytes'] for item in schema_costs)
     return {'profile': config(root).get('tool_profile', 'standard') if root else 'standard',
+            'mcp_schema_scope': 'tool name, description and input schema from tools/list',
             'mcp_schema_bytes': schema_bytes, 'mcp_schema_approx_tokens': (schema_bytes + 3) // 4,
             'mcp_tools': schema_costs, 'tools': report,
             'usage_source': 'Codeburn daily cache, last 30 days' if usage else 'unavailable'}
