@@ -29,7 +29,7 @@ Existing files are kept. Proposed kit content goes beside them as `.ws-new`; rev
 
 ## 3. Connect your assistant
 
-Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, or `ws connect gemini`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints the exact global-config block; `ws connect codex --write` appends it with a backup, refusing conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
+Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, or `ws connect gemini`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints a global-config preview; it is not applied unless you run `ws connect codex --write`, which appends it with a backup and refuses conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
 
 On Windows, generated hooks containing `%` in a workspace, kit or interpreter path use the built-in Windows PowerShell encoded launcher with no profile. It starts the same Python executable directly, forwarding UTF-8 stdin and preserving stdout/stderr and exit status; paths are never interpreted as cmd variables. `ws upgrade` recognizes only this exact launcher and preserves other hooks. Ordinary paths keep the existing command form. References: [cmd variable substitution](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd), [PowerShell encoded commands](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1).
 
@@ -89,25 +89,13 @@ python3 ~/ai-dev-workspace/packs/local-llm/summarize.py build.log
 
 The model only sees the deterministic digest, and its answer is checked against the source file.
 
-## 6. Optional: Codex as a read-only worker
-
-```bash
-npm install -g acpx @openai/codex
-codex login                    # sign in once
-ws pack add codex-worker
-~/ai-dev-workspace/packs/codex-worker/setup.sh      # installs the pinned adapter, adds the read-only mode
-~/ai-dev-workspace/packs/codex-worker/selftest.sh   # must print SELFTEST OK before you use it
-```
-
-`selftest.sh` tries reads and seven kinds of writes (patch tool, shell, Python, absolute path, symlink, `../`) in a throwaway folder and checks the disk itself. **INCONCLUSIVE** means the worker never ran (usually an expired sign-in: run `codex login`). Use the lane only after **SELFTEST OK**.
-
-## 7. Optional: a domain pack
+## 6. Optional: a domain pack
 
 `ws packs` lists them (e.g. `ios`). `ws pack add ios` adds runbooks and rules for that platform. Missing your domain? Write a pack: [PACKS.md](PACKS.md).
 
 ## Updates and feedback
 
-Automatic: your assistant checks `ws notices` at session start and asks before updating or sharing anything. `ws tools` shows recommended, optional and caution tools; nothing installs automatically. Set `tool_profile` in `workspace.json` to `lean`, `standard` or `full`, and `tool_overrides` to per-tool `on`, `off` or `ask`. `ws tools --cost` measures MCP schemas, skill/plugin metadata and cached Codeburn use. `ws assist` asks before applying suggestions. Use `ws run import codeburn` to import local usage and update an existing entry when a session grows.
+The assistant can check `ws notices` at session start. `ws tools` lists optional tools; nothing installs automatically. `ws assist` offers local workspace suggestions and asks before applying. Optional routing, tool profiles and cost controls are in [Advanced settings](ADVANCED.md).
 
 ## Daily loop
 

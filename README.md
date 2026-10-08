@@ -1,10 +1,10 @@
 # AI Dev Workspace  ·  beta
 
-**Your AI picks up exactly where it left off, in any assistant, and stops repeating the same mistakes.**
+**Help supported assistants resume work from notes you own.**
 
-AI coding assistants forget everything between sessions. Every new chat re-reads the same files, re-discovers the same rules and repeats the same mistakes, and you pay for it in tokens and time. AI Dev Workspace gives Claude Code, Codex, Cursor and any MCP client one shared memory: plain Markdown files in a folder you own, a small CLI and an MCP server.
+AI coding assistants can lose task context between sessions. AI Dev Workspace stores task notes as Markdown in a folder you own and exposes them through a CLI, MCP server and client integrations. What each assistant can read or capture depends on the support table below.
 
-macOS, Linux and Windows. Requires Python 3.9+ and git. No API keys, account or telemetry.
+macOS, Linux and Windows. Requires Python 3.9+ and git. No workspace account or telemetry; your assistant still sends prompts and context to its chosen provider.
 On Windows, run `python bin/ws <command>` from the kit checkout; see [Windows notes](docs/WINDOWS.md).
 
 **Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
@@ -30,9 +30,7 @@ claude:  I've got a task waiting from your earlier session:
          Ready to pick up where you left off?
 ```
 
-No pasting old chats, no "where were we". The same memory works from Codex or any MCP client.
-
-**Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+This example is a Claude Code run. Codex is also proven; other clients provide the capabilities shown in the support table below.
 
 ## Quick start
 
@@ -43,18 +41,20 @@ cd ~/work/myapp-ws && ws connect claude                                # 3. conn
 ws task new APP-123 "Fix login crash" && ws claim APP-123              # 4. start a task
 ```
 
-Open the workspace folder in Claude Code (add your code folder as a working directory) and work as usual. End a session with `/handoff`; start the next one with anything, or `/pickup`. In Codex the same skills are `$handoff` and `$pickup` (proven in fresh `codex exec` sessions).
+Run `ws brief` to see APP-123; until you checkpoint it, the next action is honestly reported as not saved.
+
+Open the workspace folder in Claude Code (add your code folder as a working directory) and work as usual. End a session with `/handoff`; start the next one with anything, or `/pickup`. In Codex use `$handoff` and `$pickup` (proven in fresh `codex exec` sessions).
 
 No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-workspace` and put `~/ai-dev-workspace/bin` on your PATH. Connect Codex, Cursor, Copilot or Gemini CLI with `ws connect codex|cursor|vscode|gemini`. Full guide: [docs/SETUP.md](docs/SETUP.md).
 
 ## What you get
 
 - **Task memory that writes itself.** One record per ticket: objective, evidence, blockers and next step. Claude and Codex hooks capture bounded, unverified decisions into Handoff. Cursor/Gemini hooks are wired and fixture-tested, but their clients remain untested. Other MCP clients use rules plus MCP only. Skills: `/handoff`, `/pickup`, `/lesson`.
-- **Lessons.** "What happened → rule", matched to the task and shown before the assistant starts, so a mistake made once is not made again.
+- **Lessons.** "What happened → rule", matched to the task and surfaced in its brief to help avoid a repeated mistake.
 - **An instant codebase map.** `ws map` writes languages and commands, links an existing Graphify report, and indexes it for `ws search`; it never runs Graphify.
-- **Toolbox and assist.** `ws tools` lists recommended everyday tools, optional extras and caution tools that change routing/config. `ws assist` asks before applying; `ws tools --cost` measures schemas and skill/plugin size. Workspace profiles are `lean`, `standard` and `full`, with per-tool `on`, `off` or `ask` overrides.
+- **Toolbox and assist.** `ws tools` lists optional tools. `ws assist` offers local workspace suggestions and asks before applying. Advanced profiles and cost details: [docs/ADVANCED.md](docs/ADVANCED.md).
 - **Search and cost records.** Search vault notes, lessons and past chats; import Codeburn usage with `ws run import codeburn` and inspect it with `ws run report`.
-- **Safe by default.** Your existing files are never overwritten; conflicts are written beside them as `.ws-new`. One claim per task, with stale-write protection.
+- **Safe by default.** Existing user content is preserved; ambiguous files are staged beside the original as `.ws-new`. Recognized managed sections can change during upgrades.
 - **Measured, not assumed.** `ws run log` / `ws run report` record which assistant did what, with tokens and time.
 
 All commands: [docs/COMMANDS.md](docs/COMMANDS.md). See [Workspace concepts](docs/CONCEPTS.md) for a plain-language guide to tasks, memory and delegation.
@@ -86,7 +86,7 @@ Copilot hooks here target the VS Code **Local** harness: `ws connect vscode` wri
 
 ## Privacy
 
-Everything stays in your folder. The only network call is a once-a-day check for a new release (`export WS_OFFLINE=1` turns it off). Nothing is updated, recorded or sent without your yes; feedback you choose to share is redacted and previewed first.
+Task notes stay in your workspace. Assistant prompts and context go to the provider you use. The kit checks for updates once a day unless `WS_OFFLINE=1`; hooks can save bounded, unverified captures. Delegation and feedback send data only when you explicitly run those commands; feedback is redacted and previewed first.
 
 ## Status
 

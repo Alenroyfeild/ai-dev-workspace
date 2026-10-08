@@ -157,7 +157,7 @@ class ToolCostTests(Base):
             cfg.update(tool_profile='lean', tool_overrides={'codeburn': 'on', 'graphify': 'off', 'ponytail': 'ask'})
             cfg_path.write_text(json.dumps(cfg))
             suggestions = assist.suggestions(self.root, True)
-            self.assertEqual([item['id'] for item in suggestions], ['tool-codeburn'])
+            self.assertEqual(suggestions, [])
             report = core.doctor(self.root)
             self.assertEqual([item['name'] for item in report['toolbox']], ['codeburn'])
             self.assertEqual(report['tool_profile'], 'lean')
@@ -206,6 +206,28 @@ class ToolCostTests(Base):
 
 
 class TaskTests(Base):
+    def test_brief_shows_the_only_local_claim_before_first_checkpoint(self):
+        core.task_new(self.root, 'T-2', 'Fix the synthetic crash')
+        core.claim(self.root, 'T-2', 'fixture-worker')
+        brief = core.brief(self.root)
+        self.assertIn('Task T-2: Fix the synthetic crash', brief)
+        self.assertIn('Next action: Not saved yet', brief)
+
+    def test_new_task_uses_only_configured_repo_when_unambiguous(self):
+        repo = self.root / 'repo'
+        repo.mkdir()
+        cfg = core.config(self.root)
+        cfg['repos'] = [str(repo)]
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        core.task_new(self.root, 'T-2', 'Uses configured repo')
+        self.assertEqual(core.task_read(self.root, 'T-2', ['Next action'])['meta']['repo'], str(repo))
+        second = self.root / 'second-repo'
+        second.mkdir()
+        cfg['repos'].append(str(second))
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        core.task_new(self.root, 'T-3', 'Ambiguous repo')
+        self.assertEqual(core.task_read(self.root, 'T-3', ['Next action'])['meta']['repo'], '')
+
     def test_explicit_connect_links_skills_without_overwriting_names(self):
         home = Path(self.tmp.name) / 'home'
         destination = home / '.claude/skills'
@@ -474,6 +496,9 @@ class TaskTests(Base):
         ws('connect', 'claude')
         ws('task', 'new', 'APP-123', 'Fix login crash')
         ws('claim', 'APP-123')
+        brief = ws('brief').stdout
+        self.assertIn('Task APP-123:', brief)
+        self.assertIn('Next action: Not saved yet', brief)
         self.assertEqual(core.config(root)['name'], 'myapp-ws')
         self.assertEqual(core.task_read(root, 'APP-123', ['Next action'])['meta']['claimed_by'], 'quickstart-user')
 
@@ -728,7 +753,7 @@ class KnowledgeTests(Base):
         with mock.patch.dict(os.environ, {'PATH': str(Path(self.tmp.name) / 'empty')}, clear=False):
             first = [notice for notice in core.notices(self.root) if notice['kind'] == 'toolbox']
             second = [notice for notice in core.notices(self.root) if notice['kind'] == 'toolbox']
-        self.assertEqual({notice['tool'] for notice in first}, {'codeburn', 'graphify'})
+        self.assertEqual(first, [])  # the catalog is opt-in via ws tools, not a session-start install pitch
         self.assertEqual(second, [])
 
     def test_doctor_survives_workspace_without_routing(self):
@@ -811,7 +836,7 @@ class InterfaceTests(Base):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         result = json.loads(proc.stdout)
         self.assertIn('handoff', result['skills']['skipped'])
-        self.assertIn('skipped workspace-provided: handoff, lesson, pickup', proc.stderr)
+        self.assertIn('already available in workspace: handoff, lesson, pickup', proc.stderr)
         self.assertTrue(result['mcp']['ok'])
         self.assertFalse((home / '.claude/skills/pickup').exists())
 

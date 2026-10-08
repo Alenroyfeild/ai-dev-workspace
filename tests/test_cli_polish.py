@@ -56,6 +56,20 @@ class CliPolishTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Next: run `ws --help`', result.stderr)
 
+    def test_connect_codex_explains_preview_and_project_skills(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            home, workspace, repo = base / 'home', base / 'workspace', base / 'repo'
+            home.mkdir(); repo.mkdir()
+            env = dict(os.environ, HOME=str(home), USER='fixture')
+            initialized = self.run_ws('init', str(workspace), '--repo', str(repo), env=env)
+            self.assertEqual(initialized.returncode, 0, initialized.stderr)
+            result = self.run_ws('connect', 'codex', env=env, cwd=workspace)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('preview only; not applied', result.stderr)
+            self.assertIn('ws connect codex --write', result.stderr)
+            self.assertIn('Project skills: available', result.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()
