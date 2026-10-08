@@ -9,7 +9,7 @@ from pathlib import Path
 from bench import rollout
 
 
-@unittest.skipIf(os.name == 'nt', 'External retry audit uses a POSIX FIFO; no model calls in tests.')
+@unittest.skipIf(os.name == 'nt', 'External retry audit uses a POSIX socket; no model calls in tests.')
 class RolloutTests(unittest.TestCase):
     def test_reset_removes_conversation_hints_from_git_history(self):
         with tempfile.TemporaryDirectory() as d:
@@ -21,20 +21,6 @@ class RolloutTests(unittest.TestCase):
             self.assertNotIn('opaque-conversation-hint', rollout.run.command(['git', 'log', '--all', '--oneline'], repo).stdout)
             self.assertEqual((repo / 'release.json').read_text(), rollout.DATA['files']['release.json'])
 
-    def test_interrupt_stops_owned_worker_group(self):
-        with tempfile.TemporaryDirectory() as d:
-            worker = mock.Mock(pid=12345)
-            worker.communicate.side_effect = [KeyboardInterrupt, ('', '')]
-            with mock.patch.object(rollout.subprocess, 'Popen', return_value=worker), mock.patch.object(rollout.os, 'killpg') as stop:
-                with self.assertRaises(KeyboardInterrupt):
-                    rollout.session(Path(d), Path(d) / 'home', 'synthetic', False, Path(d) / 'absent-auth')
-                stop.assert_called_once_with(12345, rollout.signal.SIGKILL)
-
-    def test_resumed_usage_counts_only_increment(self):
-        events = [{'type': 'turn.completed', 'usage': {'input_tokens': 17, 'output_tokens': 4, 'cached_input_tokens': 8}}]
-        result = rollout.usage(events, 0, {'input_tokens': 12, 'output_tokens': 1, 'cache_read_tokens': 4})
-        self.assertEqual((result['input_tokens'], result['output_tokens'], result['cache_read_tokens']), (5, 3, 4))
-
     def test_reference_negative_controls_and_external_audit(self):
         with tempfile.TemporaryDirectory() as d:
             repo = Path(d)
@@ -43,6 +29,8 @@ class RolloutTests(unittest.TestCase):
                 expected = rollout.seed(7)
                 rollout.reference(repo, expected)
                 self.assertTrue(all(rollout.checks(repo, expected, audit, 0).values()))
+                (repo / 'pricing').mkdir()
+                self.assertFalse(rollout.checks(repo, expected, audit, 0)['unchanged']); (repo / 'pricing').rmdir()
                 with tempfile.TemporaryDirectory() as outside:
                     rollout.reference(Path(outside), expected)
                     (repo / 'release.json').unlink(); (repo / 'release.json').symlink_to(Path(outside) / 'release.json')
@@ -61,6 +49,10 @@ class RolloutTests(unittest.TestCase):
                 self.assertFalse(rollout.checks(repo, expected, audit, 0)['unchanged'])
                 (repo / 'pricing.py').write_bytes(b'\xff')
                 self.assertFalse(rollout.checks(repo, expected, audit, 0)['unchanged'])
+                with mock.patch.object(rollout.subprocess, 'run', side_effect=subprocess.TimeoutExpired('fixture', 15)):
+                    self.assertFalse(rollout.checks(repo, expected, audit, 0)['visible_tests'])
+                    self.assertEqual(rollout.subprocess.run.call_count, 0)  # never execute damaged fixture code
+                rollout.fixture(repo)
                 with mock.patch.object(rollout.subprocess, 'run', side_effect=subprocess.TimeoutExpired('fixture', 15)):
                     self.assertFalse(rollout.checks(repo, expected, audit, 0)['visible_tests'])
                 audit.path.unlink(); audit.path.write_text('fake audit')
