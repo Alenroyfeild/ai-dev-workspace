@@ -236,6 +236,15 @@ class TaskTests(Base):
         core.task_new(self.root, 'T-3', 'Ambiguous repo')
         self.assertEqual(core.task_read(self.root, 'T-3', ['Next action'])['meta']['repo'], '')
 
+    def test_inferred_repo_uses_the_same_single_line_validation(self):
+        cfg = core.config(self.root)
+        configured_repo = str(self.root / 'repo') + '/token=abcdefghijklmnop'
+        cfg['repos'] = [configured_repo]
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        core.task_new(self.root, 'T-2', 'Redact inferred repo')
+        repo = core.task_read(self.root, 'T-2', ['Next action'])['meta']['repo']
+        self.assertEqual(repo, core.redact(configured_repo))
+
     def test_explicit_connect_links_skills_without_overwriting_names(self):
         home = Path(self.tmp.name) / 'home'
         destination = home / '.claude/skills'
