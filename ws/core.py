@@ -693,7 +693,7 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     repo = redacted_line(repo, 'Repo')
     configured_repos = config(root).get('repos', [])
     if not repo and isinstance(configured_repos, list) and len(configured_repos) == 1:
-        repo = configured_repos[0] if isinstance(configured_repos[0], str) else ''
+        repo = redacted_line(configured_repos[0], 'Repo') if isinstance(configured_repos[0], str) else ''
     path = task_path(root, task_id)
     if path.exists():
         raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
