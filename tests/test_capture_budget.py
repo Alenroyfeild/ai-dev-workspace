@@ -54,6 +54,19 @@ class CaptureBudgetTests(Base):
         capture('We do not have a next step.')
         self.assertNotIn('differs from saved checkpoint', core.brief(self.root))
 
+    def test_qualifier_and_future_step_phrasing_are_preserved(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Inspect amber.')
+        path = self.root / 'qualified.jsonl'
+        path.write_text('\n'.join(map(json.dumps, [
+            {'type': 'user', 'message': {'content': 'Always preserve backups; unless the user opts out.'}},
+            {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Read'},
+                {'type': 'text', 'text': 'The next step will be validate cobalt.'}]}}
+        ])))
+        core.capture_decisions(self.root, str(path)); brief = core.brief(self.root)
+        self.assertIn('unless the user opts out', brief)
+        self.assertIn('differs from saved checkpoint', brief)
+
     def test_newest_next_step_within_summary_wins(self):
         core.claim(self.root, 'T-1', 'synthetic')
         path = self.root / 'steps.jsonl'
