@@ -221,6 +221,14 @@ class TaskTests(Base):
         brief = core.brief(self.root)
         self.assertIn('Next action: Run the saved legacy check', brief)
 
+    def test_brief_does_not_claim_empty_action_was_saved_after_checkpoint(self):
+        core.task_new(self.root, 'T-2', 'Empty saved action')
+        core.claim(self.root, 'T-2', 'fixture-worker')
+        core.checkpoint(self.root, 'T-2', 'in_progress', 'Temporary action')
+        path = core.task_path(self.root, 'T-2')
+        path.write_text(core.set_section(path.read_text(), 'Next action', ''))
+        self.assertIn('Next action: Not saved yet', core.brief(self.root))
+
     def test_new_task_uses_only_configured_repo_when_unambiguous(self):
         repo = self.root / 'repo'
         repo.mkdir()
@@ -243,7 +251,7 @@ class TaskTests(Base):
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
         core.task_new(self.root, 'T-2', 'Redact inferred repo')
         repo = core.task_read(self.root, 'T-2', ['Next action'])['meta']['repo']
-        self.assertEqual(repo, core.redact(configured_repo))
+        self.assertEqual(repo, '')
 
     def test_explicit_connect_links_skills_without_overwriting_names(self):
         home = Path(self.tmp.name) / 'home'
