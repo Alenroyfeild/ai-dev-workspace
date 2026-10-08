@@ -1,6 +1,6 @@
 # AI Dev Workspace  ·  beta
 
-**Help supported assistants resume work from notes you own.**
+**Your AI assistant picks up where it left off: tasks, decisions and lessons in Markdown you own.**
 
 AI coding assistants can lose task context between sessions. AI Dev Workspace stores task notes as Markdown in a folder you own and exposes them through a CLI, MCP server and client integrations. What each assistant can read or capture depends on the support table below.
 
