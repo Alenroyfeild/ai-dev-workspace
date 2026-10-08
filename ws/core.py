@@ -991,6 +991,37 @@ def relevant_lessons(root, task):
     return [line for _, _, line in ranked[:3]]
 
 
+def _capture_words(text, limit):
+    words = redact(text).split()
+    if len(words) > limit:
+        if limit < 3: return ' '.join(words[-limit:]) if limit else ''
+        head = min(8, limit // 3)
+        words = words[:head] + ['[…]'] + words[-(limit - head - 1):]
+    return ' '.join(words)
+
+
+def _constraint_clauses(text):
+    return re.split(r'(?<=[.!?])\s+|\n+|;\s*', text)
+
+
+def _constraint_budget(clauses, limit):
+    parts = []
+    for clause in clauses:
+        if limit <= 0: break
+        if not clause.strip(): continue
+        clipped = _capture_words(clause, limit); parts.append(clipped)
+        limit -= len(clipped.split())
+    return '; '.join(parts)
+
+
+def _captured_step(summary):
+    latest = ''
+    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|,)\s*', summary, re.I):
+        if re.search(r'\b(?:no|not(?:\s+have)?|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I): continue
+        latest = re.split(r'(?<=[.!?])\s+|\n+', summary[match.start():])[0]
+    return latest
+
+
 def brief(root):
     guard = repeat_guard(root)
     active = [t for t in task_list(root) if t['status'] == 'in_progress']
@@ -1010,10 +1041,11 @@ def brief(root):
     if captured:
         memory = captured[-1]
         constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
-        lines.append('Captured last session (unverified): ' + words(constraints, 30))
+        lines.append('Captured last session (unverified): User constraints: ' +
+                     _constraint_budget(_constraint_clauses(constraints.removeprefix('User constraints: ')), 28))
         if separator:
-            lines.append('Captured next step (unverified): ' + words(step, 25))
-            action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b)?\s*[*_`]*(.+)', step, re.I)
+            lines.append('Captured next step (unverified): ' + _capture_words(step, 25))
+            action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
             def normalized(value):
                 return ' '.join(value.strip(' \t\n*_`.:').split()).casefold()
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
@@ -1052,7 +1084,7 @@ def capture_decisions(root, transcript_path, client='claude'):
                     if text.strip():
                         summary = text
                 else:
-                    decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+|(?=\b(?:must|do not|decided|only|always|never)\b)', text, flags=re.I)
+                    decisions.extend(sentence for sentence in _constraint_clauses(text)
                                      if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
     except WsError:
         return False
@@ -1061,13 +1093,8 @@ def capture_decisions(root, transcript_path, client='claude'):
     if not worked or not (decisions or summary):
         return False
     # Newest corrections get the budget first; captured memory never replaces verified sections.
-    body = 'User constraints: ' + ' '.join(redact(' '.join(reversed(decisions))).split()[:95])
-    steps = []
-    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|,)\s*', summary, re.I):
-        if re.search(r'\b(?:no|not|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I):
-            continue
-        steps.append(re.split(r'(?<=[.!?])\s+|\n+', summary[match.start():])[0])
-    body += '\nLast assistant summary / next step: ' + ' '.join((steps[-1] if steps else summary).split()[:35])
+    body = 'User constraints: ' + _constraint_budget(reversed(decisions), 95)
+    body += '\nLast assistant summary / next step: ' + _capture_words(_captured_step(summary) or summary, 35)
     body = body.replace('<!--', '&lt;!--')
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
     marker = '<!-- ws:captured:' + digest_text(str(Path(transcript_path).resolve()))[:16] + ' -->'
