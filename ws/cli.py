@@ -2,7 +2,6 @@
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -374,11 +373,17 @@ def main(argv=None):
                 payload = json.load(sys.stdin)
                 if not isinstance(payload, dict): raise core.WsError('Hook input must be a JSON object.')
                 prompt = payload.get('prompt', '')
-                if not core.prompt_is_large(prompt) or re.search(r'(?<!\S)!raw(?!\S)', prompt):
+                lines = prompt.splitlines() if isinstance(prompt, str) else []
+                if not core.prompt_is_large(prompt) or lines and lines[0].strip() == '!raw':
                     out({}); return 0
-                path = core.paste_save(root, prompt)['path'].relative_to(root).as_posix()
-                reason = (f'Prompt saved, redacted, to {path}. Send a short question plus the relevant excerpt, '
-                          f'or run `ws digest {path} --focus "<pattern>"`; add !raw to bypass.')
+                try:
+                    path = core.paste_save(root, prompt)['path'].relative_to(root).as_posix()
+                    reason = (f'Prompt saved, redacted, to {path}. Send a short question plus the relevant excerpt, '
+                              f'or run `ws digest {path} --focus "<pattern>"`; put !raw alone on the first line to bypass.')
+                except (core.WsError, OSError):
+                    reason = ('Prompt is too large to save in .ws/inbox/. Send a short question plus the relevant excerpt, '
+                              'or save the source as a file and run `ws digest <file> --focus "<pattern>"`; '
+                              'put !raw alone on the first line to bypass.')
                 if a.client == 'claude':
                     print(reason, file=sys.stderr); return 2
                 if a.client == 'cursor': out({'continue': False, 'user_message': reason})

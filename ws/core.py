@@ -1181,8 +1181,12 @@ def digest_file(path, max_lines=60, root=None, focus=None):
     if focus is not None:
         try: pattern = re.compile(focus)
         except re.error as exc: raise WsError(f'Invalid focus regular expression: {exc}')
-        out['focus_matches'] = [f'L{i}: {redact(line.strip())[:200]}' for i, line in enumerate(raw.splitlines(), 1)
-                                if pattern.search(line)][:max_lines]
+        matches = []
+        for i, line in enumerate(raw.splitlines(), 1):
+            if pattern.search(line):
+                if len(matches) >= max_lines: break
+                matches.append(f'L{i}: {redact(line.strip())[:200]}')
+        out['focus_matches'] = matches
     try:
         out['json_shape'] = _shape(json.loads(raw))
         return out
