@@ -226,7 +226,8 @@ class TaskTests(Base):
         path = core.task_path(self.root, 'T-2')
         text = path.read_text(encoding='utf-8')
         text = core.set_meta(text, {'status': 'in_progress', 'checkpoint_count': 1})
-        path.write_text(core.set_section(text, 'Next action', ''), encoding='utf-8')
+        core.atomic_write(path, core.set_section(text, 'Next action', ''))
+        self.assertEqual(core.task_read(self.root, 'T-2', ['Next action'])['meta']['status'], 'in_progress')
         self.assertIn('Next action: Not saved yet', core.brief(self.root))
 
     def test_new_task_uses_only_configured_repo_when_unambiguous(self):
