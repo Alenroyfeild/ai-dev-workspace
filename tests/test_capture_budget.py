@@ -37,3 +37,17 @@ class CaptureBudgetTests(Base):
             {'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text': text}]}}))
         core.capture_decisions(self.root, str(path))
         self.assertIn('validate cobalt', core.task_read(self.root, 'T-1', ['Handoff'])['sections']['Handoff'])
+
+    def test_late_cue_in_one_sentence_and_same_plan_are_not_lost(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Validate cobalt.')
+        path = self.root / 'late-cue.jsonl'
+        path.write_text('\n'.join(map(json.dumps, [
+            {'type': 'user', 'message': {'content': 'Always ' + 'old-context ' * 110 + 'but we must use cobalt.'}},
+            {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Read'},
+                {'type': 'text', 'text': 'Next step: Validate cobalt.'}]}}
+        ])))
+        core.capture_decisions(self.root, str(path))
+        brief = core.brief(self.root)
+        self.assertIn('must use cobalt', brief)
+        self.assertNotIn('differs from saved checkpoint', brief)
