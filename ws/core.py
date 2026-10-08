@@ -7,7 +7,7 @@ import contextlib
 import io
 import ast
 import datetime
-import fcntl
+import errno
 import hashlib
 import json
 import os
@@ -27,10 +27,22 @@ from pathlib import Path
 PACKAGE_DIR = Path(__file__).resolve().parent
 PACKAGED = (PACKAGE_DIR / 'kit.json').is_file()
 KIT = PACKAGE_DIR if PACKAGED else PACKAGE_DIR.parent
+WINDOWS = os.name == 'nt'
 
 
 def python_command():
-    return sys.executable if PACKAGED else 'python3'
+    return sys.executable if PACKAGED or WINDOWS else 'python3'
+
+
+def command_line(arguments):
+    if WINDOWS:
+        # Paths are always quoted, including those containing shell metacharacters without spaces.
+        parts = []
+        for argument in arguments:
+            rendered = subprocess.list2cmdline([argument])
+            parts.append(rendered if rendered.startswith('"') or argument.startswith('--') else '"' + re.sub(r'(\\+)$', r'\1\1', rendered) + '"')
+        return ' '.join(parts)
+    return shlex.join(arguments)
 
 
 REQUIRED = ('Objective', 'Acceptance criteria', 'Evidence', 'Checks', 'Blockers', 'Next action', 'Handoff')
@@ -73,7 +85,7 @@ def find_root(start=None):
 
 
 def config(root):
-    return json.loads((root / 'workspace.json').read_text())
+    return json.loads((root / 'workspace.json').read_text(encoding='utf-8'))
 
 
 def vault(root):
@@ -170,7 +182,7 @@ def copy_preserving(source, target, collisions, skip=()):
 def pack_rules(text, name):
     snippet = KIT / 'packs' / name / 'AGENTS.snippet.md'
     if snippet.is_file():
-        rendered = snippet.read_text().replace('<kit>', str(KIT))
+        rendered = snippet.read_text(encoding='utf-8').replace('<kit>', str(KIT))
         if rendered.strip() not in text:
             return text.rstrip('\n') + '\n' + rendered
     return text
@@ -182,7 +194,7 @@ def _install_pack(target, name, collisions, install_rules=True):
         copy_preserving(src / 'vault', target / 'vault', collisions)
     if install_rules:
         rules = target / 'AGENTS.md'
-        text = rules.read_text()
+        text = rules.read_text(encoding='utf-8')
         candidate = pack_rules(text, name)
         if candidate != text:
             # Appending keeps the user's rules byte-for-byte, so no sidecar is needed.
@@ -217,7 +229,7 @@ def init(target, name, packs=(), repos=()):
     from .orchestration import routing_template
     write_preserving(target / 'routing.json', routing_template().encode(), collisions)
     from . import upgrade
-    rules = upgrade.block((KIT / 'template' / 'AGENTS.md').read_text())
+    rules = upgrade.block((KIT / 'template' / 'AGENTS.md').read_text(encoding='utf-8'))
     for pack in packs:
         _install_pack(target, pack, collisions, install_rules=False)
         rules = pack_rules(rules, pack)
@@ -340,13 +352,13 @@ def codebase_map(root, repo=None, allow_external=False):
     path = inside(vault(root) / 'Project' / 'Codebase map.md', [root])
     existing = read_text(path, [root]) if path.exists() else '# Codebase map\n'
     pattern = r'<!-- ws:codebase-map:start -->.*?<!-- ws:codebase-map:end -->\n?'
-    text = re.sub(pattern, rendered, existing, flags=re.S) if re.search(pattern, existing, re.S) else existing.rstrip() + '\n\n' + rendered
+    text = re.sub(pattern, lambda _: rendered, existing, flags=re.S) if re.search(pattern, existing, re.S) else existing.rstrip() + '\n\n' + rendered
     with lock(root): atomic_write(path, text)
-    return {'repo': str(repo), 'path': str(path.relative_to(root)), 'words': len(rendered.split())}
+    return {'repo': str(repo), 'path': path.relative_to(root).as_posix(), 'words': len(rendered.split())}
 
 
 def memory_hooks(root, client='claude'):
-    command = 'env WS_ROOT=' + shlex.quote(str(root)) + ' ' + shlex.quote(python_command()) + ' ' + shlex.quote(str(KIT / 'bin/ws'))
+    command = command_line([python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root)])
     events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop')
     result = {'hooks': {}}
     if client == 'cursor': result['version'] = 1
@@ -378,7 +390,7 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
 def client_connected(root, client):
     if client == 'codex':
         path = Path.home() / '.codex/config.toml'
-        text = path.read_text() if path.is_file() else ''
+        text = path.read_text(encoding='utf-8') if path.is_file() else ''
         match = re.search(r'^\[mcp_servers\.(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
         if not match:
             return False
@@ -394,7 +406,7 @@ def client_connected(root, client):
     path, key = (root / locations[client][0], locations[client][1]) if client in locations else (None, None)
     if path is None: return False
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding='utf-8'))
         return data.get(key, {}).get('ai-dev-workspace') == mcp_command(root)
     except (OSError, ValueError, AttributeError):
         return False
@@ -437,7 +449,7 @@ def connect(root, client, write=False, skills=False, verify=False):
         relative = {'cursor': '.cursor/hooks.json', 'codex': '.codex/hooks.json'}[client]
         path = inside(root / relative, [root]); candidate = json.dumps(memory_hooks(root, client), indent=2) + '\n'
         with lock(root):
-            merged = hooks(path.read_text(), candidate) if path.exists() else candidate
+            merged = hooks(path.read_text(encoding='utf-8'), candidate) if path.exists() else candidate
             collisions = []
             if merged is not None: atomic_write(path, merged)
             else: write_preserving(path, candidate.encode(), collisions)
@@ -485,7 +497,7 @@ def _connect_config(root, client, write=False):
         if not write or result['connected']:
             return result
         path = Path.home() / '.codex/config.toml'
-        original = path.read_text() if path.exists() else ''
+        original = path.read_text(encoding='utf-8') if path.exists() else ''
         if re.search(r'^(?:mcp_servers\s*=|mcp_servers\.|\[mcp_servers\.(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:\]|\.))', original, re.M):
             raise WsError('Codex already has a different workspace entry; review the printed block manually.')
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -512,7 +524,7 @@ def _connect_config(root, client, write=False):
     data = {key: {}}
     if path.exists():
         try:
-            existing = json.loads(path.read_text())
+            existing = json.loads(path.read_text(encoding='utf-8'))
             if isinstance(existing, dict) and isinstance(existing.get(key), dict):
                 data = existing
         except (OSError, ValueError):
@@ -522,7 +534,7 @@ def _connect_config(root, client, write=False):
     destination = path.with_name(path.name + '.ws-new') if collision else path
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with destination.open('x') as stream:
+        with destination.open('x', encoding='utf-8', newline='') as stream:
             stream.write(json.dumps(data, indent=2) + '\n')
     except FileExistsError:
         pass
@@ -536,7 +548,7 @@ def atomic_write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
     try:
-        with os.fdopen(fd, 'wb' if isinstance(text, bytes) else 'w') as stream:
+        with (os.fdopen(fd, 'wb') if isinstance(text, bytes) else os.fdopen(fd, 'w', encoding='utf-8', newline='')) as stream:
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
@@ -550,12 +562,24 @@ def atomic_write(path, text):
 def lock(root):
     inside(root / '.ws', [root]); inside(root / '.ws/lock', [root])
     (root / '.ws').mkdir(exist_ok=True)
-    with (root / '.ws' / 'lock').open('a') as stream:
+    with (root / '.ws' / 'lock').open('a+b') as stream:
         try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+            file_lock(stream)
+        except OSError as exc:
+            if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK): raise
             raise WsError('Another workspace update is running; retry in a moment.')
-        yield
+        try: yield
+        finally: file_lock(stream, release=True)
+
+
+def file_lock(stream, release=False):
+    if WINDOWS:
+        import msvcrt
+        stream.seek(0)
+        msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK if release else msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(stream, fcntl.LOCK_UN if release else fcntl.LOCK_EX | fcntl.LOCK_NB)
 
 
 def parse_meta(text):
@@ -632,14 +656,14 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     path = task_path(root, task_id)
     if path.exists():
         raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
-    template = (vault(root) / 'Templates' / 'Task.md').read_text()
+    template = (vault(root) / 'Templates' / 'Task.md').read_text(encoding='utf-8')
     text = template.replace('{{id}}', task_id).replace('{{title}}', title).replace('{{date}}', now()[:10])
     text = set_meta(text, {'branch': branch, 'repo': repo})
     if objective:
         text = set_section(text, 'Objective', redact(objective))
     with lock(root):
         atomic_write(path, text)
-    return {'task': task_id, 'path': str(path.relative_to(root))}
+    return {'task': task_id, 'path': path.relative_to(root).as_posix()}
 
 
 def claim_note(root, task_id, meta):
@@ -647,7 +671,7 @@ def claim_note(root, task_id, meta):
     if not meta.get('claimed_by'):
         return ''
     try:
-        local = json.loads(_local_claim_path(root, task_id).read_text())
+        local = json.loads(_local_claim_path(root, task_id).read_text(encoding='utf-8'))
     except (OSError, ValueError, WsError):
         local = {}
     if local.get('token') and local.get('token') == meta.get('claim_token'):
@@ -679,7 +703,7 @@ def task_read(root, task_id, sections=None):
     path = task_path(root, task_id)
     if not path.is_file():
         raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
-    text = path.read_text()
+    text = path.read_text(encoding='utf-8')
     if not sections:
         return {'task': task_id, 'sha': digest_text(text), 'text': text}
     meta = parse_meta(text)
@@ -692,12 +716,12 @@ def claim(root, task_id, worker):
         raise WsError('Worker is a short label such as claude-main or codex-1.')
     with lock(root):
         path = task_path(root, task_id)
-        text = path.read_text()
+        text = path.read_text(encoding='utf-8')
         meta = parse_meta(text)
         if meta.get('claimed_by'):
             # The local claim file (gitignored) proves this workspace made the claim: a later session here resumes it.
             try:
-                local = json.loads(_local_claim_path(root, task_id).read_text())
+                local = json.loads(_local_claim_path(root, task_id).read_text(encoding='utf-8'))
             except (OSError, ValueError):
                 local = {}
             if local.get('token') and local.get('token') == meta.get('claim_token'):
@@ -716,7 +740,7 @@ def release(root, task_id, worker=None, token=None):
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = task_path(root, task_id)
-        text = path.read_text()
+        text = path.read_text(encoding='utf-8')
         meta = parse_meta(text)
         if meta.get('claimed_by') != worker or meta.get('claim_token') != token:
             raise WsError('Worker/token do not match the claim; nothing changed.')
@@ -733,7 +757,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = task_path(root, task_id)
-        text = path.read_text()
+        text = path.read_text(encoding='utf-8')
         meta = parse_meta(text)
         if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
             raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; pass its worker and token.')
@@ -759,7 +783,7 @@ def search(root, query, limit=20):
     hits, paths = [], []
     for path in vault(root).rglob('*.md'):
         if '.ws' not in path.parts and 'Runs' not in path.parts:
-            paths.append((path, str(path.relative_to(root))))
+            paths.append((path, path.relative_to(root).as_posix()))
     for repo in config(root).get('repos', []):
         report = _graphify_report(Path(repo).expanduser())
         if report:
@@ -795,7 +819,7 @@ def _session_text(value):
 
 def _session_file(path):
     try:
-        return '~/' + str(path.relative_to(Path.home()))
+        return '~/' + path.relative_to(Path.home()).as_posix()
     except ValueError:
         return str(path)
 
@@ -858,7 +882,7 @@ def session_search(query, roots=None):
 def _append_line(root, rel, line):
     path = inside(root / rel, [root])
     with lock(root):
-        text = path.read_text() if path.exists() else ''
+        text = path.read_text(encoding='utf-8') if path.exists() else ''
         atomic_write(path, text.rstrip('\n') + '\n' + line + '\n')
 
 
@@ -874,7 +898,7 @@ def lesson_add(root, text, tags=()):
 def lesson_search(root, query):
     path = vault(root) / 'Learnings.md'
     words = [w.lower() for w in re.findall(r'\w{3,}', query)]
-    lines = [l for l in path.read_text().splitlines() if l.startswith('- ')] if path.exists() else []
+    lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- ')] if path.exists() else []
     return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
 
 
@@ -1010,7 +1034,7 @@ def feedback_add(root, text, kind='idea', source='user'):
 
 def feedback_list(root, open_only=True):
     path = vault(root) / 'Feedback.md'
-    lines = [l for l in path.read_text().splitlines() if l.startswith('- [')] if path.exists() else []
+    lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- [')] if path.exists() else []
     return [l for l in lines if l.startswith('- [ ]')] if open_only else lines
 
 
@@ -1094,7 +1118,7 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
                 raise WsError('Imported usage requires a Codeburn source and stable import ID.')
             entry.update(source=source, import_id=import_id)
             if path.is_file():
-                lines = path.read_text().splitlines(keepends=True)
+                lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
                 matches = []
                 for raw in lines:
                     try:
@@ -1122,7 +1146,7 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
                     atomic_write(path, ''.join(rendered))
                     return entry
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open('a') as stream:
+        with path.open('a', encoding='utf-8', newline='') as stream:
             stream.write(json.dumps(entry) + '\n')
     return entry
 
@@ -1138,7 +1162,7 @@ def run_entries(root, task_id):
     if not path.exists():
         return []
     entries = []
-    with path.open() as stream:
+    with path.open(encoding='utf-8') as stream:
         for line in stream:
             try:
                 entries.append(json.loads(line))
@@ -1185,7 +1209,7 @@ def run_report(root, task_id=None):
     for path in files:
         if not path.exists():
             continue
-        for line in path.read_text().splitlines():
+        for line in path.read_text(encoding='utf-8').splitlines():
             e = json.loads(line)
             steps += 1
             b = by.setdefault(e['provider'], {'steps': 0, 'tokens_in': 0, 'tokens_out': 0, 'seconds': 0.0, 'failed': 0})
@@ -1203,7 +1227,7 @@ def validate(root):
     errors, warnings = [], []
     v = vault(root)
     for path in sorted((v / 'Tasks').glob('*.md')):
-        text = path.read_text()
+        text = path.read_text(encoding='utf-8')
         meta = parse_meta(text)
         if meta.get('id') != path.stem:
             errors.append(f'{path.name}: id must equal the file name')
@@ -1214,7 +1238,7 @@ def validate(root):
                 errors.append(f'{path.name}: missing section {name}')
         if meta.get('status') not in ('done', 'backlog') and not section(text, 'Next action'):
             errors.append(f'{path.name}: empty Next action')
-    names = {p.stem for p in v.rglob('*.md')} | {str(p.relative_to(v))[:-3] for p in v.rglob('*.md')}
+    names = {p.stem for p in v.rglob('*.md')} | {p.relative_to(v).as_posix()[:-3] for p in v.rglob('*.md')}
     for path in v.rglob('*.md'):
         text = path.read_text(errors='replace')
         if redact(text) != text:
@@ -1313,7 +1337,7 @@ def tool_costs(root=None, usage=None):
 
 def tools(root=None):
     """Catalog entries with their current executable state; never install anything."""
-    entries = json.loads((KIT / 'tools.json').read_text())
+    entries = json.loads((KIT / 'tools.json').read_text(encoding='utf-8'))
     return [dict(entry, installed=_detected(entry['detect']), **({'policy': tool_policy(root, entry)} if root else {}))
             for entry in entries]
 
@@ -1340,7 +1364,7 @@ def _mcp_config(root, client):
     if not path.exists():
         return None
     try:
-        server = json.loads(path.read_text())[key]['ai-dev-workspace']
+        server = json.loads(path.read_text(encoding='utf-8'))[key]['ai-dev-workspace']
         command, args = server['command'], server.get('args', [])
         if not isinstance(command, str) or not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
             raise ValueError('command and args must be strings')
@@ -1361,7 +1385,7 @@ def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
         if config is None:
             continue
         path, command = config
-        report = {'client': client, 'config': str(path.relative_to(root)), 'ok': False}
+        report = {'client': client, 'config': path.relative_to(root).as_posix(), 'ok': False}
         if isinstance(command, str):
             report.update(step='config', stderr=command)
             checks.append(report)
@@ -1414,11 +1438,11 @@ def doctor(root=None, mcp=False):
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     report['kit'] = {'version': kit_meta()['version']}
     if cache.is_file():
-        report['kit'].update(json.loads(cache.read_text())['result'])
+        report['kit'].update(json.loads(cache.read_text(encoding='utf-8'))['result'])
     if root:
         report['workspace'] = str(root)
         selftests = root / '.ws/delegate-selftests.json'
-        report['delegate_selftests'] = json.loads(selftests.read_text()) if selftests.exists() else {}
+        report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
         report['clients'] = {client: client_connected(root, client)
                              for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
@@ -1447,7 +1471,7 @@ def doctor(root=None, mcp=False):
 # --- releases and feedback-to-issue loop -------------------------------------------
 
 def kit_meta():
-    return json.loads((KIT / 'kit.json').read_text())
+    return json.loads((KIT / 'kit.json').read_text(encoding='utf-8'))
 
 
 def _vtuple(v):
@@ -1483,7 +1507,7 @@ def check_update(force=False):
     meta = kit_meta()
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     if not force and cache.is_file():
-        data = json.loads(cache.read_text())
+        data = json.loads(cache.read_text(encoding='utf-8'))
         if time.time() - data.get('checked', 0) < meta.get('update_check_hours', 24) * 3600:
             return data['result']
     try:
@@ -1523,7 +1547,7 @@ FEEDBACK_RE = re.compile(r'^- \[( |x)\] (\S+) \*\*(\w+)\*\* \(([^)]*)\): (.*?)(?
 
 def _feedback_lines(root):
     path = vault(root) / 'Feedback.md'
-    return path, (path.read_text().splitlines() if path.exists() else [])
+    return path, (path.read_text(encoding='utf-8').splitlines() if path.exists() else [])
 
 
 def feedback_items(root):
@@ -1620,7 +1644,7 @@ def notices(root):
                         + (f': {first[:120]}' if first else '.'), 'suggest': 'ws update'})
         stamp = root / '.ws' / 'sync.json'
         linked = [i for i in feedback_items(root) if i['issue'] and not i['done']]
-        last = json.loads(stamp.read_text()).get('at', 0) if stamp.is_file() else 0
+        last = json.loads(stamp.read_text(encoding='utf-8')).get('at', 0) if stamp.is_file() else 0
         if linked and time.time() - last > 86400:
             (root / '.ws').mkdir(exist_ok=True)
             stamp.write_text(json.dumps({'at': time.time()}))

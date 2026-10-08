@@ -122,6 +122,7 @@ def claude_tool_calls(transcript_path):
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
                                 formatter_class=GroupedHelpFormatter)
+    p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
 
     s = sub.add_parser('init', help='create a workspace')
@@ -211,7 +212,7 @@ def main(argv=None):
             out({n: core.pack_manifest(n)['description'] for n in core.available_packs()}); return 0
         if a.cmd == 'tools':
             try:
-                root = core.find_root()
+                root = core.find_root(a.workspace_root)
             except core.WsError:
                 root = None
             out(core.tool_costs(root) if a.cost else core.tools(root)); return 0
@@ -226,7 +227,7 @@ def main(argv=None):
             out(core.update_kit()); return 0
         if a.cmd == 'doctor':
             try:
-                root = core.find_root()
+                root = core.find_root(a.workspace_root)
             except core.WsError:
                 root = None
             report = core.doctor(root, a.mcp)
@@ -241,7 +242,7 @@ def main(argv=None):
                         raise core.WsError('Use ws sessions search <query> --root cursor=<dir> (or claude, codex, gemini).')
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
-        root = core.find_root()
+        root = core.find_root(a.workspace_root)
         if a.cmd == 'route':
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text else result); return 0 if result['available'] else 2
