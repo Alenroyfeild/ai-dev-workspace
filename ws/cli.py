@@ -130,7 +130,8 @@ def main(argv=None):
     s.add_argument('--repo', action='append', default=[], help='code checkout this workspace serves')
     sub.add_parser('packs', help='list available packs')
     s = sub.add_parser('tools', help='list local tools and load estimates'); s.add_argument('--cost', action='store_true')
-    s = sub.add_parser('pack', help='plug a pack into this workspace'); s.add_argument('action', choices=['add']); s.add_argument('name')
+    s = sub.add_parser('pack', help='plug a pack into this workspace'); s.add_argument('action', choices=['add', 'remove']); s.add_argument('name', nargs='?')
+    s.add_argument('--from', dest='source', help='private pack folder (kept outside the kit)')
     s = sub.add_parser('status', help='workspace overview'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('route', help='resolve an explicit role binding; PATH availability only'); s.add_argument('role', nargs='?', default='lead'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('delegate', help='prepare bounded work or test the read-only worker'); s.add_argument('task', nargs='?'); s.add_argument('--role'); s.add_argument('--run', action='store_true')
@@ -253,7 +254,11 @@ def main(argv=None):
             out(text_status(result) if a.text else result)
         elif a.cmd == 'map': out(core.codebase_map(root, a.repo))
         elif a.cmd == 'pack':
-            result = core.pack_add(root, a.name)
+            from . import packs
+            if a.action == 'add' and a.source and not a.name: result = packs.add(root, a.source)
+            elif a.action == 'add' and a.name and not a.source: result = core.pack_add(root, a.name)
+            elif a.action == 'remove' and a.name and not a.source: result = packs.remove(root, a.name)
+            else: raise core.WsError('Use ws pack add <name>, ws pack add --from <dir>, or ws pack remove <name>.')
             collision_notices(result)
             out(result)
         elif a.cmd in ('brief', 'nudge'):
