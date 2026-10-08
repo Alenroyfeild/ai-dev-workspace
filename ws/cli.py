@@ -164,6 +164,7 @@ def main(argv=None):
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
     l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
     s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
+    s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
     s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
     s = f.add_parser('add'); s.add_argument('text'); s.add_argument('--kind', default='idea'); s.add_argument('--source', default='user')
@@ -325,7 +326,7 @@ def main(argv=None):
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
         elif a.cmd == 'search': out(core.search(root, a.query))
         elif a.cmd == 'lesson':
-            out(core.lesson_add(root, a.text, a.tag) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
+            out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
         elif a.cmd == 'feedback':
             if a.action == 'add': out(core.feedback_add(root, a.text, a.kind, a.source))
             elif a.action == 'submit': out(core.feedback_submit(root, a.n, a.yes))
