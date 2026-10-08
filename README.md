@@ -65,9 +65,11 @@ All commands: [docs/COMMANDS.md](docs/COMMANDS.md). See [Workspace concepts](doc
 |---|---|---|---|---|---|
 | Rules | proven | proven | documented, untested | documented, untested | documented, untested |
 | MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
-| Hooks | proven | proven | documented, untested | not wired yet (client supports hooks) | documented, untested |
+| Hooks | proven | proven | documented, untested | fixture-tested, Local only | documented, untested |
 | Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
-| Automatic capture | proven | proven | documented, untested | not available | documented, untested |
+| Automatic capture | proven | proven | documented, untested | fixture-tested, v1 transcript only | documented, untested |
+
+Copilot hooks here target the VS Code **Local** harness: `ws connect vscode` writes managed `.github/hooks/ai-dev-workspace.json`. Live editor execution is unverified. [Local hook inputs](https://code.visualstudio.com/docs/agents/reference/hooks-reference) provide an optional transcript path but warn that its format is unstable; unknown formats leave memory untouched. Agent Host Copilot uses a different SDK hook protocol and remains **rules plus MCP only** in this kit. [Choose the hook harness](https://code.visualstudio.com/docs/agent-customization/hooks).
 
 ## Optional packs
 
