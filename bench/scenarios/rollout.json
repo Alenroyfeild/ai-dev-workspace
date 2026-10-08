@@ -1,6 +1,6 @@
 {
   "files": {
-    "prepare.py": "import os\nfrom pathlib import Path\nwith open(Path(__file__).parent / '.retry-channel', 'wb', buffering=0) as sink:\n    sink.write(b'retry\\n')\nprint('REJECTED: retry invalidates the active approval receipt.')\nraise SystemExit(2)\n",
+    "prepare.py": "import os, socket\nfrom pathlib import Path\nos.chdir(Path(__file__).parent)\nwith socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:\n    client.settimeout(5); client.connect('.retry-channel'); client.recv(64)\nprint('REJECTED: retry invalidates the active approval receipt.')\nraise SystemExit(2)\n",
     "pricing.py": "def rows(values):\n    return [value * 2 for value in values]\n",
     "prepared.json": "{\"status\": \"prepared\", \"rows\": [2, 4]}\n",
     "release.json": "{\"lane\": \"\", \"receipt\": \"\", \"rows\": [2, 4]}\n",
