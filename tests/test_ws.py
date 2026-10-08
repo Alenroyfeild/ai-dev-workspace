@@ -223,11 +223,12 @@ class TaskTests(Base):
 
     def test_brief_does_not_claim_empty_action_was_saved_after_checkpoint(self):
         core.task_new(self.root, 'T-2', 'Empty saved action')
+        core.checkpoint(self.root, 'T-2', 'in_progress', 'Temporary action')
         path = core.task_path(self.root, 'T-2')
-        text = core.set_meta(path.read_text(), {'status': 'in_progress', 'checkpoint_count': 1})
-        path.write_text(core.set_section(text, 'Next action', ''))
-        task = next(item for item in core.task_list(self.root) if item['id'] == 'T-2')
-        self.assertEqual(task['status'], 'in_progress')
+        text = path.read_text()
+        marker = '## Next action\nTemporary action\n'
+        self.assertIn(marker, text)
+        path.write_text(text.replace(marker, '## Next action\n\n', 1))
         self.assertIn('Next action: Not saved yet', core.brief(self.root))
 
     def test_new_task_uses_only_configured_repo_when_unambiguous(self):
