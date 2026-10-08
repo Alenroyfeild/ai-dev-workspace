@@ -42,7 +42,7 @@ TOOLS = {
     'assist': ('Up to two local suggestions; ask before applying. No installs/config edits.', S(), lambda r, a: assist.suggestions(r)),
     'import_usage': ('Import Codeburn usage; skip ambiguous matches and duplicates.',
                      S(since=string('YYYY-MM-DD', True), task=string('', True)), lambda r, a: core.import_codeburn(r, a.get('since'), a.get('task'))),
-    'search_sessions': ('Search Claude/Codex transcripts; snippets are redacted.',
+    'search_sessions': ('Search Claude/Codex/Cursor/Gemini transcripts; snippets are redacted.',
                         S(query=string('')), lambda r, a: core.session_search(a['query'])),
     'codebase_map': ('Map the configured or supplied repo.',
                      S(repo=string('', True)), lambda r, a: core.codebase_map(r, a.get('repo'))),
