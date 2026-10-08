@@ -1,0 +1,16 @@
+{
+"date": "2026-10-08T04:26:26.698422+00:00",
+"provider": "codex",
+"model": "gpt-6-luna",
+"scenario": "lessons",
+"n": 3,
+"kit": "656904e22311b5ea7071a90b693dab45d03a7310",
+"session1": {"baseline": {"completed": true, "exit_code": 0, "tool_calls": 11, "input_tokens": 128298, "output_tokens": 1901, "cache_read_tokens": 107520, "cache_write_tokens": 0, "cost_usd": null, "seconds": 37.24}, "workspace": {"completed": true, "exit_code": 0, "tool_calls": 9, "input_tokens": 149509, "output_tokens": 2396, "cache_read_tokens": 126720, "cache_write_tokens": 0, "cost_usd": null, "seconds": 62.97}},
+"runs": [
+{"completed": true, "exit_code": 0, "tool_calls": 7, "input_tokens": 112555, "output_tokens": 1706, "cache_read_tokens": 92416, "cache_write_tokens": 0, "cost_usd": null, "seconds": 46.67, "arm": "baseline", "trial": 1, "tests_pass": true, "checks": {"cached_receipt_retained": true, "rows_preserved": true, "failed_approach_not_repeated": true, "builders_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 6, "input_tokens": 95387, "output_tokens": 1338, "cache_read_tokens": 75264, "cache_write_tokens": 0, "cost_usd": null, "seconds": 39.03, "arm": "baseline", "trial": 2, "tests_pass": true, "checks": {"cached_receipt_retained": true, "rows_preserved": true, "failed_approach_not_repeated": true, "builders_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 5, "input_tokens": 82145, "output_tokens": 1385, "cache_read_tokens": 63232, "cache_write_tokens": 0, "cost_usd": null, "seconds": 46.13, "arm": "baseline", "trial": 3, "tests_pass": true, "checks": {"cached_receipt_retained": true, "rows_preserved": true, "failed_approach_not_repeated": true, "builders_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 10, "input_tokens": 121685, "output_tokens": 1607, "cache_read_tokens": 97536, "cache_write_tokens": 0, "cost_usd": null, "seconds": 69.83, "arm": "workspace", "trial": 1, "tests_pass": true, "checks": {"cached_receipt_retained": true, "rows_preserved": true, "failed_approach_not_repeated": true, "builders_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 14, "input_tokens": 138723, "output_tokens": 1915, "cache_read_tokens": 126720, "cache_write_tokens": 0, "cost_usd": null, "seconds": 40.43, "arm": "workspace", "trial": 2, "tests_pass": true, "checks": {"cached_receipt_retained": true, "rows_preserved": true, "failed_approach_not_repeated": true, "builders_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 8, "input_tokens": 135438, "output_tokens": 1488, "cache_read_tokens": 124672, "cache_write_tokens": 0, "cost_usd": null, "seconds": 34.26, "arm": "workspace", "trial": 3, "tests_pass": true, "checks": {"cached_receipt_retained": true, "rows_preserved": true, "failed_approach_not_repeated": true, "builders_and_tests_unchanged": true}, "success": true, "result": "pass"}
+]}

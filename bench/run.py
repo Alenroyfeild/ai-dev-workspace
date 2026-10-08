@@ -42,6 +42,16 @@ def score(root, data):
     return {'tests_pass': tests.returncode == 0, 'checks': checks}
 
 
+def prepare_snapshot(root, data):
+    repo = root / 'repo'
+    for name, expected in data.get('setup', {}).items():
+        path = repo / name
+        if not path.is_file() or path.read_text() != expected:
+            raise RuntimeError('Session 1 did not establish the interrupted checkpoint; inconclusive.')
+    if not data.get('preserve_code'):
+        command(['git', 'restore', '.'], repo); command(['git', 'clean', '-fdq'], repo)
+
+
 def metrics(provider, events, exit_code):
     done = [e for e in events if e.get('type') == ('turn.completed' if provider == 'codex' else 'result')]
     usage = done[-1].get('usage', {}) if done else {}
@@ -95,7 +105,7 @@ def main():
                 core.claim(root, 'BENCH-1', 'synthetic'); core.checkpoint(root, 'BENCH-1', 'in_progress', 'Investigate the synthetic task.')
             result['session1'][arm] = session(root, data['session1'], args.provider, result['model'], arm == 'workspace', auth)
             if not result['session1'][arm]['completed']: raise RuntimeError('Session 1 did not complete; benchmark is inconclusive.')
-            command(['git', 'restore', '.'], root / 'repo'); command(['git', 'clean', '-fdq'], root / 'repo')
+            prepare_snapshot(root, data)
             snapshot = base / ('snapshot-' + arm); shutil.copytree(root, snapshot)
             for trial in range(1, args.n + 1):
                 shutil.rmtree(root); shutil.copytree(snapshot, root)

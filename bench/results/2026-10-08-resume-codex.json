@@ -1,0 +1,16 @@
+{
+"date": "2026-10-08T04:29:18.168946+00:00",
+"provider": "codex",
+"model": "gpt-6-luna",
+"scenario": "resume",
+"n": 3,
+"kit": "656904e22311b5ea7071a90b693dab45d03a7310",
+"session1": {"baseline": {"completed": true, "exit_code": 0, "tool_calls": 5, "input_tokens": 111712, "output_tokens": 1263, "cache_read_tokens": 92416, "cache_write_tokens": 0, "cost_usd": null, "seconds": 34.46}, "workspace": {"completed": true, "exit_code": 0, "tool_calls": 16, "input_tokens": 188176, "output_tokens": 2656, "cache_read_tokens": 165888, "cache_write_tokens": 0, "cost_usd": null, "seconds": 55.71}},
+"runs": [
+{"completed": true, "exit_code": 0, "tool_calls": 4, "input_tokens": 66509, "output_tokens": 924, "cache_read_tokens": 60160, "cache_write_tokens": 0, "cost_usd": null, "seconds": 43.03, "arm": "baseline", "trial": 1, "tests_pass": true, "checks": {"no_repeated_prepare": true, "finished_receipt_intact": true, "release_uses_finished_receipt": true, "rows_preserved": true, "pipeline_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 4, "input_tokens": 66959, "output_tokens": 1037, "cache_read_tokens": 50176, "cache_write_tokens": 0, "cost_usd": null, "seconds": 28.01, "arm": "baseline", "trial": 2, "tests_pass": true, "checks": {"no_repeated_prepare": true, "finished_receipt_intact": true, "release_uses_finished_receipt": true, "rows_preserved": true, "pipeline_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 5, "input_tokens": 80905, "output_tokens": 1056, "cache_read_tokens": 57856, "cache_write_tokens": 0, "cost_usd": null, "seconds": 51.84, "arm": "baseline", "trial": 3, "tests_pass": true, "checks": {"no_repeated_prepare": true, "finished_receipt_intact": true, "release_uses_finished_receipt": true, "rows_preserved": true, "pipeline_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 10, "input_tokens": 171178, "output_tokens": 2265, "cache_read_tokens": 150784, "cache_write_tokens": 0, "cost_usd": null, "seconds": 40.82, "arm": "workspace", "trial": 1, "tests_pass": true, "checks": {"no_repeated_prepare": true, "finished_receipt_intact": true, "release_uses_finished_receipt": true, "rows_preserved": true, "pipeline_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 12, "input_tokens": 187282, "output_tokens": 2318, "cache_read_tokens": 156928, "cache_write_tokens": 0, "cost_usd": null, "seconds": 53.19, "arm": "workspace", "trial": 2, "tests_pass": true, "checks": {"no_repeated_prepare": true, "finished_receipt_intact": true, "release_uses_finished_receipt": true, "rows_preserved": true, "pipeline_and_tests_unchanged": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 8, "input_tokens": 168782, "output_tokens": 1966, "cache_read_tokens": 154880, "cache_write_tokens": 0, "cost_usd": null, "seconds": 40.41, "arm": "workspace", "trial": 3, "tests_pass": true, "checks": {"no_repeated_prepare": true, "finished_receipt_intact": true, "release_uses_finished_receipt": true, "rows_preserved": true, "pipeline_and_tests_unchanged": true}, "success": true, "result": "pass"}
+]}
