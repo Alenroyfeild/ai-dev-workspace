@@ -1015,13 +1015,23 @@ def brief(root):
 
 def capture_decisions(root, transcript_path, client='claude'):
     """Capture bounded, unverified transcript memory to a locally owned task."""
+    reason = _capture_decisions(root, transcript_path, client)
+    outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
+    health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
+              'outcome': outcome, 'reason': reason}
+    with lock(root):
+        atomic_write(inside(root / '.ws/capture-health.json', [root]), json.dumps(health) + '\n')
+    return reason == 'captured'
+
+
+def _capture_decisions(root, transcript_path, client):
     if not isinstance(transcript_path, str) or not transcript_path:
-        return False
-    decisions, summary, worked = [], '', False
+        return 'missing_transcript_path'
+    decisions, summary, worked, recognized = [], '', False, False
     try:
         path = Path(transcript_path)
         if path.stat().st_size > 50 * 1024 * 1024:
-            return False
+            return 'transcript_too_large'
         # ponytail: scan at most 50 MB per hook; add incremental reads if sessions outgrow this.
         with io.StringIO(read_text(path, errors='strict')) as stream:
             from .transcripts import records
@@ -1034,6 +1044,7 @@ def capture_decisions(root, transcript_path, client='claude'):
                     continue
                 if kind not in ('user', 'assistant') or entry.get('isMeta') or entry.get('isCompactSummary'):
                     continue
+                recognized = True
                 text = content if isinstance(content, str) else ''
                 if isinstance(content, list):
                     text = _session_text([item for item in content if isinstance(item, dict) and item.get('type') == 'text'])
@@ -1046,11 +1057,13 @@ def capture_decisions(root, transcript_path, client='claude'):
                     decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+', text)
                                      if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
     except WsError:
-        return False
+        return 'unreadable_transcript'
     except (OSError, UnicodeError, ValueError, TypeError, AttributeError, KeyError, RecursionError):
-        return False
+        return 'unreadable_transcript'
+    if not recognized:
+        return 'unsupported_transcript'
     if not worked or not (decisions or summary):
-        return False
+        return 'no_work_or_memory'
     body = 'User constraints: ' + ' '.join(redact(' '.join(decisions)).split()[:95])
     steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+', summary) if re.search(r'\bnext (step|action)\b', s, re.I)]
     body += '\nLast assistant summary / next step: ' + ' '.join((' '.join(steps) + ' ' + summary).split()[:35])
@@ -1068,12 +1081,12 @@ def capture_decisions(root, transcript_path, client='claude'):
             if task['status'] != 'done' and token and worker == meta.get('claimed_by') and token == meta.get('claim_token'):
                 owned.append((path, text))
         if len(owned) != 1:
-            return False
+            return 'ambiguous_claims' if owned else 'no_local_claim'
         path, original = owned[0]
         text = original
         match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
         if not match:
-            return False
+            return 'missing_handoff'
         section_text = match.group()
         own = re.search(re.escape(marker) + r'.*?<!-- /ws:captured -->\n?', section_text, re.S)
         if own:
@@ -1082,9 +1095,27 @@ def capture_decisions(root, transcript_path, client='claude'):
             section_text = section_text.rstrip('\n') + '\n\n' + block
         text = text[:match.start()] + section_text + text[match.end():]
         if text == original:
-            return False
+            return 'unchanged'
         atomic_write(path, text)
-    return True
+    return 'captured'
+
+
+def capture_health(root):
+    path = root / '.ws/capture-health.json'
+    if not path.exists():
+        return {'outcome': 'not_run', 'reason': 'not_run'}
+    try:
+        health = json.loads(read_text(path, [root]))
+        # Only our fixed diagnostic vocabulary can reach doctor; never echo arbitrary file text.
+        if health['outcome'] not in ('captured', 'unchanged', 'skipped'): raise ValueError
+        if health['reason'] not in ('captured', 'unchanged', 'missing_transcript_path', 'transcript_too_large',
+                                   'unreadable_transcript', 'unsupported_transcript', 'no_work_or_memory',
+                                   'ambiguous_claims', 'no_local_claim', 'missing_handoff'): raise ValueError
+        if health['client'] not in ('claude', 'codex', 'cursor', 'gemini', 'vscode', 'unsupported'): raise ValueError
+        if not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00', health['date']): raise ValueError
+        return {key: health[key] for key in ('date', 'client', 'outcome', 'reason')}
+    except (WsError, ValueError, TypeError, KeyError):
+        return {'outcome': 'unknown', 'reason': 'unreadable_health'}
 
 
 def nudge(root):
@@ -1527,6 +1558,7 @@ def doctor(root=None, mcp=False):
         report['kit'].update(json.loads(cache.read_text(encoding='utf-8'))['result'])
     if root:
         report['workspace'] = str(root)
+        report['capture_health'] = capture_health(root)
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']

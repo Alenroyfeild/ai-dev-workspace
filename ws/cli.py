@@ -76,6 +76,9 @@ def text_doctor(report):
     clients = report.get('clients', {})
     if clients:
         lines.append('Connected clients: ' + (', '.join(name for name, connected in clients.items() if connected) or 'none'))
+    health = report.get('capture_health')
+    if health:
+        lines.append('Last capture: ' + ' / '.join(health.get(key, 'unknown') for key in ('date', 'client', 'outcome', 'reason')))
     routes = report.get('routes', {})
     if routes:
         rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"
