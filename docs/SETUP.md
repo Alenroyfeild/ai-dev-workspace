@@ -31,6 +31,8 @@ Existing files are kept. Proposed kit content goes beside them as `.ws-new`; rev
 
 Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, or `ws connect gemini`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints the exact global-config block; `ws connect codex --write` appends it with a backup, refusing conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
 
+On Windows, generated hooks containing `%` in a workspace, kit or interpreter path use the built-in Windows PowerShell encoded launcher with no profile. It starts the same Python executable directly, forwarding UTF-8 stdin and preserving stdout/stderr and exit status; paths are never interpreted as cmd variables. `ws upgrade` recognizes only this exact launcher and preserves other hooks. Ordinary paths keep the existing command form. References: [cmd variable substitution](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd), [PowerShell encoded commands](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1).
+
 | Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI |
 |---|---|---|---|---|---|
 | Rules | proven | proven | documented, untested | documented, untested | documented, untested |
