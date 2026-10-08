@@ -49,7 +49,8 @@ class PortabilityTests(Base):
             return subprocess.run(['cmd.exe', '/d', '/v:on', '/s', '/c', command], cwd=base, env=env,
                                   input=json.dumps(payload, ensure_ascii=False), encoding='utf-8', capture_output=True, timeout=30)
         unsafe = core.command_line([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(root)]) + ' brief --hook'
-        self.assertNotEqual(run(unsafe, {}).returncode, 0)  # positive control: cmd expands the old quoted root
+        legacy = subprocess.run(unsafe, shell=True, cwd=base, env=env, input='{}', encoding='utf-8', capture_output=True, timeout=30)
+        self.assertNotEqual(legacy.returncode, 0)  # Same shell framing as the existing non-percent positive-control test.
         transcript = root / 'session.jsonl'
         transcript.write_text('\n'.join(map(json.dumps, [{'type': 'user', 'message': {'content': 'Decided: only violet.'}},
             {'type': 'assistant', 'message': {'content': [{'type': 'tool_use'}, {'type': 'text', 'text': 'Next action: read violet.'}]}}])))
