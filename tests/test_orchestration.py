@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 from unittest import mock
 from test_ws import Base
@@ -9,6 +10,33 @@ from mcp import server
 
 
 class OrchestrationTests(Base):
+    def test_reviewer_diff_is_bounded_redacted_and_counted(self):
+        repo = self.root / 'fixture'; repo.mkdir(); source = repo / 'calc.py'
+        git = shutil.which('git'); subprocess.run([git, 'init', '-q', str(repo)], check=True)
+        for text in ('def subtract(a, b): return a - b\n', 'def subtract(a, b): return a + b\n# token=syntheticsecret123456\n'):
+            source.write_text(text); subprocess.run([git, '-C', str(repo), 'add', '.'], check=True)
+            subprocess.run([git, '-C', str(repo), '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture'], check=True)
+        core.task_new(self.root, 'DIFF-1', 'Review synthetic subtraction', repo=str(repo))
+        with self.fake('print("calc.py:1: adds instead of subtracting. Use subtraction.")'):
+            (Path(os.environ['PATH']) / 'git').symlink_to(git)
+            prepared = orchestration.delegate(self.root, 'DIFF-1', 'reviewer', diff='HEAD~1..HEAD')
+            brief = Path(prepared['brief']).read_text()
+            for expected in ('Diff stat', 'Changed files', 'Bounded hunks', 'calc.py', '[REDACTED]'): self.assertIn(expected, brief)
+            self.assertNotIn('syntheticsecret123456', brief); self.assertLessEqual(len(brief.split()), 400)
+            result = orchestration.delegate(self.root, 'DIFF-1', 'reviewer', run=True, diff='HEAD~1..HEAD')
+            self.assertEqual(result['findings'], 1); self.assertEqual(core.run_entries(self.root, 'DIFF-1')[-1]['findings'], 1)
+            with self.assertRaises(core.WsError): orchestration.delegate(self.root, 'DIFF-1', 'reviewer', diff='--output=outside')
+            with self.assertRaises(core.WsError): orchestration.delegate(self.root, 'DIFF-1', 'explorer', diff='HEAD')
+            outside = self.root.parent / 'outside'; outside.mkdir()
+            core.task_new(self.root, 'OUTSIDE-1', 'Unauthorized diff', repo=str(outside))
+            with self.assertRaisesRegex(core.WsError, 'outside'):
+                orchestration.delegate(self.root, 'OUTSIDE-1', 'reviewer', diff='HEAD')
+            with mock.patch.object(orchestration.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout='large change line\n' * 1000)):
+                large = orchestration.delegate(self.root, 'DIFF-1', 'reviewer', diff='HEAD~1..HEAD')
+            text = Path(large['brief']).read_text()
+            for label in ('Diff stat', 'Changed files', 'Bounded hunks'): self.assertIn(label, text)
+            self.assertLessEqual(len(text.split()), 400)
+
     def fake(self, code='import sys; print("UNVERIFIED sample.py:1 synthetic finding")'):
         directory = self.root / 'bin'; directory.mkdir(exist_ok=True)
         for name in ('codex', 'ollama'):

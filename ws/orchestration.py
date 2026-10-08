@@ -111,7 +111,23 @@ def worker_run(binding, repo, body):
         return code, 'Selected provider could not launch; no fallback.', 0, 0, False
 
 
-def delegate(root, task_id, role, run=False):
+def review_diff(repo, revision):
+    if not isinstance(revision, str) or not re.fullmatch(r'[A-Za-z0-9_./~^@{}:+-]{1,200}', revision) or revision.startswith('-'):
+        raise core.WsError('Invalid review range; run git log --oneline in the task repository.')
+    try:
+        for ref in re.split(r'\.\.\.?', revision):
+            subprocess.run(['git', 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}'], cwd=repo, capture_output=True, check=True, timeout=10)
+        parts = {}
+        for label, flag, limit in (('Diff stat', '--stat', 2000), ('Changed files', '--name-only', 2000), ('Bounded hunks', '--unified=3', 8000)):
+            result = subprocess.run(['git', 'diff', '--no-ext-diff', '--no-textconv', flag, revision, '--'], cwd=repo, capture_output=True, text=True, check=True, timeout=10)
+            parts[label] = core.redact(result.stdout[:limit])
+        return parts
+    except (OSError, subprocess.SubprocessError):
+        raise core.WsError('Review range unavailable; run git log --oneline in the task repository.')
+
+
+def delegate(root, task_id, role, run=False, diff=None):
+    if diff is not None and role != 'reviewer': raise core.WsError('--diff requires --role reviewer; run ws delegate --help.')
     if run and role not in ('explorer', 'reviewer'):
         raise core.WsError('Only explorer/reviewer may run; write roles are preparation-only.')
     binding = route(root, role)
@@ -123,10 +139,24 @@ def delegate(root, task_id, role, run=False):
         raise core.WsError('Task claimed elsewhere; cannot append worker evidence.')
     paths = [Path(meta.get('repo') or next(iter(core.config(root).get('repos', [])), str(root))).expanduser().resolve()]
     if not paths[0].is_dir(): raise core.WsError('Task repository is not a directory.')
+    if diff is not None:
+        allowed = [Path(root).resolve()] + [Path(p).expanduser().resolve() for p in core.config(root).get('repos', [])]
+        if not any(paths[0] == p or p in paths[0].parents for p in allowed):
+            raise core.WsError('Review repository is outside declared roots; add it to workspace.json repos, then run ws delegate again.')
     body = '# Bounded delegation (UNVERIFIED)\nLead decides and reviews; workers do bounded work. Read only allowed paths; no credentials or external services.\n'
-    for section, limit in (('Objective', 80), ('Next action', 60), ('Blockers', 30), ('Evidence', 100)):
+    limits = (40, 30, 15, 40) if diff is not None else (80, 60, 30, 100)
+    for section, limit in zip(('Objective', 'Next action', 'Blockers', 'Evidence'), limits):
         body += f'\n## {section}\n' + ' '.join(core.redact(task['sections'][section]).split()[:limit]) + '\n'
     body += '\n## Allowed paths\n' + '\n'.join(map(str, paths)) + '\n\n## Output contract\nUNVERIFIED findings with file:line and checks actually performed; report blockers. Do not implement, commit, accept or change task memory.\n'
+    if role == 'reviewer': body += 'Each finding must be one plain line: UNVERIFIED file:line: problem. fix. No Markdown headings or bullets. Review regressions only; never claim acceptance.\n'
+    if diff is not None:
+        budget = max(0, (385 - len(body.split())) // 3)
+        for label, text in review_diff(paths[0], diff).items():
+            body += '\n## ' + label + '\n'; remaining = budget
+            for line in text.splitlines():
+                words = len(line.split())
+                if words > remaining: body += '[truncated]\n'; break
+                body += line + '\n'; remaining -= words
     if len(body.split()) > 400: raise core.WsError('Brief scope exceeds 400 words; shorten repository paths.')
     identifier = task_id + '-' + role + '-' + core.uuid.uuid4().hex[:8]
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')
@@ -136,6 +166,7 @@ def delegate(root, task_id, role, run=False):
     result = dict(binding=binding, brief=str(brief), output=str(output), command=shlex.join(command) + ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)))
     if not run: return result
     started = time.monotonic(); code, rendered, tokens_in, tokens_out, usage_known = worker_run(binding, paths[0], body)
+    findings = len(set(line.strip() for line in rendered.splitlines() if re.match(r'^(?:UNVERIFIED\s+)?[^:\n]+:\d+:\s+\S', line))) if role == 'reviewer' else None
     with core.lock(root):
         core.atomic_write(output, 'UNVERIFIED worker output\n' + rendered)
         path = core.task_path(root, task_id); text = path.read_text(); current = core.parse_meta(text)
@@ -147,8 +178,8 @@ def delegate(root, task_id, role, run=False):
         core.atomic_write(path, text[:match.end()] + summary + text[match.end():])
     core.run_log(root, task_id, 'delegate ' + role, binding['provider'], model, seconds=time.monotonic()-started,
                  tokens_in=tokens_in, tokens_out=tokens_out, result='ok' if code == 0 else 'failed', worker_role=role,
-                 effort=effort, note='Worker output unverified; lead must review.' + ('' if usage_known else ' usage unavailable.'))
-    return dict(result, exit_code=code)
+                 effort=effort, findings=findings, note='Worker output unverified; lead must review.' + ('' if usage_known else ' usage unavailable.'))
+    return dict(result, exit_code=code, findings=findings)
 
 
 def selftest(root, provider=None, run=True):
