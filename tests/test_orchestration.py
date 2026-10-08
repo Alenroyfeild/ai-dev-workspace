@@ -11,6 +11,43 @@ from mcp import server
 
 
 class OrchestrationTests(Base):
+    def test_codex_family_uses_newest_visible_local_cache_model(self):
+        home = self.root / 'codex-home'; home.mkdir()
+        (home / 'models_cache.json').write_text(json.dumps({'models': [
+            {'slug': 'gpt-6.9-sol', 'visibility': 'list'},
+            {'slug': 'gpt-6.10-sol', 'visibility': 'list', 'supported_in_api': False},
+            {'slug': 'gpt-7-sol', 'visibility': 'hide'},
+            {'slug': 'gpt-99-luna', 'visibility': 'list'},
+            {'slug': 'gpt-7-astra', 'visibility': 'list'},
+            'invalid', {'slug': 'gpt-88-sol;echo bad', 'visibility': 'list'}]}))
+        with self.fake(), mock.patch.dict(os.environ, {'CODEX_HOME': str(home)}):
+            binding = orchestration.route(self.root, 'planner')
+            self.assertEqual(binding['model'], 'gpt-6.10-sol')
+            self.assertEqual(binding['model_source'], 'local Codex cache')
+            self.assertIn('not verified', binding['model_warning'])
+            path = self.root / 'routing.json'; data = json.loads(path.read_text())
+            data['role_overrides']['planner'] = {'provider': 'codex', 'family': 'astra'}; path.write_text(json.dumps(data))
+            self.assertEqual(orchestration.route(self.root, 'planner')['model'], 'gpt-7-astra')
+            data['role_overrides']['planner'] = {'provider': 'codex', 'model': 'gpt-6-sol'}; path.write_text(json.dumps(data))
+            with mock.patch.object(orchestration, 'codex_model', side_effect=AssertionError('cache must not be read')):
+                self.assertEqual(orchestration.route(self.root, 'planner')['model'], 'gpt-6-sol')
+
+    def test_unknown_cache_keeps_default_and_discloses_it(self):
+        from ws import cli
+        home = self.root / 'codex-home'; home.mkdir()
+        with self.fake(), mock.patch.dict(os.environ, {'CODEX_HOME': str(home)}):
+            for content in (None, '{bad', '[]', '{"models": null}', '{"models": [{"slug":"gpt-99-sol"}]}'):
+                if content is not None: (home / 'models_cache.json').write_text(content)
+                binding = orchestration.route(self.root, 'planner')
+                self.assertEqual(binding['model'], 'gpt-6-sol')
+                self.assertEqual(binding['model_source'], 'configured default')
+                self.assertIn('keeping configured default', cli.text_route(binding))
+            path = self.root / 'routing.json'; data = json.loads(path.read_text())
+            data['role_overrides']['planner'] = {'provider': 'claude', 'family': 'opus'}; path.write_text(json.dumps(data))
+            self.executable(Path(os.environ['PATH']), 'claude', 'print("unused")')
+            with mock.patch.object(orchestration, 'codex_model', side_effect=AssertionError('Claude must keep aliases')):
+                self.assertEqual(orchestration.route(self.root, 'planner')['model'], 'opus')
+
     def executable(self, directory, name, code):
         import sys
         path = directory / (name + '.cmd' if os.name == 'nt' else name)
