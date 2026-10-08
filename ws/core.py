@@ -1062,7 +1062,11 @@ def capture_decisions(root, transcript_path, client='claude'):
         return False
     # Newest corrections get the budget first; captured memory never replaces verified sections.
     body = 'User constraints: ' + ' '.join(redact(' '.join(reversed(decisions))).split()[:95])
-    steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+|(?=\bnext (?:step|action)\b)', summary, flags=re.I) if re.search(r'\bnext (step|action)\b', s, re.I)]
+    steps = []
+    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|,)\s*', summary, re.I):
+        if re.search(r'\b(?:no|not|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I):
+            continue
+        steps.append(re.split(r'(?<=[.!?])\s+|\n+', summary[match.start():])[0])
     body += '\nLast assistant summary / next step: ' + ' '.join((steps[-1] if steps else summary).split()[:35])
     body = body.replace('<!--', '&lt;!--')
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.

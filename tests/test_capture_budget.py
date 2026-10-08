@@ -29,6 +29,16 @@ class CaptureBudgetTests(Base):
         self.assertTrue(handoff.startswith('Verified human note.'))
         self.assertFalse(core.capture_decisions(self.root, str(path)))
 
+    def test_negated_next_step_reference_does_not_replace_action(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Inspect amber.')
+        path = self.root / 'negated.jsonl'
+        path.write_text(json.dumps({'type': 'assistant', 'message': {'content': [
+            {'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text':
+                'Next step: validate cobalt. No next step after that. No next action is needed after validation.'}]}}))
+        core.capture_decisions(self.root, str(path))
+        self.assertIn('validate cobalt', core.brief(self.root))
+
     def test_newest_next_step_within_summary_wins(self):
         core.claim(self.root, 'T-1', 'synthetic')
         path = self.root / 'steps.jsonl'
