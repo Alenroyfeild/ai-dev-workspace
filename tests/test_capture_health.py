@@ -43,3 +43,17 @@ class CaptureHealthTests(Base):
         self.assertEqual(self.hook(path)['reason'], 'no_work_or_memory')
         with mock.patch('pathlib.Path.exists', side_effect=PermissionError('private details')):
             self.assertEqual(core.capture_health(self.root)['reason'], 'unreadable_health')
+
+    def test_diagnostic_write_failure_preserves_capture_result(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        path = self.root / 'worked.jsonl'
+        path.write_text(json.dumps({'type': 'assistant', 'message': {'content': [
+            {'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text': 'Next step: validate cobalt.'}]}}))
+        original = core.atomic_write
+        def write(target, text):
+            if target.name == 'capture-health.json': raise PermissionError('private details')
+            return original(target, text)
+        with mock.patch.object(core, 'atomic_write', side_effect=write):
+            self.assertTrue(core.capture_decisions(self.root, str(path)))
+            self.assertFalse(core.capture_decisions(self.root, str(path)))
+        self.assertIn('validate cobalt', core.task_read(self.root, 'T-1', ['Handoff'])['sections']['Handoff'])

@@ -1019,8 +1019,11 @@ def capture_decisions(root, transcript_path, client='claude'):
     outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
     health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
               'outcome': outcome, 'reason': reason}
-    with lock(root):
-        atomic_write(inside(root / '.ws/capture-health.json', [root]), json.dumps(health) + '\n')
+    try:
+        with lock(root):
+            atomic_write(inside(root / '.ws/capture-health.json', [root]), json.dumps(health) + '\n')
+    except (WsError, OSError):
+        pass  # Diagnostics are best effort; a failed health write cannot undo capture.
     return reason == 'captured'
 
 
