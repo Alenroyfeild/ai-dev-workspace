@@ -5,7 +5,7 @@
 AI coding assistants forget everything between sessions. Every new chat re-reads the same files, re-discovers the same rules and repeats the same mistakes, and you pay for it in tokens and time. AI Dev Workspace gives Claude Code, Codex, Cursor and any MCP client one shared memory: plain Markdown files in a folder you own, a small CLI and an MCP server.
 
 macOS, Linux and Windows. Requires Python 3.9+ and git. No API keys, account or telemetry.
-On Windows, run `python bin/ws <command>` from the kit checkout; see [Windows notes](docs/WINDOWS.md).
+On Windows, run `python bin/ws --help` from the kit checkout; see [Windows notes](docs/WINDOWS.md).
 
 **Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
 
@@ -65,8 +65,8 @@ All commands: [docs/COMMANDS.md](docs/COMMANDS.md). See [Workspace concepts](doc
 |---|---|---|---|---|---|
 | Rules | proven | proven | documented, untested | documented, untested | documented, untested |
 | MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
-| Hooks | proven | proven | documented, untested | not wired yet (client supports hooks) | documented, untested |
-| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
+| Hooks | proven | proven | documented, untested | not available | documented, untested |
+| Skills | proven | proven | not available | not available | not available |
 | Automatic capture | proven | proven | documented, untested | not available | documented, untested |
 
 ## Optional packs
@@ -80,7 +80,7 @@ All commands: [docs/COMMANDS.md](docs/COMMANDS.md). See [Workspace concepts](doc
 
 `ws pack add <name>`. Your own domain (Android, web, backend) is a folder with a `pack.json`: [docs/PACKS.md](docs/PACKS.md).
 
-`ws delegate` is the supported read-only worker path. Run `ws delegate --selftest --provider codex` in your workspace to check the sandbox with a positive read control and hostile writes in throwaway directories; `ws doctor` shows the latest provider result. Codex passed these probes on macOS on 2026-10-07; rerun after changing the CLI or sandbox.
+`ws delegate <task> --role explorer` prepares a bounded, read-only request without running a model. See [the command guide](docs/COMMANDS.md) before opting into worker execution.
 
 ## Privacy
 
