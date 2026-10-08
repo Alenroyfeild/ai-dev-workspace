@@ -181,7 +181,7 @@ def main(argv=None):
     for command in ('brief', 'nudge'):
         s = sub.add_parser(command, help='local task memory for assistant sessions')
         s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
-        s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini'), default='claude')
+        s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode'), default='claude')
     s = sub.add_parser('digest', help='summarise a big log/JSON file deterministically'); s.add_argument('file')
     r = sub.add_parser('run', help='orchestration step tracking').add_subparsers(dest='action', required=True)
     s = r.add_parser('log'); s.add_argument('task'); s.add_argument('step'); s.add_argument('--provider', required=True)

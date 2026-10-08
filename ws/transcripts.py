@@ -35,9 +35,25 @@ def records(stream, client):
         for line in stream:
             try: entries.append(json.loads(line))
             except ValueError: continue
+    vscode_known = False
     for entry in entries:
         if not isinstance(entry, dict): continue
-        if client == 'codex' and entry.get('type') == 'response_item':
+        if client == 'vscode':
+            data = entry.get('data')
+            if not isinstance(data, dict): continue
+            if entry.get('type') == 'session.start':
+                vscode_known = type(data.get('version')) is int and data['version'] == 1 and data.get('producer') == 'copilot-agent'
+                continue
+            if not vscode_known: continue  # The upstream transcript format is not a stable hook API.
+            if entry.get('type') == 'tool.execution_start' and isinstance(data.get('toolName'), str) and data['toolName']:
+                yield {'type': 'assistant', 'message': {'content': [{'type': 'tool_use'}]}}
+            elif entry.get('type') in ('user.message', 'assistant.message'):
+                blocks = [{'type': 'text', 'text': data['content']}] if isinstance(data.get('content'), str) else []
+                requests = data.get('toolRequests')
+                if entry['type'] == 'assistant.message' and isinstance(requests, list) and any(isinstance(r, dict) and isinstance(r.get('name'), str) and r['name'] for r in requests):
+                    blocks.append({'type': 'tool_use'})
+                yield {'type': 'user' if entry['type'] == 'user.message' else 'assistant', 'message': {'content': blocks}}
+        elif client == 'codex' and entry.get('type') == 'response_item':
             item = entry.get('payload', {})
             if item.get('type') in ('function_call', 'custom_tool_call') and isinstance(item.get('name'), str):
                 yield {'type': 'assistant', 'message': {'content': [{'type': 'tool_use'}]}}
