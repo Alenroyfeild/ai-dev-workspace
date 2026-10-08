@@ -12,6 +12,18 @@ class AssistTests(Base):
         patch = mock.patch.object(assist, 'feature_suggestions')
         patch.start(); self.addCleanup(patch.stop)
 
+    def test_default_assist_does_not_pitch_optional_tool_installations(self):
+        entries = [
+            {'name': 'codeburn', 'level': 'recommended', 'installed': False,
+             'install': {'codex': 'codeburn install'}},
+            {'name': 'graphify', 'level': 'recommended', 'installed': False,
+             'install': {'codex': 'graphify install'}},
+        ]
+        with mock.patch.object(core, 'tools', return_value=entries), \
+                mock.patch.object(assist, 'cost_data', return_value=({}, {})):
+            ids = [item['id'] for item in assist.suggestions(self.root, True)]
+        self.assertFalse(any(item.startswith('tool-') for item in ids))
+
     def test_filters_cost_findings_and_caps_suggestions(self):
         names = ['ccd_builtin', 'claude-in-chrome', 'ai-dev-workspace', 'recent', 'graphy-helper', 'idle']
         report = {'findings': [{'id': name, 'title': 'Remove ' + name, 'explanation': name,
