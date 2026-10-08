@@ -1013,7 +1013,7 @@ def brief(root):
         lines.append('Captured last session (unverified): ' + words(constraints, 30))
         if separator:
             lines.append('Captured next step (unverified): ' + words(step, 25))
-            action = re.search(r'\bnext (?:step|action)\s*[*_`]*:\s*[*_`]*(.*)', step, re.I)
+            action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b)?\s*[*_`]*(.+)', step, re.I)
             def normalized(value):
                 return ' '.join(value.strip(' \t\n*_`.:').split()).casefold()
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
@@ -1062,7 +1062,7 @@ def capture_decisions(root, transcript_path, client='claude'):
         return False
     # Newest corrections get the budget first; captured memory never replaces verified sections.
     body = 'User constraints: ' + ' '.join(redact(' '.join(reversed(decisions))).split()[:95])
-    steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+', summary) if re.search(r'\bnext (step|action)\b', s, re.I)]
+    steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+|(?=\bnext (?:step|action)\b)', summary, flags=re.I) if re.search(r'\bnext (step|action)\b', s, re.I)]
     body += '\nLast assistant summary / next step: ' + ' '.join((steps[-1] if steps else summary).split()[:35])
     body = body.replace('<!--', '&lt;!--')
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
