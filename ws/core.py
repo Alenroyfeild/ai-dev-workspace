@@ -8,6 +8,7 @@ import io
 import ast
 import datetime
 import errno
+import fnmatch
 import hashlib
 import json
 import os
@@ -732,7 +733,11 @@ def claim(root, task_id, worker):
             raise WsError(f'{task_id} is done; reopen it with a checkpoint first.')
         token = uuid.uuid4().hex
         atomic_write(path, set_meta(text, {'claimed_by': worker, 'claim_token': token, 'claimed_at': now()}))
-        atomic_write(_local_claim_path(root, task_id), json.dumps({'worker': worker, 'token': token}) + '\n')
+        local = {'worker': worker, 'token': token}
+        head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
+        if re.fullmatch(r'[0-9a-f]{40,64}', head):
+            local.update(git_head=head, repo=meta.get('repo', ''))
+        atomic_write(_local_claim_path(root, task_id), json.dumps(local) + '\n')
     return {'task': task_id, 'worker': worker, 'token': token}
 
 
@@ -886,12 +891,18 @@ def _append_line(root, rel, line):
         atomic_write(path, text.rstrip('\n') + '\n' + line + '\n')
 
 
-def lesson_add(root, text, tags=()):
+def lesson_add(root, text, tags=(), paths=(), area=''):
     text = ' '.join(redact(text).split())
     if len(text) < 10:
         raise WsError('Write the lesson as: what happened → rule.')
     tag = ' '.join(f'#{redacted_line(t, "Tag")}' for t in tags)
-    _append_line(root, Path(config(root).get('vault', 'vault')) / 'Learnings.md', f'- {now()[:10]} {text} {tag}'.rstrip())
+    if not isinstance(paths, (list, tuple)): raise WsError('Paths must be relative globs.')
+    patterns = [redacted_line(p, 'Path').replace('\\', '/') for p in paths]
+    if any(not p or p.startswith('/') or re.match(r'^[A-Za-z]:', p) or '..' in p.split('/') for p in patterns):
+        raise WsError('Lesson paths must be relative repo globs without traversal.')
+    metadata = {'paths': patterns, 'area': redacted_line(area, 'Area')}
+    suffix = ' <!-- ws:lesson ' + json.dumps(metadata).replace('<', '\\u003c').replace('>', '\\u003e') + ' -->' if patterns or area else ''
+    _append_line(root, Path(config(root).get('vault', 'vault')) / 'Learnings.md', f'- {now()[:10]} {text} {tag}'.rstrip() + suffix)
     return {'added': True}
 
 
@@ -900,6 +911,47 @@ def lesson_search(root, query):
     words = [w.lower() for w in re.findall(r'\w{3,}', query)]
     lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- ')] if path.exists() else []
     return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
+
+
+def _task_git(root, task_id, *args):
+    """Read local git state only for the task's declared repository."""
+    try:
+        repo = task_read(root, task_id, ['Objective'])['meta'].get('repo')
+        if not repo: return ''
+        path = inside(root / repo, read_roots(root))
+        result = subprocess.run(['git', '-C', str(path), *args], capture_output=True, encoding='utf-8', errors='replace', timeout=2)
+        return result.stdout if result.returncode == 0 else ''
+    except (WsError, OSError, ValueError, subprocess.SubprocessError):
+        return ''
+
+
+def relevant_lessons(root, task):
+    title = set(re.findall(r'\w{3,}', task['title'].lower()))
+    changed = []
+    try:
+        local = json.loads(read_text(_local_claim_path(root, task['id']), [root]))
+        meta = task_read(root, task['id'], ['Objective'])['meta']
+        head = local.get('git_head', '')
+        if local.get('token') == meta.get('claim_token') and local.get('repo') == meta.get('repo') and re.fullmatch(r'[0-9a-f]{40,64}', head):
+            changed = _task_git(root, task['id'], 'diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', head, '--').split('\0')
+    except (WsError, OSError, ValueError, TypeError, AttributeError):
+        pass
+    ranked = []
+    for line in lesson_search(root, ''):
+        match = re.search(r'\s*<!-- ws:lesson (.*?) -->$', line)
+        metadata = {}
+        if match:
+            try: metadata = json.loads(match[1])
+            except ValueError: pass
+            line = line[:match.start()]
+        if not isinstance(metadata, dict): metadata = {}
+        paths = metadata.get('paths', [])
+        if not isinstance(paths, list): paths = []
+        overlap = sum(any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for p in paths) for f in changed)
+        score = len(title & set(re.findall(r'\w{3,}', (line + ' ' + str(metadata.get('area', ''))).lower())))
+        if overlap or score: ranked.append((overlap, score, line))
+    ranked.sort(key=lambda item: (-item[0], -item[1]))
+    return [line for _, _, line in ranked[:3]]
 
 
 def brief(root):
@@ -920,10 +972,7 @@ def brief(root):
     captured = re.findall(r'### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->', task_read(root, task['id'], ['Handoff'])['sections']['Handoff'], re.S)
     if captured:
         lines.append('Captured last session (unverified): ' + words(captured[-1], 60))
-    lessons = lesson_search(root, task['title'])
-    query = set(re.findall(r'\w{3,}', task['title'].lower()))
-    lessons.sort(key=lambda line: -sum(line.lower().count(w) for w in query))
-    lines += ['Lesson: ' + words(line, 12) for line in lessons[:3]]
+    lines += ['Lesson: ' + words(line, 25) for line in relevant_lessons(root, task)]
     return '\n'.join(([guard] if guard else []) + lines)
 
 
