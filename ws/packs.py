@@ -62,10 +62,14 @@ def add(root, directory):
                 raise core.WsError(f'Pack {name} already has another source. Run ws pack remove {name} first.')
             return {'pack': name, 'installed': True, 'next': ['ws upgrade'], 'collisions': []}
         collisions = []
-        for relative, text in files.items(): core.write_preserving(root / relative, text, collisions)
+        created = {}  # only files this pack created may be removed later; pre-existing user files are never owned
+        for relative, text in files.items():
+            existed = (root / relative).exists()
+            if core.write_preserving(root / relative, text, collisions) == root / relative and not existed:
+                created[relative] = core.hashlib.sha256(text).hexdigest()
         path = root / 'AGENTS.md'
         if rules: core.atomic_write(path, path.read_text() + '\n' + rules)
-        local[name] = dict(path=str(source), version=manifest['version'], files={p: core.hashlib.sha256(t).hexdigest() for p, t in files.items()}, rules=rules)
+        local[name] = dict(path=str(source), version=manifest['version'], files=created, rules=rules)
         cfg['packs'].append(name)
         core.atomic_write(root / 'workspace.json', json.dumps(cfg, indent=2) + '\n')
     return {'pack': name, 'installed': True, 'collisions': collisions, 'next': ['ws upgrade to refresh this source']}

@@ -49,7 +49,11 @@ def records(stream, client):
                 yield {'type': item['role'], 'message': {'content': content}}
         elif client == 'gemini':
             content = entry.get('content', '')
-            text = content if isinstance(content, str) else ' '.join(p if isinstance(p, str) else p.get('text', '') for p in content if isinstance(p, (str, dict)))
+            # Only plain text parts: tool calls/results (functionCall, functionResponse) and typed non-text blocks stay out.
+            text = content if isinstance(content, str) else ' '.join(
+                p if isinstance(p, str) else p.get('text', '') for p in content
+                if isinstance(p, str) or isinstance(p, dict) and isinstance(p.get('text'), str)
+                and not ({'functionCall', 'functionResponse'} & set(p)) and p.get('type', 'text') == 'text')
             blocks = [{'type': 'text', 'text': text}]
             calls = entry.get('toolCalls')
             if isinstance(calls, list) and any(isinstance(c, dict) and isinstance(c.get('name'), str) for c in calls): blocks.append({'type': 'tool_use'})
