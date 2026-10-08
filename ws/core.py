@@ -1018,9 +1018,10 @@ def _constraint_budget(clauses, limit, multiline=False):
 
 def _captured_step(summary):
     latest = ''
-    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*', summary, re.I):
+    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*\s*(?:-\s+)?', summary, re.I):
         if re.search(r'\b(?:no|not(?:\s+have)?|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I): continue
-        latest = re.split(r'(?<=[.!?])\s+|\n+', summary[match.start():])[0]
+        prefix = ' '.join(match.group().split()).rstrip(' -')
+        latest = prefix + ' ' + re.split(r'(?<=[.!?])\s+|\n+', summary[match.end():])[0]
     return latest
 
 
