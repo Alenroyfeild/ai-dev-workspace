@@ -6,6 +6,7 @@ server and tests share one implementation.
 import contextlib
 import io
 import ast
+import base64
 import datetime
 import errno
 import hashlib
@@ -43,6 +44,40 @@ def command_line(arguments):
             parts.append(rendered if rendered.startswith('"') or argument.startswith('--') else '"' + re.sub(r'(\\+)$', r'\1\1', rendered) + '"')
         return ' '.join(parts)
     return shlex.join(arguments)
+
+
+_HOOK_PREFIX = ['powershell.exe', '-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand']
+_HOOK_SCRIPT = (
+    "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false);"
+    "$a=ConvertFrom-Json ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('PAYLOAD')));"
+    "$p=New-Object Diagnostics.Process;$p.StartInfo.FileName=$a.argv[0];$p.StartInfo.Arguments=$a.arguments;"
+    "$p.StartInfo.UseShellExecute=$false;$p.StartInfo.RedirectStandardInput=$true;$p.StartInfo.CreateNoWindow=$true;"
+    "[void]$p.Start();$b=[Text.Encoding]::UTF8.GetBytes([Console]::In.ReadToEnd());"
+    "$p.StandardInput.BaseStream.Write($b,0,$b.Length);$p.StandardInput.BaseStream.Close();"
+    "$p.WaitForExit();exit $p.ExitCode"
+)
+
+
+def encoded_hook_command(arguments):
+    # Native Process.Start avoids cmd expansion of every path; stdin is forwarded as UTF-8 bytes.
+    data = {'argv': arguments, 'arguments': subprocess.list2cmdline(arguments[1:])}
+    payload = base64.b64encode(json.dumps(data).encode('utf-8')).decode('ascii')
+    script = _HOOK_SCRIPT.replace('PAYLOAD', payload)
+    return ' '.join(_HOOK_PREFIX + [base64.b64encode(script.encode('utf-16-le')).decode('ascii')])
+
+
+def encoded_hook_args(parts):
+    """Recognize our exact launcher without evaluating PowerShell during upgrades."""
+    if len(parts) != 6 or parts[:5] != _HOOK_PREFIX: raise ValueError('Unknown hook launcher')
+    script = base64.b64decode(parts[5], validate=True).decode('utf-16-le')
+    match = re.fullmatch(re.escape(_HOOK_SCRIPT).replace('PAYLOAD', r'([A-Za-z0-9+/=]+)'), script)
+    if not match: raise ValueError('Unknown hook script')
+    data = json.loads(base64.b64decode(match[1], validate=True).decode('utf-8'))
+    if not isinstance(data, dict) or set(data) != {'argv', 'arguments'}: raise ValueError('Unknown hook payload')
+    args = data['argv']
+    if not isinstance(args, list) or not args or any(not isinstance(a, str) for a in args) or data['arguments'] != subprocess.list2cmdline(args[1:]):
+        raise ValueError('Invalid hook arguments')
+    return args
 
 
 REQUIRED = ('Objective', 'Acceptance criteria', 'Evidence', 'Checks', 'Blockers', 'Next action', 'Handoff')
@@ -358,13 +393,15 @@ def codebase_map(root, repo=None, allow_external=False):
 
 
 def memory_hooks(root, client='claude'):
-    command = command_line([python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root)])
+    arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root)]
+    command = command_line(arguments)
     events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop')
     result = {'hooks': {}}
     if client == 'cursor': result['version'] = 1
     for event in events:
+        suffix = ['brief' if event.lower() == 'sessionstart' else 'nudge', '--hook'] + ([] if client == 'claude' else ['--client', client])
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
-                'command': command + (' brief --hook' if event.lower() == 'sessionstart' else ' nudge --hook') + ('' if client == 'claude' else ' --client ' + client)}
+                'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][event] = [hook if client == 'cursor' else {'hooks': [hook]}]
     return result
 def install_memory_hooks(root, collisions):
