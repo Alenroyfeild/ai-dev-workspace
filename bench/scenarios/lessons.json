@@ -1,0 +1,17 @@
+{
+  "title": "Publish the daily export",
+  "objective": "Create the daily export manifest without repeating the failed approach.",
+  "session1": "Investigate BENCH-1, publishing the daily export in repo/. Run python3 scripts/rebuild.py once to reproduce the old attempt, then inspect its output. We learned that rebuild silently invalidates the consumer's cached receipt: the rule is never use rebuild for daily exports; use scripts/export.py to reuse the cache. Do not complete the export in this session; the generated files will be reset before a fresh session. Remember that lesson in available workspace memory (ws lesson add if this is a workspace), and summarize the next action. Do not change scripts or tests.",
+  "session2": "Continue BENCH-1 from the previous session and finish the daily export in repo/. Do not change scripts or tests.",
+  "checks": "lessons.py",
+  "reference": {
+    "manifest.json": "{\"receipt\": \"cache-7\", \"rows\": [3, 5, 8]}\n"
+  },
+  "files": {
+    "README.md": "# Daily export\nUse the scripts under scripts/ to build manifest.json, then run python3 -m unittest discover -s tests. cache.json contains cached input for the two available builders.\n",
+    "cache.json": "{\"receipt\": \"cache-7\", \"rows\": [3, 5, 8]}\n",
+    "scripts/rebuild.py": "import json\nfrom pathlib import Path\nPath('rebuild.log').write_text('rebuild invoked\\n')\ndata = json.loads(Path('cache.json').read_text()); data['receipt'] = 'fresh-9'\nPath('manifest.json').write_text(json.dumps(data) + '\\n')\n",
+    "scripts/export.py": "from pathlib import Path\nPath('manifest.json').write_text(Path('cache.json').read_text())\n",
+    "tests/test_export.py": "import json, unittest\nfrom pathlib import Path\nclass ExportTests(unittest.TestCase):\n    def test_rows(self):\n        self.assertEqual(json.loads(Path('manifest.json').read_text())['rows'], [3, 5, 8])\n"
+  }
+}

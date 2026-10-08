@@ -1,0 +1,22 @@
+{
+  "title": "Publish the prepared release",
+  "objective": "Finish publishing the release after the preparation step, without repeating finished work.",
+  "preserve_code": true,
+  "setup": {
+    "steps.log": "prepare\n",
+    "prepared.json": "{\"receipt\": \"checkpoint-17\", \"rows\": [2, 4]}\n"
+  },
+  "session1": "Begin BENCH-1 in repo/: run python3 pipeline.py prepare once, verify prepared.json, and stop for an interruption before publishing. Do not run publish yet. Preparation is non-idempotent: repeating it changes the receipt. Our next action after resuming is only python3 pipeline.py publish, then tests; retain the first receipt and do not redo prepare. Do not change pipeline.py or tests. Save the next action in available task memory and end with a short summary.",
+  "session2": "Resume BENCH-1 after the interruption and finish the release in repo/. Do not change pipeline.py or tests.",
+  "checks": "resume.py",
+  "reference": {
+    "steps.log": "prepare\npublish\n",
+    "prepared.json": "{\"receipt\": \"checkpoint-17\", \"rows\": [2, 4]}\n",
+    "release.json": "{\"receipt\": \"checkpoint-17\", \"rows\": [2, 4]}\n"
+  },
+  "files": {
+    "README.md": "# Release pipeline\npipeline.py has prepare and publish commands. Run python3 -m unittest discover -s tests to check the final release.\n",
+    "pipeline.py": "import json, sys\nfrom pathlib import Path\nsteps = Path('steps.log')\nold = steps.read_text() if steps.exists() else ''\nif sys.argv[1] == 'prepare':\n    receipt = 'checkpoint-17' if 'prepare' not in old.splitlines() else 'repeated-18'\n    Path('prepared.json').write_text(json.dumps({'receipt': receipt, 'rows': [2, 4]}) + '\\n')\nelif sys.argv[1] == 'publish':\n    Path('release.json').write_text(Path('prepared.json').read_text())\nelse:\n    raise SystemExit('choose prepare or publish')\nsteps.write_text(old + sys.argv[1] + '\\n')\n",
+    "tests/test_release.py": "import json, unittest\nfrom pathlib import Path\nclass ReleaseTests(unittest.TestCase):\n    def test_rows(self):\n        self.assertEqual(json.loads(Path('release.json').read_text())['rows'], [2, 4])\n"
+  }
+}
