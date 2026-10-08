@@ -693,7 +693,10 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     repo = redacted_line(repo, 'Repo')
     configured_repos = config(root).get('repos', [])
     if not repo and isinstance(configured_repos, list) and len(configured_repos) == 1:
-        repo = redacted_line(configured_repos[0], 'Repo') if isinstance(configured_repos[0], str) else ''
+        candidate = configured_repos[0]
+        if isinstance(candidate, str):
+            normalized = redacted_line(candidate, 'Repo')
+            repo = normalized if normalized == candidate else ''
     path = task_path(root, task_id)
     if path.exists():
         raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
@@ -1008,8 +1011,9 @@ def brief(root):
     def words(text, limit):
         return ' '.join(redact(text).split()[:limit])
     next_action = record['sections']['Next action']
-    saved_next = (record['meta'].get('checkpoint_count', 0) not in (0, '0', '')
-                  or next_action.strip() not in ('', 'Read the code involved and fill Evidence.'))
+    saved_next = bool(next_action.strip()) and (
+        record['meta'].get('checkpoint_count', 0) not in (0, '0', '')
+        or next_action.strip() != 'Read the code involved and fill Evidence.')
     lines = ['Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.',
              f"Task {task['id']}: {words(task['title'], 15)}",
              'Next action: ' + (words(next_action, 60) if saved_next
