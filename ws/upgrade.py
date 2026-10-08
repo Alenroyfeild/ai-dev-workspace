@@ -28,7 +28,7 @@ def pointer_files():
 
 def fingerprint(root):
     from .orchestration import routing_template
-    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text(encoding='utf-8') + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(pointer_files(), sort_keys=True) + json.dumps([core.memory_hooks(root, c) for c in ('claude', 'codex', 'cursor', 'gemini')], sort_keys=True))
+    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text(encoding='utf-8') + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(pointer_files(), sort_keys=True) + json.dumps([core.memory_hooks(root, c) for c in ('claude', 'codex', 'cursor', 'gemini', 'vscode')], sort_keys=True))
 
 
 def markdown(old, new):
@@ -55,7 +55,7 @@ def managed_command(command):
     if rest[:1] == ['--workspace-root']:
         rest = rest[2:]
     return (len(rest) in (2, 4) and rest[0] in ('brief', 'nudge') and rest[1] == '--hook'
-            and (len(rest) == 2 or rest[2] == '--client' and rest[3] in ('codex', 'cursor', 'gemini')))
+            and (len(rest) == 2 or rest[2] == '--client' and rest[3] in ('codex', 'cursor', 'gemini', 'vscode')))
 
 
 def hooks(old, new):
@@ -111,7 +111,7 @@ def upgrade(root, dry_run=False):
         for pack in cfg.get('packs', []):
             if pack not in cfg.get('local_packs', {}): rules = core.pack_rules(rules, pack)
         from .orchestration import routing_template
-        clients = {'.claude/settings.json': 'claude', '.codex/hooks.json': 'codex', '.cursor/hooks.json': 'cursor', '.gemini/settings.json': 'gemini'}
+        clients = {'.claude/settings.json': 'claude', '.codex/hooks.json': 'codex', '.cursor/hooks.json': 'cursor', '.gemini/settings.json': 'gemini', '.github/hooks/ai-dev-workspace.json': 'vscode'}
         desired = {'AGENTS.md': rules, 'routing.json': routing_template(), **{p: json.dumps(core.memory_hooks(root, c), indent=2) + '\n'
                    for p, c in clients.items() if c in ('claude', 'codex') or (root / p).exists()}, **skills(), **pointer_files()}
         from . import packs
