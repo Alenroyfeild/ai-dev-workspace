@@ -8,6 +8,7 @@ import tempfile
 import time
 from pathlib import Path
 from bench import run
+from ws import core
 
 
 def usage(events, exit_code, prior=None):
@@ -30,13 +31,14 @@ def claude_session(root, home, prompt, workspace, resume=None):
     if version.returncode or not match or tuple(map(int, match.groups())) < (2, 1, 285):
         raise RuntimeError('Claude benchmark needs Claude Code >= 2.1.285 for strict isolation; no fallback or install.')
     policy = {'permissions': {'blockReadsOutsideWorkingDirectories': True}, 'disableClaudeAiConnectors': True,
-              'sandbox': {'enabled': True, 'failIfUnavailable': True, 'allowUnsandboxedCommands': False,
+              'sandbox': {'enabled': True, 'failIfUnavailable': True, 'allowUnsandboxedCommands': False, 'autoAllowBashIfSandboxed': False,
                           'filesystem': {'allowRead': [str(run.KIT)]},
                           'credentials': {'envVars': [{'name': 'ANTHROPIC_API_KEY', 'mode': 'deny'}]}}}
     mcp = root / '.mcp.json'
+    if workspace and not mcp.is_file(): raise RuntimeError('Workspace benchmark requires its MCP config; no empty-config fallback.')
     tools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(python3 *)', 'Bash(git *)'] + (['Skill', 'Bash(ws *)', 'mcp__ai-dev-workspace'] if workspace else [])
     args = ['claude', '-p', prompt] + (['--resume', resume] if resume else []) + [
-        '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', mcp.read_text() if workspace and mcp.is_file() else '{"mcpServers": {}}',
+        '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', core.read_text(mcp, [root]) if workspace else '{"mcpServers": {}}',
         '--settings', json.dumps(policy), '--tools', 'Read,Grep,Glob,Edit,Write,Bash' + (',Skill' if workspace else ''),
         '--permission-mode', 'acceptEdits', '--allowedTools', *tools, '--max-turns', '40', '--model', 'sonnet', '--output-format', 'stream-json', '--verbose']
     start = time.monotonic()

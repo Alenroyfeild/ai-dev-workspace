@@ -48,6 +48,9 @@ class RolloutTransportTests(unittest.TestCase):
             self.assertTrue(policy['permissions']['blockReadsOutsideWorkingDirectories'])
             self.assertTrue(policy['sandbox']['failIfUnavailable'])
             self.assertFalse(policy['sandbox']['allowUnsandboxedCommands'])
+            self.assertFalse(policy['sandbox']['autoAllowBashIfSandboxed'])
+            allowed = args[args.index('--allowedTools') + 1:args.index('--max-turns')]
+            self.assertNotIn('Bash', allowed)
             self.assertTrue(result['completed']); self.assertEqual(result['input_tokens'], 7)
             self.assertEqual((message, session), ('Saved synthetic decision.', 'synthetic-session'))
 
@@ -57,6 +60,14 @@ class RolloutTransportTests(unittest.TestCase):
                 mock.patch.object(rollout_transport.subprocess, 'Popen') as launch:
             with self.assertRaisesRegex(RuntimeError, 'no fallback'):
                 rollout_transport.claude_session(Path(d), Path(d) / 'home', 'synthetic', False)
+            launch.assert_not_called()
+
+    def test_claude_workspace_without_mcp_is_not_run(self):
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(rollout_transport.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='2.1.300')), \
+                mock.patch.object(rollout_transport.subprocess, 'Popen') as launch:
+            with self.assertRaisesRegex(RuntimeError, 'MCP'):
+                rollout_transport.claude_session(Path(d), Path(d) / 'home', 'synthetic', True)
             launch.assert_not_called()
 
     def test_claude_interrupt_stops_owned_worker_group(self):
