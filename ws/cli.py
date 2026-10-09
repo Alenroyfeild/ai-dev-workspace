@@ -263,6 +263,7 @@ def main(argv=None):
         s = sub.add_parser(command, help='local task memory for assistant sessions')
         s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
         s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode'), default='claude')
+        if command == 'brief': s.add_argument('--refresh', action='store_true', help='also update the current-task block in client instruction files')
     s = sub.add_parser('digest', help='summarise a big log/JSON file deterministically'); s.add_argument('file')
     s.add_argument('--focus', help='show regex-matching line prefixes before the summary (bounded regex; 4096 chars/line)')
     s.add_argument('--local-summary', action='store_true', help='also use the configured local-llm pack')
@@ -372,6 +373,7 @@ def main(argv=None):
                 return 0
             if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop'):
                 core.capture_decisions(root, payload.get('transcript_path'))
+            if a.cmd == 'brief' and a.refresh: core.refresh_native(root)
             message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
             if a.hook and a.cmd == 'nudge':
                 if payload.get('hook_event_name') == 'Stop':
