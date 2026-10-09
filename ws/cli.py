@@ -95,6 +95,12 @@ def collision_notices(result):
 
 def claude_tool_calls(transcript_path):
     """Return Claude Code tool-use count, or None when the transcript is unusable."""
+    uses = claude_tool_uses(transcript_path)
+    return None if uses is None else len(uses)
+
+
+def claude_tool_uses(transcript_path):
+    """Return Claude Code tool_use blocks, or None when the transcript is unusable."""
     if not isinstance(transcript_path, str) or not transcript_path:
         return None
     path = Path(transcript_path)
@@ -105,7 +111,7 @@ def claude_tool_calls(transcript_path):
     except OSError:
         return None
     recognized = False
-    calls = 0
+    uses = []
     try:
         with transcript:
             for line in transcript:
@@ -117,10 +123,24 @@ def claude_tool_calls(transcript_path):
                 if not isinstance(content, list):
                     continue
                 recognized = True
-                calls += sum(isinstance(item, dict) and item.get('type') == 'tool_use' for item in content)
+                uses += [item for item in content if isinstance(item, dict) and item.get('type') == 'tool_use']
     except OSError:
         return None
-    return calls if recognized else None
+    return uses if recognized else None
+
+
+def unrecorded_work(root, uses):
+    """Ask once for a checkpoint when this session edited files but never updated its task."""
+    def recorded(use):
+        name, data = str(use.get('name', '')), use.get('input') if isinstance(use.get('input'), dict) else {}
+        return (name.endswith('__checkpoint') or name == 'Skill' and data.get('skill') == 'handoff'
+                or name == 'Bash' and 'ws checkpoint' in str(data.get('command', '')))
+    if not any(use.get('name') in ('Edit', 'Write', 'MultiEdit', 'NotebookEdit') for use in uses) or any(map(recorded, uses)):
+        return ''
+    task = core.sole_local_claim(root)
+    return (f'Files changed this session but {task} was not updated. Before stopping, run '
+            f'`ws checkpoint {task} --status in_progress|review|done --next "<exact next action>"` '
+            f'(done if the task is finished). Skip only if these edits were unrelated to {task}.') if task else ''
 
 
 def main(argv=None):
@@ -294,7 +314,9 @@ def main(argv=None):
             message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
             if a.hook and a.cmd == 'nudge':
                 if payload.get('hook_event_name') == 'Stop':
-                    idle = claude_tool_calls(payload.get('transcript_path')) == 0
+                    uses = claude_tool_uses(payload.get('transcript_path'))
+                    idle = uses == []
+                    message = message or unrecorded_work(root, uses or [])
                     out({'decision': 'block', 'reason': message} if message and not payload.get('stop_hook_active') and not idle else {})
                 elif message:
                     out({'systemMessage': message})
