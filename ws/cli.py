@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import core, assist, orchestration
+from . import core, assist, orchestration, native
 
 
 def _read_limited_stdin():
@@ -37,7 +37,7 @@ def _block_prompt(client, reason):
 
 COMMAND_GROUPS = (
     ('Setup', ('init', 'connect', 'packs', 'pack')),
-    ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'lesson')),
+    ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'import', 'lesson')),
     ('Orchestration', ('route', 'delegate')),
     ('Measure', ('tools', 'digest', 'run', 'trace')),
     ('Maintain', ('doctor', 'validate', 'map', 'feedback', 'update', 'version', 'upgrade', 'notices', 'assist')),
@@ -99,6 +99,8 @@ def text_status(report):
         lines.append(label + ': ' + ('; '.join(report[key]) or 'none'))
     lines.extend((f"Open feedback: {report['open_feedback']}", f"Lessons: {report['lessons']}",
                   f"Recent runs: {report['runs']['steps']}"))
+    if 'codex_goals' in report:
+        lines.append(f"Codex goals: {report['codex_goals']['active']} active, {report['codex_goals']['complete']} complete")
     return '\n'.join(lines)
 
 
@@ -125,6 +127,10 @@ def text_doctor(report):
     clients = report.get('clients', {})
     if clients:
         lines.append('Connected clients: ' + (', '.join(name for name, connected in clients.items() if connected) or 'none'))
+    goals = report.get('codex_goals')
+    if goals:
+        lines.append(f"Codex goals: {goals['active']} active, {goals['complete']} complete" if 'active' in goals
+                     else f"Codex goals: skipped ({goals['skipped']})")
     health = report.get('capture_health')
     if health:
         lines.append('Last capture: ' + ' / '.join(health.get(key, 'unknown') for key in ('date', 'client', 'outcome', 'reason')))
@@ -238,6 +244,8 @@ def main(argv=None):
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
+    s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
+    s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
     s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
@@ -417,6 +425,8 @@ def main(argv=None):
         elif a.cmd == 'checkpoint':
             notes = dict(n.split('=', 1) for n in a.note)
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
+            if a.status == 'done' and (hint := native.goal_hint(root, a.id)): print(hint, file=sys.stderr)  # stderr keeps stdout JSON clean
+        elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query))
         elif a.cmd == 'lesson':
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
