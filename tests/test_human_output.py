@@ -28,8 +28,7 @@ class HumanOutputTests(Base):
     def test_init_does_not_print_codex_config_to_everyone(self):
         proc = self.run_ws('init', str(self.root.parent / 'fresh-ws'))
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertNotIn('[mcp_servers', proc.stdout)
-        self.assertIn('ws connect codex', proc.stdout)
+        self.assertNotIn('[mcp_servers', proc.stdout)  # the Codex line appears only where Codex is installed
         self.assertIn('ws connect claude', proc.stdout)
 
     def run_ws(self, *args):
