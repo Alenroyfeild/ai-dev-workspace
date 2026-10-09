@@ -445,6 +445,7 @@ def mcp_command(root):
 
 # Project MCP config per client: (file, key holding the server map).
 MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
+                 'copilot': ('.mcp.json', 'mcpServers'),
                  'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
 
 
@@ -547,8 +548,8 @@ def _connect_gemini(root):
 
 
 def _connect_config(root, client, write=False):
-    if client not in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
-        raise WsError('Client must be claude, codex, cursor, vscode or gemini.')
+    if client not in ('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'):
+        raise WsError('Client must be claude, codex, cursor, copilot, vscode or gemini.')
     if write and client != 'codex':
         raise WsError('--write applies only to the Codex global configuration.')
     server = mcp_command(root)
@@ -2115,6 +2116,10 @@ def doctor(root=None, mcp=False):
         report['kit'].update(json.loads(cache.read_text(encoding='utf-8'))['result'])
     if root:
         report['workspace'] = str(root)
+        cfg = config(root)
+        preset, assistants = cfg.get('routing_preset', 'not selected'), cfg.get('assistants', [])
+        report['setup'] = {'preset': preset if isinstance(preset, str) else 'unknown',
+                           'assistants': assistants if isinstance(assistants, list) and all(isinstance(name, str) for name in assistants) else []}
         report['capture_health'] = capture_health(root)
         from . import native
         report['codex_goals'] = native.codex_goals(root)

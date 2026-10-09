@@ -36,7 +36,7 @@ def _block_prompt(client, reason):
 
 
 COMMAND_GROUPS = (
-    ('Setup', ('init', 'connect', 'packs', 'pack')),
+    ('Setup', ('init', 'setup', 'connect', 'packs', 'pack')),
     ('Daily', ('status', 'task', 'next', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'import', 'lesson')),
     ('Orchestration', ('route', 'delegate')),
     ('Measure', ('tools', 'digest', 'run', 'trace')),
@@ -125,6 +125,8 @@ def text_doctor(report):
     lines = [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
+    if report.get('setup'):
+        lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
@@ -234,8 +236,12 @@ def main(argv=None):
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
-    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'vscode', 'gemini'))
+    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
+    s = sub.add_parser('setup', help='choose assistants and configure project connections')
+    s.add_argument('--assistants', help='comma-separated assistants; no client is launched')
+    s.add_argument('--preset', help='routing preset name')
+    s.add_argument('--detect', action='store_true', help='read-only CLI/app detection, no workspace needed')
 
     t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
     s = t.add_parser('new'); s.add_argument('id'); s.add_argument('title')
@@ -301,6 +307,10 @@ def main(argv=None):
 
     a = p.parse_args(argv)
     try:
+        if a.cmd == 'setup' and a.detect:
+            from . import setup
+            if a.assistants is not None or a.preset: raise core.WsError('--detect cannot configure assistants.')
+            out(setup.detect()); return 0
         if a.cmd == 'init':
             cfg = core.init(a.dir, a.name or Path(a.dir).expanduser().resolve().name, a.pack, a.repo)
             collision_notices(cfg)
@@ -348,6 +358,17 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        if a.cmd == 'setup':
+            from . import setup
+            if a.assistants is not None: selected = [name.strip().lower() for name in a.assistants.split(',')]
+            elif a.preset:
+                selected = json.loads(orchestration.routing_template(a.preset))['assistants']
+            elif sys.stdin.isatty():
+                detected = [item['assistant'] for item in setup.detect() if item['cli_available'] or item['apps']]
+                print('Detected: ' + (', '.join(detected) or 'none') + '. Login/model access is not checked.', file=sys.stderr)
+                selected = [name.strip().lower() for name in input('Which assistants do you use? (comma-separated names): ').split(',')]
+            else: raise core.WsError('Non-interactive setup needs --assistants a,b or --preset NAME.')
+            out(setup.configure(root, selected, a.preset)); return 0
         if a.cmd == 'route':
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2
