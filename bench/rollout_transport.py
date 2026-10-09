@@ -17,7 +17,32 @@ def usage(events, exit_code, prior=None):
     return metrics
 
 
+def claude_session(root, prompt, workspace, resume=None):
+    """Claude Code keeps the real HOME (sign-in); isolation is project-only settings and strict MCP."""
+    mcp = root / '.mcp.json'
+    tools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(python3 *)', 'Bash(git *)'] + (['Skill', 'Bash(ws *)', 'mcp__ai-dev-workspace'] if workspace else [])
+    args = ['claude', '-p', prompt] + (['--resume', resume] if resume else []) + [
+        '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', mcp.read_text() if workspace and mcp.is_file() else '{"mcpServers": {}}',
+        '--permission-mode', 'acceptEdits', '--allowedTools', *tools, '--max-turns', '40', '--model', 'sonnet', '--output-format', 'stream-json', '--verbose']
+    env = dict(os.environ, WS_OFFLINE='1', PYTHONDONTWRITEBYTECODE='1', PATH=str(run.KIT / 'bin') + os.pathsep + os.environ['PATH'])
+    env.pop('WS_ROOT', None)
+    if workspace: env['WS_ROOT'] = str(root)
+    start = time.monotonic()
+    process = subprocess.Popen(args, cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try: output, _ = process.communicate(timeout=600)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL); process.communicate()
+        return {'completed': False, 'seconds': time.monotonic()-start}, '', None
+    events = []
+    for line in output.splitlines():
+        try: events.append(json.loads(line))
+        except ValueError: pass
+    result = next((e for e in reversed(events) if e.get('type') == 'result'), {})
+    return dict(run.metrics('claude', events, process.returncode), seconds=round(time.monotonic()-start, 2)), result.get('result') or '', result.get('session_id', resume)
+
+
 def session(root, home, prompt, workspace, auth, resume=None, prior=None):
+    if os.environ.get('WS_BENCH_PROVIDER') == 'claude': return claude_session(root, prompt, workspace, resume)
     codex = home / '.codex'; codex.mkdir(parents=True, exist_ok=True)
     if not (codex / 'auth.json').exists() and auth.is_file(): (codex / 'auth.json').symlink_to(auth)
     (codex / 'config.toml').write_text('[projects.' + json.dumps(str(root)) + ']\ntrust_level="trusted"\n')
