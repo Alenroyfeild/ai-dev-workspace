@@ -1031,7 +1031,7 @@ def _constraint_budget(clauses, limit, multiline=False):
 def _captured_step(summary):
     latest = ''
     for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*\s*(?:-\s+)?', summary, re.I):
-        if re.search(r'\b(?:no|not(?:\s+have)?|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I): continue
+        if re.search(r'\b(?:no|not(?:\s+(?:have|take|perform|run|execute))?|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I): continue
         prefix = ' '.join(match.group().split()).rstrip(' -')
         latest = prefix + ' ' + re.split(r'(?<=[.!?])\s+|\n+', summary[match.end():])[0]
     return latest
@@ -1078,7 +1078,7 @@ def brief(root):
             lines.append('Captured next step (unverified): ' + _capture_words(step, 25))
             action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
             def normalized(value):
-                return ' '.join(value.strip(' \t\n*_`.:').split()).casefold()
+                return re.sub(r'^to\s+', '', ' '.join(value.strip(' \t\n*_`.:').split()).casefold())
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
                 lines.append('Captured plan differs from saved checkpoint; verify before replacing.')
     lines += ['Lesson: ' + words(line, 25) for line in relevant_lessons(root, task)]
