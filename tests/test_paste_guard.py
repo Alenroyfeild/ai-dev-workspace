@@ -93,6 +93,9 @@ class PasteGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(core.WsError, 'simple regular expressions'):
             core.digest_file(long_line, focus='a.*z', root=self.root)
         self.assertEqual(core.digest_file(path, focus='kee{1,3}p', root=self.root)['focus_matches'], ['L2: keep this'])
+        ambiguous = ''.join('(a|aa)' for _ in range(12)) + 'b'
+        with self.assertRaisesRegex(core.WsError, 'simple regular expressions'):
+            core.digest_file(path, focus=ambiguous, root=self.root)
         for unsafe in ('(a+)+$', 'a*a*a*a*a*b', '(a|aa)+$'):
             with self.subTest(focus=unsafe), self.assertRaisesRegex(core.WsError, 'simple regular expressions'):
                 core.digest_file(path, focus=unsafe, root=self.root)
@@ -178,6 +181,22 @@ class PasteGuardTests(unittest.TestCase):
             with self.assertRaisesRegex(core.WsError, '50 MB'):
                 core.clipboard_text()
         self.assertTrue(process.killed)
+
+    def test_clipboard_text_decodes_utf8_strictly(self):
+        class Process:
+            def __init__(self, data):
+                self.stdout = io.BytesIO(data)
+                self.returncode = 0
+            def wait(self, timeout=None): return self.returncode
+            def kill(self): self.returncode = -9
+        for data, valid in ((b'caf\xc3\xa9', True), (b'caf\xff', False)):
+            with self.subTest(valid=valid), \
+                    mock.patch.object(core.shutil, 'which', side_effect=lambda name: '/fake/pbpaste' if name == 'pbpaste' else None), \
+                    mock.patch.object(core.subprocess, 'Popen', return_value=Process(data)):
+                if valid: self.assertEqual(core.clipboard_text(), 'café')
+                else:
+                    with self.assertRaisesRegex(core.WsError, 'valid UTF-8'):
+                        core.clipboard_text()
 
     def test_block_response_survives_prompt_save_limit(self):
         prompt = 'x' * (12 * 1024 + 1)
