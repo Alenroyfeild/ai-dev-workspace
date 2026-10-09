@@ -1262,16 +1262,17 @@ def clipboard_text():
                 reader.start()
                 try: process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    process.kill(); process.wait(); reader.join()
-                    raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
+                    process.kill(); process.wait(); reader.join(); process.stdout.close()
+                    continue
                 reader.join()
                 process.stdout.close()
-            except (OSError, subprocess.TimeoutExpired): raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
+            except OSError:
+                continue
             if oversized[0]: raise WsError('Clipboard exceeds 50 MB; save it to a file and run `ws digest` instead.')
             if process.returncode == 0:
                 try: return b''.join(chunks).decode('utf-8')
                 except UnicodeDecodeError: raise WsError(f'Clipboard output from {executable} was not valid UTF-8; pipe text to `ws paste` instead.')
-            raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
+            continue
     raise WsError('No supported clipboard reader found; pipe text to `ws paste` instead.')
 
 
