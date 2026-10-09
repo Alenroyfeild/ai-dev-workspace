@@ -1192,6 +1192,13 @@ def capture_health(root):
         return {'outcome': 'unknown', 'reason': 'unreadable_health'}
 
 
+def sole_local_claim(root):
+    """The one unfinished task claimed from this workspace, or '' when none or several."""
+    tasks = [t['id'] for t in task_list(root) if t['status'] != 'done'
+             and _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
+    return tasks[0] if len(tasks) == 1 else ''
+
+
 def nudge(root):
     guard = repeat_guard(root)
     if guard:
