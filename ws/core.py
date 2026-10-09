@@ -1073,7 +1073,7 @@ def brief(root):
         constraints = constraints.removeprefix('User constraints:').strip()
         clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
         lines.append('Captured last session (unverified): User constraints: ' +
-                     _constraint_budget(clauses, 28))
+                     _constraint_budget(clauses, 70))
         if separator:
             lines.append('Captured next step (unverified): ' + _capture_words(step, 25))
             action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
@@ -1129,8 +1129,12 @@ def _capture_decisions(root, transcript_path, client):
                     if text.strip():
                         summary = text
                 else:
-                    decisions.extend(sentence for sentence in _constraint_clauses(text)
-                                     if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
+                    # Session mechanics ("in this session only investigate") are not product decisions;
+                    # numbered decisions in one sentence become separate items so none is clipped away.
+                    decisions.extend(item for sentence in _constraint_clauses(text)
+                                     if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I)
+                                     and not re.search(r'\bsession\b', sentence, re.I)
+                                     for item in re.split(r';?\s+(?=\(\d+\)\s)', sentence))
     except WsError:
         return 'unreadable_transcript'
     except (OSError, UnicodeError, ValueError, TypeError, AttributeError, KeyError, RecursionError):
