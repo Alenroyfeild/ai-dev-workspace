@@ -49,8 +49,14 @@ def route(root, role='lead', provider=None):
         preference = [override['provider']] if override.get('provider') else override.get('preference', definition['preference'])
         skipped, chosen = [], None
         for provider in preference:
-            if provider not in ('claude', 'codex', 'ollama'): raise ValueError()
             settings = defaults['providers'][provider]
+            # Old files have no CLI/command fields; fill those from the kit's data.
+            legacy = json.loads(routing_template())['_ws_managed']['providers'].get(provider, {})
+            cli = settings.get('cli', legacy.get('cli', provider))
+            if not isinstance(cli, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.+-]{0,80}', cli): raise ValueError()
+            headless = settings.get('headless', legacy.get('headless'))
+            if headless is not None and (not isinstance(headless, list) or not headless or
+                    any(not isinstance(arg, str) or '\x00' in arg or len(arg) > 2000 for arg in headless)): raise ValueError()
             tier = settings['tiers'][override.get('tier', definition['tier'])]
             family = override.get('family', tier['family']); effort = override.get('effort', tier['effort'])
             model = override['model'] if 'model' in override else settings['models'].get(family)
@@ -59,14 +65,17 @@ def route(root, role='lead', provider=None):
                 model, source, warning = codex_model(family, model)
             if effort not in ('low', 'medium', 'high', 'not_applicable'): raise ValueError()
             if model is not None and (not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,120}', model)): raise ValueError()
-            executable = core.shutil.which(provider)
+            executable = core.shutil.which(cli)
+            ready_model = model is not None or settings.get('use_cli_default') is True
             candidate = dict(role=role, provider=provider, family=family, model=model, effort=effort, executable=executable,
-                             model_source=source, model_warning=warning)
-            if executable and model:
+                             model_source=source, model_warning=warning, headless=headless,
+                             prepare=settings.get('prepare', legacy.get('prepare', [])), ready_model=ready_model,
+                             model_flag=settings.get('model_flag'))
+            if executable and ready_model:
                 chosen = candidate; break
             skipped.append({'provider': provider, 'reason': 'CLI not on PATH' if not executable else 'no model configured'})
             chosen = chosen or candidate
-        available = bool(chosen['executable'] and chosen['model'])
+        available = bool(chosen['executable'] and chosen['ready_model'])
         return dict(chosen, available=available, preference=preference, skipped=skipped,
                     timeout_seconds=int(cfg.get('timeout_seconds', 600)),
                     reason='' if available else 'No provider in the preference order is available; configure routing.json.')
@@ -111,22 +120,26 @@ def _worker_output(provider, stdout):
     return '\n'.join(messages) or stdout, tokens_in, tokens_out, known
 
 
-def worker_command(binding, repo):
+def worker_command(binding, repo, body=''):
     exe, model, effort = binding['executable'], binding['model'], binding['effort']
-    if binding['provider'] == 'codex':
-        return [exe, 'exec', '--json', '-s', 'read-only', '--ephemeral', '--ignore-user-config', '--disable', 'hooks', '--disable', 'apps', '--disable', 'plugins',
-                '-c', 'approval_policy="never"', '-m', model, '-c', 'model_reasoning_effort=' + json.dumps(effort), '--skip-git-repo-check', '-C', str(repo), '-']
-    if binding['provider'] == 'claude':
-        # Project-only settings preserve subscription login without loading user hooks.
-        return [exe, '-p', '--output-format', 'json', '--setting-sources', 'project', '--model', model, '--effort', effort, '--tools', 'Read,Glob,Grep', '--allowedTools', 'Read,Glob,Grep',
-                '--permission-mode', 'dontAsk', '--mcp-config', '{"mcpServers":{}}', '--strict-mcp-config', '--no-session-persistence']
-    return [exe, 'run', model]
+    template = binding['headless'] or binding['prepare']
+    if not isinstance(template, list) or any(not isinstance(arg, str) or '\x00' in arg for arg in template):
+        raise core.WsError('Invalid provider command template.')
+    values = {'model': model or '', 'effort': effort, 'effort_json': json.dumps(effort), 'repo': str(repo), 'prompt': body}
+    args = []
+    for arg in template:
+        args.append(re.sub(r'\{(model|effort|effort_json|repo|prompt)\}', lambda match: values[match[1]], arg))
+    if not binding['headless'] and model is not None and binding.get('model_flag'):
+        flag = binding['model_flag']
+        if not isinstance(flag, str) or not re.fullmatch(r'--[a-z-]{1,40}', flag): raise core.WsError('Invalid model flag.')
+        args.extend([flag, model])
+    return [exe, *args]
 
 
 def worker_run(binding, repo, body):
     code = 1
     try:
-        process = subprocess.Popen(worker_command(binding, repo), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+        process = subprocess.Popen(worker_command(binding, repo, body), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
         try: stdout, stderr = process.communicate(body, timeout=binding['timeout_seconds']); code = process.returncode
         except subprocess.TimeoutExpired:
             if os.name == 'nt': subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)], capture_output=True)
@@ -159,7 +172,7 @@ def delegate(root, task_id, role, run=False, diff=None):
         raise core.WsError('Only explorer/reviewer may run; write roles are preparation-only.')
     binding = route(root, role)
     if not binding['available']: raise core.WsError(binding['reason'] + ' Provider: ' + binding['provider'])
-    if run and binding['provider'] == 'ollama': raise core.WsError('Ollama is preparation-only; ws never pulls models.')
+    if run and not binding['headless']: raise core.WsError('Selected provider is preparation-only; no read-only headless command configured.')
     task = core.task_read(root, task_id, ['Objective', 'Next action', 'Blockers', 'Evidence'])
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if run and meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
@@ -184,13 +197,16 @@ def delegate(root, task_id, role, run=False, diff=None):
                 words = len(line.split())
                 if words > remaining: body += '[truncated]\n'; break
                 body += line + '\n'; remaining -= words
+    body = core.redact(body)
     if len(body.split()) > 400: raise core.WsError('Brief scope exceeds 400 words; shorten repository paths.')
     identifier = task_id + '-' + role + '-' + core.uuid.uuid4().hex[:8]
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')
     brief = root / '.ws/briefs' / (identifier + '.md'); output = brief.with_suffix('.out.md')
-    model, effort = binding['model'], binding['effort']; command = worker_command(binding, paths[0])
+    model, effort = binding['model'], binding['effort']; command = worker_command(binding, paths[0], body)
     with core.lock(root): core.atomic_write(brief, core.redact(body))
-    result = dict(binding=binding, brief=str(brief), output=str(output), command=shlex.join(command) + ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)))
+    suffix = ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)) if binding['headless'] else ''
+    result = dict(binding=binding, brief=str(brief), output=str(output), command=shlex.join(command) + suffix)
+    if not binding['headless']: result['note'] = 'Preparation only; review the brief and command before launching manually. Interactive clients need the brief pasted.'
     if not run: return result
     started = time.monotonic(); code, rendered, tokens_in, tokens_out, usage_known = worker_run(binding, paths[0], body)
     findings = len(set(line.strip() for line in rendered.splitlines() if re.match(r'^(?:UNVERIFIED\s+)?[^:\n]+:\d+:\s+\S', line))) if role == 'reviewer' else None
