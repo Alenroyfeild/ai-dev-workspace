@@ -9,6 +9,7 @@ from pathlib import Path
 from bench import rollout
 
 
+@unittest.skipIf(os.name == 'nt', 'Benchmark transport requires POSIX process-group isolation; open-file replacement probe is POSIX-only.')
 class RolloutTests(unittest.TestCase):
     def test_append_only_step_log_records_failure(self):
         with tempfile.TemporaryDirectory() as d:
