@@ -97,6 +97,7 @@ def text_status(report):
     lines.append('Tasks: ' + tasks)
     for label, key in (('Active claims', 'active_claims'), ('Blocked', 'blocked')):
         lines.append(label + ': ' + ('; '.join(report[key]) or 'none'))
+    lines.extend(f'Conflicted: {hint}' for hint in report.get('conflicted', []))
     lines.extend((f"Open feedback: {report['open_feedback']}", f"Lessons: {report['lessons']}",
                   f"Recent runs: {report['runs']['steps']}"))
     if 'codex_goals' in report:
@@ -131,6 +132,8 @@ def text_doctor(report):
     if goals:
         lines.append(f"Codex goals: {goals['active']} active, {goals['complete']} complete" if 'active' in goals
                      else f"Codex goals: skipped ({goals['skipped']})")
+    lines.extend(f'Conflicted: {hint}' for hint in report.get('conflicted', []))
+    lines.extend(f'Team: {warning}' for warning in report.get('team', {}).get('warnings', []))
     health = report.get('capture_health')
     if health:
         lines.append('Last capture: ' + ' / '.join(health.get(key, 'unknown') for key in ('date', 'client', 'outcome', 'reason')))
