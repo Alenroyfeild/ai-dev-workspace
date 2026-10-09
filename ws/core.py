@@ -1214,9 +1214,13 @@ def digest_file(path, max_lines=60, root=None, focus=None):
         pattern = _focus_pattern(focus)
         matches = []
         for i, line in enumerate(io.StringIO(raw), 1):
-            if pattern.search(line[:4096]):
+            match = pattern.search(line[:4096])
+            if match:
                 if len(matches) >= max_lines: break
-                matches.append(f'L{i}: {redact(line.strip())[:200]}')
+                start = max(0, match.start() - 80)
+                end = min(len(line), max(match.end() + 80, start + 200))
+                snippet = ('…' if start else '') + line[start:end].strip() + ('…' if end < len(line) else '')
+                matches.append(f'L{i}: {redact(snippet)}')
         out['focus_matches'] = matches
     try:
         out['json_shape'] = _shape(json.loads(raw))
