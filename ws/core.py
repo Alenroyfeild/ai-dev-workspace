@@ -981,7 +981,8 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
 
 
 # Instruction files that clients read at session start (CLAUDE.md is skipped: its SessionStart hook already injects the brief).
-NATIVE_FILES = ('AGENTS.md', '.github/copilot-instructions.md', 'GEMINI.md', '.cursor/rules/ws-current-task.mdc')
+# Only clients without a session-start brief hook: Claude and Codex read AGENTS.md and already get the brief.
+NATIVE_FILES = ('.github/copilot-instructions.md', '.cursor/rules/ws-current-task.mdc')
 CURSOR_RULE_HEAD = '---\ndescription: Current ai-dev-workspace task memory (managed; do not edit)\nalwaysApply: true\n---\n'
 
 
@@ -1337,7 +1338,7 @@ def _capture_decisions(root, transcript_path, client):
                 if isinstance(content, list):
                     text = _session_text([item for item in content if isinstance(item, dict) and item.get('type') == 'text'])
                 # Private markers: `#private` / leading `/private` drops the message, <private> blocks are cut.
-                if '#private' in text.lower() or text.lstrip().lower().startswith('/private'):
+                if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
                     continue
                 text = localize_paths(redact(PRIVATE_RE.sub(' ', text)), root)
                 if kind == 'assistant':

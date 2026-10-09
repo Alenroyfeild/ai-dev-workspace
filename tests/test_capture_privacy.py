@@ -31,9 +31,10 @@ class CapturePrivacyTests(Base):
             user('We must keep the amber lane.'),
             user('We must leak cobalt #private'),
             user('/private we must leak teal'),
+            user('We must name it #privateer.'),
             assistant('visible summary'),
             assistant('summary with #private zinc'))
-        self.assertIn('amber lane', handoff)
+        self.assertIn('amber lane', handoff); self.assertIn('privateer', handoff)  # only the whole word is a marker
         for word in ('cobalt', 'teal', 'zinc'):
             self.assertNotIn(word, handoff)
 
