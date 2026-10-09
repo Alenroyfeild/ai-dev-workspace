@@ -139,7 +139,7 @@ def worker_command(binding, repo, body=''):
 def worker_run(binding, repo, body):
     code = 1
     try:
-        process = subprocess.Popen(worker_command(binding, repo), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+        process = subprocess.Popen(worker_command(binding, repo, body), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
         try: stdout, stderr = process.communicate(body, timeout=binding['timeout_seconds']); code = process.returncode
         except subprocess.TimeoutExpired:
             if os.name == 'nt': subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)], capture_output=True)
@@ -197,6 +197,7 @@ def delegate(root, task_id, role, run=False, diff=None):
                 words = len(line.split())
                 if words > remaining: body += '[truncated]\n'; break
                 body += line + '\n'; remaining -= words
+    body = core.redact(body)
     if len(body.split()) > 400: raise core.WsError('Brief scope exceeds 400 words; shorten repository paths.')
     identifier = task_id + '-' + role + '-' + core.uuid.uuid4().hex[:8]
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')
