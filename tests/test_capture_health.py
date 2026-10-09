@@ -7,6 +7,15 @@ from ws import core
 
 
 class CaptureHealthTests(Base):
+    def test_capture_and_health_share_one_lock(self):
+        def capturing(*args):
+            with self.assertRaises(core.WsError), core.lock(self.root): pass
+            return 'captured'
+        with mock.patch.object(core, '_capture_decisions', side_effect=capturing):
+            self.assertTrue(core.capture_decisions(self.root, 'synthetic'))
+        (self.root / '.ws/capture-health.json').write_bytes(b'\xff')
+        self.assertEqual(core.capture_health(self.root)['reason'], 'unreadable_health')
+
     def hook(self, path):
         result = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook'],
             cwd=self.root, input=json.dumps({'hook_event_name': 'Stop', 'transcript_path': str(path)}),
