@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-beta.2 (unreleased)
+## 0.1.0-beta.2 (2026-10-09)
 
 ### Proven
 - Decisions given in Claude Code were followed by Codex in 5/5 runs with the workspace and 0/5 without (benchmark `--resume-provider`); Claude Code to Claude Code also 5/5 vs 0/5. See docs/MEASUREMENTS.md.
