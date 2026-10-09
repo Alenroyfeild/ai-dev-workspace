@@ -90,7 +90,13 @@ SECRET_RE = re.compile(
     r'-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----'
     r'|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}'
     r'|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
-    r'|(?<!claim_)(?i:(?:api[_-]?key|token|secret|password)["\']?\s*[:=]\s*["\']?)[A-Za-z0-9/+_.-]{12,}', re.S)
+    r'|(?<!claim_)(?i:(?:api[_-]?key|token|secret|password)["\']?\s*[:=]\s*["\']?)[A-Za-z0-9/+_.-]{12,}'
+    r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
+    # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
+    r'|(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*(?:"[^"\n]*"|\'[^\'\n]*\'|[^\s"\']+)', re.S)
+URL_CREDENTIALS_RE = re.compile(r'(\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@')
+PRIVATE_RE = re.compile(r'<private>.*?</private>', re.I | re.S)
+HOME_PATH_RE = re.compile(r'(?<![\w.~-])(?:/Users|/home)/[^/\s]+|(?<![\w.~-])[A-Za-z]:\\Users\\[^\\\s]+')
 
 
 class WsError(ValueError):
@@ -102,7 +108,16 @@ def now():
 
 
 def redact(text):
-    return SECRET_RE.sub('[REDACTED]', text)
+    return URL_CREDENTIALS_RE.sub(r'\1[REDACTED]@', SECRET_RE.sub('[REDACTED]', text))
+
+
+def localize_paths(text, root):
+    """Workspace root becomes `.`; other absolute home paths become `~` (Windows separators too)."""
+    for base in {str(root), str(Path(root).resolve())}:
+        text = re.sub(re.escape(base) + r'(?![\w.-])', '.', text)
+    text = HOME_PATH_RE.sub('~', text)
+    # Only the tail of a Windows path still has backslashes: normalise it after the `~`.
+    return re.sub(r'~((?:\\[^\\\s/]+)+)', lambda m: '~' + m.group(1).replace('\\', '/'), text)
 
 
 def redacted_line(value, field):
@@ -1110,6 +1125,11 @@ def capture_decisions(root, transcript_path, client='claude'):
 def _capture_decisions(root, transcript_path, client):
     if not isinstance(transcript_path, str) or not transcript_path:
         return 'missing_transcript_path'
+    try:
+        if config(root).get('capture') is False:
+            return 'disabled_by_config'
+    except (OSError, ValueError, AttributeError):
+        pass  # Unreadable config keeps the default: capture on.
     decisions, summary, worked, recognized = [], '', False, False
     try:
         path = Path(transcript_path)
@@ -1131,7 +1151,10 @@ def _capture_decisions(root, transcript_path, client):
                 text = content if isinstance(content, str) else ''
                 if isinstance(content, list):
                     text = _session_text([item for item in content if isinstance(item, dict) and item.get('type') == 'text'])
-                text = redact(text)
+                # Private markers: `#private` / leading `/private` drops the message, <private> blocks are cut.
+                if '#private' in text.lower() or text.lstrip().lower().startswith('/private'):
+                    continue
+                text = localize_paths(redact(PRIVATE_RE.sub(' ', text)), root)
                 if kind == 'assistant':
                     worked |= isinstance(content, list) and any(isinstance(item, dict) and item.get('type') == 'tool_use' for item in content)
                     if text.strip():
@@ -1196,7 +1219,7 @@ def capture_health(root):
         if health['outcome'] not in ('captured', 'unchanged', 'skipped'): raise ValueError
         if health['reason'] not in ('captured', 'unchanged', 'missing_transcript_path', 'transcript_too_large',
                                    'unreadable_transcript', 'unsupported_transcript', 'no_work_or_memory',
-                                   'ambiguous_claims', 'no_local_claim', 'missing_handoff'): raise ValueError
+                                   'ambiguous_claims', 'no_local_claim', 'missing_handoff', 'disabled_by_config'): raise ValueError
         if health['client'] not in ('claude', 'codex', 'cursor', 'gemini', 'vscode', 'unsupported'): raise ValueError
         if not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00', health['date']): raise ValueError
         return {key: health[key] for key in ('date', 'client', 'outcome', 'reason')}
