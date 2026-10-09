@@ -38,8 +38,30 @@ class GroupedHelpFormatter(argparse.HelpFormatter):
         return super()._format_action(action)
 
 
+def human():
+    return sys.stdout.isatty() and not os.environ.get('WS_JSON')
+
+
+def readable(value, indent=''):
+    """Plain key: value lines for people; scripts get JSON (piped output or WS_JSON=1)."""
+    if isinstance(value, dict):
+        lines = []
+        for key, item in value.items():
+            if isinstance(item, dict) and item or isinstance(item, list) and not all(isinstance(i, (str, int, float, bool)) for i in item):
+                lines.append(f'{indent}{key}:'); lines.append(readable(item, indent + '  '))
+            elif isinstance(item, (list, dict)):
+                lines.append(f"{indent}{key}: {', '.join(map(str, item)) or 'none'}")
+            else:
+                lines.append(f"{indent}{key}: {'yes' if item is True else 'no' if item is False else item}")
+        return '\n'.join(lines)
+    if isinstance(value, list):
+        return '\n'.join(readable(item, indent + '  ').replace(indent + '  ', indent + '- ', 1) if isinstance(item, dict)
+                         else f'{indent}- {item}' for item in value) or indent + 'none'
+    return f'{indent}{value}'
+
+
 def out(value):
-    print(value if isinstance(value, str) else json.dumps(value, indent=2, ensure_ascii=False))
+    print(value if isinstance(value, str) else readable(value) if human() else json.dumps(value, indent=2, ensure_ascii=False))
 
 
 def text_status(report):
@@ -206,12 +228,12 @@ def main(argv=None):
             collision_notices(cfg)
             for connection in cfg.get('connections', []):
                 if connection['client'] == 'codex':
-                    print('Codex: add this block to ~/.codex/config.toml, or run ws connect codex --write:')
-                    out(connection['config'])
+                    print('codex: not connected yet; run `ws connect codex` if you use Codex.')
                 else:
                     print(f"{connection['client']}: {connection.get('note', 'already connected')}")
             out(f"Workspace '{cfg['name']}' created in {Path(a.dir).resolve()} (packs: {', '.join(cfg['packs']) or 'none'}).\n"
-                f"Next: cd {a.dir} && ws status   — then see docs/SETUP.md for Claude, Codex and MCP.")
+                f"Next: cd {a.dir} && ws connect claude   (or codex, cursor, vscode, gemini)\n"
+                f"Then: ws task new <ID> \"<title>\" && ws claim <ID>   — guide: docs/SETUP.md")
             return 0
         if a.cmd == 'packs':
             out({n: core.pack_manifest(n)['description'] for n in core.available_packs()}); return 0
@@ -236,7 +258,7 @@ def main(argv=None):
             except core.WsError:
                 root = None
             report = core.doctor(root, a.mcp)
-            out(text_doctor(report) if a.text else report); return 0
+            out(text_doctor(report) if a.text or human() else report); return 0
         if a.cmd == 'sessions':
             roots = None
             if a.root:
@@ -250,7 +272,7 @@ def main(argv=None):
         root = core.find_root(a.workspace_root)
         if a.cmd == 'route':
             result = orchestration.route(root, a.role)
-            out(text_route(result) if a.text else result); return 0 if result['available'] else 2
+            out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2
         if a.cmd == 'delegate':
             if a.selftest:
                 if a.task or a.role or a.diff: raise core.WsError('Selftest takes no task, role or diff; run ws delegate --help.')
@@ -267,7 +289,7 @@ def main(argv=None):
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
         if a.cmd == 'status':
             result = core.status(root)
-            out(text_status(result) if a.text else result)
+            out(text_status(result) if a.text or human() else result)
         elif a.cmd == 'map': out(core.codebase_map(root, a.repo, allow_external=bool(a.repo)))
         elif a.cmd == 'pack':
             from . import packs
