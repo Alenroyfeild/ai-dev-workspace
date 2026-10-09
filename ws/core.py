@@ -1278,13 +1278,14 @@ def brief(root):
         shown = [f"{t['id']} ({redact(t['claimed_by'])})" for t in others if t['id'] != task_id][:3]
         return ['Others working: ' + ', '.join(shown)] if shown else []
     mine = [t for t in active if t['id'] in own_ids]
-    if mine:
-        task = mine[0]
+    if mine or own:
+        task = (mine or own)[0]
     elif active:
-        on_branch = [t for t in active if t['branch'] and t['branch'] == _task_git(root, t['id'], 'rev-parse', '--abbrev-ref', 'HEAD').strip()] if len(active) > 1 else []
-        task = (on_branch or [next((t for t in active if t['claimed_by']), active[0])])[0]
-    elif len(own) == 1:
-        task = own[0]
+        on_branch = [t for t in active if t['branch'] and t['branch'] == _task_git(root, t['id'], 'rev-parse', '--abbrev-ref', 'HEAD').strip()]
+        candidates = on_branch or [t for t in active if not t['claimed_by']]
+        if not candidates:
+            return '\n'.join([guard or 'No in-progress task. Find or create the task before working.'] + others_line())
+        task = candidates[0]
     else:
         return '\n'.join([guard or 'No in-progress task. Find or create the task before working.'] + others_line())
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
@@ -1999,10 +2000,14 @@ def _team_checks(root):
             warnings.append('.ws/ files are tracked: run `git rm -r --cached .ws` so claim tokens leave the repo.')
         found = []
         for name in _git(root, 'ls-files', '-z', '--', vault(root).resolve().relative_to(root.resolve()).as_posix()).stdout.split('\0'):
+            if not name: continue
             try:
                 path = root / name
-                text = path.read_bytes().decode('utf-8', 'replace') if name and path.stat().st_size < 1_000_000 else ''
-            except OSError: continue
+                if path.stat().st_size >= 1_000_000:
+                    warnings.append(f'{name}: not checked for secrets (file is 1 MB or larger).'); continue
+                text = read_text(path, [root])
+            except (OSError, WsError):
+                warnings.append(f'{name}: not checked for secrets (cannot read safely).'); continue
             lines = {text.count('\n', 0, m.start()) + 1 for rx in (SECRET_RE, URL_CREDENTIALS_RE) for m in rx.finditer(text)}
             found += [f'{name}:{n}' for n in sorted(lines)]
         warnings += [f'possible secret at {place} (value not shown); remove it and rotate the credential.' for place in found[:10]]
