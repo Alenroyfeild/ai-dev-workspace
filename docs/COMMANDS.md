@@ -1,6 +1,6 @@
 # Commands
 
-Every command works from inside a workspace folder (or with `WS_ROOT` set). Most print JSON.
+Every command works from inside a workspace folder (or with `WS_ROOT` set). In a terminal they print plain lines; piped output is JSON, and `WS_JSON=1` forces JSON.
 
 ## Set up
 

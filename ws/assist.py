@@ -84,7 +84,8 @@ def feature_suggestions(root, add):
     except (OSError, ValueError): records = {}
     if not isinstance(records, dict): records = {}
     seen = set()
-    for role in ('worker', 'explorer', 'reviewer'):
+    # Only users who delegate need a sandbox selftest; new workspaces get no paid-run pitch.
+    for role in ('worker', 'explorer', 'reviewer') if (root / '.ws/briefs').is_dir() else ():
         try: binding = orchestration.route(root, role)
         except core.WsError: continue
         provider = binding.get('provider')
