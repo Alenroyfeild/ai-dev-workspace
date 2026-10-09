@@ -380,7 +380,7 @@ def main(argv=None):
                     path = core.paste_save(root, prompt)['path'].relative_to(root).as_posix()
                     reason = (f'Prompt saved, redacted, to {path}. Send a short question plus the relevant excerpt, '
                               f'or run `ws digest {path} --focus "<pattern>"`; put !raw alone on the first line to bypass.')
-                except (core.WsError, OSError):
+                except (core.WsError, OSError, UnicodeError):
                     reason = ('Prompt is too large to save in .ws/inbox/. Send a short question plus the relevant excerpt, '
                               'or save the source as a file and run `ws digest <file> --focus "<pattern>"`; '
                               'put !raw alone on the first line to bypass.')
