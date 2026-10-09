@@ -12,6 +12,7 @@ import errno
 import fnmatch
 import hashlib
 import json
+import locale
 import os
 import re
 import shlex
@@ -21,6 +22,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -1245,9 +1247,29 @@ def clipboard_text():
                 ('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'])]
     for executable, args in commands:
         if shutil.which(executable):
-            try: result = subprocess.run([executable, *args], capture_output=True, text=True, timeout=5)
+            try:
+                process = subprocess.Popen([executable, *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                chunks, total, oversized = [], [0], [False]
+                def collect():
+                    while total[0] <= MAX_READ_BYTES:
+                        chunk = process.stdout.read(min(65536, MAX_READ_BYTES + 1 - total[0]))
+                        if not chunk: break
+                        total[0] += len(chunk); chunks.append(chunk)
+                    if total[0] > MAX_READ_BYTES:
+                        oversized[0] = True
+                        process.kill()
+                reader = threading.Thread(target=collect)
+                reader.start()
+                try: process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill(); process.wait(); reader.join()
+                    raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
+                reader.join()
+                process.stdout.close()
             except (OSError, subprocess.TimeoutExpired): raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
-            if result.returncode == 0: return result.stdout
+            if oversized[0]: raise WsError('Clipboard exceeds 50 MB; save it to a file and run `ws digest` instead.')
+            if process.returncode == 0:
+                return b''.join(chunks).decode(locale.getpreferredencoding(False), errors='replace')
             raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
     raise WsError('No supported clipboard reader found; pipe text to `ws paste` instead.')
 

@@ -64,8 +64,9 @@ class PasteGuardTests(unittest.TestCase):
 
     def test_paste_reads_clipboard_when_stdin_is_interactive(self):
         stdout = io.StringIO()
+        process = mock.Mock(stdout=io.BytesIO(b'clipboard text'), returncode=0)
         with mock.patch.object(core.shutil, 'which', side_effect=lambda name: '/usr/bin/pbpaste' if name == 'pbpaste' else None), \
-                mock.patch.object(core.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, 'clipboard text', '')), \
+                mock.patch.object(core.subprocess, 'Popen', return_value=process), \
                 mock.patch('sys.stdin', mock.Mock(isatty=lambda: True)), contextlib.redirect_stdout(stdout):
             self.assertEqual(cli.main(['--workspace-root', str(self.root), 'paste']), 0)
         self.assertIn('distinct_problem_lines', stdout.getvalue())
@@ -144,10 +145,44 @@ class PasteGuardTests(unittest.TestCase):
         code, stdout, _ = self.invoke_hook('codex', {'hook_event_name': event, 'prompt': 'short prompt'})
         self.assertEqual((code, stdout), (0, '{}\n'))
 
+    def test_hook_bounds_json_read_and_blocks_oversized_input(self):
+        class TrackingInput(io.StringIO):
+            def __init__(self, value):
+                super().__init__(value)
+                self.read_size = None
+            def read(self, size=-1):
+                self.read_size = size
+                return super().read(size)
+        source = TrackingInput(json.dumps({'prompt': 'too large'}))
+        stdout = io.StringIO()
+        with mock.patch.object(core, 'MAX_READ_BYTES', 3), mock.patch('sys.stdin', source), \
+                contextlib.redirect_stdout(stdout):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'paste', '--hook', '--client', 'codex']), 0)
+        self.assertEqual(source.read_size, 4)
+        self.assertEqual(json.loads(stdout.getvalue())['decision'], 'block')
+
+    def test_clipboard_reader_stops_at_size_limit(self):
+        class Process:
+            def __init__(self):
+                self.stdout = io.BytesIO(b'x' * 100)
+                self.returncode = 0
+                self.killed = False
+            def wait(self, timeout=None): return self.returncode
+            def kill(self):
+                self.killed = True
+                self.returncode = -9
+        process = Process()
+        with mock.patch.object(core, 'MAX_READ_BYTES', 3), \
+                mock.patch.object(core.shutil, 'which', side_effect=lambda name: '/fake/pbpaste' if name == 'pbpaste' else None), \
+                mock.patch.object(core.subprocess, 'Popen', return_value=process):
+            with self.assertRaisesRegex(core.WsError, '50 MB'):
+                core.clipboard_text()
+        self.assertTrue(process.killed)
+
     def test_block_response_survives_prompt_save_limit(self):
         prompt = 'x' * (12 * 1024 + 1)
         for client in ('claude', 'codex', 'cursor', 'gemini'):
-            with self.subTest(client=client), mock.patch.object(core, 'MAX_READ_BYTES', 3):
+            with self.subTest(client=client), mock.patch.object(core, 'paste_save', side_effect=core.WsError('synthetic write failure')):
                 code, stdout, stderr = self.invoke_hook(client, {'hook_event_name': 'UserPromptSubmit', 'prompt': prompt})
                 response = stderr if client == 'claude' else json.loads(stdout)
                 self.assertIn('short question', str(response))

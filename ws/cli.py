@@ -9,21 +9,30 @@ from pathlib import Path
 from . import core, assist, orchestration
 
 
-def _read_paste_stdin():
+def _read_limited_stdin():
     limit = core.MAX_READ_BYTES
     stream = getattr(sys.stdin, 'buffer', None)
     if stream is not None:
         raw = stream.read(limit + 1)
         if len(raw) > limit:
-            raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
+            raise core.WsError('Input exceeds 50 MB.')
         try: return raw.decode('utf-8')
         except UnicodeDecodeError: raise core.WsError('Paste input must be UTF-8 text.')
     text = sys.stdin.read(limit + 1)
     try: size = len(text.encode('utf-8'))
     except UnicodeEncodeError: raise core.WsError('Paste contains text that cannot be saved as UTF-8.')
     if len(text) > limit or size > limit:
-        raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
+        raise core.WsError('Input exceeds 50 MB.')
     return text
+
+
+def _block_prompt(client, reason):
+    if client == 'claude':
+        print(reason, file=sys.stderr); return 2
+    if client == 'cursor': out({'continue': False, 'user_message': reason})
+    elif client == 'gemini': out({'decision': 'deny', 'reason': reason})
+    else: out({'decision': 'block', 'reason': reason})
+    return 0
 
 
 COMMAND_GROUPS = (
@@ -384,10 +393,14 @@ def main(argv=None):
                 print(result.stdout, end='' if result.stdout.endswith('\n') else '\n')
         elif a.cmd == 'paste':
             if not a.hook:
-                text = _read_paste_stdin() if not getattr(sys.stdin, 'isatty', lambda: False)() else core.clipboard_text()
+                text = _read_limited_stdin() if not getattr(sys.stdin, 'isatty', lambda: False)() else core.clipboard_text()
+                if len(text.encode('utf-8')) > core.MAX_READ_BYTES:
+                    raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
                 out(core.paste_save(root, text)['digest'])
             else:
-                payload = json.load(sys.stdin)
+                try: payload = json.loads(_read_limited_stdin())
+                except core.WsError:
+                    return _block_prompt(a.client, 'Prompt hook input exceeds 50 MB. Save the source as a file and run `ws digest <file> --focus "<pattern>"` instead.')
                 if not isinstance(payload, dict): raise core.WsError('Hook input must be a JSON object.')
                 prompt = payload.get('prompt', '')
                 lines = prompt.splitlines() if isinstance(prompt, str) else []
@@ -401,11 +414,7 @@ def main(argv=None):
                     reason = ('Prompt is too large to save in .ws/inbox/. Send a short question plus the relevant excerpt, '
                               'or save the source as a file and run `ws digest <file> --focus "<pattern>"`; '
                               'put !raw alone on the first line to bypass.')
-                if a.client == 'claude':
-                    print(reason, file=sys.stderr); return 2
-                if a.client == 'cursor': out({'continue': False, 'user_message': reason})
-                elif a.client == 'gemini': out({'decision': 'deny', 'reason': reason})
-                else: out({'decision': 'block', 'reason': reason})
+                return _block_prompt(a.client, reason)
         elif a.cmd == 'trace': out(core.trace(root, a.task))
         elif a.cmd == 'run':
             if a.action == 'import': out(core.import_codeburn(root, a.since, a.task)); return 0
