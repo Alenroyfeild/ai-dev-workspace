@@ -116,9 +116,11 @@ def session(*args, **kwargs):
 
 
 def reset_fixture(repo):
+    def disappeared(function, path, error):
+        if not isinstance(error[1], FileNotFoundError): raise error[1]
     for path in list(repo.iterdir()):
         if path.name != '.step-log':
-            if path.is_dir() and not path.is_symlink(): shutil.rmtree(path)
+            if path.is_dir() and not path.is_symlink(): shutil.rmtree(path, onerror=disappeared)
             else: path.unlink()
     with tempfile.TemporaryDirectory(prefix='ws-rollout-reset-') as d:
         with environment(GIT_AUTHOR_DATE='2023-11-14T22:13:20Z', GIT_COMMITTER_DATE='2023-11-14T22:13:20Z'):
