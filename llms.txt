@@ -1,0 +1,21 @@
+# AI Dev Workspace
+
+> Shared, durable task memory for AI coding assistants (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI). Decisions, next actions, blockers and lessons live in plain Markdown files the developer owns; a short brief is injected at every session start so a new session, or a different assistant, continues the work and follows earlier decisions. Stdlib-only Python CLI (`ws`) plus an MCP server. MIT licensed.
+
+Measured with a reproducible benchmark (bench/): when product decisions were given only in conversation, the next session followed all of them in 5/5 runs with the workspace and 0/5 without, both Claude Code to Claude Code and Claude Code to Codex.
+
+## Docs
+
+- [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): what it does, results, quick start, comparison with built-in memory, claude-mem and Beads
+- [Setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/SETUP.md): install, connect each assistant, hooks, privacy
+- [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md): every `ws` command
+- [Concepts](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/CONCEPTS.md): tasks, claims, checkpoints, brief, lessons, delegation
+- [Measurements](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MEASUREMENTS.md): benchmark method, results and limits
+- [Benchmark](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/bench/README.md): reproduce the results
+
+## Quick start
+
+- Install: `pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace`
+- Create: `ws init ~/work/myapp-ws --repo ~/code/myapp`
+- Connect: `ws connect claude` (or codex, cursor, vscode, gemini)
+- Start a task: `ws task new APP-1 "Fix login crash" && ws claim APP-1`

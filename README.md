@@ -1,63 +1,95 @@
-# AI Dev Workspace  ·  beta
+# AI Dev Workspace
+
+[![Tests](https://github.com/Alenroyfeild/ai-dev-workspace/actions/workflows/test.yml/badge.svg)](https://github.com/Alenroyfeild/ai-dev-workspace/actions/workflows/test.yml)
+[![Release](https://img.shields.io/github/v/release/Alenroyfeild/ai-dev-workspace?include_prereleases)](https://github.com/Alenroyfeild/ai-dev-workspace/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 
 **Your AI assistant picks up where it left off: tasks, decisions and lessons in Markdown you own.**
 
-AI coding assistants can lose task context between sessions. AI Dev Workspace stores task notes as Markdown in a folder you own and exposes them through a CLI, MCP server and client integrations. What each assistant can read or capture depends on the support table below.
+One shared memory for **Claude Code, Codex, Cursor, GitHub Copilot and Gemini CLI**. Decide something with Claude today, finish it with Codex tomorrow, and the decision is still followed. Plain files in a folder you own, a small CLI (`ws`) and an MCP server. No account, no telemetry, nothing to install beyond Python 3.9+ and git.
 
-macOS, Linux and Windows. Requires Python 3.9+ and git. No workspace account or telemetry; your assistant still sends prompts and context to its chosen provider.
-On Windows, run `python bin/ws <command>` from the kit checkout; see [Windows notes](docs/WINDOWS.md).
+## Measured, not claimed
 
-**Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. **Across assistants:** with decisions given in Claude Code and the task finished in Codex, 5 of 5 runs followed every decision with the workspace and 0 of 5 without it. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+Same task, same prompts, fresh sessions. Product decisions were given only in conversation in session 1; session 2 had to finish the task and follow them (six hidden checks). Reproduce with [`bench/`](bench/README.md); method and limits in [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+
+| Session 1 → session 2 | Without workspace | With workspace |
+|---|---|---|
+| Claude Code → Claude Code | 0/5 | **5/5** |
+| Claude Code → Codex (different assistant) | 0/5 | **5/5** |
+| Codex → Codex | 0/3 | **3/3** |
+
+In the first golden run, when product decisions were given in one session, a fresh session followed all of them in 5 of 5 runs with the workspace and 0 of 5 without, for about $0.06 more per session. Small n and synthetic tasks: this shows decisions surviving across sessions and assistants, not general productivity.
 
 ## What it looks like
 
-A real run, lightly trimmed (Claude Code, synthetic task). Session 1 ends with:
+A real run on the released beta (Claude Code, synthetic app). Session 1, with no `/handoff`:
 
 ```text
-you:     /handoff DEMO-1. Crash reproduced; cause is a force-unwrap of email in
-         LoginValidator.swift:42. Next: add an empty-email guard and run LoginValidatorTests.
-claude:  (saves the checkpoint with `ws`)
+you:     The app crashes on an empty email at login (APP-123). Product decided today:
+         an empty email must return 'missing_email', and signup must not change.
+         Find the root cause, but don't edit yet. I have to leave.
 ```
 
-The next day, a brand-new session that remembers nothing:
+Next day, a brand-new session:
 
 ```text
 you:     hi
-claude:  I've got a task waiting from your earlier session:
-         DEMO-1: Fix login crash on empty email
-         Next action: Add empty-email guard in LoginValidator.validate()
-         (LoginValidator.swift:42) and run LoginValidatorTests
-         Ready to pick up where you left off?
+claude:  Picking up task APP-123 (fix login crash). Next action from the saved record:
+         in app/auth.py's login(), catch the ValueError from normalize(email) and return
+         {'ok': False, 'error': 'missing_email'}, without touching app/email.py or
+         app/signup.py. Want me to go ahead and implement that fix now?
 ```
 
-This example is a Claude Code run. Codex is also proven; other clients provide the capabilities shown in the support table below.
+The decision was captured from the conversation and the session-start brief brought it back.
 
-## Quick start
+## Quick start (2 minutes)
 
 ```bash
 pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace     # 1. install
 ws init ~/work/myapp-ws --repo ~/code/myapp                            # 2. create a workspace
-cd ~/work/myapp-ws && ws connect claude                                # 3. connect your assistant
+cd ~/work/myapp-ws && ws connect claude                                # 3. connect: claude, codex, cursor, vscode, gemini
 ws task new APP-123 "Fix login crash" && ws claim APP-123              # 4. start a task
 ```
 
-Run `ws brief` to see APP-123; until you checkpoint it, the next action is honestly reported as not saved.
-
-Open the workspace folder in Claude Code (add your code folder as a working directory) and work as usual. End a session with `/handoff`; start the next one with anything, or `/pickup`. In Codex use `$handoff` and `$pickup` (proven in fresh `codex exec` sessions).
-
-No pipx? `git clone https://github.com/Alenroyfeild/ai-dev-workspace ~/ai-dev-workspace` and put `~/ai-dev-workspace/bin` on your PATH. Connect Codex, Cursor, Copilot or Gemini CLI with `ws connect codex|cursor|vscode|gemini`. Full guide: [docs/SETUP.md](docs/SETUP.md).
+Open the workspace folder in your assistant (add your code folder as a working directory) and work as usual. Memory is saved by hooks and checkpoints; `/handoff` and `/pickup` (Codex: `$handoff`, `$pickup`) are there when you want to be explicit. No pipx? Clone the repo and put its `bin/` on your PATH. Windows: `python bin/ws <command>`, see [Windows notes](docs/WINDOWS.md). Full guide: [docs/SETUP.md](docs/SETUP.md).
 
 ## What you get
 
-- **Task memory that writes itself.** One record per ticket: objective, evidence, blockers and next step. Claude and Codex hooks capture bounded, unverified decisions into Handoff. Cursor/Gemini hooks are wired and fixture-tested, but their clients remain untested. Other MCP clients use rules plus MCP only. Skills: `/handoff`, `/pickup`, `/lesson`.
-- **Lessons.** "What happened → rule", matched to the task and surfaced in its brief to help avoid a repeated mistake.
-- **An instant codebase map.** `ws map` writes languages and commands, links an existing Graphify report, and indexes it for `ws search`; it never runs Graphify.
-- **Toolbox and assist.** `ws tools` lists optional tools. `ws assist` offers local workspace suggestions and asks before applying. Advanced profiles and cost details: [docs/ADVANCED.md](docs/ADVANCED.md).
-- **Search and cost records.** Search vault notes, lessons and past chats; import Codeburn usage with `ws run import codeburn` and inspect it with `ws run report`.
-- **Safe by default.** Existing user content is preserved; ambiguous files are staged beside the original as `.ws-new`. Recognized managed sections can change during upgrades.
-- **Measured, not assumed.** `ws run log` / `ws run report` record which assistant did what, with tokens and time.
+**Memory that follows the work**
+- One Markdown record per task: objective, evidence, blockers, next action, handoff. Claude and Codex hooks capture conversation decisions automatically; a short brief (under 200 words) is injected at every session start.
+- **Stale-memory check**: the brief warns when files named in the next action changed since it was written, or when the code was rolled back past the checkpoint.
+- **Lessons** ("what happened → rule"), ranked by the files you are changing, so a mistake made once is not repeated.
+- Search vault notes, lessons and past Claude, Codex, Cursor and Gemini sessions (`ws sessions search`).
 
-All commands: [docs/COMMANDS.md](docs/COMMANDS.md). See [Workspace concepts](docs/CONCEPTS.md) for a plain-language guide to tasks, memory and delegation.
+**Works with your assistant's own features**
+- Copilot and Cursor get the current task in their own instruction files (`.github/copilot-instructions.md`, a Cursor rule), so decisions reach them even without hooks.
+- `ws import native` brings existing Claude, Codex and Gemini built-in memories into the task (read-only, preview first); `ws status` shows Codex goal status beside your task.
+- Route roles to the models you prefer (`routing.json`), delegate read-only work to a second assistant (`ws delegate`), and see what your tools cost in context (`ws tools --cost`).
+
+**Task flow**
+- Claims so two sessions do not edit the same task; a session that changed files without updating its task is asked once to checkpoint.
+- `ws next` shows work that is not blocked; `ws task depend` and `ws task import` (Spec Kit `tasks.md`, Task Master `tasks.json`).
+
+**Trust**
+- Plain files you can read, diff, commit and share. Existing files are never overwritten; proposals go beside them as `.ws-new`.
+- Captures are redacted (keys, tokens, credential URLs), home paths become `~`, `<private>` text is never stored, and `"capture": false` turns capture off.
+- Big pastes go to a local inbox instead of your context (`ws paste`, `ws digest --focus`).
+
+All commands: [docs/COMMANDS.md](docs/COMMANDS.md). Plain-language guide: [docs/CONCEPTS.md](docs/CONCEPTS.md).
+
+## How it compares
+
+| | AI Dev Workspace | Built-in assistant memory | claude-mem | Beads |
+|---|---|---|---|---|
+| Works across different assistants | yes, measured Claude → Codex | one assistant | Claude Code | yes, through its CLI/MCP |
+| Plain files you can commit and share | yes, Markdown | per-machine local store | local store | yes, git-backed |
+| Captures conversation decisions automatically | yes (Claude, Codex hooks) | when the model chooses to | yes | no, the agent files issues |
+| Task status, claims and dependencies | yes | per tool (Claude Tasks, Codex goals) | no | yes |
+| Warns when memory may be stale | yes | not documented | not documented | not applicable |
+| Published, reproducible benchmark | yes, [bench/](bench/README.md) | no | no | no |
+
+Use it with them, not instead: `ws import native` reads built-in memories, `ws task import` reads Spec Kit and Task Master output, and it runs alongside skill packs in the same session.
 
 ## Client compatibility
 
@@ -69,31 +101,35 @@ All commands: [docs/COMMANDS.md](docs/COMMANDS.md). See [Workspace concepts](doc
 | Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
 | Automatic capture | proven | proven | documented, untested | fixture-tested, v1 transcript only | documented, untested |
 
-Copilot hooks here target the VS Code **Local** harness: `ws connect vscode` writes managed `.github/hooks/ai-dev-workspace.json`. Live editor execution is unverified. [Local hook inputs](https://code.visualstudio.com/docs/agents/reference/hooks-reference) provide an optional transcript path but warn that its format is unstable; unknown formats leave memory untouched. Agent Host Copilot uses a different SDK hook protocol and remains **rules plus MCP only** in this kit. [Choose the hook harness](https://code.visualstudio.com/docs/agent-customization/hooks).
+"Proven" means exercised in real sessions of that client. Copilot hooks target the VS Code Local harness ([details](docs/SETUP.md)).
+
+## FAQ
+
+**Claude Code and Codex already have memory. Why this?** Built-in memory belongs to one assistant on one machine, and the model decides what to keep. This keeps task state and decisions in files every assistant reads at session start, and it is measured: decisions given in Claude were followed by Codex in 5 of 5 runs.
+
+**Is it another CLAUDE.md?** No. Rules files say how to work; this records what is happening: the current task, its next action, decisions, blockers and lessons, updated as you work and kept short.
+
+**Does it send my code anywhere?** No. Everything is local files. Your assistant still sends prompts to its own provider; the kit only checks GitHub for a new release once a day (`WS_OFFLINE=1` turns that off).
+
+**Does it cost tokens?** The brief is under 200 words. In the benchmark a completion session cost about $0.05 more with the workspace; the gain is correctness across sessions, not lower spend.
+
+**Can a team share it?** The workspace is plain files: commit it to a private repo. Claims show who is working on which task.
 
 ## Optional packs
 
 | Pack | Adds | Needs |
 |---|---|---|
-| `obsidian` | Open the memory as a linked, searchable Obsidian vault | [Obsidian](https://obsidian.md) |
+| `obsidian` | Open the memory as a linked Obsidian vault | [Obsidian](https://obsidian.md) |
 | `local-llm` | Free on-device log triage | [Ollama](https://ollama.com) and a small model |
-| `codex-worker` | Legacy ACP read-only worker; retained for existing users | Node, `acpx`, a Codex sign-in |
 | `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |
+| `codex-worker` | Legacy ACP read-only worker, kept for existing users | Node, `acpx`, a Codex sign-in |
 
-`ws pack add <name>`. Your own domain (Android, web, backend) is a folder with a `pack.json`: [docs/PACKS.md](docs/PACKS.md).
+`ws pack add <name>`. Your own domain is a folder with a `pack.json`: [docs/PACKS.md](docs/PACKS.md).
 
-`ws delegate` is the supported read-only worker path. Run `ws delegate --selftest --provider codex` in your workspace to check the sandbox with a positive read control and hostile writes in throwaway directories; `ws doctor` shows the latest provider result. Codex passed these probes on macOS on 2026-10-07; rerun after changing the CLI or sandbox.
+## Privacy and status
 
-## Privacy
-
-Task notes stay in your workspace. Assistant prompts and context go to the provider you use. The kit checks for updates once a day unless `WS_OFFLINE=1`; hooks can save bounded, unverified captures. Delegation and feedback send data only when you explicitly run those commands; feedback is redacted and previewed first.
-
-## Status
-
-Beta (0.1.0-beta.1): tested (`python3 -m unittest discover -s tests`), and changing. When something gets in your way, your assistant offers to note it as feedback; that is how this improves. Roadmap: [docs/ROADMAP.md](docs/ROADMAP.md). How it fits together: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Contributing and packs: [CONTRIBUTING.md](CONTRIBUTING.md).
+Task notes stay in your workspace; delegation and feedback send data only when you run them, and feedback is previewed first. Beta: tested on macOS, Linux and Windows (`python3 -m unittest discover -s tests`) and released often; see [CHANGELOG.md](CHANGELOG.md) and [docs/ROADMAP.md](docs/ROADMAP.md). How we build it: [docs/PRINCIPLES.md](docs/PRINCIPLES.md). Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Contributing and packs: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
 MIT. The `codex-worker` pack downloads and patches `@agentclientprotocol/codex-acp` (Apache-2.0) on your machine; nothing of it is redistributed here.
-
-Measured continuity: Codex met conversation-only decisions in **3/3 workspace completions versus 0/3 baseline** (n=3, 2026-10-07 UTC); both arms passed visible tests. Workspace runs took longer, so this is a quality result, not a savings claim. Reproduce it with [bench/](bench/README.md); see [measurements and limits](docs/MEASUREMENTS.md).
