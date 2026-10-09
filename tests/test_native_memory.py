@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
@@ -35,7 +36,7 @@ class NativeBase(Base):
 
     def codex_db(self, name, ddl, rows, sql):
         self.codex.mkdir(exist_ok=True)
-        with sqlite3.connect(self.codex / name) as db:
+        with closing(sqlite3.connect(self.codex / name)) as db, db:  # closed, so Windows can delete it
             db.execute(ddl); db.executemany(sql, rows)
 
     def memories_db(self, rows):
@@ -106,7 +107,8 @@ class ImportTests(NativeBase):
     def test_missing_or_unknown_schema_is_skipped_silently(self):
         self.assertEqual(native.collect(self.root), [])
         self.codex.mkdir()
-        sqlite3.connect(self.codex / 'memories_1.sqlite').execute('create table stage1_outputs(x int)').connection.commit()
+        with closing(sqlite3.connect(self.codex / 'memories_1.sqlite')) as db, db:
+            db.execute('create table stage1_outputs(x int)')
         (self.codex / 'goals_1.sqlite').write_bytes(b'not sqlite')
         self.assertEqual(native.collect(self.root, 'codex'), [])
         self.assertIn('skipped', native.codex_goals(self.root))

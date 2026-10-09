@@ -25,7 +25,7 @@ class ReadyWorkBase(unittest.TestCase):
             core.task_new(self.root, i, f'Title {i}')
             if status:
                 p = core.task_path(self.root, i)
-                p.write_text(core.set_meta(p.read_text(), {'status': status}))
+                p.write_bytes(core.set_meta(p.read_text(), {'status': status}).encode())  # LF on Windows too
 
     def status(self, i):
         return core.parse_meta(core.task_path(self.root, i).read_text())['status']
@@ -78,7 +78,7 @@ class NextTests(ReadyWorkBase):
     def test_missing_dependency_counts_as_waiting(self):
         self.new('C-1')
         p = core.task_path(self.root, 'C-1')
-        p.write_text(core.set_meta(p.read_text(), {'depends_on': 'GONE-1'}))
+        p.write_bytes(core.set_meta(p.read_text(), {'depends_on': 'GONE-1'}).encode())
         self.assertEqual(core.task_next(self.root), {'ready': [], 'waiting': 1})
 
     def test_cli_next_text_line(self):
