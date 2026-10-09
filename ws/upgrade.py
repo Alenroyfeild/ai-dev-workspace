@@ -123,8 +123,13 @@ def upgrade(root, dry_run=False):
         for pack in cfg.get('packs', []):
             if pack not in cfg.get('local_packs', {}): rules = core.pack_rules(rules, pack)
         from .orchestration import routing_template
+        try:
+            existing_routing = json.loads(core.read_text(root / 'routing.json', [root]))
+            if not isinstance(existing_routing, dict): existing_routing = {}
+        except (OSError, ValueError): existing_routing = {}
+        selected_routing = routing_template(existing_routing.get('preset', 'mixed'), existing_routing.get('assistants'))
         clients = {'.claude/settings.json': 'claude', '.codex/hooks.json': 'codex', '.cursor/hooks.json': 'cursor', '.gemini/settings.json': 'gemini', '.github/hooks/ai-dev-workspace.json': 'vscode'}
-        desired = {'AGENTS.md': rules, 'routing.json': routing_template(), **{p: json.dumps(core.memory_hooks(root, c), indent=2) + '\n'
+        desired = {'AGENTS.md': rules, 'routing.json': selected_routing, **{p: json.dumps(core.memory_hooks(root, c), indent=2) + '\n'
                    for p, c in clients.items() if c in ('claude', 'codex') or (root / p).exists()}, **skills(), **pointer_files()}
         from . import packs
         private = packs.desired(root, cfg, desired)

@@ -13,8 +13,26 @@ from pathlib import Path
 from . import core
 
 
-def routing_template():
-    return (core.KIT / 'template/routing.json').read_text(encoding='utf-8').replace('{{kit_version}}', core.kit_meta()['version'])
+def routing_template(preset='mixed', assistants=None):
+    data = json.loads((core.KIT / 'template/routing.json').read_text(encoding='utf-8').replace('{{kit_version}}', core.kit_meta()['version']))
+    presets = json.loads((core.KIT / 'template/routing-presets.json').read_text(encoding='utf-8'))
+    if not isinstance(preset, str) or preset not in presets: raise core.WsError('Unknown routing preset.')
+    selected = presets[preset]['assistants'] if assistants is None else assistants
+    if (not isinstance(selected, list) or not selected or any(not isinstance(name, str) for name in selected) or len(set(selected)) != len(selected) or
+            any(name not in data['_ws_managed']['providers'] for name in selected) or
+            preset != 'mixed' and selected != presets[preset]['assistants']):
+        raise core.WsError('Invalid assistants for routing preset.')
+    roles = data['_ws_managed']['roles']
+    for name, role in roles.items():
+        if len(selected) == 1: preference = selected
+        elif name == 'local' and 'ollama' in selected: preference = ['ollama']
+        else:
+            order = role['preference'] if name != 'local' else roles['worker']['preference']
+            preference = [provider for provider in order if provider in selected]
+            preference += [provider for provider in selected if provider not in preference]
+        role['preference'] = list(preference)
+    data.update(preset=preset, assistants=list(selected), delegation_mode='prepare-only' if len(selected) == 1 else 'read-only')
+    return json.dumps(data, indent=2) + '\n'
 
 
 def codex_model(family, default):
@@ -77,6 +95,7 @@ def route(root, role='lead', provider=None):
             chosen = chosen or candidate
         available = bool(chosen['executable'] and chosen['ready_model'])
         return dict(chosen, available=available, preference=preference, skipped=skipped,
+                    can_run=bool(chosen['headless']) and cfg.get('delegation_mode', 'read-only') != 'prepare-only',
                     timeout_seconds=int(cfg.get('timeout_seconds', 600)),
                     reason='' if available else 'No provider in the preference order is available; configure routing.json.')
     except (OSError, ValueError, KeyError, TypeError, IndexError, AttributeError):
@@ -172,7 +191,7 @@ def delegate(root, task_id, role, run=False, diff=None):
         raise core.WsError('Only explorer/reviewer may run; write roles are preparation-only.')
     binding = route(root, role)
     if not binding['available']: raise core.WsError(binding['reason'] + ' Provider: ' + binding['provider'])
-    if run and not binding['headless']: raise core.WsError('Selected provider is preparation-only; no read-only headless command configured.')
+    if run and not binding['can_run']: raise core.WsError('Selected provider is preparation-only; this preset or provider has no automatic worker execution.')
     task = core.task_read(root, task_id, ['Objective', 'Next action', 'Blockers', 'Evidence'])
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if run and meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
