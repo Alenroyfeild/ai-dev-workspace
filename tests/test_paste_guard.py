@@ -70,6 +70,9 @@ class PasteGuardTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout)['focus_matches'], ['L2: keep this'])
         with self.assertRaises(core.WsError): core.digest_file(path, focus='[', root=self.root)
+        for unsafe in ('(a+)+$', 'a*a*a*a*a*b', '(a|aa)+$'):
+            with self.subTest(focus=unsafe), self.assertRaisesRegex(core.WsError, 'simple regular expressions'):
+                core.digest_file(path, focus=unsafe, root=self.root)
         reply = server.handle(self.root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
             'name': 'digest_file', 'arguments': {'path': str(path), 'focus': 'keep'}}})
         self.assertEqual(json.loads(reply['result']['content'][0]['text'])['focus_matches'], ['L2: keep this'])

@@ -16,6 +16,7 @@ import os
 import re
 import shlex
 import shutil
+import sre_parse
 import stat
 import subprocess
 import sys
@@ -1173,14 +1174,48 @@ def _shape(value, depth=0):
 ERR_RE = re.compile(r'\b(error|fatal|failed|failure|exception|warning|denied|panic|traceback)\b', re.I)
 
 
+def _focus_pattern(source):
+    """Compile a deliberately small regex subset with predictable matching cost."""
+    if len(source) > 256:
+        raise WsError('Focus regular expressions are limited to 256 characters.')
+    try:
+        parsed = sre_parse.parse(source)
+    except re.error as exc:
+        raise WsError(f'Invalid focus regular expression: {exc}')
+    repeats = [0]
+    simple = {sre_parse.LITERAL, sre_parse.NOT_LITERAL, sre_parse.ANY,
+              sre_parse.IN, sre_parse.CATEGORY}
+    repeat_ops = {sre_parse.MAX_REPEAT, sre_parse.MIN_REPEAT}
+    if hasattr(sre_parse, 'POSSESSIVE_REPEAT'):
+        repeat_ops.add(sre_parse.POSSESSIVE_REPEAT)
+
+    def check(tokens):
+        for op, arg in tokens:
+            if op in repeat_ops:
+                _, maximum, child = arg
+                repeats[0] += 1
+                if repeats[0] > 1 or any(inner not in simple for inner, _ in child):
+                    raise WsError('Focus supports simple regular expressions only (one repetition of a character).')
+                if maximum != sre_parse.MAXREPEAT and maximum > 10000:
+                    raise WsError('Focus repetition is limited to 10000 characters.')
+            elif op == sre_parse.SUBPATTERN:
+                check(arg[-1])
+            elif op == sre_parse.BRANCH:
+                for branch in arg[1]:
+                    check(branch)
+            elif op not in simple and op != sre_parse.AT:
+                raise WsError('Focus supports simple regular expressions only.')
+    check(parsed)
+    return re.compile(source)
+
+
 def digest_file(path, max_lines=60, root=None, focus=None):
     """Deterministic summary of a big file: JSON shape, or deduplicated error lines of a log."""
     path = Path(path)
     raw = read_text(path, read_roots(root) if root is not None else None)
     out = {'file': redact(str(path)), 'bytes': len(raw), 'lines': raw.count('\n') + 1}
     if focus is not None:
-        try: pattern = re.compile(focus)
-        except re.error as exc: raise WsError(f'Invalid focus regular expression: {exc}')
+        pattern = _focus_pattern(focus)
         matches = []
         for i, line in enumerate(io.StringIO(raw), 1):
             if pattern.search(line):
