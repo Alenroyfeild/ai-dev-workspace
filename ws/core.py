@@ -710,16 +710,22 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     return {'task': task_id, 'path': path.relative_to(root).as_posix()}
 
 
-def claim_note(root, task_id, meta):
-    """Tell readers whether a claim was made from this workspace (local claim file matches)."""
+def _local_claim_matches(root, task_id, meta):
     if not meta.get('claimed_by'):
-        return ''
+        return False
     try:
         local = json.loads(_local_claim_path(root, task_id).read_text(encoding='utf-8'))
     except (OSError, ValueError, WsError):
         local = {}
-    if local.get('token') and local.get('token') == meta.get('claim_token'):
+    return bool(local.get('token')) and local.get('token') == meta.get('claim_token')
+
+
+def claim_note(root, task_id, meta):
+    """Tell readers whether a claim was made from this workspace (local claim file matches)."""
+    if _local_claim_matches(root, task_id, meta):
         return 'claimed in this workspace: continue; ws claim resumes it'
+    if not meta.get('claimed_by'):
+        return ''
     return f"claimed elsewhere by {meta['claimed_by']}: ask before taking over"
 
 
@@ -997,11 +1003,47 @@ def relevant_lessons(root, task):
     return [line for _, _, line in ranked[:3]]
 
 
+def _capture_words(text, limit):
+    words = redact(text).split()
+    if len(words) > limit:
+        if limit < 3: return ' '.join(words[-limit:]) if limit else ''
+        head = min(8, limit // 3)
+        words = words[:head] + ['[…]'] + words[-(limit - head - 1):]
+    return ' '.join(words)
+
+
+def _constraint_clauses(text):
+    return re.split(r'(?<=[.!?])\s+|\n+', text)
+
+
+def _constraint_budget(clauses, limit, multiline=False):
+    parts = []
+    for clause in clauses:
+        if limit <= int(multiline): break
+        if not clause.strip(): continue
+        clipped = _capture_words(clause, limit - int(multiline))
+        if multiline: clipped = '- ' + clipped
+        parts.append(clipped)
+        limit -= len(clipped.split())
+    return ('\n' if multiline else '; ').join(parts)
+
+
+def _captured_step(summary):
+    latest = ''
+    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*\s*(?:-\s+)?', summary, re.I):
+        if re.search(r'\b(?:no|not(?:\s+(?:have|take|perform|run|execute))?|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I): continue
+        prefix = ' '.join(match.group().split()).rstrip(' -')
+        latest = prefix + ' ' + re.split(r'(?<=[.!?])\s+|\n+', summary[match.end():])[0]
+    return latest
+
+
 def brief(root):
     guard = repeat_guard(root)
-    active = [t for t in task_list(root) if t['status'] == 'in_progress']
+    tasks = task_list(root)
+    active = [t for t in tasks if t['status'] == 'in_progress']
     if not active:
-        claimed = [t for t in task_list(root) if t['status'] != 'done' and t['claim'] == 'claimed in this workspace: continue; ws claim resumes it']
+        claimed = [t for t in tasks if t['status'] != 'done' and
+                   _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
         if len(claimed) == 1:
             active = claimed
         else:
@@ -1011,9 +1053,12 @@ def brief(root):
     def words(text, limit):
         return ' '.join(redact(text).split()[:limit])
     next_action = record['sections']['Next action']
-    saved_next = bool(next_action.strip()) and (
-        record['meta'].get('checkpoint_count', 0) not in (0, '0', '')
-        or next_action.strip() != 'Read the code involved and fill Evidence.')
+    try:
+        checkpoint_count = int(record['meta'].get('checkpoint_count', 0))
+    except (TypeError, ValueError):
+        checkpoint_count = 0
+    template_action = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Next action')
+    saved_next = bool(next_action.strip()) and (checkpoint_count > 0 or next_action.strip() != template_action)
     lines = ['Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.',
              f"Task {task['id']}: {words(task['title'], 15)}",
              'Next action: ' + (words(next_action, 60) if saved_next
@@ -1023,20 +1068,45 @@ def brief(root):
         lines.append('Claim: ' + record['claim'])
     captured = re.findall(r'### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->', task_read(root, task['id'], ['Handoff'])['sections']['Handoff'], re.S)
     if captured:
-        lines.append('Captured last session (unverified): ' + words(captured[-1], 60))
+        memory = captured[-1]
+        constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
+        constraints = constraints.removeprefix('User constraints:').strip()
+        clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
+        lines.append('Captured last session (unverified): User constraints: ' +
+                     _constraint_budget(clauses, 28))
+        if separator:
+            lines.append('Captured next step (unverified): ' + _capture_words(step, 25))
+            action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
+            def normalized(value):
+                return re.sub(r'^to\s+', '', ' '.join(value.strip(' \t\n*_`.:').split()).casefold())
+            if action and normalized(action[1]) != normalized(record['sections']['Next action']):
+                lines.append('Captured plan differs from saved checkpoint; verify before replacing.')
     lines += ['Lesson: ' + words(line, 25) for line in relevant_lessons(root, task)]
     return '\n'.join(([guard] if guard else []) + lines)
 
 
 def capture_decisions(root, transcript_path, client='claude'):
     """Capture bounded, unverified transcript memory to a locally owned task."""
+    with lock(root):
+        reason = _capture_decisions(root, transcript_path, client)
+        outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
+        health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
+                  'outcome': outcome, 'reason': reason}
+        try:
+            atomic_write(inside(root / '.ws/capture-health.json', [root]), json.dumps(health) + '\n')
+        except (WsError, OSError):
+            pass  # Diagnostics cannot undo capture.
+    return reason == 'captured'
+
+
+def _capture_decisions(root, transcript_path, client):
     if not isinstance(transcript_path, str) or not transcript_path:
-        return False
-    decisions, summary, worked = [], '', False
+        return 'missing_transcript_path'
+    decisions, summary, worked, recognized = [], '', False, False
     try:
         path = Path(transcript_path)
         if path.stat().st_size > 50 * 1024 * 1024:
-            return False
+            return 'transcript_too_large'
         # ponytail: scan at most 50 MB per hook; add incremental reads if sessions outgrow this.
         with io.StringIO(read_text(path, errors='strict')) as stream:
             from .transcripts import records
@@ -1049,6 +1119,7 @@ def capture_decisions(root, transcript_path, client='claude'):
                     continue
                 if kind not in ('user', 'assistant') or entry.get('isMeta') or entry.get('isCompactSummary'):
                     continue
+                recognized = True
                 text = content if isinstance(content, str) else ''
                 if isinstance(content, list):
                     text = _session_text([item for item in content if isinstance(item, dict) and item.get('type') == 'text'])
@@ -1058,48 +1129,67 @@ def capture_decisions(root, transcript_path, client='claude'):
                     if text.strip():
                         summary = text
                 else:
-                    decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+', text)
+                    decisions.extend(sentence for sentence in _constraint_clauses(text)
                                      if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
     except WsError:
-        return False
+        return 'unreadable_transcript'
     except (OSError, UnicodeError, ValueError, TypeError, AttributeError, KeyError, RecursionError):
-        return False
+        return 'unreadable_transcript'
+    if not recognized:
+        return 'unsupported_transcript'
     if not worked or not (decisions or summary):
-        return False
-    body = 'User constraints: ' + ' '.join(redact(' '.join(decisions)).split()[:95])
-    steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+', summary) if re.search(r'\bnext (step|action)\b', s, re.I)]
-    body += '\nLast assistant summary / next step: ' + ' '.join((' '.join(steps) + ' ' + summary).split()[:35])
+        return 'no_work_or_memory'
+    # Newest corrections get the budget first; captured memory never replaces verified sections.
+    body = 'User constraints:\n' + _constraint_budget(reversed(decisions), 95, multiline=True)
+    body += '\nLast assistant summary / next step: ' + _capture_words(_captured_step(summary) or summary, 35)
     body = body.replace('<!--', '&lt;!--')
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
     marker = '<!-- ws:captured:' + digest_text(str(Path(transcript_path).resolve()))[:16] + ' -->'
     block = marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
-    with lock(root):
-        owned = []
-        for task in task_list(root):
-            worker, token = _claim_defaults(root, task['id'], None, None)
-            path = task_path(root, task['id'])
-            text = path.read_bytes().decode('utf-8')
-            meta = parse_meta(text)
-            if task['status'] != 'done' and token and worker == meta.get('claimed_by') and token == meta.get('claim_token'):
-                owned.append((path, text))
-        if len(owned) != 1:
-            return False
-        path, original = owned[0]
-        text = original
-        match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
-        if not match:
-            return False
-        section_text = match.group()
-        own = re.search(re.escape(marker) + r'.*?<!-- /ws:captured -->\n?', section_text, re.S)
-        if own:
-            section_text = section_text[:own.start()] + block + section_text[own.end():]
-        else:
-            section_text = section_text.rstrip('\n') + '\n\n' + block
-        text = text[:match.start()] + section_text + text[match.end():]
-        if text == original:
-            return False
-        atomic_write(path, text)
-    return True
+    owned = []
+    for task in task_list(root):
+        worker, token = _claim_defaults(root, task['id'], None, None)
+        path = task_path(root, task['id'])
+        text = path.read_bytes().decode('utf-8')
+        meta = parse_meta(text)
+        if task['status'] != 'done' and token and worker == meta.get('claimed_by') and token == meta.get('claim_token'):
+            owned.append((path, text))
+    if len(owned) != 1:
+        return 'ambiguous_claims' if owned else 'no_local_claim'
+    path, original = owned[0]
+    text = original
+    match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
+    if not match:
+        return 'missing_handoff'
+    section_text = match.group()
+    own = re.search(re.escape(marker) + r'.*?<!-- /ws:captured -->\n?', section_text, re.S)
+    if own:
+        section_text = section_text[:own.start()] + block + section_text[own.end():]
+    else:
+        section_text = section_text.rstrip('\n') + '\n\n' + block
+    text = text[:match.start()] + section_text + text[match.end():]
+    if text == original:
+        return 'unchanged'
+    atomic_write(path, text)
+    return 'captured'
+
+
+def capture_health(root):
+    path = root / '.ws/capture-health.json'
+    try:
+        if not path.exists():
+            return {'outcome': 'not_run', 'reason': 'not_run'}
+        health = json.loads(read_text(path, [root]))
+        # Only our fixed diagnostic vocabulary can reach doctor; never echo arbitrary file text.
+        if health['outcome'] not in ('captured', 'unchanged', 'skipped'): raise ValueError
+        if health['reason'] not in ('captured', 'unchanged', 'missing_transcript_path', 'transcript_too_large',
+                                   'unreadable_transcript', 'unsupported_transcript', 'no_work_or_memory',
+                                   'ambiguous_claims', 'no_local_claim', 'missing_handoff'): raise ValueError
+        if health['client'] not in ('claude', 'codex', 'cursor', 'gemini', 'vscode', 'unsupported'): raise ValueError
+        if not re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00', health['date']): raise ValueError
+        return {key: health[key] for key in ('date', 'client', 'outcome', 'reason')}
+    except (WsError, OSError, ValueError, TypeError, KeyError):
+        return {'outcome': 'unknown', 'reason': 'unreadable_health'}
 
 
 def nudge(root):
@@ -1542,6 +1632,7 @@ def doctor(root=None, mcp=False):
         report['kit'].update(json.loads(cache.read_text(encoding='utf-8'))['result'])
     if root:
         report['workspace'] = str(root)
+        report['capture_health'] = capture_health(root)
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
