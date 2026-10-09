@@ -48,3 +48,21 @@ class RoutingPresetTests(Base):
             self.assertTrue(role['preference']); self.assertLessEqual(set(role['preference']), {'cursor', 'copilot'})
         for name, selected in [('unknown', None), ('mixed', []), ('mixed', [{}]), ('codex-only', ['claude'])]:
             with self.assertRaises(core.WsError): orchestration.routing_template(name, selected)
+
+    def test_combined_execution_gate_uses_only_eligible_headless_providers(self):
+        for preset, selected in [('claude+codex', None), ('mixed', ['cursor', 'copilot'])]:
+            (self.root / 'routing.json').write_text(orchestration.routing_template(preset, selected))
+            with mock.patch.object(core.shutil, 'which', side_effect=lambda cli: '/fixture/' + cli), \
+                    mock.patch.object(orchestration, 'worker_run', return_value=(0, 'UNVERIFIED synthetic.py:1: fixture finding.', 1, 1, True)) as worker:
+                for role in ('explorer', 'reviewer'):
+                    worker.reset_mock()
+                    if selected is None:
+                        result = orchestration.delegate(self.root, 'T-1', role, run=True)
+                        self.assertEqual(result['exit_code'], 0); worker.assert_called_once()
+                        self.assertIn('unverified', core.task_read(self.root, 'T-1', ['Evidence'])['sections']['Evidence'])
+                    else:
+                        with self.assertRaisesRegex(core.WsError, 'preparation-only'):
+                            orchestration.delegate(self.root, 'T-1', role, run=True)
+                        worker.assert_not_called()
+                with self.assertRaisesRegex(core.WsError, 'write roles'):
+                    orchestration.delegate(self.root, 'T-1', 'worker', run=True)
