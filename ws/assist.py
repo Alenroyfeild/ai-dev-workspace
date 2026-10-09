@@ -104,9 +104,6 @@ def suggestions(root, include_hidden=False):
     def add(identifier, why, command, safety, saving='unmeasured'):
         items.append(dict(id=identifier, why=' '.join(core.redact(why).split()), command=command, safety=safety, estimated_saving=saving))
     feature_suggestions(root, add)
-    for tool in core.tools():
-        if tool['level'] == 'recommended' and not tool['installed'] and core.tool_policy(root, tool)['mode'] != 'off':
-            add('tool-' + tool['name'], 'Recommended executable missing: ' + tool['name'], tool['install']['codex'], 'installs')
     repos = core.config(root).get('repos', [])
     mapped = core.vault(root) / 'Project/Codebase map.md'
     if repos and (not mapped.exists() or core.time.time() - mapped.stat().st_mtime > 14 * 86400):
