@@ -680,6 +680,20 @@ def set_section(text, name, body):
     return text.rstrip('\n') + f'\n\n## {name}\n{body.strip()}\n'
 
 
+def conflicted(text):
+    return bool(re.search(r'^<<<<<<< ', text, re.M) and re.search(r'^>>>>>>> ', text, re.M))
+
+
+def keep_ours(text):
+    """Resolve git conflict markers to the local (HEAD) side so a clashing task file can still be read."""
+    return re.sub(r'^<<<<<<< [^\n]*\n(.*?)(?:^(?:=======|\|\|\|\|\|\|\| )[^\n]*\n.*?)?^>>>>>>> [^\n]*\n?', r'\1', text, flags=re.M | re.S)
+
+
+def conflict_hint(task_id):
+    return (f'{task_id} has unresolved git conflict markers: open vault/Tasks/{task_id}.md, keep one side, '
+            'delete the <<<<<<< ======= >>>>>>> lines, then `git add` it (docs/TEAM.md).')
+
+
 def digest_text(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -758,11 +772,14 @@ def task_list(root):
     for path in sorted(directory.glob('*.md')):
         try: text = read_text(path, [root])
         except WsError: continue
+        bad = conflicted(text)
+        if bad: text = keep_ours(text)
         meta = parse_meta(text)
         title = re.search(r'^# (.+)$', text, re.M)
         out.append({'id': meta.get('id', path.stem), 'title': title.group(1) if title else path.stem,
-                    'status': meta.get('status', 'unknown'), 'claimed_by': meta.get('claimed_by', ''),
-                    'claim': claim_note(root, meta.get('id', path.stem), meta),
+                    'status': 'conflicted' if bad else meta.get('status', 'unknown'),
+                    'claimed_by': '' if bad else meta.get('claimed_by', ''),
+                    'claim': '' if bad else claim_note(root, meta.get('id', path.stem), meta),
                     'branch': meta.get('branch', ''), 'next': section(text, 'Next action')[:200],
                     'depends_on': _deps(meta)})
     return out
@@ -903,11 +920,13 @@ def task_read(root, task_id, sections=None):
     if not path.is_file():
         raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
     text = path.read_text(encoding='utf-8')
+    bad = {'conflicted': True} if conflicted(text) else {}
     if not sections:
-        return {'task': task_id, 'sha': digest_text(text), 'text': text}
+        return {'task': task_id, 'sha': digest_text(text), 'text': text, **bad}
+    sha, text = digest_text(text), keep_ours(text) if bad else text
     meta = parse_meta(text)
-    return {'task': task_id, 'sha': digest_text(text), 'meta': meta, 'claim': claim_note(root, task_id, meta),
-            'sections': {s: section(text, s) for s in sections}}
+    return {'task': task_id, 'sha': sha, 'meta': meta, 'claim': '' if bad else claim_note(root, task_id, meta),
+            'sections': {s: section(text, s) for s in sections}, **bad}
 
 
 def claim(root, task_id, worker):
@@ -916,6 +935,7 @@ def claim(root, task_id, worker):
     with lock(root):
         path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
+        if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by'):
             # The local claim file (gitignored) proves this workspace made the claim: a later session here resumes it.
@@ -944,6 +964,7 @@ def release(root, task_id, worker=None, token=None):
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
+        if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by') != worker or meta.get('claim_token') != token:
             raise WsError('Worker/token do not match the claim; nothing changed.')
@@ -961,6 +982,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
+        if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
             raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; pass its worker and token.')
@@ -1247,14 +1269,24 @@ def brief(root):
     guard = repeat_guard(root)
     tasks = task_list(root)
     active = [t for t in tasks if t['status'] == 'in_progress']
-    if not active:
-        claimed = [t for t in tasks if t['status'] != 'done' and
-                   _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
-        if len(claimed) == 1:
-            active = claimed
-        else:
-            return guard or 'No in-progress task. Find or create the task before working.'
-    task = next((t for t in active if t['claimed_by']), active[0])
+    # Team workspace: my local claims first, then the task on this repo's current branch, never a teammate's by default.
+    own = [t for t in tasks if t['status'] not in ('done', 'conflicted') and
+           _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
+    own_ids = {t['id'] for t in own}
+    others = [t for t in tasks if t['claimed_by'] and t['status'] != 'done' and t['id'] not in own_ids]
+    def others_line(task_id=''):
+        shown = [f"{t['id']} ({redact(t['claimed_by'])})" for t in others if t['id'] != task_id][:3]
+        return ['Others working: ' + ', '.join(shown)] if shown else []
+    mine = [t for t in active if t['id'] in own_ids]
+    if mine:
+        task = mine[0]
+    elif active:
+        on_branch = [t for t in active if t['branch'] and t['branch'] == _task_git(root, t['id'], 'rev-parse', '--abbrev-ref', 'HEAD').strip()] if len(active) > 1 else []
+        task = (on_branch or [next((t for t in active if t['claimed_by']), active[0])])[0]
+    elif len(own) == 1:
+        task = own[0]
+    else:
+        return '\n'.join([guard or 'No in-progress task. Find or create the task before working.'] + others_line())
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     def words(text, limit):
         return ' '.join(redact(text).split()[:limit])
@@ -1288,6 +1320,7 @@ def brief(root):
                 return re.sub(r'^to\s+', '', ' '.join(value.strip(' \t\n*_`.:').split()).casefold())
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
                 lines.append('Captured plan differs from saved checkpoint; verify before replacing.')
+    lines += others_line(task['id'])
     lessons = relevant_lessons(root, task)
     lines += ['Lesson: ' + words(line, 25) for line in lessons[:3]]
     if len(lessons) > 3: lines.append(f'Lessons: {len(lessons) - 3} more (ws lesson search)')
@@ -1755,6 +1788,8 @@ def validate(root):
     v = vault(root)
     for path in sorted((v / 'Tasks').glob('*.md')):
         text = path.read_text(encoding='utf-8')
+        if conflicted(text):
+            errors.append(f'{path.name}: ' + conflict_hint(path.stem)); continue
         meta = parse_meta(text)
         if meta.get('id') != path.stem:
             errors.append(f'{path.name}: id must equal the file name')
@@ -1783,6 +1818,7 @@ def status(root):
         counts[t['status']] = counts.get(t['status'], 0) + 1
     report = {'workspace': config(root)['name'], 'packs': config(root).get('packs', []), 'tasks': counts,
               'active_claims': [f"{t['id']} by {t['claimed_by']}" for t in tasks if t['claimed_by']],
+              'conflicted': [conflict_hint(t['id']) for t in tasks if t['status'] == 'conflicted'],
               'blocked': [f"{t['id']}: {t['next']}" for t in tasks if t['status'] == 'blocked'],
               'open_feedback': len(feedback_list(root)), 'lessons': len(lesson_search(root, '')),
               'runs': run_report(root)}
@@ -1948,6 +1984,34 @@ def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
     return checks
 
 
+def _git(root, *args):
+    return subprocess.run(['git', '-C', str(root), *args], capture_output=True, encoding='utf-8', errors='replace', timeout=10)
+
+
+def _team_checks(root):
+    """Warnings for a workspace shared through git (local claims must stay local, no secrets in tracked notes); None outside a repo."""
+    try:
+        if _git(root, 'rev-parse', '--is-inside-work-tree').stdout.strip() != 'true': return None
+        warnings = []
+        if _git(root, 'check-ignore', '-q', '.ws/claims/probe').returncode != 0:
+            warnings.append('.ws/ is not ignored: add `.ws/` to .gitignore so local claim tokens are never committed.')
+        if _git(root, 'ls-files', '-z', '--', '.ws').stdout.strip('\0'):
+            warnings.append('.ws/ files are tracked: run `git rm -r --cached .ws` so claim tokens leave the repo.')
+        found = []
+        for name in _git(root, 'ls-files', '-z', '--', vault(root).resolve().relative_to(root.resolve()).as_posix()).stdout.split('\0'):
+            try:
+                path = root / name
+                text = path.read_bytes().decode('utf-8', 'replace') if name and path.stat().st_size < 1_000_000 else ''
+            except OSError: continue
+            lines = {text.count('\n', 0, m.start()) + 1 for rx in (SECRET_RE, URL_CREDENTIALS_RE) for m in rx.finditer(text)}
+            found += [f'{name}:{n}' for n in sorted(lines)]
+        warnings += [f'possible secret at {place} (value not shown); remove it and rotate the credential.' for place in found[:10]]
+        if len(found) > 10: warnings.append(f'{len(found) - 10} more possible secrets in tracked vault files.')
+        return {'warnings': warnings}
+    except (OSError, ValueError, subprocess.SubprocessError, WsError):
+        return None
+
+
 def doctor(root=None, mcp=False):
     """What is installed, what each plugged pack still needs, and recommended extras."""
     report = {'core': {'python3': True, 'git': bool(shutil.which('git'))}, 'packs': [], 'recommended': [],
@@ -1979,6 +2043,9 @@ def doctor(root=None, mcp=False):
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
+        report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
+        team = _team_checks(root)
+        if team is not None: report['team'] = team
         report['clients'] = {client: client_connected(root, client)
                              for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
         report['client_instructions'] = {
