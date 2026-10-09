@@ -102,6 +102,16 @@ class TeamDoctorTests(Base):
         git(self.root, 'add', '.')
         self.assertIn('not checked', ' '.join(self.team()['warnings']))
 
+    def test_staged_secret_is_visible_after_working_copy_is_cleaned(self):
+        note = core.vault(self.root) / 'Notes.md'
+        note.write_text('api_key = abcdef1234567890abcdef\n')
+        git(self.root, 'add', '.')
+        note.write_text('clean working copy\n')
+        warnings = ' '.join(self.team()['warnings'])
+        self.assertIn('vault/Notes.md:1', warnings)
+        self.assertIn('staged', warnings)
+        self.assertNotIn('abcdef1234567890abcdef', warnings)
+
 
 class ConflictedTaskTests(Base):
     def setUp(self):
