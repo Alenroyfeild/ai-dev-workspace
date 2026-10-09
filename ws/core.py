@@ -1087,15 +1087,15 @@ def brief(root):
 
 def capture_decisions(root, transcript_path, client='claude'):
     """Capture bounded, unverified transcript memory to a locally owned task."""
-    reason = _capture_decisions(root, transcript_path, client)
-    outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
-    health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
-              'outcome': outcome, 'reason': reason}
-    try:
-        with lock(root):
+    with lock(root):
+        reason = _capture_decisions(root, transcript_path, client)
+        outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
+        health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
+                  'outcome': outcome, 'reason': reason}
+        try:
             atomic_write(inside(root / '.ws/capture-health.json', [root]), json.dumps(health) + '\n')
-    except (WsError, OSError):
-        pass  # Diagnostics are best effort; a failed health write cannot undo capture.
+        except (WsError, OSError):
+            pass  # Diagnostics cannot undo capture.
     return reason == 'captured'
 
 
@@ -1146,32 +1146,31 @@ def _capture_decisions(root, transcript_path, client):
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
     marker = '<!-- ws:captured:' + digest_text(str(Path(transcript_path).resolve()))[:16] + ' -->'
     block = marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
-    with lock(root):
-        owned = []
-        for task in task_list(root):
-            worker, token = _claim_defaults(root, task['id'], None, None)
-            path = task_path(root, task['id'])
-            text = path.read_bytes().decode('utf-8')
-            meta = parse_meta(text)
-            if task['status'] != 'done' and token and worker == meta.get('claimed_by') and token == meta.get('claim_token'):
-                owned.append((path, text))
-        if len(owned) != 1:
-            return 'ambiguous_claims' if owned else 'no_local_claim'
-        path, original = owned[0]
-        text = original
-        match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
-        if not match:
-            return 'missing_handoff'
-        section_text = match.group()
-        own = re.search(re.escape(marker) + r'.*?<!-- /ws:captured -->\n?', section_text, re.S)
-        if own:
-            section_text = section_text[:own.start()] + block + section_text[own.end():]
-        else:
-            section_text = section_text.rstrip('\n') + '\n\n' + block
-        text = text[:match.start()] + section_text + text[match.end():]
-        if text == original:
-            return 'unchanged'
-        atomic_write(path, text)
+    owned = []
+    for task in task_list(root):
+        worker, token = _claim_defaults(root, task['id'], None, None)
+        path = task_path(root, task['id'])
+        text = path.read_bytes().decode('utf-8')
+        meta = parse_meta(text)
+        if task['status'] != 'done' and token and worker == meta.get('claimed_by') and token == meta.get('claim_token'):
+            owned.append((path, text))
+    if len(owned) != 1:
+        return 'ambiguous_claims' if owned else 'no_local_claim'
+    path, original = owned[0]
+    text = original
+    match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
+    if not match:
+        return 'missing_handoff'
+    section_text = match.group()
+    own = re.search(re.escape(marker) + r'.*?<!-- /ws:captured -->\n?', section_text, re.S)
+    if own:
+        section_text = section_text[:own.start()] + block + section_text[own.end():]
+    else:
+        section_text = section_text.rstrip('\n') + '\n\n' + block
+    text = text[:match.start()] + section_text + text[match.end():]
+    if text == original:
+        return 'unchanged'
+    atomic_write(path, text)
     return 'captured'
 
 
