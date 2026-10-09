@@ -1,0 +1,8 @@
+{
+  "tasks": [
+    {"id": 1, "title": "Set up repo", "description": "Create the skeleton.", "status": "done", "dependencies": [], "subtasks": []},
+    {"id": 2, "title": "Build API", "description": "REST endpoints.", "status": "in-progress", "dependencies": [1],
+     "subtasks": [{"id": 1, "title": "Routes", "status": "pending", "dependencies": []}]},
+    {"id": 3, "title": "Build UI", "description": "Front end.", "status": "pending", "dependencies": [1, 2]}
+  ]
+}

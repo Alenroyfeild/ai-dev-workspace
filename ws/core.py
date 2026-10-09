@@ -748,8 +748,134 @@ def task_list(root):
         out.append({'id': meta.get('id', path.stem), 'title': title.group(1) if title else path.stem,
                     'status': meta.get('status', 'unknown'), 'claimed_by': meta.get('claimed_by', ''),
                     'claim': claim_note(root, meta.get('id', path.stem), meta),
-                    'branch': meta.get('branch', ''), 'next': section(text, 'Next action')[:200]})
+                    'branch': meta.get('branch', ''), 'next': section(text, 'Next action')[:200],
+                    'depends_on': _deps(meta)})
     return out
+
+
+def _deps(meta):
+    return [d.strip() for d in meta.get('depends_on', '').split(',') if d.strip()]
+
+
+def _cycle_through(graph, start):
+    """True when following depends_on edges from start comes back to start."""
+    seen, stack = set(), list(graph.get(start, ()))
+    while stack:
+        node = stack.pop()
+        if node == start: return True
+        if node not in seen:
+            seen.add(node); stack.extend(graph.get(node, ()))
+    return False
+
+
+def task_depend(root, task_id, other):
+    for ref in (task_id, other):
+        if not task_path(root, ref).is_file():
+            raise WsError(f'No task {ref}. Create it with `ws task new {ref} "<title>"`.')
+    if task_id == other:
+        raise WsError(f'{task_id} cannot depend on itself.')
+    with lock(root):
+        graph = {t['id']: t['depends_on'] for t in task_list(root)}
+        deps = graph.get(task_id, [])
+        if other not in deps:
+            if _cycle_through({**graph, task_id: deps + [other]}, task_id):
+                raise WsError(f'{task_id} -> {other} would create a dependency cycle.')
+            deps = deps + [other]
+            path = task_path(root, task_id)
+            atomic_write(path, set_meta(path.read_text(encoding='utf-8'), {'depends_on': ', '.join(deps)}))
+    return {'task': task_id, 'depends_on': deps}
+
+
+def task_next(root):
+    """Open tasks whose dependencies are all done: in_progress first, then review, ready, backlog."""
+    tasks = {t['id']: t for t in task_list(root)}
+    rank = {'in_progress': 0, 'review': 1, 'ready': 2, 'backlog': 3}
+    ready, waiting = [], 0
+    for t in tasks.values():
+        if t['status'] not in rank: continue  # done, blocked or unknown
+        if any(tasks.get(d, {}).get('status') != 'done' for d in t['depends_on']):
+            waiting += 1; continue
+        unblocks = sorted(o['id'] for o in tasks.values() if t['id'] in o['depends_on'] and o['status'] != 'done')
+        ready.append({'id': t['id'], 'status': t['status'], 'title': t['title'], 'unblocks': unblocks})
+    ready.sort(key=lambda r: (rank[r['status']], r['id']))
+    return {'ready': ready, 'waiting': waiting}
+
+
+# Task Master statuses -> ws statuses (anything unlisted, e.g. pending, becomes ready).
+_IMPORT_STATUS = {'done': 'done', 'in-progress': 'in_progress', 'review': 'review', 'blocked': 'blocked',
+                  'deferred': 'backlog', 'cancelled': 'backlog'}
+_CHECK_RE = re.compile(r'^\s*[-*] \[([ xX])\] (T\d+)\b\s*(.*)$')
+
+
+def _parse_import(path):
+    """Return (items, ignored): items are {key, title, objective, status, deps} with file-local keys."""
+    text = read_text(path)
+    items, ignored = [], 0
+    if Path(path).suffix.lower() == '.json':
+        try: data = json.loads(text)
+        except ValueError as exc: raise WsError(f'{path} is not valid JSON: {exc}')
+        if isinstance(data, dict) and isinstance(data.get('master'), dict): data = data['master']
+        if isinstance(data, dict): data = data.get('tasks')
+        if not isinstance(data, list):
+            raise WsError('Expected a Task Master tasks.json: a "tasks" list or {"master": {"tasks": [...]}}.')
+        for raw in data:
+            if not isinstance(raw, dict) or raw.get('id') in (None, '') or not raw.get('title'):
+                raise WsError('Every task needs an id and a title.')
+            ignored += len(raw.get('subtasks') or [])
+            items.append({'key': str(raw['id']), 'title': ' '.join(str(raw['title']).split()),
+                          'objective': str(raw.get('description') or ''),
+                          'status': _IMPORT_STATUS.get(str(raw.get('status', '')).lower(), 'ready'),
+                          'deps': [str(d) for d in raw.get('dependencies') or []]})
+    else:
+        for line in text.splitlines():
+            m = _CHECK_RE.match(line)
+            if not m:
+                ignored += bool(re.match(r'^\s*[-*] \[[ xX]\]', line)); continue
+            mark, key, rest = m.groups()
+            deps = []
+            for found in re.findall(r'\(depends on ([^)]*)\)', rest, re.I):
+                deps += re.findall(r'T\d+', found)
+            rest = re.sub(r'\(depends on [^)]*\)', '', rest, flags=re.I)
+            rest = re.sub(r'\[(?:P|US\d+)\]', '', rest)
+            items.append({'key': key, 'title': ' '.join(rest.split()) or key, 'objective': '',
+                          'status': 'done' if mark in 'xX' else 'ready', 'deps': deps})
+    if not items:
+        raise WsError(f'No tasks found in {path}.')
+    return items, ignored
+
+
+def task_import(root, file, prefix='SPEC', write=False):
+    """Create ws tasks from a Task Master tasks.json or a Spec Kit style tasks.md; never overwrites."""
+    items, ignored = _parse_import(file)
+    ids = {i['key']: f"{prefix}-{i['key']}" for i in items}
+    errors = [f'duplicate task {k} in file' for k in {i['key'] for i in items if [j['key'] for j in items].count(i['key']) > 1}]
+    for ref in ids.values():
+        task_path(root, ref)  # validates the prefixed ID against ID_RE
+    graph = {}
+    existing = {t['id'] for t in task_list(root)}
+    for i in items:
+        deps = []
+        for d in i['deps']:
+            ref = ids.get(d) or (f'{prefix}-{d}' if f'{prefix}-{d}' in existing else d if d in existing else '')
+            if not ref: errors.append(f"{ids[i['key']]} depends on unknown task {d}")
+            else: deps.append(ref)
+        i['depends_on'] = deps; graph[ids[i['key']]] = deps
+    errors += [f'dependency cycle through {n}' for n in graph if _cycle_through(graph, n)]
+    skipped = [ids[i['key']] for i in items if ids[i['key']] in existing]
+    new = [i for i in items if ids[i['key']] not in existing]
+    result = {'file': str(file), 'preview': not write, 'create': [ids[i['key']] for i in new],
+              'skipped_existing': skipped, 'ignored_lines_or_subtasks': ignored, 'errors': errors}
+    if write:
+        if errors: raise WsError('Nothing imported: ' + '; '.join(errors))
+        for i in new:
+            ref = ids[i['key']]
+            task_new(root, ref, i['title'], i['objective'])
+            with lock(root):
+                path = task_path(root, ref)
+                meta = {'status': i['status']}
+                if i['depends_on']: meta['depends_on'] = ', '.join(i['depends_on'])
+                atomic_write(path, set_meta(path.read_text(encoding='utf-8'), meta))
+    return result
 
 
 def task_find(root, ref):

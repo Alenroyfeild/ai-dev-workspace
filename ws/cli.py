@@ -37,7 +37,7 @@ def _block_prompt(client, reason):
 
 COMMAND_GROUPS = (
     ('Setup', ('init', 'connect', 'packs', 'pack')),
-    ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'lesson')),
+    ('Daily', ('status', 'task', 'next', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'lesson')),
     ('Orchestration', ('route', 'delegate')),
     ('Measure', ('tools', 'digest', 'run', 'trace')),
     ('Maintain', ('doctor', 'validate', 'map', 'feedback', 'update', 'version', 'upgrade', 'notices', 'assist')),
@@ -227,6 +227,10 @@ def main(argv=None):
     t.add_parser('list')
     s = t.add_parser('find'); s.add_argument('ref')
     s = t.add_parser('show'); s.add_argument('id'); s.add_argument('--section', action='append')
+    s = t.add_parser('depend', help='make a task wait for another'); s.add_argument('id'); s.add_argument('--on', required=True, metavar='OTHER')
+    s = t.add_parser('import', help='create tasks from Task Master tasks.json or a Spec Kit tasks.md (preview unless --yes)')
+    s.add_argument('file'); s.add_argument('--prefix', default='SPEC'); s.add_argument('--yes', action='store_true', help='write the tasks')
+    s = sub.add_parser('next', help='open tasks whose dependencies are done'); s.add_argument('--json', action='store_true')
 
     s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker')
     s = sub.add_parser('release', help='release a task claim'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
@@ -405,9 +409,21 @@ def main(argv=None):
             if a.action == 'new': out(core.task_new(root, a.id, a.title, a.objective, a.branch, a.repo))
             elif a.action == 'list': out(core.task_list(root))
             elif a.action == 'find': out(core.task_find(root, a.ref))
+            elif a.action == 'depend': out(core.task_depend(root, a.id, a.on))
+            elif a.action == 'import':
+                res = core.task_import(root, a.file, a.prefix, a.yes); out(res)
+                if res['errors']: return 1
             else:
                 res = core.task_read(root, a.id, a.section)
                 out(res['text'] if 'text' in res else res)
+        elif a.cmd == 'next':
+            res = core.task_next(root)
+            if a.json: out(res)
+            else:
+                lines = [f"{t['id']} {t['status']} {t['title']}" + (f" (unblocks: {', '.join(t['unblocks'])})" if t['unblocks'] else '')
+                         for t in res['ready']] or ['No ready tasks.']
+                if res['waiting']: lines.append(f"{res['waiting']} waiting on dependencies")
+                out('\n'.join(lines))
         elif a.cmd == 'claim':
             worker = a.worker or os.environ.get('USER')
             if not worker:

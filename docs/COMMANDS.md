@@ -20,6 +20,9 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | Command | Does |
 |---|---|
 | `ws task new <ID> "<title>"` / `find` / `list` / `show <ID> --section "Next action"` | Task records. `show --section` reads only what you need. |
+| `ws task depend <ID> --on <OTHER>` | Make `<ID>` wait for `<OTHER>` (stored as `depends_on: A-1, A-2` in the task header). Both tasks must exist; self-dependencies and cycles are refused. |
+| `ws next [--json]` | Open tasks (not done, not blocked) whose dependencies are all done, in_progress first, then review, ready, backlog. Each line: `ID status title (unblocks: X, Y)`, then `N waiting on dependencies`. |
+| `ws task import <file> [--prefix SPEC] [--yes]` | Create tasks from a Task Master `tasks.json` (`tasks` list or `{"master": {"tasks": [...]}}`; subtasks are not imported) or a Spec Kit style `tasks.md` (`- [ ] T001 ...`, `- [x]` = done, optional `(depends on T001, T002)`). IDs become `SPEC-1` / `SPEC-T001`. Preview by default, `--yes` writes; existing IDs are skipped and reported, never overwritten; unknown dependencies or cycles block the write. Task Master `done` maps to done, `in-progress` to in_progress, `review`/`blocked` as is, `deferred`/`cancelled` to backlog, everything else to ready. |
 | `ws claim <ID> [--worker W]` | Take the task as `$USER` unless `--worker` is supplied. The claim is remembered locally, so the next commands need no token. |
 | `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Evidence=..."]` | Save progress and the exact next step. |
 | `ws release <ID>` | Give the task back. |
