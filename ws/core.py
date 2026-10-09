@@ -1292,8 +1292,9 @@ def paste_save(root, text):
 
 def prompt_is_large(prompt):
     if not isinstance(prompt, str): return False
-    if len(prompt.splitlines()) > 150: return True
-    try: return len(prompt.encode('utf-8')) > 12 * 1024
+    try:
+        if len(prompt.encode('utf-8')) > 12 * 1024: return True
+        return len(prompt.splitlines()) > 150
     except UnicodeEncodeError: return True
 
 

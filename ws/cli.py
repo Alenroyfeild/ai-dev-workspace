@@ -399,9 +399,14 @@ def main(argv=None):
                 out(core.paste_save(root, text)['digest'])
             else:
                 try: payload = json.loads(_read_limited_stdin())
-                except core.WsError:
+                except core.WsError as exc:
+                    if '50 MB' not in str(exc):
+                        return _block_prompt(a.client, 'This client prompt-hook input is not valid UTF-8. Retry with a short question plus the relevant excerpt.')
                     return _block_prompt(a.client, 'Prompt hook input exceeds 50 MB. Save the source as a file and run `ws digest <file> --focus "<pattern>"` instead.')
-                if not isinstance(payload, dict): raise core.WsError('Hook input must be a JSON object.')
+                except json.JSONDecodeError:
+                    return _block_prompt(a.client, 'This client sent malformed prompt-hook data. Retry with a short question plus the relevant excerpt.')
+                if not isinstance(payload, dict) or not isinstance(payload.get('prompt'), str):
+                    return _block_prompt(a.client, 'This client did not provide a valid prompt. Retry with a short question plus the relevant excerpt.')
                 prompt = payload.get('prompt', '')
                 lines = prompt.splitlines() if isinstance(prompt, str) else []
                 if not core.prompt_is_large(prompt) or lines and lines[0].strip() == '!raw':

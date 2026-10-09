@@ -27,7 +27,7 @@ class PasteGuardTests(unittest.TestCase):
     def invoke_hook(self, client, payload):
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), \
-                mock.patch('sys.stdin', io.StringIO(json.dumps(payload))):
+                mock.patch('sys.stdin', io.StringIO(payload if isinstance(payload, str) else json.dumps(payload))):
             code = cli.main(['--workspace-root', str(self.root), 'paste', '--hook', '--client', client])
         return code, stdout.getvalue(), stderr.getvalue()
 
@@ -132,6 +132,18 @@ class PasteGuardTests(unittest.TestCase):
                 saved = list((self.root / '.ws/inbox').glob('*.log'))
                 self.assertTrue(saved)
                 self.assertEqual(len(saved[-1].read_text().splitlines()), 151)
+
+    def test_invalid_hook_payloads_are_blocked_for_each_client(self):
+        for client in ('claude', 'codex', 'cursor', 'gemini'):
+            for payload in ('{', {}, {'prompt': 7}):
+                with self.subTest(client=client, payload=payload):
+                    code, stdout, stderr = self.invoke_hook(client, payload)
+                    response = stderr if client == 'claude' else json.loads(stdout)
+                    self.assertIn('prompt', str(response).lower())
+                    self.assertEqual(code, 2 if client == 'claude' else 0)
+                    if client == 'codex': self.assertEqual(response['decision'], 'block')
+                    if client == 'cursor': self.assertFalse(response['continue'])
+                    if client == 'gemini': self.assertEqual(response['decision'], 'deny')
 
     def test_size_limit_raw_bypass_and_short_prompt(self):
         event = 'UserPromptSubmit'
