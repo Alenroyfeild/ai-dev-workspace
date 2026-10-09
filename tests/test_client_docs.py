@@ -1,7 +1,13 @@
 """Pins the generated client config to the official docs verified in docs/CLIENT-VERIFICATION.md."""
+import io
+import json
 import unittest
+from pathlib import Path
+from unittest import mock
 
-from ws import core
+from ws import core, cli
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class ClientDocShapeTests(unittest.TestCase):
@@ -15,9 +21,25 @@ class ClientDocShapeTests(unittest.TestCase):
         self.assertEqual(set(self.hooks('codex')), {'SessionStart', 'PreCompact', 'Stop', 'UserPromptSubmit'})
         self.assertEqual(core.memory_hooks('/r', 'cursor')['version'], 1)
         # Gemini timeouts are milliseconds; Cursor, VS Code, Claude Code and Codex use seconds.
-        self.assertEqual(self.hooks('gemini')['SessionStart'][0]['hooks'][0]['timeout'], 10000)
-        self.assertEqual(self.hooks('cursor')['sessionStart'][0]['timeout'], 10)
-        self.assertEqual(self.hooks('vscode')['SessionStart'][0]['timeout'], 10)
+        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
+            for event, entries in self.hooks(client).items():
+                for entry in entries:
+                    for hook in entry.get('hooks', [entry]):
+                        with self.subTest(client=client, event=event):
+                            self.assertEqual(hook['timeout'], 10000 if client == 'gemini' else 10)
+
+    def test_session_start_context_output(self):
+        for client in ('codex', 'cursor', 'vscode', 'gemini'):
+            output = io.StringIO()
+            with mock.patch.object(core, 'find_root', return_value=ROOT), \
+                    mock.patch.object(core, 'brief', return_value='Saved next action.'), \
+                    mock.patch.object(cli.assist, 'observe'), \
+                    mock.patch('sys.stdin', io.StringIO('{"hook_event_name":"SessionStart"}')), \
+                    mock.patch('sys.stdout', output):
+                self.assertEqual(cli.main(['brief', '--hook', '--client', client]), 0)
+            expected = ({'additional_context': 'Saved next action.'} if client == 'cursor' else
+                        {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': 'Saved next action.'}})
+            self.assertEqual(json.loads(output.getvalue()), expected)
 
     def test_entry_nesting(self):
         # Cursor and VS Code take flat hook entries; Claude Code, Codex and Gemini nest them under "hooks".
