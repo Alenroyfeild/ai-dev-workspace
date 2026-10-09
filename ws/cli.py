@@ -394,8 +394,11 @@ def main(argv=None):
                 print(summary, end='' if summary.endswith('\n') else '\n')
         elif a.cmd == 'paste':
             if not a.hook:
-                text = _read_limited_stdin() if not getattr(sys.stdin, 'isatty', lambda: False)() else ''
-                if not text: text = core.clipboard_text()
+                if getattr(sys.stdin, 'isatty', lambda: False)():
+                    text = core.clipboard_text()
+                else:
+                    text = _read_limited_stdin()
+                    if not text: raise core.WsError('No input on stdin; run `ws paste` in a terminal to read the clipboard.')
                 if len(text.encode('utf-8')) > core.MAX_READ_BYTES:
                     raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
                 out(core.paste_save(root, text)['digest'])

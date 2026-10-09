@@ -28,7 +28,7 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | `ws search "<words>"` | Ranked snippets from the vault notes. |
 | `ws sessions search "<words>"` | Search local Claude Code, Codex, Cursor and Gemini transcripts with read-only, redacted snippets. |
 | `ws paste` | Save clipboard text (or piped stdin) redacted in `.ws/inbox/`, then print only its digest. |
-| `ws digest <file> [--focus <regex>] [--local-summary]` | Show matching line prefixes first (bounded regex, first 4096 characters per line), then the deterministic digest. `--local-summary` requires the `local-llm` pack. |
+| `ws digest <file> [--focus <regex>] [--local-summary]` | Show bounded context around matching lines first (bounded regex, scans the first 4096 characters per line), then the deterministic digest. `--local-summary` requires the `local-llm` pack. |
 
 `ws connect` installs a prompt-size guard for Claude Code (`UserPromptSubmit`), Codex (`UserPromptSubmit`), Cursor (`beforeSubmitPrompt`) and Gemini CLI (`BeforeAgent`). Prompts over 150 lines or 12 KB are saved redacted in `.ws/inbox/` and blocked; send a short question with the relevant excerpt, or put `!raw` alone on the first line to bypass. These clients document blocking prompt hooks: [Claude Code](https://code.claude.com/docs/en/hooks), [Codex](https://learn.chatgpt.com/docs/hooks), [Cursor](https://cursor.com/docs/hooks), and [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md).
 

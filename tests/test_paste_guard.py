@@ -62,12 +62,13 @@ class PasteGuardTests(unittest.TestCase):
         self.assertIn('50 MB', err.getvalue())
         self.assertFalse(list((self.root / '.ws/inbox').glob('*.log')))
 
-    def test_empty_stdin_falls_back_to_clipboard(self):
-        stdout = io.StringIO()
-        with mock.patch('sys.stdin', io.StringIO('')), mock.patch.object(core, 'clipboard_text', return_value='clipboard fallback'), \
-                contextlib.redirect_stdout(stdout):
-            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'paste']), 0)
-        self.assertEqual(list((self.root / '.ws/inbox').glob('*.log'))[0].read_text(), 'clipboard fallback')
+    def test_empty_piped_stdin_is_rejected_without_reading_clipboard(self):
+        err = io.StringIO()
+        with mock.patch('sys.stdin', io.StringIO('')), mock.patch.object(core, 'clipboard_text', side_effect=AssertionError('must not read clipboard')), \
+                contextlib.redirect_stderr(err):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'paste']), 2)
+        self.assertIn('No input on stdin', err.getvalue())
+        self.assertFalse(list((self.root / '.ws/inbox').glob('*.log')))
 
     def test_paste_reads_clipboard_when_stdin_is_interactive(self):
         stdout = io.StringIO()
@@ -85,6 +86,10 @@ class PasteGuardTests(unittest.TestCase):
         result = core.digest_file(path, focus='keep', root=self.root)
         self.assertEqual(list(result)[3], 'focus_matches')
         self.assertEqual(result['focus_matches'], ['L2: keep this'])
+        long = self.root / 'long-match.log'
+        long.write_text('x' * 3000 + 'needle' + 'y' * 1000)
+        snippet = core.digest_file(long, focus='needle', root=self.root)['focus_matches'][0]
+        self.assertIn('needle', snippet)
         self.assertEqual(result['distinct_problem_lines'], 1)
         many = self.root / 'many.log'
         many.write_text('\n'.join(f'hit {n}' for n in range(100)))
