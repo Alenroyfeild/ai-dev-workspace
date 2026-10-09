@@ -25,7 +25,8 @@ class PortabilityTests(Base):
             self.assertNotIn('%', command)
             args = core.encoded_hook_args(shlex.split(command))
             self.assertEqual(args[:4], [python, str(fake_kit / 'bin/ws'), '--workspace-root', str(root)])
-            self.assertEqual(args[4:], ['brief' if event == 'SessionStart' else 'nudge', '--hook', '--client', 'codex'])
+            action = 'paste' if event == 'UserPromptSubmit' else 'brief' if event == 'SessionStart' else 'nudge'
+            self.assertEqual(args[4:], [action, '--hook', '--client', 'codex'])
             self.assertTrue(upgrade.managed_command(command))
             self.assertFalse(upgrade.managed_command(command + ' && echo unsafe'))
             parts = shlex.split(command)
