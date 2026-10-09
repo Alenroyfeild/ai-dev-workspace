@@ -825,7 +825,10 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
             raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; pass its worker and token.')
         if expected_sha and expected_sha != digest_text(text):
             raise WsError('Task changed since you read it; read it again before checkpointing.')
-        text = set_meta(text, {'status': status, 'updated': now(), 'checkpoint_at': now(), 'checkpoint_count': int(meta.get('checkpoint_count', 0)) + 1})
+        values = {'status': status, 'updated': now(), 'checkpoint_at': now(), 'checkpoint_count': int(meta.get('checkpoint_count', 0)) + 1}
+        head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
+        if re.fullmatch(r'[0-9a-f]{40,64}', head): values['checkpoint_commit'] = head  # lets brief spot stale memory
+        text = set_meta(text, values)
         text = set_section(text, 'Next action', redact(next_action))
         for name, body in (notes or {}).items():
             if name not in REQUIRED and name not in ('Findings', 'Failures', 'Risks', 'Do not redo'):
@@ -993,8 +996,10 @@ def relevant_lessons(root, task):
             changed = _task_git(root, task['id'], 'diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', head, '--').split('\0')
     except (WsError, OSError, ValueError, TypeError, AttributeError):
         pass
+    saved = lesson_search(root, '')
+    tracked = _task_git(root, task['id'], 'ls-files', '-z').split('\0') if saved else []
     ranked = []
-    for line in lesson_search(root, ''):
+    for line in saved:
         match = re.search(r'\s*<!-- ws:lesson (.*?) -->$', line)
         metadata = {}
         if match:
@@ -1006,9 +1011,22 @@ def relevant_lessons(root, task):
         if not isinstance(paths, list): paths = []
         overlap = sum(any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for p in paths) for f in changed)
         score = len(title & set(re.findall(r'\w{3,}', (line + ' ' + str(metadata.get('area', ''))).lower())))
-        if overlap or score: ranked.append((overlap, score, line))
+        gone = tracked != [''] and paths and not any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for f in tracked for p in paths)
+        if overlap or score: ranked.append((overlap, score, ('(paths gone) ' if gone else '') + line))
     ranked.sort(key=lambda item: (-item[0], -item[1]))
-    return [line for _, _, line in ranked[:3]]
+    return [line for _, _, line in ranked]
+
+
+def _memory_check(root, task_id, meta, next_action):
+    """One line when the repo moved on from (or behind) the commit the checkpoint was written at; '' if unknown."""
+    saved = meta.get('checkpoint_commit', '')
+    head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
+    if not re.fullmatch(r'[0-9a-f]{40,64}', saved) or not head or head == saved: return ''
+    if _task_git(root, task_id, 'rev-list', '-n1', saved, '^' + head).strip():  # saved is not an ancestor of HEAD
+        return f'Memory check: code is behind the saved checkpoint ({saved[:7]}); the work it describes may be undone.'
+    names = _task_git(root, task_id, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', saved, '--').split('\0')
+    hit = list(dict.fromkeys(os.path.basename(n) for n in names if n and os.path.basename(n) in next_action))[:5]
+    return f'Memory check: written at {saved[:7]}; changed since: {", ".join(hit)} (verify before acting).' if hit else ''
 
 
 def _capture_words(text, limit):
@@ -1074,6 +1092,7 @@ def brief(root):
              'Blockers: ' + words(record['sections']['Blockers'], 25)]
     if record['claim']:
         lines.append('Claim: ' + record['claim'])
+    lines += [m for m in [_memory_check(root, task['id'], record['meta'], next_action)] if m]
     captured = re.findall(r'### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->', task_read(root, task['id'], ['Handoff'])['sections']['Handoff'], re.S)
     if captured:
         memory = captured[-1]
@@ -1089,7 +1108,9 @@ def brief(root):
                 return re.sub(r'^to\s+', '', ' '.join(value.strip(' \t\n*_`.:').split()).casefold())
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
                 lines.append('Captured plan differs from saved checkpoint; verify before replacing.')
-    lines += ['Lesson: ' + words(line, 25) for line in relevant_lessons(root, task)]
+    lessons = relevant_lessons(root, task)
+    lines += ['Lesson: ' + words(line, 25) for line in lessons[:3]]
+    if len(lessons) > 3: lines.append(f'Lessons: {len(lessons) - 3} more (ws lesson search)')
     return '\n'.join(([guard] if guard else []) + lines)
 
 
