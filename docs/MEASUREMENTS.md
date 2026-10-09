@@ -1,5 +1,17 @@
 # Measurements
 
+## Claude and cross-assistant runs (2026-10-09)
+
+`bench/run.py`, decisions scenario, Claude Code 2.1.278 `sonnet` for session 1, n=5 completions per arm, six hidden checks.
+
+| Completion sessions | Baseline | Workspace | Results |
+|---|---|---|---|
+| Claude `sonnet` (kit 3484bde) | 0/5 | 5/5 | [json](../bench/results/2026-10-09-claude.json); mean cost $0.210 vs $0.257, time 114 vs 109 s |
+| Codex `gpt-6-luna` (kit 3484bde) | 0/5 | 2/5 | [json](../bench/results/2026-10-09-claude-to-codex-3484bde.json); the brief cut decision 4 |
+| Codex `gpt-6-luna` (kit ffce0bc, brief fix) | 0/5 | 5/5 | [json](../bench/results/2026-10-09-claude-to-codex.json); time 99 vs 88 s |
+
+The first cross-assistant run found a real bug: Claude read the full task record over MCP, while Codex relied on the session-start brief, which showed too few words of the captured decisions. The fix keeps every numbered decision in the brief (tests/test_brief_decisions.py). Claude sessions keep their own saved transcripts on disk, as for a real user; in one smoke run a baseline recovered the decisions from them, in the five measured runs it did not. Small n, one synthetic task: this shows decisions crossing sessions and assistants, not general productivity.
+
 ## Public Codex continuity run (2026-10-07 UTC)
 
 `python3 bench/run.py --provider codex -n 3`: gpt-6-luna/high, kit base 722bb89, 55-file decision fixture. One investigation per arm, followed by three fresh completion sessions from the same arm snapshot. Reference: 6/6 hidden checks; initial fixture: 2/6. Both arms use isolated temporary HOME/CODEX_HOME. The workspace retains memory; baseline does not. Prompts are identical, and hidden checks remain outside the worker fixture.
