@@ -9,6 +9,23 @@ from pathlib import Path
 from . import core, assist, orchestration
 
 
+def _read_paste_stdin():
+    limit = core.MAX_READ_BYTES
+    stream = getattr(sys.stdin, 'buffer', None)
+    if stream is not None:
+        raw = stream.read(limit + 1)
+        if len(raw) > limit:
+            raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
+        try: return raw.decode('utf-8')
+        except UnicodeDecodeError: raise core.WsError('Paste input must be UTF-8 text.')
+    text = sys.stdin.read(limit + 1)
+    try: size = len(text.encode('utf-8'))
+    except UnicodeEncodeError: raise core.WsError('Paste contains text that cannot be saved as UTF-8.')
+    if len(text) > limit or size > limit:
+        raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
+    return text
+
+
 COMMAND_GROUPS = (
     ('Setup', ('init', 'connect', 'packs', 'pack')),
     ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'lesson')),
@@ -189,7 +206,7 @@ def main(argv=None):
         s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
         s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode'), default='claude')
     s = sub.add_parser('digest', help='summarise a big log/JSON file deterministically'); s.add_argument('file')
-    s.add_argument('--focus', help='show regex-matching lines before the deterministic summary')
+    s.add_argument('--focus', help='show regex-matching line prefixes before the summary (bounded regex; 4096 chars/line)')
     s.add_argument('--local-summary', action='store_true', help='also use the configured local-llm pack')
     s = sub.add_parser('paste', help='save clipboard or stdin to the private inbox and show its digest')
     s.add_argument('--hook', action='store_true', help=argparse.SUPPRESS)
@@ -367,7 +384,7 @@ def main(argv=None):
                 print(result.stdout, end='' if result.stdout.endswith('\n') else '\n')
         elif a.cmd == 'paste':
             if not a.hook:
-                text = sys.stdin.read() if not getattr(sys.stdin, 'isatty', lambda: False)() else core.clipboard_text()
+                text = _read_paste_stdin() if not getattr(sys.stdin, 'isatty', lambda: False)() else core.clipboard_text()
                 out(core.paste_save(root, text)['digest'])
             else:
                 payload = json.load(sys.stdin)

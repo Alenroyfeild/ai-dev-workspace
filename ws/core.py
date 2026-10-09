@@ -1194,10 +1194,8 @@ def _focus_pattern(source):
             if op in repeat_ops:
                 _, maximum, child = arg
                 repeats[0] += 1
-                if repeats[0] > 1 or any(inner not in simple for inner, _ in child):
-                    raise WsError('Focus supports simple regular expressions only (one repetition of a character).')
-                if maximum != sre_parse.MAXREPEAT and maximum > 10000:
-                    raise WsError('Focus repetition is limited to 10000 characters.')
+                if repeats[0] > 1 or maximum == sre_parse.MAXREPEAT or maximum > 64 or any(inner not in simple for inner, _ in child):
+                    raise WsError('Focus supports simple regular expressions only (one bounded repetition, up to 64 characters).')
             elif op == sre_parse.SUBPATTERN:
                 check(arg[-1])
             elif op == sre_parse.BRANCH:
@@ -1218,7 +1216,7 @@ def digest_file(path, max_lines=60, root=None, focus=None):
         pattern = _focus_pattern(focus)
         matches = []
         for i, line in enumerate(io.StringIO(raw), 1):
-            if pattern.search(line):
+            if pattern.search(line[:4096]):
                 if len(matches) >= max_lines: break
                 matches.append(f'L{i}: {redact(line.strip())[:200]}')
         out['focus_matches'] = matches

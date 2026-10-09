@@ -45,6 +45,23 @@ class PasteGuardTests(unittest.TestCase):
         self.assertIn('[REDACTED]', saved[0].read_text())
         self.assertIn('.ws/', (self.root / '.gitignore').read_text())
 
+    def test_paste_bounds_stdin_read_before_saving(self):
+        class TrackingInput(io.StringIO):
+            def __init__(self, value):
+                super().__init__(value)
+                self.read_size = None
+            def read(self, size=-1):
+                self.read_size = size
+                return super().read(size)
+        source = TrackingInput('x' * 100)
+        err = io.StringIO()
+        with mock.patch.object(core, 'MAX_READ_BYTES', 3), mock.patch('sys.stdin', source), \
+                contextlib.redirect_stderr(err):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'paste']), 2)
+        self.assertEqual(source.read_size, 4)
+        self.assertIn('50 MB', err.getvalue())
+        self.assertFalse(list((self.root / '.ws/inbox').glob('*.log')))
+
     def test_paste_reads_clipboard_when_stdin_is_interactive(self):
         stdout = io.StringIO()
         with mock.patch.object(core.shutil, 'which', side_effect=lambda name: '/usr/bin/pbpaste' if name == 'pbpaste' else None), \
@@ -70,6 +87,11 @@ class PasteGuardTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout)['focus_matches'], ['L2: keep this'])
         with self.assertRaises(core.WsError): core.digest_file(path, focus='[', root=self.root)
+        long_line = self.root / 'long.log'
+        long_line.write_text('a' * 50000)
+        with self.assertRaisesRegex(core.WsError, 'simple regular expressions'):
+            core.digest_file(long_line, focus='a.*z', root=self.root)
+        self.assertEqual(core.digest_file(path, focus='kee{1,3}p', root=self.root)['focus_matches'], ['L2: keep this'])
         for unsafe in ('(a+)+$', 'a*a*a*a*a*b', '(a|aa)+$'):
             with self.subTest(focus=unsafe), self.assertRaisesRegex(core.WsError, 'simple regular expressions'):
                 core.digest_file(path, focus=unsafe, root=self.root)
