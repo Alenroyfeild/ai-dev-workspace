@@ -8,3 +8,4 @@ graft docs
 prune packs/codex-worker/runtime
 global-exclude *.pyc .DS_Store
 recursive-exclude * __pycache__/*
+include README.md

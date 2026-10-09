@@ -34,6 +34,12 @@ class BuildKit(build_py):
 
 
 setup(name='ai-dev-workspace', version=json.loads((ROOT / 'kit.json').read_text())['version'],
-      description='Durable task memory and coordination for AI-assisted development',
+      description='Shared task memory for AI coding assistants: Claude Code, Codex, Cursor, Copilot, Gemini CLI',
+      long_description=(ROOT / 'README.md').read_text(encoding='utf-8'), long_description_content_type='text/markdown',
+      url='https://github.com/Alenroyfeild/ai-dev-workspace', license='MIT',
+      keywords='ai coding assistant memory claude-code codex cursor copilot gemini-cli mcp agents context handoff',
+      classifiers=['Development Status :: 4 - Beta', 'Environment :: Console', 'Intended Audience :: Developers',
+                   'License :: OSI Approved :: MIT License', 'Programming Language :: Python :: 3',
+                   'Topic :: Software Development'],
       packages=['ws'], python_requires='>=3.9',
       entry_points={'console_scripts': ['ws=ws.cli:main']}, cmdclass={'build_py': BuildKit})

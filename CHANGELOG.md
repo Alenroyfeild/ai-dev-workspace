@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.0-beta.2 (unreleased)
+
+### Proven
+- Decisions given in Claude Code were followed by Codex in 5/5 runs with the workspace and 0/5 without (benchmark `--resume-provider`); Claude Code to Claude Code also 5/5 vs 0/5. See docs/MEASUREMENTS.md.
+
+### New
+- Stale-memory check: the brief warns when files named in the next action changed since the checkpoint, or when the code was rolled back past it; lessons whose files are gone are marked.
+- `ws next`, `ws task depend` and `ws task import` (Spec Kit `tasks.md`, Task Master `tasks.json`).
+- Copilot and Cursor get the current task in their own instruction files.
+- `ws import native` reads Claude, Codex and Gemini built-in memories into a task (read-only, preview first); `ws status` shows Codex goal status.
+- Privacy: `<private>` text and `#private` messages are never captured, home paths become `~`, more secrets are redacted, and `"capture": false` turns capture off.
+- `ws paste` and `ws digest --focus` keep big logs out of the conversation.
+- A session that changed files without updating its task is asked once to checkpoint.
+- Plain, readable output in a terminal (JSON when piped or with `WS_JSON=1`).
+
+### Fixed
+- The session-start brief now keeps every numbered decision (a regression that hid them from non-Claude clients).
+- First-run: `ws init` no longer prints a Codex config block to everyone; new workspaces are not offered selftest or install suggestions.
+
 ## 0.1.0-beta.1
 
 This beta gives you a small, local workspace for carrying task context between coding sessions.
