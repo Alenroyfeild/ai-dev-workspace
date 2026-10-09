@@ -62,6 +62,13 @@ class PasteGuardTests(unittest.TestCase):
         self.assertIn('50 MB', err.getvalue())
         self.assertFalse(list((self.root / '.ws/inbox').glob('*.log')))
 
+    def test_empty_stdin_falls_back_to_clipboard(self):
+        stdout = io.StringIO()
+        with mock.patch('sys.stdin', io.StringIO('')), mock.patch.object(core, 'clipboard_text', return_value='clipboard fallback'), \
+                contextlib.redirect_stdout(stdout):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'paste']), 0)
+        self.assertEqual(list((self.root / '.ws/inbox').glob('*.log'))[0].read_text(), 'clipboard fallback')
+
     def test_paste_reads_clipboard_when_stdin_is_interactive(self):
         stdout = io.StringIO()
         process = mock.Mock(stdout=io.BytesIO(b'clipboard text'), returncode=0)
@@ -232,10 +239,11 @@ class PasteGuardTests(unittest.TestCase):
         (self.root / 'workspace.json').write_text(json.dumps(config))
         stdout = io.StringIO()
         with contextlib.redirect_stdout(stdout), mock.patch.object(cli.subprocess, 'run',
-                return_value=subprocess.CompletedProcess([], 0, 'synthetic summary\n', '')) as run:
+                return_value=subprocess.CompletedProcess([], 0, 'password=verylongsecretvalue\n', '')) as run:
             self.assertEqual(cli.main(['--workspace-root', str(self.root), 'digest', str(KIT / 'kit.json'), '--local-summary']), 0)
-        self.assertIn('synthetic summary', stdout.getvalue())
+        self.assertIn('[REDACTED]', stdout.getvalue())
         self.assertEqual(run.call_args.args[0][1], str(KIT / 'packs/local-llm/summarize.py'))
+        self.assertNotIn('verylongsecretvalue', stdout.getvalue())
 
     def test_upgrade_adds_guard_without_replacing_a_user_prompt_hook(self):
         desired = core.memory_hooks(self.root, 'codex')
