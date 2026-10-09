@@ -31,6 +31,8 @@ class FeatureTests(Base):
     def test_routed_readonly_provider_selftests_are_deduplicated(self):
         binding = dict(available=True, provider='codex')
         with mock.patch.object(orchestration, 'route', return_value=binding), mock.patch.object(core, '_detected', side_effect=lambda n: n == 'codex'):
+            self.assertNotIn('selftest-codex', self.items())  # never delegated: no selftest pitch
+            (self.root / '.ws/briefs').mkdir(parents=True)
             self.assertEqual(self.items()['selftest-codex']['command'], 'ws delegate --selftest --provider codex')
             path = self.root / '.ws/delegate-selftests.json'
             path.write_text(json.dumps({'codex': {'executed': False, 'result': 'prepared'}}))
