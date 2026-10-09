@@ -245,6 +245,16 @@ class PasteGuardTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0][1], str(KIT / 'packs/local-llm/summarize.py'))
         self.assertNotIn('verylongsecretvalue', stdout.getvalue())
 
+    def test_local_summary_errors_are_redacted(self):
+        config = core.config(self.root); config['packs'].append('local-llm')
+        (self.root / 'workspace.json').write_text(json.dumps(config))
+        err = io.StringIO()
+        failed = subprocess.CompletedProcess([], 1, '', 'token=verylongsecretvalue')
+        with contextlib.redirect_stderr(err), mock.patch.object(cli.subprocess, 'run', return_value=failed):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'digest', str(KIT / 'kit.json'), '--local-summary']), 2)
+        self.assertNotIn('verylongsecretvalue', err.getvalue())
+        self.assertIn('[REDACTED]', err.getvalue())
+
     def test_upgrade_adds_guard_without_replacing_a_user_prompt_hook(self):
         desired = core.memory_hooks(self.root, 'codex')
         old = json.loads(json.dumps(desired))
