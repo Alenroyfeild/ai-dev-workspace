@@ -90,6 +90,13 @@ class PasteGuardTests(unittest.TestCase):
         long.write_text('x' * 3000 + 'needle' + 'y' * 1000)
         snippet = core.digest_file(long, focus='needle', root=self.root)['focus_matches'][0]
         self.assertIn('needle', snippet)
+        secret_line = self.root / 'secret-match.log'
+        secret = 'A' * 300 + 'needle' + 'B' * 100
+        secret_line.write_text('password=' + secret)
+        focused = core.digest_file(secret_line, focus='needle', root=self.root)['focus_matches']
+        self.assertEqual(len(focused), 1)
+        self.assertNotIn(secret, focused[0])
+        self.assertIn('[REDACTED]', focused[0])
         self.assertEqual(result['distinct_problem_lines'], 1)
         many = self.root / 'many.log'
         many.write_text('\n'.join(f'hit {n}' for n in range(100)))

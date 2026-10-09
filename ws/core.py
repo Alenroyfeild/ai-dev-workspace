@@ -1217,10 +1217,15 @@ def digest_file(path, max_lines=60, root=None, focus=None):
             match = pattern.search(line[:4096])
             if match:
                 if len(matches) >= max_lines: break
-                start = max(0, match.start() - 80)
-                end = min(len(line), max(match.end() + 80, start + 200))
-                snippet = ('…' if start else '') + line[start:end].strip() + ('…' if end < len(line) else '')
-                matches.append(f'L{i}: {redact(snippet)}')
+                safe_line = redact(line)
+                safe_match = pattern.search(safe_line[:4096])
+                if safe_match:
+                    start = max(0, safe_match.start() - 80)
+                    end = min(len(safe_line), max(safe_match.end() + 80, start + 200))
+                else:
+                    start, end = 0, min(len(safe_line), 200)
+                snippet = ('…' if start else '') + safe_line[start:end].strip() + ('…' if end < len(safe_line) else '')
+                matches.append(f'L{i}: {snippet}')
         out['focus_matches'] = matches
     try:
         out['json_shape'] = _shape(json.loads(raw))
