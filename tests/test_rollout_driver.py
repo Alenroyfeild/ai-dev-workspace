@@ -70,6 +70,19 @@ class RolloutTransportTests(unittest.TestCase):
                 rollout_transport.claude_session(Path(d), Path(d) / 'home', 'synthetic', True)
             launch.assert_not_called()
 
+    def test_claude_workspace_allows_only_its_mcp_server_tools(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); (root / '.mcp.json').write_text('{"mcpServers":{"ai-dev-workspace":{"command":"synthetic"}}}')
+            worker = mock.Mock(returncode=0); worker.communicate.return_value = ('{"type":"result","session_id":"synthetic","usage":{}}', '')
+            with mock.patch.object(rollout_transport.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='2.1.300')), \
+                    mock.patch.object(rollout_transport.subprocess, 'Popen', return_value=worker) as launch:
+                rollout_transport.claude_session(root, root / 'home', 'synthetic', True)
+            args = launch.call_args.args[0]
+            allowed = args[args.index('--allowedTools') + 1:args.index('--max-turns')]
+            self.assertIn('mcp__ai-dev-workspace__*', allowed)
+            self.assertNotIn('mcp__*', allowed)
+            self.assertIn('ai-dev-workspace', args[args.index('--mcp-config') + 1])
+
     def test_claude_interrupt_stops_owned_worker_group(self):
         with tempfile.TemporaryDirectory() as d, \
                 mock.patch.object(rollout_transport.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='2.1.300')):
