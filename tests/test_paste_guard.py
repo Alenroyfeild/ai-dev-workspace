@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -60,6 +61,10 @@ class PasteGuardTests(unittest.TestCase):
         self.assertEqual(list(result)[3], 'focus_matches')
         self.assertEqual(result['focus_matches'], ['L2: keep this'])
         self.assertEqual(result['distinct_problem_lines'], 1)
+        many = self.root / 'many.log'
+        many.write_text('\n'.join(f'hit {n}' for n in range(100)))
+        focused = core.digest_file(many, max_lines=2, focus='hit', root=self.root)['focus_matches']
+        self.assertEqual(focused, ['L1: hit 0', 'L2: hit 1'])
         proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root),
                                'digest', str(path), '--focus', 'keep'], cwd=self.root, capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -75,15 +80,20 @@ class PasteGuardTests(unittest.TestCase):
         prompt = 'line\n' * 151
         for client, event in cases:
             with self.subTest(client=client):
-                hooks = core.memory_hooks(self.root, client)['hooks']
+                if client in ('cursor', 'gemini'): core.connect(self.root, client)
+                relative = {'claude': '.claude/settings.json', 'codex': '.codex/hooks.json',
+                            'cursor': '.cursor/hooks.json', 'gemini': '.gemini/settings.json'}[client]
+                hooks = json.loads((self.root / relative).read_text())['hooks']
                 self.assertIn(event, hooks)
                 handler = hooks[event][0] if client == 'cursor' else hooks[event][0]['hooks'][0]
-                self.assertIn(' paste --hook --client ' + client, handler['command'])
-                if client in ('cursor', 'gemini'):
-                    core.connect(self.root, client)
-                    path = self.root / ('.cursor/hooks.json' if client == 'cursor' else '.gemini/settings.json')
-                    self.assertIn(event, json.loads(path.read_text())['hooks'])
-                code, stdout, stderr = self.invoke_hook(client, {'hook_event_name': event, 'prompt': prompt})
+                command = handler['command']
+                self.assertIn(' paste --hook --client ' + client, command)
+                argv = shlex.split(command)
+                if argv[0] == 'powershell.exe': argv = core.encoded_hook_args(argv)
+                payload = {'prompt': prompt, 'hook_event_name': event}
+                if client == 'cursor': payload['attachments'] = []
+                proc = subprocess.run(argv, cwd=self.root, input=json.dumps(payload), capture_output=True, text=True, timeout=15)
+                code, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
                 blocked = stderr if client == 'claude' else json.loads(stdout)
                 self.assertIn('ws digest', str(blocked))
                 self.assertEqual(code, 2 if client == 'claude' else 0)

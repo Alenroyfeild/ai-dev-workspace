@@ -1182,7 +1182,7 @@ def digest_file(path, max_lines=60, root=None, focus=None):
         try: pattern = re.compile(focus)
         except re.error as exc: raise WsError(f'Invalid focus regular expression: {exc}')
         matches = []
-        for i, line in enumerate(raw.splitlines(), 1):
+        for i, line in enumerate(io.StringIO(raw), 1):
             if pattern.search(line):
                 if len(matches) >= max_lines: break
                 matches.append(f'L{i}: {redact(line.strip())[:200]}')
@@ -1222,7 +1222,9 @@ def clipboard_text():
 def paste_save(root, text):
     if not isinstance(text, str): raise WsError('Paste input must be text.')
     text = redact(text)
-    if len(text.encode('utf-8')) > MAX_READ_BYTES: raise WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
+    try: size = len(text.encode('utf-8'))
+    except UnicodeEncodeError: raise WsError('Paste contains text that cannot be saved as UTF-8.')
+    if size > MAX_READ_BYTES: raise WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
     inbox = inside(root / '.ws/inbox', [root])
     with lock(root):
         inbox.mkdir(parents=True, exist_ok=True)
@@ -1237,7 +1239,10 @@ def paste_save(root, text):
 
 
 def prompt_is_large(prompt):
-    return isinstance(prompt, str) and (len(prompt.splitlines()) > 150 or len(prompt.encode('utf-8')) > 12 * 1024)
+    if not isinstance(prompt, str): return False
+    if len(prompt.splitlines()) > 150: return True
+    try: return len(prompt.encode('utf-8')) > 12 * 1024
+    except UnicodeEncodeError: return True
 
 
 # --- orchestration run tracking ---------------------------------------------------
