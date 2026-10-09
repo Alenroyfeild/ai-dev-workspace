@@ -389,7 +389,7 @@ def main(argv=None):
                     result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file],
                                             capture_output=True, text=True, timeout=180)
                 except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(f'Local summary failed: {exc}')
-                if result.returncode: raise core.WsError(result.stderr.strip() or 'Local summary failed.')
+                if result.returncode: raise core.WsError(core.redact(result.stderr.strip()) or 'Local summary failed.')
                 summary = core.redact(result.stdout)
                 print(summary, end='' if summary.endswith('\n') else '\n')
         elif a.cmd == 'paste':
