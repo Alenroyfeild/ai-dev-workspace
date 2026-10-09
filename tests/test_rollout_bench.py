@@ -22,6 +22,19 @@ class RolloutTests(unittest.TestCase):
                     self.assertEqual(audit.count, count)
                 self.assertEqual(audit.path.read_text(), 'prepare\nprepare\n')
 
+    def test_reset_tolerates_a_disappearing_git_maintenance_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); rollout.run.create(root, rollout.DATA); repo = root / 'repo'
+            remove = rollout.shutil.rmtree
+            def racing(path, **kwargs):
+                if path == repo / '.git':
+                    self.assertIn('onerror', kwargs)
+                    kwargs['onerror'](os.unlink, str(path / 'maintenance.lock'), (FileNotFoundError, FileNotFoundError(), None))
+                    with self.assertRaises(PermissionError):
+                        kwargs['onerror'](os.unlink, str(path), (PermissionError, PermissionError(), None))
+                return remove(path, **kwargs)
+            with mock.patch.object(rollout.shutil, 'rmtree', side_effect=racing): rollout.reset_fixture(repo)
+
     def test_reset_removes_conversation_hints_from_git_history(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); rollout.run.create(root, rollout.DATA); repo = root / 'repo'
