@@ -206,6 +206,19 @@ class PasteGuardTests(unittest.TestCase):
                 core.clipboard_text()
         self.assertTrue(process.killed)
 
+    def test_clipboard_reader_tries_next_available_command(self):
+        class Process:
+            def __init__(self, data, code):
+                self.stdout = io.BytesIO(data)
+                self.returncode = code
+            def wait(self, timeout=None): return self.returncode
+            def kill(self): self.returncode = -9
+        processes = [Process(b'', 1), Process(b'fallback text', 0)]
+        which = lambda name: '/fake/' + name if name in ('pbpaste', 'xclip') else None
+        with mock.patch.object(core.shutil, 'which', side_effect=which), \
+                mock.patch.object(core.subprocess, 'Popen', side_effect=processes):
+            self.assertEqual(core.clipboard_text(), 'fallback text')
+
     def test_clipboard_text_decodes_utf8_strictly(self):
         class Process:
             def __init__(self, data):
