@@ -177,7 +177,7 @@ def read_text(path, roots=None, errors='replace'):
             if not stat.S_ISREG(os.fstat(source.fileno()).st_mode): raise WsError('Non-regular file refused; run ws doctor.')
             data = source.read(MAX_READ_BYTES + 1)
         if len(data) > MAX_READ_BYTES: raise WsError('Read exceeds 50 MB; run ws digest on a smaller file.')
-        return data.decode('utf-8', errors=errors)
+        return data.decode('utf-8', errors=errors).replace('\r\n', '\n')  # CRLF from Windows editors must not hide frontmatter
     except (OSError, RuntimeError):
         raise WsError('File cannot be read safely; check the path, then run ws doctor.')
 
