@@ -7,7 +7,7 @@ AI coding assistants can lose task context between sessions. AI Dev Workspace st
 macOS, Linux and Windows. Requires Python 3.9+ and git. No workspace account or telemetry; your assistant still sends prompts and context to its chosen provider.
 On Windows, run `python bin/ws <command>` from the kit checkout; see [Windows notes](docs/WINDOWS.md).
 
-**Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+**Measured:** when product decisions were given in one session, a fresh session finished the task following all of them in 5 of 5 runs with the workspace and 0 of 5 without it, for about $0.06 more per session. **Across assistants:** with decisions given in Claude Code and the task finished in Codex, 5 of 5 runs followed every decision with the workspace and 0 of 5 without it. Method and caveats: [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
 
 ## What it looks like
 
