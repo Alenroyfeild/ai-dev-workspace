@@ -23,7 +23,7 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | `ws claim <ID> [--worker W]` | Take the task as `$USER` unless `--worker` is supplied. The claim is remembered locally, so the next commands need no token. |
 | `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Evidence=..."]` | Save progress and the exact next step. |
 | `ws release <ID>` | Give the task back. |
-| `ws brief` | The in-progress task's next action, blockers and matching lessons, in under 200 words. The session-start hook runs this. |
+| `ws brief` | The in-progress task's next action, blockers and matching lessons, in under 200 words. The session-start hook runs this. It adds one `Memory check` line when the task's repo changed files the next action names since the checkpoint, or sits behind the checkpoint commit (after a reset); lessons whose `--path` globs match no tracked file show `(paths gone)`, and more than three matches collapse to `Lessons: N more`. |
 | `ws lesson add "<what happened → rule>"` / `ws lesson search "<words>"` | Lessons learned. |
 | `ws search "<words>"` | Ranked snippets from the vault notes. |
 | `ws sessions search "<words>"` | Search local Claude Code, Codex, Cursor and Gemini transcripts with read-only, redacted snippets. |
