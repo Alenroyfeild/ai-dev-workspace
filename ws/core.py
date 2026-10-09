@@ -12,7 +12,6 @@ import errno
 import fnmatch
 import hashlib
 import json
-import locale
 import os
 import re
 import shlex
@@ -1200,9 +1199,6 @@ def _focus_pattern(source):
                     raise WsError('Focus supports simple regular expressions only (one bounded repetition, up to 64 characters).')
             elif op == sre_parse.SUBPATTERN:
                 check(arg[-1])
-            elif op == sre_parse.BRANCH:
-                for branch in arg[1]:
-                    check(branch)
             elif op not in simple and op != sre_parse.AT:
                 raise WsError('Focus supports simple regular expressions only.')
     check(parsed)
@@ -1244,7 +1240,7 @@ def digest_file(path, max_lines=60, root=None, focus=None):
 
 def clipboard_text():
     commands = [('pbpaste', []), ('wl-paste', ['--no-newline']), ('xclip', ['-selection', 'clipboard', '-o']),
-                ('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'])]
+                ('powershell.exe', ['-NoProfile', '-Command', '$OutputEncoding = [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding; Get-Clipboard -Raw'])]
     for executable, args in commands:
         if shutil.which(executable):
             try:
@@ -1269,7 +1265,8 @@ def clipboard_text():
             except (OSError, subprocess.TimeoutExpired): raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
             if oversized[0]: raise WsError('Clipboard exceeds 50 MB; save it to a file and run `ws digest` instead.')
             if process.returncode == 0:
-                return b''.join(chunks).decode(locale.getpreferredencoding(False), errors='replace')
+                try: return b''.join(chunks).decode('utf-8')
+                except UnicodeDecodeError: raise WsError(f'Clipboard output from {executable} was not valid UTF-8; pipe text to `ws paste` instead.')
             raise WsError(f'Could not read clipboard with {executable}; pipe text to `ws paste` instead.')
     raise WsError('No supported clipboard reader found; pipe text to `ws paste` instead.')
 
