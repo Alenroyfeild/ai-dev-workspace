@@ -274,7 +274,8 @@ class PasteGuardTests(unittest.TestCase):
         with contextlib.redirect_stdout(stdout), mock.patch.object(cli.subprocess, 'run',
                 return_value=subprocess.CompletedProcess([], 0, 'password=verylongsecretvalue\n', '')) as run:
             self.assertEqual(cli.main(['--workspace-root', str(self.root), 'digest', str(KIT / 'kit.json'), '--local-summary']), 0)
-        self.assertIn('[REDACTED]', stdout.getvalue())
+        summary = json.loads(stdout.getvalue())['local_summary']
+        self.assertIn('[REDACTED]', summary)
         self.assertEqual(run.call_args.args[0][1], str(KIT / 'packs/local-llm/summarize.py'))
         self.assertNotIn('verylongsecretvalue', stdout.getvalue())
 
@@ -287,6 +288,16 @@ class PasteGuardTests(unittest.TestCase):
             self.assertEqual(cli.main(['--workspace-root', str(self.root), 'digest', str(KIT / 'kit.json'), '--local-summary']), 2)
         self.assertNotIn('verylongsecretvalue', err.getvalue())
         self.assertIn('[REDACTED]', err.getvalue())
+
+    def test_local_summary_launch_errors_are_redacted_without_partial_output(self):
+        config = core.config(self.root); config['packs'].append('local-llm')
+        (self.root / 'workspace.json').write_text(json.dumps(config))
+        stdout, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(err), \
+                mock.patch.object(cli.subprocess, 'run', side_effect=OSError('password=verylongsecretvalue')):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'digest', str(KIT / 'kit.json'), '--local-summary']), 2)
+        self.assertEqual(stdout.getvalue(), '')
+        self.assertNotIn('verylongsecretvalue', err.getvalue())
 
     def test_upgrade_adds_guard_without_replacing_a_user_prompt_hook(self):
         desired = core.memory_hooks(self.root, 'codex')
