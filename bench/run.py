@@ -68,13 +68,18 @@ def session(root, prompt, provider, model, workspace, auth):
         home = Path(temporary); codex = home / '.codex'; codex.mkdir()
         if auth.is_file(): (codex / 'auth.json').symlink_to(auth)
         (codex / 'config.toml').write_text('[projects.' + json.dumps(str(root)) + ']\ntrust_level="trusted"\n')
-        env = dict(os.environ, HOME=str(home), CODEX_HOME=str(codex), PATH=str(KIT / 'bin') + os.pathsep + os.environ['PATH'], WS_OFFLINE='1')
+        # Claude's sign-in is tied to the real HOME; its isolation is project-only settings plus strict MCP below.
+        env = dict(os.environ, HOME=str(home) if provider == 'codex' else os.environ['HOME'], CODEX_HOME=str(codex), PATH=str(KIT / 'bin') + os.pathsep + os.environ['PATH'], WS_OFFLINE='1')
         env.pop('WS_ROOT', None)
         if workspace: env['WS_ROOT'] = str(root)
         if provider == 'codex':
             args = ['codex', 'exec', '--json', '--dangerously-bypass-hook-trust', '--disable', 'apps', '--disable', 'plugins', '--enable' if workspace else '--disable', 'hooks', '-s', 'workspace-write', '-c', 'approval_policy="never"', '-m', model, '-c', 'model_reasoning_effort="high"', '--skip-git-repo-check', '-C', str(root), prompt]
         else:
-            args = ['claude', '-p', prompt, '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', json.dumps({'mcpServers': {}}), '--permission-mode', 'acceptEdits', '--max-turns', '40', '--model', model, '--output-format', 'stream-json', '--verbose']
+            mcp = root / '.mcp.json'
+            servers = mcp.read_text() if workspace and mcp.is_file() else json.dumps({'mcpServers': {}})
+            # Same tools for both arms: edit, run tests and git; the workspace arm also gets its ws CLI and MCP server.
+            tools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(python3 *)', 'Bash(git *)'] + (['Skill', 'Bash(ws *)', 'mcp__ai-dev-workspace'] if workspace else [])
+            args = ['claude', '-p', prompt, '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', servers, '--permission-mode', 'acceptEdits', '--allowedTools', *tools, '--max-turns', '40', '--model', model, '--output-format', 'stream-json', '--verbose']
         start = time.monotonic(); process = subprocess.Popen(args, cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
         try: output, _ = process.communicate(timeout=600)
         except subprocess.TimeoutExpired:
@@ -90,12 +95,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scenario', default='decisions'); parser.add_argument('--provider', choices=('codex', 'claude'), default='codex')
     parser.add_argument('--model'); parser.add_argument('-n', type=int, default=5); parser.add_argument('--allow-claude', action='store_true')
-    parser.add_argument('--output', type=Path); args = parser.parse_args()
-    if args.n < 1 or args.provider == 'claude' and not args.allow_claude: parser.error('Use positive n; Claude execution requires --allow-claude.')
-    if not shutil.which(args.provider): parser.error('Selected provider unavailable; no fallback or installation.')
+    parser.add_argument('--resume-provider', choices=('codex', 'claude'), help='run the completion sessions on another assistant (cross-assistant handoff)')
+    parser.add_argument('--resume-model'); parser.add_argument('--output', type=Path); args = parser.parse_args()
+    args.resume_provider = args.resume_provider or args.provider
+    if args.n < 1 or 'claude' in (args.provider, args.resume_provider) and not args.allow_claude: parser.error('Use positive n; Claude execution requires --allow-claude.')
+    if not all(map(shutil.which, (args.provider, args.resume_provider))): parser.error('Selected provider unavailable; no fallback or installation.')
     data = json.loads((HERE / 'scenarios' / (args.scenario + '.json')).read_text())
     auth = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))) / 'auth.json'
-    result = {'date': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'provider': args.provider, 'model': args.model or ('gpt-6-luna' if args.provider == 'codex' else 'sonnet'), 'scenario': args.scenario, 'n': args.n, 'kit': command(['git', 'rev-parse', 'HEAD'], KIT).stdout.strip(), 'session1': {}, 'runs': []}
+    result = {'date': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'provider': args.provider, 'model': args.model or ('gpt-6-luna' if args.provider == 'codex' else 'sonnet'), 'resume_provider': args.resume_provider, 'resume_model': args.resume_model or (args.model if args.resume_provider == args.provider else None) or ('gpt-6-luna' if args.resume_provider == 'codex' else 'sonnet'), 'scenario': args.scenario, 'n': args.n, 'kit': command(['git', 'rev-parse', 'HEAD'], KIT).stdout.strip(), 'session1': {}, 'runs': []}
     with tempfile.TemporaryDirectory(prefix='ws-bench-') as temporary:
         base = Path(temporary).resolve()
         for arm in ('baseline', 'workspace'):
@@ -109,17 +116,18 @@ def main():
             snapshot = base / ('snapshot-' + arm); shutil.copytree(root, snapshot)
             for trial in range(1, args.n + 1):
                 shutil.rmtree(root); shutil.copytree(snapshot, root)
-                record = session(root, data['session2'], args.provider, result['model'], arm == 'workspace', auth)
+                record = session(root, data['session2'], args.resume_provider, result['resume_model'], arm == 'workspace', auth)
                 record.update(arm=arm, trial=trial, **score(root, data)); record['success'] = record['completed'] and record['tests_pass'] and all(record['checks'].values())
                 record['result'] = 'inconclusive' if not record['completed'] else 'pass' if record['success'] else 'fail'
                 result['runs'].append(record); print(json.dumps(record), flush=True)
-    output = args.output or HERE / 'results' / (result['date'][:10] + '-' + args.provider + '.json')
+    output = args.output or HERE / 'results' / (result['date'][:10] + '-' + args.provider + ('' if args.resume_provider == args.provider else '-to-' + args.resume_provider) + '.json')
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text('{\n' + '\n'.join(json.dumps(k) + ': ' + json.dumps(v) + ',' for k, v in result.items() if k != 'runs') + '\n"runs": [\n' + ',\n'.join(map(json.dumps, result['runs'])) + '\n]}\n')
-    table = '| Arm | Successful session 2 | Mean seconds |\n|---|---|---|\n'
+    table = '| Arm | Successful session 2 | Mean seconds | Mean cost (USD) |\n|---|---|---|---|\n'
     for arm in ('baseline', 'workspace'):
         rows = [r for r in result['runs'] if r['arm'] == arm]
-        table += f'| {arm} | {sum(r["success"] for r in rows)}/{args.n} | {sum(r["seconds"] for r in rows)/args.n:.1f} |\n'
+        costs = [r['cost_usd'] for r in rows if r.get('cost_usd') is not None]
+        table += f'| {arm} | {sum(r["success"] for r in rows)}/{args.n} | {sum(r["seconds"] for r in rows)/args.n:.1f} | {f"{sum(costs)/len(costs):.3f}" if costs else "n/a"} |\n'
     output.with_suffix('.md').write_text(table); print(table)
 
 
