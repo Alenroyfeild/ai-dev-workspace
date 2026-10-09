@@ -383,15 +383,15 @@ def main(argv=None):
         elif a.cmd == 'digest':
             if a.local_summary and 'local-llm' not in core.config(root).get('packs', []):
                 raise core.WsError('Local summary requires the local-llm pack; run `ws pack add local-llm` first.')
-            out(core.digest_file(a.file, focus=a.focus))
+            digest = core.digest_file(a.file, focus=a.focus)
             if a.local_summary:
                 try:
                     result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file],
                                             capture_output=True, text=True, timeout=180)
-                except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(f'Local summary failed: {exc}')
+                except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(core.redact(f'Local summary failed: {exc}'))
                 if result.returncode: raise core.WsError(core.redact(result.stderr.strip()) or 'Local summary failed.')
-                summary = core.redact(result.stdout)
-                print(summary, end='' if summary.endswith('\n') else '\n')
+                digest['local_summary'] = core.redact(result.stdout)
+            out(digest)
         elif a.cmd == 'paste':
             if not a.hook:
                 if getattr(sys.stdin, 'isatty', lambda: False)():
