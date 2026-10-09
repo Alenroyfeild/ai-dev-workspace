@@ -832,7 +832,45 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
                 raise WsError(f'Unknown section {name}.')
             text = set_section(text, name, redact(body))
         atomic_write(path, text)
+        refresh_native(root, locked=True)
     return {'task': task_id, 'status': status, 'sha': digest_text(text)}
+
+
+# Instruction files that clients read at session start (CLAUDE.md is skipped: its SessionStart hook already injects the brief).
+NATIVE_FILES = ('AGENTS.md', '.github/copilot-instructions.md', 'GEMINI.md', '.cursor/rules/ws-current-task.mdc')
+CURSOR_RULE_HEAD = '---\ndescription: Current ai-dev-workspace task memory (managed; do not edit)\nalwaysApply: true\n---\n'
+
+
+def refresh_native(root, locked=False):
+    """Keep the `current-task` managed block in existing client instruction files equal to the brief.
+    Returns the changed paths; never raises, so a checkpoint is not undone by an unwritable file."""
+    from .upgrade import block, markdown
+    changed = []
+    try:
+        if config(root).get('native_writeback', True) is False: return changed
+        with (contextlib.nullcontext() if locked else lock(root)):
+            text = brief(root)
+            body = 'No task in progress.' if text.startswith('No in-progress task') else text
+            new = block(body, 'current-task')
+            for relative in NATIVE_FILES:
+                path = root / relative
+                cursor = relative.startswith('.cursor/')
+                if cursor and not (root / '.cursor').is_dir(): continue
+                try:
+                    inside(path, [root])
+                    old = path.read_text(encoding='utf-8') if path.is_file() else CURSOR_RULE_HEAD if cursor and not path.exists() else None
+                    if old is None: continue
+                    if '<!--ws:managed:current-task:' in old:
+                        updated = markdown(old, new)  # None for duplicate/malformed blocks: leave for the user
+                    else:
+                        updated = old + ('' if old.endswith('\n') or not old else '\n') + ('\n' if old else '') + new
+                    if updated is not None and updated != old:
+                        atomic_write(path, updated); changed.append(relative)
+                except (WsError, OSError, UnicodeError):
+                    continue
+    except (WsError, OSError, ValueError):
+        pass
+    return changed
 
 
 # --- knowledge -------------------------------------------------------------------
