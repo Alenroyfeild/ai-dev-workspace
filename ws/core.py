@@ -1780,11 +1780,16 @@ def status(root):
     counts = {}
     for t in tasks:
         counts[t['status']] = counts.get(t['status'], 0) + 1
-    return {'workspace': config(root)['name'], 'packs': config(root).get('packs', []), 'tasks': counts,
-            'active_claims': [f"{t['id']} by {t['claimed_by']}" for t in tasks if t['claimed_by']],
-            'blocked': [f"{t['id']}: {t['next']}" for t in tasks if t['status'] == 'blocked'],
-            'open_feedback': len(feedback_list(root)), 'lessons': len(lesson_search(root, '')),
-            'runs': run_report(root)}
+    report = {'workspace': config(root)['name'], 'packs': config(root).get('packs', []), 'tasks': counts,
+              'active_claims': [f"{t['id']} by {t['claimed_by']}" for t in tasks if t['claimed_by']],
+              'blocked': [f"{t['id']}: {t['next']}" for t in tasks if t['status'] == 'blocked'],
+              'open_feedback': len(feedback_list(root)), 'lessons': len(lesson_search(root, '')),
+              'runs': run_report(root)}
+    from . import native
+    goals = native.codex_goals(root)
+    if 'skipped' not in goals:
+        report['codex_goals'] = goals
+    return report
 
 
 def _has_app(name):
@@ -1968,6 +1973,8 @@ def doctor(root=None, mcp=False):
     if root:
         report['workspace'] = str(root)
         report['capture_health'] = capture_health(root)
+        from . import native
+        report['codex_goals'] = native.codex_goals(root)
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']

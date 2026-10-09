@@ -30,6 +30,7 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | `ws lesson add "<what happened → rule>"` / `ws lesson search "<words>"` | Lessons learned. |
 | `ws search "<words>"` | Ranked snippets from the vault notes. |
 | `ws sessions search "<words>"` | Search local Claude Code, Codex, Cursor and Gemini transcripts with read-only, redacted snippets. |
+| `ws import native [--client claude\|codex\|gemini\|all] [--task ID] [--yes]` | Preview (max 20 redacted lines) memories the assistants saved natively. Claude: `~/.claude/projects/<folder>/memory/*.md` for the workspace and each configured repo folder. Codex: `stage1_outputs` rollout summaries in `$CODEX_HOME/memories_1.sqlite` whose slug or raw memory names the workspace or repo folder. Gemini CLI: the `## Gemini Added Memories` lines of `~/.gemini/GEMINI.md`. `--yes` appends one `### Imported <date> (unverified, from <client>)` block per client to the task Handoff (`--task`, else the single in-progress task): redacted, at most 150 words per client, skipped when already there. Native stores are only read. |
 | `ws paste` | Save clipboard text (or piped stdin) redacted in `.ws/inbox/`, then print only its digest. |
 | `ws digest <file> [--focus <regex>] [--local-summary]` | Show bounded context around matching lines first (bounded regex, scans the first 4096 characters per line), then the deterministic digest. `--local-summary` requires the `local-llm` pack. |
 
@@ -56,7 +57,7 @@ Toolbox levels: recommended tools are suggested for most workspaces, optional to
 |---|---|
 | `ws run log <task> <step> --provider P [--tokens-in N ...]` / `ws run report [task]` | Per-step log of who did what, tokens, seconds and result. |
 | `ws trace <task>` | Read-only Markdown timeline, including reported checks, verdicts and total tokens. Redirect stdout to save it. |
-| `ws validate` / `ws status` | Health check / overview. |
+| `ws validate` / `ws status` | Health check / overview. When Codex goals exist (`$CODEX_HOME/goals_1.sqlite`), `ws status` and `ws doctor` show `Codex goals: N active, M complete` for goals whose objective mentions an in-progress task ID or title, and `ws checkpoint --status done` prints a hint on stderr while one is still active. Read-only; close goals in Codex. Missing or unrecognised files are skipped (doctor says why). |
 | `ws feedback add "<text>"` / `list` / `submit N` / `sync` | Feedback about the workspace; `submit` turns one item into a GitHub issue after a redacted preview. |
 | `ws notices` | New release, fixed issues, unshared feedback. Your assistant runs it once per session and asks before doing anything. |
 | `ws update [--check]` | Update the kit (git clone) or print the pipx command (pipx install). |
