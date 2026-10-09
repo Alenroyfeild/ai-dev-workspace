@@ -36,9 +36,12 @@ def claude_session(root, home, prompt, workspace, resume=None):
                           'credentials': {'envVars': [{'name': 'ANTHROPIC_API_KEY', 'mode': 'deny'}]}}}
     mcp = root / '.mcp.json'
     if workspace and not mcp.is_file(): raise RuntimeError('Workspace benchmark requires its MCP config; no empty-config fallback.')
+    servers = {'mcpServers': {'ai-dev-workspace': core.mcp_command(root)}} if workspace else {'mcpServers': {}}
+    if workspace and json.loads(core.read_text(mcp, [root])) != servers:
+        raise RuntimeError('Workspace MCP config changed; only the trusted kit server is permitted.')
     tools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(python3 *)', 'Bash(git *)'] + (['Skill', 'Bash(ws *)', 'mcp__ai-dev-workspace__*'] if workspace else [])
     args = ['claude', '-p', prompt] + (['--resume', resume] if resume else []) + [
-        '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', core.read_text(mcp, [root]) if workspace else '{"mcpServers": {}}',
+        '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', json.dumps(servers),
         '--settings', json.dumps(policy), '--tools', 'Read,Grep,Glob,Edit,Write,Bash' + (',Skill' if workspace else ''),
         '--permission-mode', 'acceptEdits', '--allowedTools', *tools, '--max-turns', '40', '--model', 'sonnet', '--output-format', 'stream-json', '--verbose']
     start = time.monotonic()
