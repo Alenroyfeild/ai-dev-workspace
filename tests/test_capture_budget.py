@@ -4,6 +4,17 @@ from ws import core
 
 
 class CaptureBudgetTests(Base):
+    def test_prohibited_action_and_optional_to(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Validate cobalt.')
+        path = self.root / 'negation.jsonl'
+        def capture(summary):
+            path.write_text(json.dumps({'type': 'assistant', 'message': {'content': [
+                {'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text': summary}]}}))
+            core.capture_decisions(self.root, str(path)); return core.brief(self.root)
+        self.assertNotIn('differs from saved checkpoint', capture('Do not take the next step: delete backups.'))
+        self.assertNotIn('differs from saved checkpoint', capture('The next step is to validate cobalt.'))
+
     def test_recent_correction_and_next_step_survive_both_caps(self):
         core.claim(self.root, 'T-1', 'synthetic')
         core.checkpoint(self.root, 'T-1', 'in_progress', 'Validate the amber lane',
