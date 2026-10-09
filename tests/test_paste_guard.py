@@ -70,6 +70,14 @@ class PasteGuardTests(unittest.TestCase):
         self.assertIn('No input on stdin', err.getvalue())
         self.assertFalse(list((self.root / '.ws/inbox').glob('*.log')))
 
+    def test_empty_clipboard_is_rejected(self):
+        err = io.StringIO()
+        with mock.patch('sys.stdin', mock.Mock(isatty=lambda: True)), mock.patch.object(core, 'clipboard_text', return_value=''), \
+                contextlib.redirect_stderr(err):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'paste']), 2)
+        self.assertIn('Clipboard is empty', err.getvalue())
+        self.assertFalse(list((self.root / '.ws/inbox').glob('*.log')))
+
     def test_paste_reads_clipboard_when_stdin_is_interactive(self):
         stdout = io.StringIO()
         process = mock.Mock(stdout=io.BytesIO(b'clipboard text'), returncode=0)
