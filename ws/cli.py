@@ -396,6 +396,7 @@ def main(argv=None):
             if not a.hook:
                 if getattr(sys.stdin, 'isatty', lambda: False)():
                     text = core.clipboard_text()
+                    if not text: raise core.WsError('Clipboard is empty; copy text before running `ws paste`.')
                 else:
                     text = _read_limited_stdin()
                     if not text: raise core.WsError('No input on stdin; run `ws paste` in a terminal to read the clipboard.')
