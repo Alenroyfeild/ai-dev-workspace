@@ -9,8 +9,6 @@ import stat
 import subprocess
 import tempfile
 import time
-import socket
-import threading
 from pathlib import Path
 from bench import run
 from ws import core
@@ -49,43 +47,29 @@ def fixture(repo):
 
 
 class Audit:
-    """Every socket connection is recorded before acknowledgement; no audit-read API."""
+    """Cooperative append-only receipt; workers can tamper with it."""
     def __init__(self, repo):
-        self.path = repo / '.retry-channel'; self.total = 0
+        self.path = repo / '.step-log'
 
     def __enter__(self):
-        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        previous = os.getcwd()
-        try: os.chdir(self.path.parent); self.server.bind(self.path.name)
-        finally: os.chdir(previous)
-        self.server.listen(); self.server.settimeout(.1)
-        self.identity = self.path.stat().st_ino
-        self.closed = threading.Event()
-        def record():
-            while not self.closed.is_set():
-                try: connection, _ = self.server.accept()
-                except socket.timeout: continue
-                except OSError: break
-                with connection:
-                    self.total += 1
-                    try: connection.sendall(b'rejected\n')
-                    except OSError: pass
-        self.thread = threading.Thread(target=record, daemon=True); self.thread.start()
+        self.path.write_text('')
+        self.handle = self.path.open('rb')
+        self.identity = os.fstat(self.handle.fileno()).st_ino
         return self
 
     @property
     def count(self):
-        return self.total
+        self.handle.seek(0)
+        return self.handle.read(1024 * 1024).count(b'prepare\n')
 
     def intact(self):
         try:
             info = self.path.lstat()
-            return stat.S_ISSOCK(info.st_mode) and info.st_ino == self.identity
+            return stat.S_ISREG(info.st_mode) and info.st_ino == self.identity
         except OSError: return False
 
     def __exit__(self, *args):
-        self.closed.set(); self.server.close(); self.thread.join()
-        if self.intact(): self.path.unlink()
+        self.handle.close()
 
 
 def reference(repo, expected):
@@ -102,7 +86,7 @@ def checks(repo, expected, audit, before, canonical=None):
     try:
         same = all((repo / name).is_file() and not (repo / name).is_symlink() and core.read_text(repo / name, [repo], errors='strict') == text
                    for name, text in DATA['files'].items() if name != 'release.json')
-        allowed = set(DATA['files']) | {'tests', '.retry-channel', '.git'}
+        allowed = set(DATA['files']) | {'tests', '.step-log', '.git'}
         same &= all(p.relative_to(repo).as_posix() in allowed or p.relative_to(repo).parts[0] == '.git' for p in repo.rglob('*'))
     except (core.WsError, OSError, UnicodeError): same = False
     tests = None
@@ -133,7 +117,7 @@ def session(*args, **kwargs):
 
 def reset_fixture(repo):
     for path in list(repo.iterdir()):
-        if path.name != '.retry-channel':
+        if path.name != '.step-log':
             if path.is_dir() and not path.is_symlink(): shutil.rmtree(path)
             else: path.unlink()
     with tempfile.TemporaryDirectory(prefix='ws-rollout-reset-') as d:

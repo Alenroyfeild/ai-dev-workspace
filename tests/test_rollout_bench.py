@@ -9,8 +9,18 @@ from pathlib import Path
 from bench import rollout
 
 
-@unittest.skipIf(os.name == 'nt', 'External retry audit uses a POSIX socket; no model calls in tests.')
 class RolloutTests(unittest.TestCase):
+    def test_append_only_step_log_records_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d); rollout.fixture(repo)
+            with rollout.Audit(repo) as audit:
+                self.assertTrue(audit.path.is_file())
+                for count in (1, 2):
+                    result = subprocess.run([sys.executable, 'prepare.py'], cwd=repo, capture_output=True)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertEqual(audit.count, count)
+                self.assertEqual(audit.path.read_text(), 'prepare\nprepare\n')
+
     def test_reset_removes_conversation_hints_from_git_history(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); rollout.run.create(root, rollout.DATA); repo = root / 'repo'
@@ -21,7 +31,7 @@ class RolloutTests(unittest.TestCase):
             self.assertNotIn('opaque-conversation-hint', rollout.run.command(['git', 'log', '--all', '--oneline'], repo).stdout)
             self.assertEqual((repo / 'release.json').read_text(), rollout.DATA['files']['release.json'])
 
-    def test_reference_negative_controls_and_external_audit(self):
+    def test_reference_negative_controls_and_step_log(self):
         with tempfile.TemporaryDirectory() as d:
             repo = Path(d)
             rollout.fixture(repo)
