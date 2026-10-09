@@ -213,6 +213,12 @@ class TaskTests(Base):
         self.assertIn('Task T-2: Fix the synthetic crash', brief)
         self.assertIn('Next action: Not saved yet', brief)
 
+    def test_brief_uses_local_claim_token_not_claim_display_text(self):
+        core.task_new(self.root, 'T-2', 'Local claim by token')
+        core.claim(self.root, 'T-2', 'fixture-worker')
+        with mock.patch.object(core, 'claim_note', return_value='localized claim display'):
+            self.assertIn('Task T-2: Local claim by token', core.brief(self.root))
+
     def test_brief_keeps_saved_next_action_without_legacy_checkpoint_count(self):
         core.task_new(self.root, 'T-2', 'Legacy task')
         path = core.task_path(self.root, 'T-2')
