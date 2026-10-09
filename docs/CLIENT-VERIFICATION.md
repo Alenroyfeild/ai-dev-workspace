@@ -36,5 +36,5 @@ Status: **matches** (code agrees with docs), **fixed**, **unclear** (docs silent
 ## Changes made
 
 - `docs/COMMANDS.md`: Gemini memory import wording now says the heading comes from older versions.
-- `tests/test_client_docs.py`: pins event names, nesting, timeout units, Cursor `version`, MCP key names and the Cursor rule front matter to the table above.
+- `tests/test_client_docs.py`: pins event names, nesting, every event's timeout units, Cursor `version`, MCP key names, the Cursor rule front matter, and non-Claude SessionStart context output. Prompt blocking (including Claude exit 2) is exercised by `tests/test_paste_guard.py`; Claude Stop output by `tests/test_finish_nudge.py`.
 - No code changes were needed. README and SETUP compatibility tables are unchanged.
