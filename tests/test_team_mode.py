@@ -12,6 +12,19 @@ def git(path, *args):
 
 
 class TeamBriefTests(Base):
+    def test_local_ready_claim_beats_teammate_active_task(self):
+        core.claim(self.root, 'T-1', 'synthetic-local')
+        self.other('APP-1', 'synthetic-remote')
+        brief = core.brief(self.root)
+        self.assertIn('Task T-1', brief)
+        self.assertIn('Others working: APP-1', brief)
+
+    def test_unmatched_teammate_task_is_not_selected(self):
+        self.other('APP-1', 'synthetic-remote')
+        brief = core.brief(self.root)
+        self.assertNotIn('Task APP-1', brief)
+        self.assertIn('Others working: APP-1', brief)
+
     def app(self, branch):
         app = self.root / 'app'; app.mkdir(exist_ok=True)
         git(app, 'init', '-q', '-b', branch)
@@ -83,6 +96,11 @@ class TeamDoctorTests(Base):
     def test_untracked_secret_is_not_a_team_warning(self):
         (core.vault(self.root) / 'Notes.md').write_text('api_key = abcdef1234567890abcdef\n')
         self.assertEqual(self.team(), {'warnings': []})
+
+    def test_large_tracked_note_reports_skipped_secret_check(self):
+        (core.vault(self.root) / 'Notes.md').write_text('x' * 1_000_001)
+        git(self.root, 'add', '.')
+        self.assertIn('not checked', ' '.join(self.team()['warnings']))
 
 
 class ConflictedTaskTests(Base):
