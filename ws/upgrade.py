@@ -90,9 +90,13 @@ def routing(old, new):
         if len(matches) != 1: return None
         start = matches[0].end(); previous, end = json.JSONDecoder().raw_decode(old, start)
         value = json.loads(new)['_ws_managed']
+        if not isinstance(previous, dict) or not isinstance(previous.get('providers', {}), dict): return None
+        # Provider data can contain user model mappings; preserve them during migration.
+        for name, settings in previous.get('providers', {}).items():
+            value['providers'][name] = dict(value.get('providers', {}).get(name, {}), **settings)
         if previous == value: return old
         return old[:start] + json.dumps(value, indent=2) + old[end:]
-    except (ValueError, KeyError): return None
+    except (ValueError, KeyError, TypeError): return None
 
 
 def upgrade(root, dry_run=False):

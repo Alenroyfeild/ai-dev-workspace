@@ -2,18 +2,14 @@
   "_ws_managed": {
     "kit_version": "{{kit_version}}",
     "priority_rule": "lead decides and reviews, workers do bounded work",
-    "roles": {
-      "lead": {"preference": ["claude", "codex", "ollama"], "tier": "planner"},
-      "planner": {"preference": ["claude", "codex", "ollama"], "tier": "planner"},
-      "worker": {"preference": ["codex", "claude", "ollama"], "tier": "worker"},
-      "explorer": {"preference": ["codex", "claude", "ollama"], "tier": "worker"},
-      "reviewer": {"preference": ["claude", "codex", "ollama"], "tier": "planner"},
-      "local": {"preference": ["ollama"], "tier": "worker"}
-    },
+    "roles": {"lead": {"preference": ["claude", "codex", "ollama"], "tier": "planner"}, "planner": {"preference": ["claude", "codex", "ollama"], "tier": "planner"}, "worker": {"preference": ["codex", "claude", "ollama"], "tier": "worker"}, "explorer": {"preference": ["codex", "claude", "ollama"], "tier": "worker"}, "reviewer": {"preference": ["claude", "codex", "ollama"], "tier": "planner"}, "local": {"preference": ["ollama"], "tier": "worker"}},
     "providers": {
-      "claude": {"models": {"opus": "opus", "sonnet": "sonnet"}, "tiers": {"planner": {"family": "opus", "effort": "low"}, "worker": {"family": "sonnet", "effort": "high"}}},
-      "codex": {"models": {"sol": "gpt-6-sol", "luna": "gpt-6-luna", "astra": "gpt-6-astra"}, "tiers": {"planner": {"family": "sol", "effort": "low"}, "worker": {"family": "luna", "effort": "high"}}},
-      "ollama": {"models": {"local": null}, "tiers": {"planner": {"family": "local", "effort": "not_applicable"}, "worker": {"family": "local", "effort": "not_applicable"}}}
+      "claude": {"models": {"opus": "opus", "sonnet": "sonnet"}, "tiers": {"planner": {"family": "opus", "effort": "low"}, "worker": {"family": "sonnet", "effort": "high"}}, "cli": "claude", "headless": ["-p", "--output-format", "json", "--setting-sources", "project", "--model", "{model}", "--effort", "{effort}", "--tools", "Read,Glob,Grep", "--allowedTools", "Read,Glob,Grep", "--permission-mode", "dontAsk", "--mcp-config", "{\"mcpServers\":{}}", "--strict-mcp-config", "--no-session-persistence"]},
+      "codex": {"models": {"sol": "gpt-6-sol", "luna": "gpt-6-luna", "astra": "gpt-6-astra"}, "tiers": {"planner": {"family": "sol", "effort": "low"}, "worker": {"family": "luna", "effort": "high"}}, "cli": "codex", "headless": ["exec", "--json", "-s", "read-only", "--ephemeral", "--ignore-user-config", "--disable", "hooks", "--disable", "apps", "--disable", "plugins", "-c", "approval_policy=\"never\"", "-m", "{model}", "-c", "model_reasoning_effort={effort_json}", "--skip-git-repo-check", "-C", "{repo}", "-"]},
+      "ollama": {"models": {"local": null}, "tiers": {"planner": {"family": "local", "effort": "not_applicable"}, "worker": {"family": "local", "effort": "not_applicable"}}, "cli": "ollama", "headless": null, "prepare": ["run", "{model}"]},
+      "cursor": {"cli": "cursor-agent", "models": {"default": null}, "use_cli_default": true, "tiers": {"planner": {"family": "default", "effort": "not_applicable"}, "worker": {"family": "default", "effort": "not_applicable"}}, "headless": null, "prepare": ["--mode=ask", "--print", "{prompt}"], "docs": "https://cursor.com/docs/cli/using", "model_flag": "--model"},
+      "copilot": {"cli": "copilot", "models": {"default": null}, "use_cli_default": true, "tiers": {"planner": {"family": "default", "effort": "not_applicable"}, "worker": {"family": "default", "effort": "not_applicable"}}, "headless": null, "prepare": ["--prompt", "{prompt}", "--available-tools=view,grep,glob", "--deny-tool=write", "--deny-tool=shell", "--disable-builtin-mcps", "--no-auto-update"], "docs": "https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference", "model_flag": "--model"},
+      "gemini": {"cli": "gemini", "models": {"default": null}, "use_cli_default": true, "tiers": {"planner": {"family": "default", "effort": "not_applicable"}, "worker": {"family": "default", "effort": "not_applicable"}}, "headless": null, "prepare": [], "docs": "https://geminicli.com/docs/cli/plan-mode/", "model_flag": "--model"}
     }
   },
   "role_overrides": {}
