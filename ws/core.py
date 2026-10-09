@@ -1003,6 +1003,40 @@ def relevant_lessons(root, task):
     return [line for _, _, line in ranked[:3]]
 
 
+def _capture_words(text, limit):
+    words = redact(text).split()
+    if len(words) > limit:
+        if limit < 3: return ' '.join(words[-limit:]) if limit else ''
+        head = min(8, limit // 3)
+        words = words[:head] + ['[…]'] + words[-(limit - head - 1):]
+    return ' '.join(words)
+
+
+def _constraint_clauses(text):
+    return re.split(r'(?<=[.!?])\s+|\n+', text)
+
+
+def _constraint_budget(clauses, limit, multiline=False):
+    parts = []
+    for clause in clauses:
+        if limit <= int(multiline): break
+        if not clause.strip(): continue
+        clipped = _capture_words(clause, limit - int(multiline))
+        if multiline: clipped = '- ' + clipped
+        parts.append(clipped)
+        limit -= len(clipped.split())
+    return ('\n' if multiline else '; ').join(parts)
+
+
+def _captured_step(summary):
+    latest = ''
+    for match in re.finditer(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*\s*(?:-\s+)?', summary, re.I):
+        if re.search(r'\b(?:no|not(?:\s+have)?|without)\s+(?:a\s+|the\s+)?$', summary[:match.start()], re.I): continue
+        prefix = ' '.join(match.group().split()).rstrip(' -')
+        latest = prefix + ' ' + re.split(r'(?<=[.!?])\s+|\n+', summary[match.end():])[0]
+    return latest
+
+
 def brief(root):
     guard = repeat_guard(root)
     tasks = task_list(root)
@@ -1034,7 +1068,19 @@ def brief(root):
         lines.append('Claim: ' + record['claim'])
     captured = re.findall(r'### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->', task_read(root, task['id'], ['Handoff'])['sections']['Handoff'], re.S)
     if captured:
-        lines.append('Captured last session (unverified): ' + words(captured[-1], 60))
+        memory = captured[-1]
+        constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
+        constraints = constraints.removeprefix('User constraints:').strip()
+        clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
+        lines.append('Captured last session (unverified): User constraints: ' +
+                     _constraint_budget(clauses, 28))
+        if separator:
+            lines.append('Captured next step (unverified): ' + _capture_words(step, 25))
+            action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
+            def normalized(value):
+                return ' '.join(value.strip(' \t\n*_`.:').split()).casefold()
+            if action and normalized(action[1]) != normalized(record['sections']['Next action']):
+                lines.append('Captured plan differs from saved checkpoint; verify before replacing.')
     lines += ['Lesson: ' + words(line, 25) for line in relevant_lessons(root, task)]
     return '\n'.join(([guard] if guard else []) + lines)
 
@@ -1069,7 +1115,7 @@ def capture_decisions(root, transcript_path, client='claude'):
                     if text.strip():
                         summary = text
                 else:
-                    decisions.extend(sentence for sentence in re.split(r'(?<=[.!?])\s+|\n+', text)
+                    decisions.extend(sentence for sentence in _constraint_clauses(text)
                                      if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I))
     except WsError:
         return False
@@ -1077,9 +1123,9 @@ def capture_decisions(root, transcript_path, client='claude'):
         return False
     if not worked or not (decisions or summary):
         return False
-    body = 'User constraints: ' + ' '.join(redact(' '.join(decisions)).split()[:95])
-    steps = [s for s in re.split(r'(?<=[.!?])\s+|\n+', summary) if re.search(r'\bnext (step|action)\b', s, re.I)]
-    body += '\nLast assistant summary / next step: ' + ' '.join((' '.join(steps) + ' ' + summary).split()[:35])
+    # Newest corrections get the budget first; captured memory never replaces verified sections.
+    body = 'User constraints:\n' + _constraint_budget(reversed(decisions), 95, multiline=True)
+    body += '\nLast assistant summary / next step: ' + _capture_words(_captured_step(summary) or summary, 35)
     body = body.replace('<!--', '&lt;!--')
     # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
     marker = '<!-- ws:captured:' + digest_text(str(Path(transcript_path).resolve()))[:16] + ' -->'
