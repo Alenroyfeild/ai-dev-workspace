@@ -2010,6 +2010,20 @@ def _team_checks(root):
                 warnings.append(f'{name}: not checked for secrets (cannot read safely).'); continue
             lines = {text.count('\n', 0, m.start()) + 1 for rx in (SECRET_RE, URL_CREDENTIALS_RE) for m in rx.finditer(text)}
             found += [f'{name}:{n}' for n in sorted(lines)]
+        # The index, rather than the edited working copy, is what the next commit shares.
+        for name in _git(root, 'diff', '--cached', '--name-only', '-z', '--', vault(root).resolve().relative_to(root.resolve()).as_posix()).stdout.split('\0'):
+            if not name: continue
+            revision = ':./' + name
+            size = _git(root, 'cat-file', '-s', revision)
+            if size.returncode: continue  # deletion or unmerged entry; conflict checks handle the latter
+            if int(size.stdout) >= 1_000_000:
+                warnings.append(f'{name}: staged content not checked for secrets (1 MB or larger).'); continue
+            staged = _git(root, 'show', revision)
+            if staged.returncode:
+                warnings.append(f'{name}: staged content not checked for secrets (cannot read index).'); continue
+            text = staged.stdout
+            lines = {text.count('\n', 0, m.start()) + 1 for rx in (SECRET_RE, URL_CREDENTIALS_RE) for m in rx.finditer(text)}
+            found += [f'{name}:{n} (staged)' for n in sorted(lines)]
         warnings += [f'possible secret at {place} (value not shown); remove it and rotate the credential.' for place in found[:10]]
         if len(found) > 10: warnings.append(f'{len(found) - 10} more possible secrets in tracked vault files.')
         return {'warnings': warnings}

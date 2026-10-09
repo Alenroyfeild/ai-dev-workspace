@@ -19,7 +19,7 @@ Teammates clone it and run `ws connect claude` (or their client). Keep the repo 
 | `vault/` tasks, lessons, notes | `.ws/` claim tokens, run logs, caches |
 | `workspace.json`, `routing.json`, `AGENTS.md` | `*.local.md` |
 
-`.ws/` is in the generated `.gitignore`. `ws doctor` warns if it is not ignored or already tracked, and lists tracked vault lines that look like secrets (file:line only; remove and rotate them).
+`.ws/` is in the generated `.gitignore`. `ws doctor` warns if it is not ignored or already tracked, and lists working-copy and staged vault lines that look like secrets (file:line only; remove and rotate them). Files of 1 MB or larger, and files that cannot be read safely, are reported as unchecked. This is a heuristic, not a guarantee that a commit contains no secrets.
 
 ## How claims work across people
 
