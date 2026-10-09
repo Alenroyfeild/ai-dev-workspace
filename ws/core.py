@@ -16,10 +16,12 @@ import os
 import re
 import shlex
 import shutil
+import sre_parse
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -397,6 +399,7 @@ def memory_hooks(root, client='claude'):
     arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root)]
     command = command_line(arguments)
     events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop')
+    prompt_event = {'claude': 'UserPromptSubmit', 'codex': 'UserPromptSubmit', 'cursor': 'beforeSubmitPrompt', 'gemini': 'BeforeAgent'}.get(client)
     result = {'hooks': {}}
     if client == 'cursor': result['version'] = 1
     for event in events:
@@ -404,6 +407,11 @@ def memory_hooks(root, client='claude'):
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
                 'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][event] = [hook if client in ('cursor', 'vscode') else {'hooks': [hook]}]
+    if prompt_event:
+        suffix = ['paste', '--hook', '--client', client]
+        hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
+                'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
+        result['hooks'][prompt_event] = [hook if client == 'cursor' else {'hooks': [hook]}]
     return result
 def install_memory_hooks(root, collisions):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
@@ -1257,11 +1265,58 @@ def _shape(value, depth=0):
 ERR_RE = re.compile(r'\b(error|fatal|failed|failure|exception|warning|denied|panic|traceback)\b', re.I)
 
 
-def digest_file(path, max_lines=60, root=None):
+def _focus_pattern(source):
+    """Compile a deliberately small regex subset with predictable matching cost."""
+    if len(source) > 256:
+        raise WsError('Focus regular expressions are limited to 256 characters.')
+    try:
+        parsed = sre_parse.parse(source)
+    except re.error as exc:
+        raise WsError(f'Invalid focus regular expression: {exc}')
+    repeats = [0]
+    simple = {sre_parse.LITERAL, sre_parse.NOT_LITERAL, sre_parse.ANY,
+              sre_parse.IN, sre_parse.CATEGORY}
+    repeat_ops = {sre_parse.MAX_REPEAT, sre_parse.MIN_REPEAT}
+    if hasattr(sre_parse, 'POSSESSIVE_REPEAT'):
+        repeat_ops.add(sre_parse.POSSESSIVE_REPEAT)
+
+    def check(tokens):
+        for op, arg in tokens:
+            if op in repeat_ops:
+                _, maximum, child = arg
+                repeats[0] += 1
+                if repeats[0] > 1 or maximum == sre_parse.MAXREPEAT or maximum > 64 or any(inner not in simple for inner, _ in child):
+                    raise WsError('Focus supports simple regular expressions only (one bounded repetition, up to 64 characters).')
+            elif op == sre_parse.SUBPATTERN:
+                check(arg[-1])
+            elif op not in simple and op != sre_parse.AT:
+                raise WsError('Focus supports simple regular expressions only.')
+    check(parsed)
+    return re.compile(source)
+
+
+def digest_file(path, max_lines=60, root=None, focus=None):
     """Deterministic summary of a big file: JSON shape, or deduplicated error lines of a log."""
     path = Path(path)
     raw = read_text(path, read_roots(root) if root is not None else None)
     out = {'file': redact(str(path)), 'bytes': len(raw), 'lines': raw.count('\n') + 1}
+    if focus is not None:
+        pattern = _focus_pattern(focus)
+        matches = []
+        for i, line in enumerate(io.StringIO(raw), 1):
+            match = pattern.search(line[:4096])
+            if match:
+                if len(matches) >= max_lines: break
+                safe_line = redact(line)
+                safe_match = pattern.search(safe_line[:4096])
+                if safe_match:
+                    start = max(0, safe_match.start() - 80)
+                    end = min(len(safe_line), max(safe_match.end() + 80, start + 200))
+                else:
+                    start, end = 0, min(len(safe_line), 200)
+                snippet = ('…' if start else '') + safe_line[start:end].strip() + ('…' if end < len(safe_line) else '')
+                matches.append(f'L{i}: {snippet}')
+        out['focus_matches'] = matches
     try:
         out['json_shape'] = _shape(json.loads(raw))
         return out
@@ -1280,6 +1335,67 @@ def digest_file(path, max_lines=60, root=None):
     out['problems'] = [f'L{i} (x{seen[k]}): {redact(k)}' for i, k in picked[:max_lines]]
     out['tail'] = [redact(l)[:200] for l in raw.splitlines()[-5:]]
     return out
+
+
+def clipboard_text():
+    commands = [('pbpaste', []), ('wl-paste', ['--no-newline']), ('xclip', ['-selection', 'clipboard', '-o']),
+                ('powershell.exe', ['-NoProfile', '-Command', '$OutputEncoding = [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding; Get-Clipboard -Raw'])]
+    for executable, args in commands:
+        if shutil.which(executable):
+            try:
+                process = subprocess.Popen([executable, *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                chunks, total, oversized = [], [0], [False]
+                def collect():
+                    while total[0] <= MAX_READ_BYTES:
+                        chunk = process.stdout.read(min(65536, MAX_READ_BYTES + 1 - total[0]))
+                        if not chunk: break
+                        total[0] += len(chunk); chunks.append(chunk)
+                    if total[0] > MAX_READ_BYTES:
+                        oversized[0] = True
+                        process.kill()
+                reader = threading.Thread(target=collect)
+                reader.start()
+                try: process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill(); process.wait(); reader.join(); process.stdout.close()
+                    continue
+                reader.join()
+                process.stdout.close()
+            except OSError:
+                continue
+            if oversized[0]: raise WsError('Clipboard exceeds 50 MB; save it to a file and run `ws digest` instead.')
+            if process.returncode == 0:
+                try: return b''.join(chunks).decode('utf-8')
+                except UnicodeDecodeError: raise WsError(f'Clipboard output from {executable} was not valid UTF-8; pipe text to `ws paste` instead.')
+            continue
+    raise WsError('No supported clipboard reader found; pipe text to `ws paste` instead.')
+
+
+def paste_save(root, text):
+    if not isinstance(text, str): raise WsError('Paste input must be text.')
+    text = redact(text)
+    try: size = len(text.encode('utf-8'))
+    except UnicodeEncodeError: raise WsError('Paste contains text that cannot be saved as UTF-8.')
+    if size > MAX_READ_BYTES: raise WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
+    inbox = inside(root / '.ws/inbox', [root])
+    with lock(root):
+        inbox.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
+        path = inbox / (stamp + '.log')
+        suffix = 1
+        while path.exists():
+            suffix += 1
+            path = inbox / f'{stamp}-{suffix}.log'
+        atomic_write(path, text)
+    return {'path': path, 'digest': digest_file(path, root=root)}
+
+
+def prompt_is_large(prompt):
+    if not isinstance(prompt, str): return False
+    try:
+        if len(prompt.encode('utf-8')) > 12 * 1024: return True
+        return len(prompt.splitlines()) > 150
+    except UnicodeEncodeError: return True
 
 
 # --- orchestration run tracking ---------------------------------------------------

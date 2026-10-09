@@ -2,15 +2,42 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 from . import core, assist, orchestration
 
 
+def _read_limited_stdin():
+    limit = core.MAX_READ_BYTES
+    stream = getattr(sys.stdin, 'buffer', None)
+    if stream is not None:
+        raw = stream.read(limit + 1)
+        if len(raw) > limit:
+            raise core.WsError('Input exceeds 50 MB.')
+        try: return raw.decode('utf-8')
+        except UnicodeDecodeError: raise core.WsError('Paste input must be UTF-8 text.')
+    text = sys.stdin.read(limit + 1)
+    try: size = len(text.encode('utf-8'))
+    except UnicodeEncodeError: raise core.WsError('Paste contains text that cannot be saved as UTF-8.')
+    if len(text) > limit or size > limit:
+        raise core.WsError('Input exceeds 50 MB.')
+    return text
+
+
+def _block_prompt(client, reason):
+    if client == 'claude':
+        print(reason, file=sys.stderr); return 2
+    if client == 'cursor': out({'continue': False, 'user_message': reason})
+    elif client == 'gemini': out({'decision': 'deny', 'reason': reason})
+    else: out({'decision': 'block', 'reason': reason})
+    return 0
+
+
 COMMAND_GROUPS = (
     ('Setup', ('init', 'connect', 'packs', 'pack')),
-    ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'search', 'sessions', 'lesson')),
+    ('Daily', ('status', 'task', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'lesson')),
     ('Orchestration', ('route', 'delegate')),
     ('Measure', ('tools', 'digest', 'run', 'trace')),
     ('Maintain', ('doctor', 'validate', 'map', 'feedback', 'update', 'version', 'upgrade', 'notices', 'assist')),
@@ -233,6 +260,11 @@ def main(argv=None):
         s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
         s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode'), default='claude')
     s = sub.add_parser('digest', help='summarise a big log/JSON file deterministically'); s.add_argument('file')
+    s.add_argument('--focus', help='show regex-matching line prefixes before the summary (bounded regex; 4096 chars/line)')
+    s.add_argument('--local-summary', action='store_true', help='also use the configured local-llm pack')
+    s = sub.add_parser('paste', help='save clipboard or stdin to the private inbox and show its digest')
+    s.add_argument('--hook', action='store_true', help=argparse.SUPPRESS)
+    s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini'), default='claude')
     r = sub.add_parser('run', help='orchestration step tracking').add_subparsers(dest='action', required=True)
     s = r.add_parser('log'); s.add_argument('task'); s.add_argument('step'); s.add_argument('--provider', required=True)
     s.add_argument('--model', default=''); s.add_argument('--tokens-in', type=int, default=0); s.add_argument('--tokens-out', type=int, default=0)
@@ -395,7 +427,52 @@ def main(argv=None):
             elif a.action == 'sync': out(core.feedback_sync(root))
             else: out([f"{i['n']}. {'[x]' if i['done'] else '[ ]'} {i['kind']}: {i['text']}" + (f" ({i['issue']})" if i['issue'] else '')
                        for i in core.feedback_items(root) if a.all or not i['done']] or 'No open feedback.')
-        elif a.cmd == 'digest': out(core.digest_file(a.file))
+        elif a.cmd == 'digest':
+            if a.local_summary and 'local-llm' not in core.config(root).get('packs', []):
+                raise core.WsError('Local summary requires the local-llm pack; run `ws pack add local-llm` first.')
+            digest = core.digest_file(a.file, focus=a.focus)
+            if a.local_summary:
+                try:
+                    result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file],
+                                            capture_output=True, text=True, timeout=180)
+                except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(core.redact(f'Local summary failed: {exc}'))
+                if result.returncode: raise core.WsError(core.redact(result.stderr.strip()) or 'Local summary failed.')
+                digest['local_summary'] = core.redact(result.stdout)
+            out(digest)
+        elif a.cmd == 'paste':
+            if not a.hook:
+                if getattr(sys.stdin, 'isatty', lambda: False)():
+                    text = core.clipboard_text()
+                    if not text: raise core.WsError('Clipboard is empty; copy text before running `ws paste`.')
+                else:
+                    text = _read_limited_stdin()
+                    if not text: raise core.WsError('No input on stdin; run `ws paste` in a terminal to read the clipboard.')
+                if len(text.encode('utf-8')) > core.MAX_READ_BYTES:
+                    raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
+                out(core.paste_save(root, text)['digest'])
+            else:
+                try: payload = json.loads(_read_limited_stdin())
+                except core.WsError as exc:
+                    if '50 MB' not in str(exc):
+                        return _block_prompt(a.client, 'This client prompt-hook input is not valid UTF-8. Retry with a short question plus the relevant excerpt.')
+                    return _block_prompt(a.client, 'Prompt hook input exceeds 50 MB. Save the source as a file and run `ws digest <file> --focus "<pattern>"` instead.')
+                except json.JSONDecodeError:
+                    return _block_prompt(a.client, 'This client sent malformed prompt-hook data. Retry with a short question plus the relevant excerpt.')
+                if not isinstance(payload, dict) or not isinstance(payload.get('prompt'), str):
+                    return _block_prompt(a.client, 'This client did not provide a valid prompt. Retry with a short question plus the relevant excerpt.')
+                prompt = payload.get('prompt', '')
+                lines = prompt.splitlines() if isinstance(prompt, str) else []
+                if not core.prompt_is_large(prompt) or lines and lines[0].strip() == '!raw':
+                    out({}); return 0
+                try:
+                    path = core.paste_save(root, prompt)['path'].relative_to(root).as_posix()
+                    reason = (f'Prompt saved, redacted, to {path}. Send a short question plus the relevant excerpt, '
+                              f'or run `ws digest {path} --focus "<pattern>"`; put !raw alone on the first line to bypass.')
+                except (core.WsError, OSError, UnicodeError):
+                    reason = ('Prompt is too large to save in .ws/inbox/. Send a short question plus the relevant excerpt, '
+                              'or save the source as a file and run `ws digest <file> --focus "<pattern>"`; '
+                              'put !raw alone on the first line to bypass.')
+                return _block_prompt(a.client, reason)
         elif a.cmd == 'trace': out(core.trace(root, a.task))
         elif a.cmd == 'run':
             if a.action == 'import': out(core.import_codeburn(root, a.since, a.task)); return 0
