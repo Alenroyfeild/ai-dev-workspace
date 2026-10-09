@@ -1,0 +1,9 @@
+{
+  "claude-only": {"assistants": ["claude"]},
+  "codex-only": {"assistants": ["codex"]},
+  "cursor-only": {"assistants": ["cursor"]},
+  "copilot-only": {"assistants": ["copilot"]},
+  "gemini-only": {"assistants": ["gemini"]},
+  "claude+codex": {"assistants": ["claude", "codex"]},
+  "mixed": {"assistants": ["claude", "codex", "cursor", "copilot", "gemini", "ollama"]}
+}

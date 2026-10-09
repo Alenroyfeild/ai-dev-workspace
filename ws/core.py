@@ -263,7 +263,7 @@ def init(target, name, packs=(), repos=()):
         pack_manifest(pack)
     target.mkdir(parents=True, exist_ok=True)
     collisions = []
-    copy_preserving(KIT / 'template', target, collisions, skip=('AGENTS.md', 'routing.json'))
+    copy_preserving(KIT / 'template', target, collisions, skip=('AGENTS.md', 'routing.json', 'routing-presets.json'))
     from .orchestration import routing_template
     write_preserving(target / 'routing.json', routing_template().encode(), collisions)
     from . import upgrade
