@@ -390,10 +390,12 @@ def main(argv=None):
                                             capture_output=True, text=True, timeout=180)
                 except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(f'Local summary failed: {exc}')
                 if result.returncode: raise core.WsError(result.stderr.strip() or 'Local summary failed.')
-                print(result.stdout, end='' if result.stdout.endswith('\n') else '\n')
+                summary = core.redact(result.stdout)
+                print(summary, end='' if summary.endswith('\n') else '\n')
         elif a.cmd == 'paste':
             if not a.hook:
-                text = _read_limited_stdin() if not getattr(sys.stdin, 'isatty', lambda: False)() else core.clipboard_text()
+                text = _read_limited_stdin() if not getattr(sys.stdin, 'isatty', lambda: False)() else ''
+                if not text: text = core.clipboard_text()
                 if len(text.encode('utf-8')) > core.MAX_READ_BYTES:
                     raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
                 out(core.paste_save(root, text)['digest'])
