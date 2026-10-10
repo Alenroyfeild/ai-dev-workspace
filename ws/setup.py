@@ -53,6 +53,10 @@ def configure(root, assistants, preset=None, dry_run=False):
     for client in clients:
         if client in core.MCP_LOCATIONS: config_paths.append(core.MCP_LOCATIONS[client][0])
         if client in hook_paths: config_paths.append(hook_paths[client])
+    for relative in config_paths:
+        target = root / relative
+        if any(p.is_symlink() for p in (target, *target.parents) if p == root or root in p.parents):
+            raise core.WsError('Setup refuses symlinked client configuration: ' + relative)
     note = ('Restart each selected client; trust this project and approve its MCP server/hooks. '
             'Codex project hooks require trust; global MCP stays preview-only. Detection does not verify login/model access.')
     with (core.contextlib.nullcontext() if dry_run else core.lock(root)):
@@ -91,9 +95,12 @@ def configure(root, assistants, preset=None, dry_run=False):
             connections.append(dict(client=assistant, connected=False, note='Local model configuration only; no client hook adapter.'))
             continue
         try: result = core.connect(root, assistant, skills=False, verify=False)
-        except core.WsError as exc: result = dict(client=assistant, connected=False, note=str(exc))
+        except core.WsError as exc: result = dict(client=assistant, connected=False, error=True, note=str(exc))
         if assistant == 'codex' and not result.get('connected'):
             result['note'] = 'Project hooks/skills configured; MCP preview only. Review ws connect codex --write if you want global MCP configuration.'
         connections.append(result)
-    return dict(dry_run=False, preset=preset, assistants=assistants, backup=str(backup), connections=connections,
+    partial = any(c.get('error') or c.get('hooks', {}).get('collisions') or
+                  c.get('client') not in ('codex', 'ollama') and not c.get('connected') for c in connections)
+    if partial: note += ' Partial setup: resolve the reported conflicts and repeat --apply; routing backups are retained.'
+    return dict(dry_run=False, partial=partial, preset=preset, assistants=assistants, backup=str(backup), connections=connections,
                 config_paths=config_paths, note=note)
