@@ -1,0 +1,54 @@
+{
+  "renderer_dev": "a22d191",
+  "original_rollout_kit": "cbe3f68",
+  "cases": {
+    "explicit": {
+      "words": 63,
+      "decisions": {
+        "missing_email": false,
+        "invalid_email": false,
+        "recovery.py": false,
+        "login_rejected": false
+      }
+    },
+    "captured_only": {
+      "words": 141,
+      "decisions": {
+        "missing_email": true,
+        "invalid_email": true,
+        "recovery.py": true,
+        "login_rejected": true
+      }
+    },
+    "full_checkpoint": {
+      "words": 198,
+      "decisions": {
+        "missing_email": false,
+        "invalid_email": false,
+        "recovery.py": true,
+        "login_rejected": true
+      }
+    },
+    "capture_correction": {
+      "words": 182,
+      "decisions": {
+        "missing_email": false,
+        "invalid_email": false,
+        "recovery.py": false,
+        "login_rejected": false
+      }
+    }
+  },
+  "completion_brief_saved_verbatim": false,
+  "snapshot_reconstructions": {
+    "seed_1": {
+      "latest_lane_present": false,
+      "latest_receipt_present": false
+    },
+    "seed_3": {
+      "latest_lane_present": true,
+      "latest_receipt_present": true
+    }
+  },
+  "reconstruction_limit": "Sections are observed; metadata/claim timestamps are synthetic. This is not the original completion brief."
+}
