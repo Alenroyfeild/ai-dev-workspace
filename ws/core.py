@@ -2015,7 +2015,8 @@ def _protocol_health(root, configured, results=None):
                           and (check.get('step') is None or check.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status'))}
         except (WsError, OSError, ValueError, TypeError):
             pass
-    state = {client: checks.get(client, {'status': 'not_run' if is_configured else 'not_configured'})
+    state = {client: (checks.get(client, {'status': 'not_run'}) if is_configured
+                      else {'status': 'not_configured'})
              for client, is_configured in configured.items()}
     return state, date
 

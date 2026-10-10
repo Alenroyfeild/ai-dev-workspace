@@ -164,6 +164,13 @@ class SkillDuplicateTests(Base):
         self.assertEqual(later['protocol_checks']['claude']['status'], 'failed')
         self.assertEqual(later['protocol_checks']['claude']['step'], 'launch')
 
+    def test_disconnected_client_overrides_its_saved_protocol_result(self):
+        self.assertEqual(core.doctor(self.root, mcp=True)['protocol_checks']['claude']['status'], 'passed')
+        (self.root / '.mcp.json').unlink()
+        report = core.doctor(self.root)
+        self.assertFalse(report['configured_clients']['claude'])
+        self.assertEqual(report['protocol_checks']['claude']['status'], 'not_configured')
+
     def test_doctor_lists_role_bindings_and_path_availability(self):
         def executable(name): return '/fake/' + name if name == 'codex' else None
         with mock.patch.object(core.shutil, 'which', side_effect=executable), \
