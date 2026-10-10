@@ -20,9 +20,9 @@ from ws import core
 CLAUDE_ENV_KEYS = ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'SHELL', 'TERM')
 
 
-def claude_environment(workspace=None):
+def claude_environment(home, workspace=None):
     env = {key: os.environ[key] for key in CLAUDE_ENV_KEYS if key in os.environ}
-    env.setdefault('HOME', str(Path.home()))
+    env['HOME'] = str(home)
     env['PATH'] = str(KIT / 'bin') + os.pathsep + env.get('PATH', '')
     env.update(WS_OFFLINE='1', PYTHONDONTWRITEBYTECODE='1')
     if workspace: env['WS_ROOT'] = str(workspace)
@@ -81,7 +81,7 @@ def session(root, prompt, provider, model, workspace, auth):
         (codex / 'config.toml').write_text('[projects.' + json.dumps(str(root)) + ']\ntrust_level="trusted"\n')
         if provider == 'claude':
             # Claude hooks inherit only these non-secret variables.
-            env = claude_environment(root if workspace else None)
+            env = claude_environment(home, root if workspace else None)
         else:
             env = dict(os.environ, HOME=str(home), CODEX_HOME=str(codex), PATH=str(KIT / 'bin') + os.pathsep + os.environ['PATH'], WS_OFFLINE='1')
             env.pop('WS_ROOT', None)

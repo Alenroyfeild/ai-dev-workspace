@@ -19,9 +19,10 @@ def usage(events, exit_code, prior=None):
     return metrics
 
 
-def claude_session(root, prompt, workspace, resume=None):
+def claude_session(root, home, prompt, workspace, resume=None):
     """Use an allowlisted environment and strict project-only settings."""
-    env = run.claude_environment(root if workspace else None)
+    home.mkdir(parents=True, exist_ok=True)
+    env = run.claude_environment(home, root if workspace else None)
     version = subprocess.run(['claude', '--version'], env=env, capture_output=True, text=True, timeout=15)
     match = re.search(r'\b(\d+)\.(\d+)\.(\d+)\b', version.stdout)
     if version.returncode or not match or tuple(map(int, match.groups())) < (2, 1, 285):
@@ -59,7 +60,7 @@ def claude_session(root, prompt, workspace, resume=None):
 
 
 def session(root, home, prompt, workspace, auth, resume=None, prior=None):
-    if os.environ.get('WS_BENCH_PROVIDER') == 'claude': return claude_session(root, prompt, workspace, resume)
+    if os.environ.get('WS_BENCH_PROVIDER') == 'claude': return claude_session(root, home, prompt, workspace, resume)
     codex = home / '.codex'; codex.mkdir(parents=True, exist_ok=True)
     if not (codex / 'auth.json').exists() and auth.is_file(): (codex / 'auth.json').symlink_to(auth)
     (codex / 'config.toml').write_text('[projects.' + json.dumps(str(root)) + ']\ntrust_level="trusted"\n')
