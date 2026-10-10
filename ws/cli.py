@@ -250,7 +250,11 @@ def main(argv=None):
 
     s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker')
     s = sub.add_parser('release', help='release a task claim'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
-    s = sub.add_parser('checkpoint', help='save task status and next action'); s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
+    valid_notes = ', '.join(core.NOTE_SECTIONS)
+    s = sub.add_parser('checkpoint', help='save task status and next action',
+                       description='Save task status, next action, and optional notes.',
+                       epilog='Valid note sections: ' + valid_notes)
+    s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
     s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
 
