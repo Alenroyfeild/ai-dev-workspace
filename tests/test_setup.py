@@ -21,20 +21,34 @@ class SetupTests(Base):
             result = cli.main(['--workspace-root', str(self.root), 'setup', *args])
         self.assertEqual(result, 0); return json.loads(output.getvalue())
 
+    def test_preview_is_read_only_and_reports_paths_then_apply_uses_vscode_alias(self):
+        before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        with mock.patch.object(core, 'connect', side_effect=AssertionError('preview must not connect')):
+            report = self.run_setup('--assistants', 'copilot')
+        self.assertTrue(report['dry_run'])
+        self.assertEqual(before, {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})
+        self.assertIn('.vscode/mcp.json', report['config_paths'])
+        self.assertIn('trust', report['note'].lower())
+        report = self.run_setup('--assistants', 'vscode', '--apply')
+        self.assertEqual(report['preset'], 'copilot-only')
+        self.assertTrue(core.client_connected(self.root, 'vscode'))
+        self.assertEqual((self.root / '.mcp.json').read_bytes(), before[Path('.mcp.json')])
+        self.assertTrue((self.root / '.github/hooks/ai-dev-workspace.json').exists())
+
     def test_flags_preserve_user_data_connect_selected_and_show_doctor_preset(self):
         path = self.root / 'routing.json'; data = json.loads(path.read_text())
         data['user_note'] = 'Keep Unicode Ω and spacing'; data['role_overrides']['worker'] = {'effort': 'low'}
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=3) + '\n'); before = path.read_bytes()
+        path.write_bytes((json.dumps(data, ensure_ascii=False, indent=3) + '\n').replace('\n', '\r\n').encode()); before = path.read_bytes()
         with mock.patch.object(core.shutil, 'which', return_value=None), mock.patch.object(core, '_has_app', return_value=False), \
                 mock.patch.object(core, 'connect', return_value={'connected': True}) as connect:
-            report = self.run_setup('--assistants', 'codex')
+            report = self.run_setup('--assistants', 'codex', '--apply')
         self.assertEqual(report['preset'], 'codex-only')
         self.assertEqual(connect.call_args.args[:2], (self.root.resolve(), 'codex'))
         self.assertFalse(connect.call_args.kwargs.get('skills', True))
         updated = json.loads(path.read_text())
         self.assertEqual(updated['user_note'], data['user_note']); self.assertEqual(updated['role_overrides'], data['role_overrides'])
         self.assertIn('"user_note": "Keep Unicode Ω and spacing"', path.read_text())
-        self.assertEqual(before.decode()[before.decode().index('"user_note"'):], path.read_text()[path.read_text().index('"user_note"'):])
+        self.assertEqual(before[before.index(b'"user_note"'):], path.read_bytes()[path.read_bytes().index(b'"user_note"'):])
         backups = list((self.root / '.ws/backups').rglob('routing.json')); self.assertEqual(backups[0].read_bytes(), before)
         self.assertEqual(core.doctor(self.root)['setup']['preset'], 'codex-only')
         self.assertFalse((self.home / '.codex/config.toml').exists())
@@ -42,10 +56,10 @@ class SetupTests(Base):
     def test_interactive_asks_which_assistants_and_copilot_uses_project_mcp(self):
         with mock.patch.object(core.shutil, 'which', return_value=None), mock.patch.object(core, '_has_app', return_value=False), \
                 mock.patch('builtins.input', return_value='copilot') as ask, mock.patch.object(cli.sys.stdin, 'isatty', return_value=True):
-            report = self.run_setup()
+            report = self.run_setup('--apply')
         ask.assert_called_once(); self.assertEqual(report['preset'], 'copilot-only')
-        self.assertTrue(report['connections'][0]['connected']); self.assertTrue(core.client_connected(self.root, 'copilot'))
-        self.assertNotIn('hooks', report['connections'][0])
+        self.assertTrue(report['connections'][0]['connected']); self.assertTrue(core.client_connected(self.root, 'vscode'))
+        self.assertIn('hooks', report['connections'][0])
 
     def test_invalid_choice_and_unselected_override_leave_workspace_unchanged(self):
         from ws import setup

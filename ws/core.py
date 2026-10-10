@@ -445,11 +445,11 @@ def mcp_command(root):
 
 # Project MCP config per client: (file, key holding the server map).
 MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
-                 'copilot': ('.mcp.json', 'mcpServers'),
                  'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
 
 
 def client_connected(root, client):
+    if client == 'copilot': client = 'vscode'
     if client == 'codex':
         path = Path.home() / '.codex/config.toml'
         text = path.read_text(encoding='utf-8') if path.is_file() else ''
@@ -502,6 +502,7 @@ def link_skills(client, root):
 
 
 def connect(root, client, write=False, skills=False, verify=False):
+    if client == 'copilot': client = 'vscode'
     if client == 'gemini':
         # Gemini keeps MCP servers and hooks in one settings file: merge both, touching only our entries.
         return dict(_connect_gemini(root), **({'mcp': mcp_doctor(root, ('gemini',))[0]} if verify else {}))
@@ -548,8 +549,8 @@ def _connect_gemini(root):
 
 
 def _connect_config(root, client, write=False):
-    if client not in ('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'):
-        raise WsError('Client must be claude, codex, cursor, copilot, vscode or gemini.')
+    if client not in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
+        raise WsError('Client must be claude, codex, cursor, vscode or gemini.')
     if write and client != 'codex':
         raise WsError('--write applies only to the Codex global configuration.')
     server = mcp_command(root)
