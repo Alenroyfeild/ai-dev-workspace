@@ -242,6 +242,9 @@ def main(argv=None):
     s.add_argument('--assistants', help='comma-separated assistants; no client is launched')
     s.add_argument('--preset', help='routing preset name')
     s.add_argument('--detect', action='store_true', help='read-only CLI/app detection, no workspace needed')
+    choice = s.add_mutually_exclusive_group()
+    choice.add_argument('--dry-run', action='store_true', help='preview only (default)')
+    choice.add_argument('--apply', action='store_true', help='apply the previewed preset and project connections')
 
     t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
     s = t.add_parser('new'); s.add_argument('id'); s.add_argument('title')
@@ -368,7 +371,7 @@ def main(argv=None):
                 print('Detected: ' + (', '.join(detected) or 'none') + '. Login/model access is not checked.', file=sys.stderr)
                 selected = [name.strip().lower() for name in input('Which assistants do you use? (comma-separated names): ').split(',')]
             else: raise core.WsError('Non-interactive setup needs --assistants a,b or --preset NAME.')
-            out(setup.configure(root, selected, a.preset)); return 0
+            out(setup.configure(root, selected, a.preset, dry_run=not a.apply)); return 0
         if a.cmd == 'route':
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2

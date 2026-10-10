@@ -1,5 +1,6 @@
 """Assistant selection; read-only detection and explicit project configuration."""
 import json
+import difflib
 from pathlib import Path
 from . import core, orchestration, upgrade
 
@@ -35,9 +36,10 @@ def selection_json(text, values):
     return text
 
 
-def configure(root, assistants, preset=None):
+def configure(root, assistants, preset=None, dry_run=False):
     if not isinstance(assistants, list) or not assistants or any(not isinstance(name, str) for name in assistants):
         raise core.WsError('Choose assistants with --assistants a,b.')
+    assistants = list(dict.fromkeys('copilot' if name == 'vscode' else name for name in assistants))
     preset = preset or (assistants[0] + '-only' if len(assistants) == 1 and assistants[0] != 'ollama' else
                         'claude+codex' if set(assistants) == {'claude', 'codex'} else 'mixed')
     if preset == 'claude+codex': assistants = ['claude', 'codex']
@@ -45,8 +47,16 @@ def configure(root, assistants, preset=None):
     path = root / 'routing.json'
     for target in (path, root / 'workspace.json', root / '.ws', root / '.ws/backups'):
         if target.is_symlink(): raise core.WsError('Setup refuses symlinked configuration/backups.')
-    with core.lock(root):
-        original = core.read_text(path, [root]) if path.exists() else None
+    clients = ['vscode' if name == 'copilot' else name for name in assistants]
+    config_paths = ['routing.json', 'workspace.json']
+    hook_paths = {'codex': '.codex/hooks.json', 'cursor': '.cursor/hooks.json', 'vscode': '.github/hooks/ai-dev-workspace.json'}
+    for client in clients:
+        if client in core.MCP_LOCATIONS: config_paths.append(core.MCP_LOCATIONS[client][0])
+        if client in hook_paths: config_paths.append(hook_paths[client])
+    note = ('Restart each selected client; trust this project and approve its MCP server/hooks. '
+            'Codex project hooks require trust; global MCP stays preview-only. Detection does not verify login/model access.')
+    with (core.contextlib.nullcontext() if dry_run else core.lock(root)):
+        original = path.read_bytes().decode('utf-8') if path.exists() else None
         if original is not None:
             existing = json.loads(original)
             if not isinstance(existing, dict) or not isinstance(existing.get('role_overrides', {}), dict):
@@ -62,13 +72,21 @@ def configure(root, assistants, preset=None):
             desired = json.loads(candidate)
             candidate = selection_json(merged, {name: desired[name] for name in ('preset', 'assistants', 'delegation_mode')})
         cfg = core.config(root); updated = dict(cfg, routing_preset=preset, assistants=assistants)
+        metadata = (root / 'workspace.json').read_bytes().decode('utf-8')
+        if dry_run:
+            changes = [dict(path=name, diff=core.redact(''.join(difflib.unified_diff(
+                old.splitlines(True), new.splitlines(True), fromfile=name, tofile=name))))
+                for name, old, new in (('routing.json', original or '', candidate),
+                                       ('workspace.json', metadata, json.dumps(updated, indent=2) + '\n')) if old != new]
+            return dict(dry_run=True, preset=preset, assistants=assistants, config_paths=config_paths,
+                        changes=changes, clients=clients, note=note + ' Preview only; repeat with --apply to configure these paths.')
         backup = root / '.ws/backups' / (core.now().replace(':', '').replace('+', '-') + '-' + core.uuid.uuid4().hex[:6])
-        for source, text in ((path, original), (root / 'workspace.json', core.read_text(root / 'workspace.json', [root]))):
+        for source, text in ((path, original), (root / 'workspace.json', metadata)):
             if text is not None: core.atomic_write(backup / source.name, text)
         core.atomic_write(path, candidate)
         core.atomic_write(root / 'workspace.json', json.dumps(updated, indent=2) + '\n')
     connections = []
-    for assistant in assistants:
+    for assistant in clients:
         if assistant == 'ollama':
             connections.append(dict(client=assistant, connected=False, note='Local model configuration only; no client hook adapter.'))
             continue
@@ -76,7 +94,6 @@ def configure(root, assistants, preset=None):
         except core.WsError as exc: result = dict(client=assistant, connected=False, note=str(exc))
         if assistant == 'codex' and not result.get('connected'):
             result['note'] = 'Project hooks/skills configured; MCP preview only. Review ws connect codex --write if you want global MCP configuration.'
-        if assistant == 'copilot': result['note'] = 'Copilot CLI: project rules plus MCP only; no lifecycle capture configured.'
         connections.append(result)
-    return dict(preset=preset, assistants=assistants, backup=str(backup), connections=connections,
-                note='Restart and trust the workspace in each selected client. Detection does not verify login/model access.')
+    return dict(dry_run=False, preset=preset, assistants=assistants, backup=str(backup), connections=connections,
+                config_paths=config_paths, note=note)
