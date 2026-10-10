@@ -28,7 +28,10 @@ def create(root, data):
         path = repo / name
         if Path(name).is_absolute() or '..' in Path(name).parts: raise ValueError('Fixture paths must stay in repo.')
         path.parent.mkdir(parents=True, exist_ok=True); path.write_text(text)
-    command(['git', 'init', '-q'], repo); command(['git', 'add', '.'], repo)
+    command(['git', 'init', '-q'], repo)
+    command(['git', 'config', 'maintenance.auto', 'false'], repo)
+    command(['git', 'config', 'gc.auto', '0'], repo)
+    command(['git', 'add', '.'], repo)
     command(['git', '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture'], repo)
 
 
