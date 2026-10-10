@@ -125,9 +125,9 @@ def text_doctor(report):
     lines = [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
-    clients = report.get('clients', {})
+    clients = report.get('configured_clients', {})
     if clients:
-        lines.append('Connected clients: ' + (', '.join(name for name, connected in clients.items() if connected) or 'none'))
+        lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
     goals = report.get('codex_goals')
     if goals:
         lines.append(f"Codex goals: {goals['active']} active, {goals['complete']} complete" if 'active' in goals
@@ -136,7 +136,13 @@ def text_doctor(report):
     lines.extend(f'Team: {warning}' for warning in report.get('team', {}).get('warnings', []))
     health = report.get('capture_health')
     if health:
-        lines.append('Last capture: ' + ' / '.join(health.get(key, 'unknown') for key in ('date', 'client', 'outcome', 'reason')))
+        lines.append(f"Last capture outcome: {health.get('outcome', 'unknown')} "
+                     f"({health.get('client', 'unknown')}, {health.get('date', 'unknown')}; {health.get('reason', 'unknown')})")
+    checks = report.get('protocol_checks', {})
+    if checks:
+        rendered = [f"{name}={value['status']}" + (f" ({value['step']})" if value.get('step') else '')
+                    for name, value in checks.items()]
+        lines.append('Last protocol check: ' + ', '.join(rendered))
     routes = report.get('routes', {})
     if routes:
         rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"

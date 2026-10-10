@@ -42,7 +42,7 @@ class CaptureHealthTests(Base):
         self.assertNotIn('private transcript', diagnostic)
         self.assertNotIn(str(path), diagnostic)
         out = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'doctor', '--text'], cwd=self.root, capture_output=True, text=True)
-        self.assertIn('Last capture:', out.stdout)
+        self.assertIn('Last capture outcome:', out.stdout)
         self.assertIn('unchanged', out.stdout)
 
     def test_missing_transcript_and_idle_session(self):

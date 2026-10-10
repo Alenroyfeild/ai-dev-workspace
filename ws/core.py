@@ -2065,8 +2065,11 @@ def doctor(root=None, mcp=False):
         report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
         team = _team_checks(root)
         if team is not None: report['team'] = team
-        report['clients'] = {client: client_connected(root, client)
-                             for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
+        report['configured_clients'] = {client: client_connected(root, client)
+                                        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
+        report['protocol_checks'] = {
+            client: {'status': 'not_run' if configured else 'not_configured'}
+            for client, configured in report['configured_clients'].items()}
         report['client_instructions'] = {
             name: {'path': path, 'present': (root / path).is_file()}
             for name, path in (('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md'))}
@@ -2086,6 +2089,10 @@ def doctor(root=None, mcp=False):
                                                   for name in sorted(project_names & user_names))
         if mcp:
             report['mcp'] = mcp_doctor(root)
+            for check in report['mcp']:
+                report['protocol_checks'][check['client']] = {
+                    'status': 'passed' if check['ok'] else 'failed',
+                    **({'step': check['step']} if not check['ok'] else {})}
     return report
 
 
