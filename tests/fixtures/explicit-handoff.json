@@ -1,0 +1,15 @@
+{
+  "source": "reviews/evidence/personas-transcript.json",
+  "persona": "cursor",
+  "argv": [
+    "checkpoint",
+    "APP-1",
+    "--status",
+    "in_progress",
+    "--next",
+    "Reject empty email; run app tests",
+    "--note",
+    "Handoff=Return False for empty email; do not add a dependency."
+  ],
+  "exit": 0
+}
