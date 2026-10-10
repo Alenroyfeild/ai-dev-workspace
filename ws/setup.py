@@ -97,7 +97,8 @@ def configure(root, assistants, preset=None, dry_run=False):
         try: result = core.connect(root, assistant, skills=False, verify=False)
         except core.WsError as exc: result = dict(client=assistant, connected=False, error=True, note=str(exc))
         if assistant == 'codex' and not result.get('connected'):
-            result['note'] = 'Project hooks/skills configured; MCP preview only. Review ws connect codex --write if you want global MCP configuration.'
+            if not result.get('error'):
+                result['note'] = 'Project hooks configured; MCP preview only. Review ws connect codex --write if you want global MCP configuration.'
         connections.append(result)
     partial = any(c.get('error') or c.get('hooks', {}).get('collisions') or
                   c.get('client') not in ('codex', 'ollama') and not c.get('connected') for c in connections)

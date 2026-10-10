@@ -54,6 +54,13 @@ class SetupTests(Base):
         self.assertEqual(code, 2)
         self.assertTrue(json.loads(output.getvalue())['partial'])
 
+    def test_codex_failure_keeps_the_actionable_error(self):
+        from ws import setup
+        with mock.patch.object(core, 'connect', side_effect=core.WsError('Fixture hook conflict')):
+            report = setup.configure(self.root, ['codex'])
+        self.assertIn('Fixture hook conflict', report['connections'][0]['note'])
+        self.assertTrue(report['partial'])
+
     def test_flags_preserve_user_data_connect_selected_and_show_doctor_preset(self):
         path = self.root / 'routing.json'; data = json.loads(path.read_text())
         data['user_note'] = 'Keep Unicode Ω and spacing'; data['role_overrides']['worker'] = {'effort': 'low'}
