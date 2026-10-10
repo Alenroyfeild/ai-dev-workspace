@@ -142,7 +142,8 @@ def text_doctor(report):
     if checks:
         rendered = [f"{name}={value['status']}" + (f" ({value['step']})" if value.get('step') else '')
                     for name, value in checks.items()]
-        lines.append('Last protocol check: ' + ', '.join(rendered))
+        date = report.get('protocol_check_date', 'unknown')
+        lines.append('Last protocol check: ' + ', '.join(rendered) + f' (date: {date})')
     routes = report.get('routes', {})
     if routes:
         rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"

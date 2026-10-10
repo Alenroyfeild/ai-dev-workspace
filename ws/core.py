@@ -1985,6 +1985,41 @@ def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
     return checks
 
 
+def _protocol_health(root, configured, results=None):
+    """Return the last safe MCP protocol result, recording only when a check was run."""
+    path = inside(root / '.ws/protocol-health.json', [root])
+    checks = {}
+    date = 'not_run'
+    if results is not None:
+        date = now()
+        for result in results:
+            client = result.get('client')
+            if client not in configured:
+                continue
+            status = 'passed' if result.get('ok') else 'failed'
+            check = {'status': status}
+            if status == 'failed' and result.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status'):
+                check['step'] = result['step']
+            checks[client] = check
+        with lock(root):
+            atomic_write(path, json.dumps({'date': date, 'checks': checks}, sort_keys=True) + '\n')
+    else:
+        try:
+            saved = json.loads(read_text(path, [root]))
+            if (isinstance(saved, dict) and re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00', saved.get('date', ''))
+                    and isinstance(saved.get('checks'), dict)):
+                date = saved['date']
+                checks = {client: check for client, check in saved['checks'].items()
+                          if client in configured and isinstance(check, dict)
+                          and check.get('status') in ('passed', 'failed')
+                          and (check.get('step') is None or check.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status'))}
+        except (WsError, OSError, ValueError, TypeError):
+            pass
+    state = {client: checks.get(client, {'status': 'not_run' if is_configured else 'not_configured'})
+             for client, is_configured in configured.items()}
+    return state, date
+
+
 def _git(root, *args):
     return subprocess.run(['git', '-C', str(root), *args], capture_output=True, encoding='utf-8', errors='replace', timeout=10)
 
@@ -2067,9 +2102,8 @@ def doctor(root=None, mcp=False):
         if team is not None: report['team'] = team
         report['configured_clients'] = {client: client_connected(root, client)
                                         for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
-        report['protocol_checks'] = {
-            client: {'status': 'not_run' if configured else 'not_configured'}
-            for client, configured in report['configured_clients'].items()}
+        report['protocol_checks'], report['protocol_check_date'] = _protocol_health(
+            root, report['configured_clients'])
         report['client_instructions'] = {
             name: {'path': path, 'present': (root / path).is_file()}
             for name, path in (('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md'))}
@@ -2089,10 +2123,8 @@ def doctor(root=None, mcp=False):
                                                   for name in sorted(project_names & user_names))
         if mcp:
             report['mcp'] = mcp_doctor(root)
-            for check in report['mcp']:
-                report['protocol_checks'][check['client']] = {
-                    'status': 'passed' if check['ok'] else 'failed',
-                    **({'step': check['step']} if not check['ok'] else {})}
+            report['protocol_checks'], report['protocol_check_date'] = _protocol_health(
+                root, report['configured_clients'], report['mcp'])
     return report
 
 

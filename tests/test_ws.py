@@ -148,6 +148,21 @@ class SkillDuplicateTests(Base):
         report = core.doctor(self.root, mcp=True)
         self.assertTrue(report['configured_clients']['claude'])
         self.assertEqual(report['protocol_checks']['claude']['status'], 'passed')
+        self.assertNotEqual(report['protocol_check_date'], 'not_run')
+        self.assertEqual(core.doctor(self.root)['protocol_checks']['claude']['status'], 'passed')
+
+    def test_doctor_retains_failed_protocol_check_without_unconfiguring_client(self):
+        failure = [{'client': 'claude', 'config': '.mcp.json', 'ok': False, 'step': 'launch', 'stderr': 'missing'}]
+        with mock.patch.object(core, 'mcp_doctor', return_value=failure):
+            checked = core.doctor(self.root, mcp=True)
+        self.assertTrue(checked['configured_clients']['claude'])
+        self.assertEqual(checked['protocol_checks']['claude']['status'], 'failed')
+        self.assertEqual(checked['protocol_checks']['claude']['step'], 'launch')
+        self.assertNotEqual(checked['protocol_check_date'], 'not_run')
+        later = core.doctor(self.root)
+        self.assertTrue(later['configured_clients']['claude'])
+        self.assertEqual(later['protocol_checks']['claude']['status'], 'failed')
+        self.assertEqual(later['protocol_checks']['claude']['step'], 'launch')
 
     def test_doctor_lists_role_bindings_and_path_availability(self):
         def executable(name): return '/fake/' + name if name == 'codex' else None
