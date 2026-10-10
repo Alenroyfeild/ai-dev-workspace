@@ -1,12 +1,14 @@
 """Isolated Codex transport for the explicitly invoked continuity benchmark."""
 import json
 import os
+import re
 import signal
 import subprocess
 import tempfile
 import time
 from pathlib import Path
 from bench import run
+from ws import core
 
 
 def usage(events, exit_code, prior=None):
@@ -17,7 +19,48 @@ def usage(events, exit_code, prior=None):
     return metrics
 
 
+def claude_session(root, home, prompt, workspace, resume=None):
+    """Use an allowlisted environment and strict project-only settings."""
+    home.mkdir(parents=True, exist_ok=True)
+    env = run.claude_environment(home, root if workspace else None)
+    version = subprocess.run(['claude', '--version'], env=env, capture_output=True, text=True, timeout=15)
+    match = re.search(r'\b(\d+)\.(\d+)\.(\d+)\b', version.stdout)
+    if version.returncode or not match or tuple(map(int, match.groups())) < (2, 1, 285):
+        raise RuntimeError('Claude benchmark needs Claude Code >= 2.1.285 for strict isolation; no fallback or install.')
+    policy = {'permissions': {'blockReadsOutsideWorkingDirectories': True}, 'disableClaudeAiConnectors': True,
+              'sandbox': {'enabled': True, 'failIfUnavailable': True, 'allowUnsandboxedCommands': False, 'autoAllowBashIfSandboxed': False,
+                          'filesystem': {'allowRead': [str(run.KIT)]},
+                          'credentials': {'envVars': [{'name': 'ANTHROPIC_API_KEY', 'mode': 'deny'}]}}}
+    mcp = root / '.mcp.json'
+    if workspace and not mcp.is_file(): raise RuntimeError('Workspace benchmark requires its MCP config; no empty-config fallback.')
+    servers = {'mcpServers': {'ai-dev-workspace': core.mcp_command(root)}} if workspace else {'mcpServers': {}}
+    if workspace and json.loads(core.read_text(mcp, [root])) != servers:
+        raise RuntimeError('Workspace MCP config changed; only the trusted kit server is permitted.')
+    tools = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash(python3 *)', 'Bash(git *)'] + (['Skill', 'Bash(ws *)', 'mcp__ai-dev-workspace__*'] if workspace else [])
+    args = ['claude', '-p', prompt] + (['--resume', resume] if resume else []) + [
+        '--setting-sources', 'project', '--strict-mcp-config', '--mcp-config', json.dumps(servers),
+        '--settings', json.dumps(policy), '--tools', 'Read,Grep,Glob,Edit,Write,Bash' + (',Skill' if workspace else ''),
+        '--permission-mode', 'acceptEdits', '--allowedTools', *tools, '--max-turns', '40', '--model', 'sonnet', '--output-format', 'stream-json', '--verbose']
+    start = time.monotonic()
+    process = subprocess.Popen(args, cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try: output, _ = process.communicate(timeout=600)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL); process.communicate()
+        return {'completed': False, 'seconds': time.monotonic()-start}, '', None
+    except KeyboardInterrupt:
+        os.killpg(process.pid, signal.SIGKILL); process.communicate(); raise
+    events = []
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+            if isinstance(event, dict): events.append(event)
+        except ValueError: pass
+    result = next((e for e in reversed(events) if e.get('type') == 'result'), {})
+    return dict(run.metrics('claude', events, process.returncode), seconds=round(time.monotonic()-start, 2)), result.get('result') or '', result.get('session_id', resume)
+
+
 def session(root, home, prompt, workspace, auth, resume=None, prior=None):
+    if os.environ.get('WS_BENCH_PROVIDER') == 'claude': return claude_session(root, home, prompt, workspace, resume)
     codex = home / '.codex'; codex.mkdir(parents=True, exist_ok=True)
     if not (codex / 'auth.json').exists() and auth.is_file(): (codex / 'auth.json').symlink_to(auth)
     (codex / 'config.toml').write_text('[projects.' + json.dumps(str(root)) + ']\ntrust_level="trusted"\n')
@@ -44,4 +87,3 @@ def session(root, home, prompt, workspace, auth, resume=None, prior=None):
     messages = [e['item'].get('text', '') for e in events if e.get('type') == 'item.completed' and e.get('item', {}).get('type') == 'agent_message']
     thread = next((e['thread_id'] for e in events if e.get('type') == 'thread.started'), resume)
     return dict(usage(events, process.returncode, prior), seconds=round(time.monotonic()-start, 2)), '\n'.join(messages), thread
-

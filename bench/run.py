@@ -17,6 +17,17 @@ KIT = HERE.parent
 sys.path.insert(0, str(KIT))
 from ws import core
 
+CLAUDE_ENV_KEYS = ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'SHELL', 'TERM')
+
+
+def claude_environment(home, workspace=None):
+    env = {key: os.environ[key] for key in CLAUDE_ENV_KEYS if key in os.environ}
+    env['HOME'] = str(home)
+    env['PATH'] = str(KIT / 'bin') + os.pathsep + env.get('PATH', '')
+    env.update(WS_OFFLINE='1', PYTHONDONTWRITEBYTECODE='1')
+    if workspace: env['WS_ROOT'] = str(workspace)
+    return env
+
 
 def command(args, cwd):
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=True)
@@ -71,10 +82,13 @@ def session(root, prompt, provider, model, workspace, auth):
         home = Path(temporary); codex = home / '.codex'; codex.mkdir()
         if auth.is_file(): (codex / 'auth.json').symlink_to(auth)
         (codex / 'config.toml').write_text('[projects.' + json.dumps(str(root)) + ']\ntrust_level="trusted"\n')
-        # Claude's sign-in is tied to the real HOME; its isolation is project-only settings plus strict MCP below.
-        env = dict(os.environ, HOME=str(home) if provider == 'codex' else os.environ['HOME'], CODEX_HOME=str(codex), PATH=str(KIT / 'bin') + os.pathsep + os.environ['PATH'], WS_OFFLINE='1')
-        env.pop('WS_ROOT', None)
-        if workspace: env['WS_ROOT'] = str(root)
+        if provider == 'claude':
+            # Claude hooks inherit only these non-secret variables.
+            env = claude_environment(home, root if workspace else None)
+        else:
+            env = dict(os.environ, HOME=str(home), CODEX_HOME=str(codex), PATH=str(KIT / 'bin') + os.pathsep + os.environ['PATH'], WS_OFFLINE='1')
+            env.pop('WS_ROOT', None)
+            if workspace: env['WS_ROOT'] = str(root)
         if provider == 'codex':
             args = ['codex', 'exec', '--json', '--dangerously-bypass-hook-trust', '--disable', 'apps', '--disable', 'plugins', '--enable' if workspace else '--disable', 'hooks', '-s', 'workspace-write', '-c', 'approval_policy="never"', '-m', model, '-c', 'model_reasoning_effort="high"', '--skip-git-repo-check', '-C', str(root), prompt]
         else:
