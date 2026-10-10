@@ -19,13 +19,9 @@ def usage(events, exit_code, prior=None):
     return metrics
 
 
-def claude_session(root, home, prompt, workspace, resume=None):
-    """Isolated settings/transcripts; recent Claude is required for strict file and shell controls."""
-    home.mkdir(parents=True, exist_ok=True)
-    env = {key: os.environ[key] for key in ('PATH', 'TMPDIR', 'LANG', 'LC_ALL', 'SHELL', 'TERM', 'ANTHROPIC_API_KEY') if key in os.environ}
-    env.update(HOME=str(home), CLAUDE_CONFIG_DIR=str(home / '.claude'), WS_OFFLINE='1', PYTHONDONTWRITEBYTECODE='1',
-               PATH=str(run.KIT / 'bin') + os.pathsep + os.environ['PATH'])
-    if workspace: env['WS_ROOT'] = str(root)
+def claude_session(root, prompt, workspace, resume=None):
+    """Use an allowlisted environment and strict project-only settings."""
+    env = run.claude_environment(root if workspace else None)
     version = subprocess.run(['claude', '--version'], env=env, capture_output=True, text=True, timeout=15)
     match = re.search(r'\b(\d+)\.(\d+)\.(\d+)\b', version.stdout)
     if version.returncode or not match or tuple(map(int, match.groups())) < (2, 1, 285):
@@ -63,7 +59,7 @@ def claude_session(root, home, prompt, workspace, resume=None):
 
 
 def session(root, home, prompt, workspace, auth, resume=None, prior=None):
-    if os.environ.get('WS_BENCH_PROVIDER') == 'claude': return claude_session(root, home, prompt, workspace, resume)
+    if os.environ.get('WS_BENCH_PROVIDER') == 'claude': return claude_session(root, prompt, workspace, resume)
     codex = home / '.codex'; codex.mkdir(parents=True, exist_ok=True)
     if not (codex / 'auth.json').exists() and auth.is_file(): (codex / 'auth.json').symlink_to(auth)
     (codex / 'config.toml').write_text('[projects.' + json.dumps(str(root)) + ']\ntrust_level="trusted"\n')
