@@ -1,17 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.3 (unreleased)
+
+### Proven
+- In this small-n rollout check, workspace runs passed 4/5, Markdown-only runs 3/5, and the baseline 0/5; four attempts were inconclusive. See [the method and limitations](docs/MEASUREMENTS.md).
 
 ### New
-- Shared workspaces now show branch-matched tasks and teammates' claims; `ws doctor` detects conflicting task records and likely secrets in working or staged notes.
-- Session briefs keep explicit Handoff decisions, and `ws doctor` separates configured clients from the last MCP check and capture outcome.
-- `ws setup` previews assistant selections and project connections, preserves routing choices, and reports actionable setup failures.
-- Setup guidance now distinguishes live-proven clients from documented, untested integrations; README, TEAM and SETUP quick-start commands run in throwaway smoke tests.
-- `ws checkpoint --help` and invalid-note errors list the note sections you can use.
+- `ws setup` previews assistant choices and project connections before applying them, and reports setup failures with next steps.
+- Shared workspaces show tasks and claims matched to the current branch and flag conflicting task records.
+- Session briefs carry an explicit saved handoff decision into the next session.
+- `ws doctor --mcp` checks configured clients; `ws doctor` shows configuration separately from the latest protocol check and capture outcome.
+- Maintainers can read recent repository stars, clones and page views in the activity report.
 
 ### Fixed
-- TEAM claim instructions now use the supported `--worker` option, and benchmark fixture snapshots no longer race Git's automatic maintenance lock on macOS.
-- Task memory and briefs handle shared-branch conflicts and preserve saved decisions across fresh sessions.
+- Task records preserve CRLF line endings, and team claims and conflicts remain readable across shared work.
+- The Claude rollout benchmark uses a per-trial home and allowlisted environment so shell credentials and user settings are not passed into project hooks. API-key-only authentication and live Claude runs were not verified.
+- The benchmark fixture no longer races Git's automatic maintenance lock on macOS.
+- TEAM claim examples and checkpoint help now match the supported commands and note sections; README, TEAM and SETUP quick-start commands are smoke-tested in throwaway workspaces.
 
 ## 0.1.0-beta.2 (2026-10-09)
 
