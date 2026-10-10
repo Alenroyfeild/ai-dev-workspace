@@ -371,7 +371,8 @@ def main(argv=None):
                 print('Detected: ' + (', '.join(detected) or 'none') + '. Login/model access is not checked.', file=sys.stderr)
                 selected = [name.strip().lower() for name in input('Which assistants do you use? (comma-separated names): ').split(',')]
             else: raise core.WsError('Non-interactive setup needs --assistants a,b or --preset NAME.')
-            out(setup.configure(root, selected, a.preset, dry_run=not a.apply)); return 0
+            result = setup.configure(root, selected, a.preset, dry_run=not a.apply)
+            out(result); return 2 if result.get('partial') else 0
         if a.cmd == 'route':
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2

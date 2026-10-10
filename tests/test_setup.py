@@ -3,6 +3,7 @@ import io
 import json
 import os
 import tempfile
+import unittest
 from pathlib import Path
 from unittest import mock
 from test_ws import Base
@@ -34,6 +35,24 @@ class SetupTests(Base):
         self.assertTrue(core.client_connected(self.root, 'vscode'))
         self.assertEqual((self.root / '.mcp.json').read_bytes(), before[Path('.mcp.json')])
         self.assertTrue((self.root / '.github/hooks/ai-dev-workspace.json').exists())
+
+    @unittest.skipIf(os.name == 'nt', 'Symlink creation requires privileges on Windows')
+    def test_client_symlink_refused_before_metadata_changes(self):
+        from ws import setup
+        (self.root / '.vscode').mkdir()
+        outside = self.home / 'user.json'; outside.write_text('{"user":"keep"}')
+        (self.root / '.vscode/mcp.json').symlink_to(outside)
+        before = (self.root / 'routing.json').read_bytes()
+        with self.assertRaises(core.WsError): setup.configure(self.root, ['copilot'])
+        self.assertEqual((self.root / 'routing.json').read_bytes(), before)
+        self.assertEqual(outside.read_text(), '{"user":"keep"}')
+
+    def test_connection_failure_reports_partial_and_cli_returns_error(self):
+        output = io.StringIO()
+        with mock.patch.object(core, 'connect', side_effect=core.WsError('Fixture conflict')), contextlib.redirect_stdout(output):
+            code = cli.main(['--workspace-root', str(self.root), 'setup', '--assistants', 'copilot', '--apply'])
+        self.assertEqual(code, 2)
+        self.assertTrue(json.loads(output.getvalue())['partial'])
 
     def test_flags_preserve_user_data_connect_selected_and_show_doctor_preset(self):
         path = self.root / 'routing.json'; data = json.loads(path.read_text())
