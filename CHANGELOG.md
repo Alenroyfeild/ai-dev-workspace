@@ -5,6 +5,7 @@
 ### New
 - Shared workspaces now show branch-matched tasks and teammates' claims; `ws doctor` detects conflicting task records and likely secrets in working or staged notes.
 - Session briefs keep explicit Handoff decisions, and `ws doctor` separates configured clients from the last MCP check and capture outcome.
+- `ws setup` previews assistant selections and project connections, preserves routing choices, and reports actionable setup failures.
 - Setup guidance now distinguishes live-proven clients from documented, untested integrations; README, TEAM and SETUP quick-start commands run in throwaway smoke tests.
 - `ws checkpoint --help` and invalid-note errors list the note sections you can use.
 
