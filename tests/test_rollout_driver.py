@@ -13,6 +13,61 @@ from ws import core
 
 
 class RolloutDriverTests(unittest.TestCase):
+    def test_decisions_driver_saves_two_failed_completions_before_stopping(self):
+        from bench import run
+        with tempfile.TemporaryDirectory() as d:
+            output = Path(d) / 'decisions.json'
+            completed = {'completed': True}; failed = {'completed': False}
+            with mock.patch('sys.argv', ['bench/run.py', '-n', '3', '--output', str(output)]), \
+                    mock.patch.object(run.shutil, 'which', return_value='fake-codex'), \
+                    mock.patch.object(run, 'command', return_value=SimpleNamespace(stdout='fixture')), \
+                    mock.patch.object(run, 'create', side_effect=lambda root, data: root.mkdir()), \
+                    mock.patch.object(run, 'prepare_snapshot'), \
+                    mock.patch.object(run, 'score', return_value={'tests_pass': False, 'checks': {}}), \
+                    mock.patch.object(run, 'session', side_effect=[completed, failed.copy(), failed.copy()]) as worker, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(RuntimeError, 'two consecutive transport failures'): run.main()
+            self.assertEqual(worker.call_count, 3)
+            result = json.loads(output.read_text())
+            self.assertEqual(len(result['runs']), 2)
+            self.assertFalse(any(row['success'] for row in result['runs']))
+
+    def test_two_failed_transports_stop_and_keep_both_attempts(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=5, seed=42, output=Path(d) / 'result.json')
+            benchmark = SimpleNamespace(seed=lambda n: n,
+                trial=mock.Mock(side_effect=lambda *a: {'result': 'inconclusive', 'calls': [{'completed': False, 'exit_code': 1}]}),
+                run=SimpleNamespace(KIT=Path(d), command=lambda *a: SimpleNamespace(stdout='fixture')))
+            with contextlib.redirect_stdout(io.StringIO()):
+                completed = rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            self.assertFalse(completed)
+            self.assertEqual(benchmark.trial.call_count, 2)
+            result = json.loads(args.output.read_text())
+            self.assertEqual(len(result['runs']), 2)
+            self.assertEqual(result['stopped'], 'two consecutive transport failures')
+
+    @unittest.skipIf(os.name == 'nt', 'Rollout fixtures and process isolation are proved on POSIX')
+    def test_prepared_memory_is_saved_before_completion_changes_it(self):
+        from bench import rollout
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {'HOME': d, 'CODEX_HOME': d + '/.codex'}):
+            root = Path(d) / 'fixture'; calls = []
+            expected = rollout.seed(42)
+            def worker(root, home, prompt, workspace, auth, *args):
+                calls.append(prompt)
+                if len(calls) == 1: (root / 'repo/.step-log').write_text('prepare\n')
+                if len(calls) == 2:
+                    core.checkpoint(root, 'BENCH-1', 'in_progress', 'Finish the manifest.',
+                                    notes={'Handoff': 'Decision: use cobalt.'})
+                if len(calls) == 3:
+                    core.checkpoint(root, 'BENCH-1', 'in_progress', 'Completed.', notes={'Handoff': 'Completion note.'})
+                    rollout.reference(root / 'repo', expected)
+                return {'completed': True}, 'done', 'synthetic-session'
+            with mock.patch.object(rollout, 'session', side_effect=worker), mock.patch.object(rollout, 'cost', return_value=None):
+                result = rollout.trial(root, expected, 'workspace', Path(d) / 'absent-auth')
+            self.assertIn('use cobalt', result['prepared_memory']['brief'])
+            self.assertIn('use cobalt', result['prepared_memory']['handoff'])
+            self.assertNotIn('Completion note', result['prepared_memory']['handoff'])
+
     def test_interruption_keeps_completed_runs_without_seed_hints(self):
         with tempfile.TemporaryDirectory() as d:
             args = argparse.Namespace(n=5, seed=42, output=Path(d) / 'result.json')
