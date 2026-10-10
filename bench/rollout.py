@@ -126,7 +126,8 @@ def reset_fixture(repo):
         with environment(GIT_AUTHOR_DATE='2023-11-14T22:13:20Z', GIT_COMMITTER_DATE='2023-11-14T22:13:20Z'):
             run.create(Path(d), DATA)
         for path in (Path(d) / 'repo').iterdir():
-            if path.is_dir(): shutil.copytree(path, repo / path.name)
+            if path.is_dir(): shutil.copytree(path, repo / path.name,
+                    ignore=shutil.ignore_patterns('*.lock') if path.name == '.git' else None)
             else: shutil.copy2(path, repo / path.name)
     fixture(repo)
 
