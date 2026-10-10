@@ -84,6 +84,7 @@ def encoded_hook_args(parts):
 
 
 REQUIRED = ('Objective', 'Acceptance criteria', 'Evidence', 'Checks', 'Blockers', 'Next action', 'Handoff')
+NOTE_SECTIONS = REQUIRED + ('Findings', 'Failures', 'Risks', 'Do not redo')
 STATUSES = ('backlog', 'ready', 'in_progress', 'review', 'blocked', 'done')
 ID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 SECRET_RE = re.compile(
@@ -994,8 +995,8 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         text = set_meta(text, values)
         text = set_section(text, 'Next action', redact(next_action))
         for name, body in (notes or {}).items():
-            if name not in REQUIRED and name not in ('Findings', 'Failures', 'Risks', 'Do not redo'):
-                raise WsError(f'Unknown section {name}.')
+            if name not in NOTE_SECTIONS:
+                raise WsError(f'Unknown section {name}. Valid note sections: {", ".join(NOTE_SECTIONS)}.')
             text = set_section(text, name, redact(body))
         atomic_write(path, text)
         refresh_native(root, locked=True)
