@@ -450,6 +450,7 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
 
 
 def client_connected(root, client):
+    if client == 'copilot': client = 'vscode'
     if client == 'codex':
         path = Path.home() / '.codex/config.toml'
         text = path.read_text(encoding='utf-8') if path.is_file() else ''
@@ -502,6 +503,7 @@ def link_skills(client, root):
 
 
 def connect(root, client, write=False, skills=False, verify=False):
+    if client == 'copilot': client = 'vscode'
     if client == 'gemini':
         # Gemini keeps MCP servers and hooks in one settings file: merge both, touching only our entries.
         return dict(_connect_gemini(root), **({'mcp': mcp_doctor(root, ('gemini',))[0]} if verify else {}))
@@ -2116,6 +2118,10 @@ def doctor(root=None, mcp=False):
         report['kit'].update(json.loads(cache.read_text(encoding='utf-8'))['result'])
     if root:
         report['workspace'] = str(root)
+        cfg = config(root)
+        preset, assistants = cfg.get('routing_preset', 'not selected'), cfg.get('assistants', [])
+        report['setup'] = {'preset': preset if isinstance(preset, str) else 'unknown',
+                           'assistants': assistants if isinstance(assistants, list) and all(isinstance(name, str) for name in assistants) else []}
         report['capture_health'] = capture_health(root)
         from . import native
         report['codex_goals'] = native.codex_goals(root)
