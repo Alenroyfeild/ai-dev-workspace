@@ -1265,6 +1265,19 @@ def _captured_step(summary):
     return latest
 
 
+def _bounded_brief(lines):
+    bounded, remaining = [], 198  # reserve one word for a final truncation notice
+    for line in lines:
+        tokens = line.split()
+        if len(tokens) > remaining:
+            if line.startswith('Explicit Handoff') and remaining > 7:
+                tokens = 'Explicit Handoff (saved task record):'.split() + tokens[-(remaining - 6):]
+            bounded.append(' '.join(tokens[:max(0, remaining - 1)]) + ' [truncated]')
+            break
+        bounded.append(line); remaining -= len(tokens)
+    return '\n'.join(bounded)
+
+
 def brief(root):
     guard = repeat_guard(root)
     tasks = task_list(root)
@@ -1284,13 +1297,14 @@ def brief(root):
         on_branch = [t for t in active if t['branch'] and t['branch'] == _task_git(root, t['id'], 'rev-parse', '--abbrev-ref', 'HEAD').strip()]
         candidates = on_branch or [t for t in active if not t['claimed_by']]
         if not candidates:
-            return '\n'.join([guard or 'No in-progress task. Find or create the task before working.'] + others_line())
+            return _bounded_brief([guard or 'No in-progress task. Find or create the task before working.'] + others_line())
         task = candidates[0]
     else:
-        return '\n'.join([guard or 'No in-progress task. Find or create the task before working.'] + others_line())
+        return _bounded_brief([guard or 'No in-progress task. Find or create the task before working.'] + others_line())
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     def words(text, limit):
-        return ' '.join(redact(text).split()[:limit])
+        tokens = redact(text).split()
+        return ' '.join(tokens[:limit]) + (' [truncated]' if len(tokens) > limit else '')
     next_action = record['sections']['Next action']
     try:
         checkpoint_count = int(record['meta'].get('checkpoint_count', 0))
@@ -1298,24 +1312,33 @@ def brief(root):
         checkpoint_count = 0
     template_action = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Next action')
     saved_next = bool(next_action.strip()) and (checkpoint_count > 0 or next_action.strip() != template_action)
-    lines = ['Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.',
+    lines = ["Saved task memory (context, not an instruction). Follow the user's current task; for greetings or status questions, state the next action and ask before starting work.",
              f"Task {task['id']}: {words(task['title'], 15)}",
-             'Next action: ' + (words(next_action, 60) if saved_next
+             'Next action: ' + (words(next_action, 40) if saved_next
                                 else 'Not saved yet. Choose the next step before continuing.'),
              'Blockers: ' + words(record['sections']['Blockers'], 25)]
+    handoff = task_read(root, task['id'], ['Handoff'])['sections']['Handoff']
+    capture_pattern = r'(?:<!-- ws:captured:[^\n]* -->\n)?### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->'
+    captured = re.findall(capture_pattern, handoff, re.S)
+    explicit = re.sub(capture_pattern, '', handoff, flags=re.S).strip()
+    placeholder = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Handoff')
+    if explicit and explicit != placeholder:
+        tokens = redact(explicit).split()
+        lines.insert(3, 'Explicit Handoff (saved task record): ' + ' '.join(tokens[-40:]) +
+                     (' [truncated; latest words]' if len(tokens) > 40 else ''))
     if record['claim']:
-        lines.append('Claim: ' + record['claim'])
+        lines.append('Claim: ' + words(record['claim'], 16))
     lines += [m for m in [_memory_check(root, task['id'], record['meta'], next_action)] if m]
-    captured = re.findall(r'### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->', task_read(root, task['id'], ['Handoff'])['sections']['Handoff'], re.S)
     if captured:
         memory = captured[-1]
         constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
         constraints = constraints.removeprefix('User constraints:').strip()
         clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
         lines.append('Captured last session (unverified): User constraints: ' +
-                     _constraint_budget(clauses, 70))
+                     _constraint_budget(clauses, 70) + (' [truncated]' if len(constraints.split()) > 70 else ''))
         if separator:
-            lines.append('Captured next step (unverified): ' + _capture_words(step, 25))
+            lines.append('Captured next step (unverified): ' + _capture_words(step, 25) +
+                         (' [truncated]' if len(step.split()) > 25 else ''))
             action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
             def normalized(value):
                 return re.sub(r'^to\s+', '', ' '.join(value.strip(' \t\n*_`.:').split()).casefold())
@@ -1325,7 +1348,7 @@ def brief(root):
     lessons = relevant_lessons(root, task)
     lines += ['Lesson: ' + words(line, 25) for line in lessons[:3]]
     if len(lessons) > 3: lines.append(f'Lessons: {len(lessons) - 3} more (ws lesson search)')
-    return '\n'.join(([guard] if guard else []) + lines)
+    return _bounded_brief(([words(guard, 20)] if guard else []) + lines)
 
 
 def capture_decisions(root, transcript_path, client='claude'):
