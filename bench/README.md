@@ -2,6 +2,19 @@
 
 ## Corrected rollout: independent paired investigations
 
+Current [2026-10-10 R9-B1 n=5 run](results/2026-10-10-R9-B1-rollout-codex.json), unmodified dev `cbe3f68`, Codex CLI 0.155.1, `gpt-6-luna`/high:
+
+| Arm | Pass | Abstention | Guess or incomplete | Inconclusive | Mean wall seconds | Reported input / output tokens |
+|---|---|---|---|---|---|---|
+| Fresh baseline | 0/5 | 3/5 | 2/5 | 0/5 | 115.9 | 1,065,083 / 14,279 |
+| Workspace | 1/5 | 1/5 | 2/5 | 1/5 | 189.7 | 1,642,628 / 28,863 |
+| Markdown handoff | 4/5 | 0/5 | 0/5 | 1/5 | 66.4 | 851,497 / 10,950 |
+
+All 15 scheduled arms remain in the denominator. There were 41 worker invocations; the final workspace and Markdown investigations exited 1, leaving their correction/completion calls unattempted. Failed-turn usage is unavailable, so these are reported tokens, not complete billable totals. Codeburn did not price Luna; USD is unpriced, not zero. No failed arm was rerun or replaced. Fixed order, small n and incomplete attempts preclude speed or savings claims.
+
+[Retained synthetic memory](results/2026-10-10-R9-B1-rollout-codex.memory.jsonl) shows stale initial Captured values in the completed workspace seeds. The one workspace pass saved the correction in `Next action`; it does not prove automatic correction capture. Local observation recorded no correction capture update between the investigation and fresh completion. The precise lifecycle/transport cause remains unverified; the runner does not retain error details. A documented SessionEnd capture callback is a candidate, not a proven fix. This run establishes neither superiority over Markdown nor a passed automatic-capture release gate. The batch stopped after two consecutive worker transport failures; a tested capture fix and rerun remain pending. No Claude sessions.
+
+
 Run `python3 -m bench.rollout_run -n 5 --output /tmp/rollout.json`. This POSIX runner uses installed Codex `gpt-6-luna`/high, without installs. Each of five independent seeds gets a two-turn investigation in each arm: observe one rejected preparation retry, then receive a superseding lane and replacement opaque approval receipt. The correction requests a read to exercise worked-session capture. A fresh completion receives no conversation facts except the arm's retained memory: baseline retains none, workspace uses task memory/hooks/skills, and the control writes plain `HANDOFF.md`.
 
 Listed fixture code, artifacts, visible tests and their file mtimes match at completion start; commit dates are fixed. Expected values stay in the parent. Preparation appends to the in-fixture `.step-log`; the harness checks it for another attempt and checks file replacement. This log is **not tamper-proof**: a worker can truncate or edit it. It measures cooperative continuity, not adversarial enforcement. No checker files or transcript paths enter the worker fixture. Partial results are saved after every arm; the answer-generating seed is published after all workers finish. This is not a filesystem/process-memory security jail.
