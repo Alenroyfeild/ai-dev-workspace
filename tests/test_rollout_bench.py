@@ -38,6 +38,9 @@ class RolloutTests(unittest.TestCase):
     def test_reset_removes_conversation_hints_from_git_history(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); rollout.run.create(root, rollout.DATA); repo = root / 'repo'
+            for key, expected in (('maintenance.auto', 'false'), ('gc.auto', '0')):
+                configured = subprocess.run(['git', 'config', '--get', key], cwd=repo, capture_output=True, text=True)
+                self.assertEqual(configured.stdout.strip(), expected, key)
             (repo / 'release.json').write_text('conversation-only hint')
             rollout.run.command(['git', 'add', '.'], repo)
             rollout.run.command(['git', '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'opaque-conversation-hint'], repo)
