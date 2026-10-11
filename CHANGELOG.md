@@ -3,16 +3,17 @@
 ## 0.1.0-beta.3 (unreleased)
 
 ### Proven
-- In this small-n rollout check, workspace runs passed 4/5, Markdown-only runs 3/5, and the baseline 0/5; four attempts were inconclusive. See [the method and limitations](docs/MEASUREMENTS.md).
+- The latest Codex rollout passed workspace 2/5, Markdown-only 5/5, baseline 0/5; all calls completed. Missing saved corrections remain a release risk. Earlier 4/5 versus 3/5 used different seeds; see [all outcomes and limitations](bench/README.md).
 
 ### New
 - `ws setup` previews assistant choices and project connections before applying them, and reports setup failures with next steps.
 - Shared workspaces show tasks and claims matched to the current branch and flag conflicting task records.
-- Session briefs carry an explicit saved handoff decision into the next session.
+- Session briefs carry bounded excerpts of explicit saved handoff decisions into the next session.
 - `ws doctor --mcp` checks configured clients; `ws doctor` shows configuration separately from the latest protocol check and capture outcome.
 - Maintainers can read recent repository stars, clones and page views in the activity report.
 
 ### Fixed
+- Briefs prioritize saved decisions and corrections within section budgets, with a task-record pointer when truncated; this does not recover corrections absent from task memory.
 - Task records preserve CRLF line endings, and team claims and conflicts remain readable across shared work.
 - The Claude rollout benchmark uses a per-trial home and allowlisted environment so shell credentials and user settings are not passed into project hooks. API-key-only authentication and live Claude runs were not verified.
 - The benchmark fixture no longer races Git's automatic maintenance lock on macOS.
