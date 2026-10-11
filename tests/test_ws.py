@@ -926,13 +926,16 @@ class InterfaceTests(Base):
                  'params': {'name': name, 'arguments': args}} for name, args in calls]
         for message in bad:
             with self.subTest(message=message):
+                initialize = {'jsonrpc': '2.0', 'id': 0, 'method': 'initialize',
+                              'params': {'protocolVersion': '2025-06-18'}}
                 ping = {'jsonrpc': '2.0', 'id': 2, 'method': 'ping'}
                 proc = subprocess.run([sys.executable, str(KIT / 'mcp/server.py'), '--root', str(self.root)],
-                                      input=json.dumps(message) + '\n' + json.dumps(ping) + '\n',
+                                      input='\n'.join(map(json.dumps, (initialize, message, ping))) + '\n',
                                       capture_output=True, text=True, timeout=10)
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 replies = list(map(json.loads, proc.stdout.splitlines()))
-                self.assertIn(replies[0]['error']['code'], (-32600, -32602))
+                self.assertEqual(replies[0]['result']['protocolVersion'], '2025-06-18')
+                self.assertIn(replies[1]['error']['code'], (-32600, -32602))
                 self.assertEqual(replies[-1], {'jsonrpc': '2.0', 'id': 2, 'result': {}})
     def test_decision_capture_appends_redacts_caps_and_deduplicates(self):
         core.claim(self.root, 'T-1', 'synthetic')
