@@ -1,8 +1,26 @@
 # Cross-session continuity benchmark
 
+## Section-budget fix: October 11 follow-up
+
+Fresh [n=5 rollout](results/2026-10-11-R9-B1-budget-rollout-codex.json), source `c0d7d49`, Codex CLI 0.155.1, `gpt-6-luna`/high:
+
+| Arm | Pass | Abstention | Guess or incomplete | Inconclusive | Mean wall seconds | Reported input / output tokens |
+|---|---|---|---|---|---|---|
+| Fresh baseline | 0/5 | 2/5 | 3/5 | 0/5 | 95.9 | 1,023,909 / 13,948 |
+| Workspace | 2/5 | 1/5 | 2/5 | 0/5 | 230.0 | 2,059,008 / 34,046 |
+| Markdown handoff | 5/5 | 0/5 | 0/5 | 0/5 | 111.5 | 982,327 / 12,606 |
+
+All 15 arms and 45 calls completed. The prepared brief and Handoff are now recorded before completion edits. Both workspace passes retained the superseding lane/receipt; all three workspace failures lacked both values in both records, with briefs of 112, 127 and 94 words. This remaining failure is missing saved memory, not the 200-word tail cut. The exact lifecycle cause is unverified. The fix cannot reconstruct an unsaved correction; **the automatic-capture release gate remains unmet**. Different seeds prevent attributing the score change from 1/5 to 2/5 to this patch. Markdown won this cohort; no general superiority or savings claim follows.
+
+The [deterministic full-checkpoint regression](results/2026-10-10-R9-B1-budget-regression.json) does establish rendering loss: before, two of four decision markers were absent from a 198-word brief despite remaining in Handoff; after, all four appear in 195 words. A rollout-shaped correction also survives the budget and native Copilot/Cursor write-back. The separate [decisions benchmark, n=3](results/2026-10-10-R9-B1-budget-decisions-codex.json) passed workspace 3/3 versus baseline 0/3, all eight calls completed (1,050,818 input / 20,266 output tokens). Its three completions share one setup snapshot per arm, so they are not independent investigations.
+
+An earlier [partial budget cohort](results/2026-10-10-R9-B1-budget-rollout-codex.json) remains intact: 7 of 15 arms attempted, 8 unattempted; baseline 0/3 (one abstention, one guess/incomplete, one inconclusive), workspace 1/2 (one abstention), Markdown 1/2 (one inconclusive). It stopped after two consecutive transport failures: 17 calls, 15 completed, 1,430,461 reported input / 21,566 output tokens. Failure cause and failed-turn usage were not retained. The fresh cohort above began only after renewed authorization and a quota reset; it does not replace these failures. An interrupted launch between cohorts produced no saved arm and may have incurred unreported usage.
+
+Early proofs record their base plus patch fingerprint, now materialized as `c0d7d49`; the fresh cohort records that clean source commit directly. Codeburn did not price Luna: USD is unpriced, not zero. Runs use disposable homes/workspaces, with no Claude sessions. These cooperative fixtures do not confine filesystem reads; the historical contamination concern below remains a limitation.
+
 ## Corrected rollout: independent paired investigations
 
-Current [2026-10-10 R9-B1 n=5 run](results/2026-10-10-R9-B1-rollout-codex.json), unmodified dev `cbe3f68`, Codex CLI 0.155.1, `gpt-6-luna`/high:
+Historical post-#77 [2026-10-10 R9-B1 n=5 run](results/2026-10-10-R9-B1-rollout-codex.json), unmodified dev `cbe3f68`, Codex CLI 0.155.1, `gpt-6-luna`/high:
 
 | Arm | Pass | Abstention | Guess or incomplete | Inconclusive | Mean wall seconds | Reported input / output tokens |
 |---|---|---|---|---|---|---|

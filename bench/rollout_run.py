@@ -14,11 +14,18 @@ def save(output, result):
                       ',\n"runs": [\n' + ',\n'.join(map(json.dumps, result['runs'])) + '\n]}\n')
 
 
+def transport_failures(calls, previous=0):
+    for call in calls:
+        previous = 0 if call['completed'] else previous + 1
+    return previous
+
+
 def run_trials(benchmark, args, auth):
     base_seed = args.seed if args.seed is not None else random.SystemRandom().getrandbits(64)
     claude = os.environ.get('WS_BENCH_PROVIDER') == 'claude'
     result = {'model': 'sonnet' if claude else 'gpt-6-luna', 'effort': 'default' if claude else 'high', 'seed': None, 'n': args.n,
               'kit': benchmark.run.command(['git', 'rev-parse', 'HEAD'], benchmark.run.KIT).stdout.strip(), 'runs': []}
+    failures = 0
     with tempfile.TemporaryDirectory(prefix='ws-rollout-') as d:
         for number in range(args.n):
             expected = benchmark.seed(base_seed + number)
@@ -27,7 +34,12 @@ def run_trials(benchmark, args, auth):
                 record['seed_index'] = number; result['runs'].append(record)
                 # Persist progress without publishing the answer-generating seed during worker runs.
                 save(args.output, result); print(json.dumps(record), flush=True)
+                failures = transport_failures(record.get('calls', []), failures)
+                if failures >= 2:
+                    result.update(seed=base_seed, stopped='two consecutive transport failures')
+                    save(args.output, result); return False
     result['seed'] = base_seed; save(args.output, result)
+    return True
 
 
 def main():
@@ -39,7 +51,7 @@ def main():
     os.environ['WS_BENCH_PROVIDER'] = args.provider
     from bench import rollout
     auth = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))) / 'auth.json'
-    run_trials(rollout, args, auth)
+    if not run_trials(rollout, args, auth): raise SystemExit(2)
 
 
 if __name__ == '__main__': main()

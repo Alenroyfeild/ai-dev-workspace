@@ -1,0 +1,19 @@
+{
+"date": "2026-10-10T17:05:54.782503+00:00",
+"provider": "codex",
+"model": "gpt-6-luna",
+"resume_provider": "codex",
+"resume_model": "gpt-6-luna",
+"scenario": "decisions",
+"n": 3,
+"kit": "a01c1566864bd544c5d1f8b6df3e104c34ac5f17",
+"session1": {"baseline": {"completed": true, "exit_code": 0, "tool_calls": 4, "input_tokens": 81598, "output_tokens": 1476, "cache_read_tokens": 60416, "cache_write_tokens": 0, "cost_usd": null, "seconds": 25.73}, "workspace": {"completed": true, "exit_code": 0, "tool_calls": 8, "input_tokens": 61881, "output_tokens": 2574, "cache_read_tokens": 42240, "cache_write_tokens": 0, "cost_usd": null, "seconds": 34.65}},
+"tested_source": {"base": "a01c1566864bd544c5d1f8b6df3e104c34ac5f17", "patch_sha256": "f5e320eca2c9db4ddf22982a6ea716be27e19b5c3be2dc3be9a2a107354c0e6b", "uncommitted": true, "materialized_commit": "c0d7d495fa700fd468877acad260b0e811f97315"},
+"runs": [
+{"completed": true, "exit_code": 0, "tool_calls": 8, "input_tokens": 152535, "output_tokens": 2231, "cache_read_tokens": 111616, "cache_write_tokens": 0, "cost_usd": null, "seconds": 70.11, "arm": "baseline", "trial": 1, "tests_pass": true, "checks": {"empty_is_missing_email": false, "blank_is_missing_email": false, "malformed_is_invalid_email": false, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": false}, "success": false, "result": "fail"},
+{"completed": true, "exit_code": 0, "tool_calls": 8, "input_tokens": 151606, "output_tokens": 2083, "cache_read_tokens": 114688, "cache_write_tokens": 0, "cost_usd": null, "seconds": 35.92, "arm": "baseline", "trial": 2, "tests_pass": true, "checks": {"empty_is_missing_email": false, "blank_is_missing_email": false, "malformed_is_invalid_email": true, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": false}, "success": false, "result": "fail"},
+{"completed": true, "exit_code": 0, "tool_calls": 7, "input_tokens": 135498, "output_tokens": 2314, "cache_read_tokens": 112640, "cache_write_tokens": 0, "cost_usd": null, "seconds": 34.53, "arm": "baseline", "trial": 3, "tests_pass": true, "checks": {"empty_is_missing_email": false, "blank_is_missing_email": false, "malformed_is_invalid_email": false, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": false}, "success": false, "result": "fail"},
+{"completed": true, "exit_code": 0, "tool_calls": 15, "input_tokens": 179539, "output_tokens": 3087, "cache_read_tokens": 160256, "cache_write_tokens": 0, "cost_usd": null, "seconds": 43.48, "arm": "workspace", "trial": 1, "tests_pass": true, "checks": {"empty_is_missing_email": true, "blank_is_missing_email": true, "malformed_is_invalid_email": true, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 17, "input_tokens": 178236, "output_tokens": 4491, "cache_read_tokens": 160256, "cache_write_tokens": 0, "cost_usd": null, "seconds": 60.08, "arm": "workspace", "trial": 2, "tests_pass": true, "checks": {"empty_is_missing_email": true, "blank_is_missing_email": true, "malformed_is_invalid_email": true, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": true}, "success": true, "result": "pass"},
+{"completed": true, "exit_code": 0, "tool_calls": 5, "input_tokens": 109925, "output_tokens": 2010, "cache_read_tokens": 97536, "cache_write_tokens": 0, "cost_usd": null, "seconds": 61.85, "arm": "workspace", "trial": 3, "tests_pass": true, "checks": {"empty_is_missing_email": true, "blank_is_missing_email": true, "malformed_is_invalid_email": true, "normalize_unchanged": true, "recovery_unchanged": true, "rejection_audited": true}, "success": true, "result": "pass"}
+]}
