@@ -15,6 +15,11 @@ sys.path.insert(0, str(kit.parent if (kit / 'core.py').is_file() else kit))
 from ws import core, assist, orchestration  # noqa: E402
 
 PROTOCOL = '2025-06-18'
+MODERN = '2026-07-28'
+LEGACY = ('2025-11-25', PROTOCOL)
+VERSIONS = (MODERN, *LEGACY)
+PREFIX = 'io.modelcontextprotocol/'
+CAPABILITIES = {'tools': {}, 'prompts': {}, 'resources': {}}
 PROMPTS = {'handoff': 'Save verified progress and the next action.',
            'pickup': 'Resume from saved task memory.',
            'lesson': 'Record a verified mistake-to-rule lesson.'}
@@ -138,17 +143,9 @@ def validate_input(value, schema, field='arguments'):
             validate_input(item, schema['items'], field + '[]')
 
 
-def handle(root, msg):
-    if (not isinstance(msg, dict) or msg.get('jsonrpc') != '2.0'
-            or not isinstance(msg.get('method'), str)
-            or ('id' in msg and msg['id'] is not None and type(msg['id']) not in (int, str))):
-        return rpc_error(None, -32600, 'Invalid request')
-    method, mid = msg['method'], msg.get('id')
-    if 'id' not in msg:
-        return None  # notification
+def _dispatch(root, msg):
+    method, mid = msg['method'], msg['id']
     params = msg.get('params', {})
-    if not isinstance(params, dict):
-        return rpc_error(mid, -32602, 'Params must be an object')
     if method == 'initialize':
         try:
             validate_input(params, S(protocolVersion=string('version', True),
@@ -156,8 +153,8 @@ def handle(root, msg):
                                      clientInfo={'type': 'object', 'optional': True}))
         except ValueError as exc:
             return rpc_error(mid, -32602, str(exc))
-        result = {'protocolVersion': params.get('protocolVersion', PROTOCOL),
-                  'capabilities': {'tools': {}, 'prompts': {}, 'resources': {}},
+        result = {'protocolVersion': params.get('protocolVersion') if params.get('protocolVersion') in LEGACY else LEGACY[0],
+                  'capabilities': CAPABILITIES,
                   'serverInfo': {'name': 'ai-dev-workspace', 'version': core.kit_meta()['version']}}
     elif method == 'prompts/list':
         result = {'prompts': [{'name': name, 'description': description} for name, description in PROMPTS.items()]}
@@ -215,17 +212,68 @@ def handle(root, msg):
     return {'jsonrpc': '2.0', 'id': mid, 'result': result}
 
 
+def handle(root, msg, legacy=None):
+    # The optional state belongs only to legacy stdio negotiation; modern calls are independent.
+    if not isinstance(msg, dict) or msg.get('jsonrpc') != '2.0' or not isinstance(msg.get('method'), str):
+        return rpc_error(None, -32600, 'Invalid request')
+    if 'id' not in msg:
+        return None
+    mid, method = msg['id'], msg['method']
+    if type(mid) not in (str, int):
+        return rpc_error(None, -32600, 'Invalid request id')
+    params = msg.get('params', {})
+    if not isinstance(params, dict):
+        return rpc_error(mid, -32602, 'Params must be an object')
+    meta = params.get('_meta', {})
+    if not isinstance(meta, dict):
+        return rpc_error(mid, -32602, '_meta must be an object')
+    version = meta.get(PREFIX + 'protocolVersion')
+    modern = any(key in meta for key in (PREFIX + 'protocolVersion', PREFIX + 'clientCapabilities')) or method == 'server/discover'
+    if modern:
+        if not isinstance(version, str) or not isinstance(meta.get(PREFIX + 'clientCapabilities'), dict):
+            return rpc_error(mid, -32602, 'Per-request protocolVersion and clientCapabilities are required')
+        if version not in VERSIONS:
+            reply = rpc_error(mid, -32022, 'Unsupported protocol version')
+            reply['error']['data'] = {'supported': list(VERSIONS), 'requested': version}
+            return reply
+        if version != MODERN:
+            return rpc_error(mid, -32602, 'Legacy versions require initialize, then requests without protocol metadata')
+        info = meta.get(PREFIX + 'clientInfo')
+        if PREFIX + 'clientInfo' in meta and (not isinstance(info, dict) or not all(isinstance(info.get(k), str) for k in ('name', 'version'))):
+            return rpc_error(mid, -32602, 'clientInfo requires name and version')
+        if method in ('initialize', 'ping', 'logging/setLevel', 'resources/subscribe', 'resources/unsubscribe'):
+            return rpc_error(mid, -32601, 'Method unavailable in ' + MODERN)
+    elif method != 'initialize' and legacy is not None and 'version' not in legacy:
+        return rpc_error(mid, -32602, 'Provide per-request metadata or initialize a supported legacy version')
+    clean = dict(msg, params={k: v for k, v in params.items() if k != '_meta'})
+    if method == 'server/discover':
+        reply = {'jsonrpc': '2.0', 'id': mid, 'result': {'supportedVersions': list(VERSIONS), 'capabilities': CAPABILITIES}}
+    else:
+        reply = _dispatch(root, clean)
+    if method == 'initialize' and 'result' in reply and legacy is not None:
+        legacy['version'] = reply['result']['protocolVersion']
+    if modern:
+        if 'result' in reply:
+            reply['result'].update(resultType='complete', _meta={PREFIX + 'serverInfo': {'name': 'ai-dev-workspace', 'version': core.kit_meta()['version']}})
+            if method in ('server/discover', 'tools/list', 'prompts/list', 'resources/list', 'resources/read'):
+                reply['result'].update(ttlMs=0, cacheScope='private')
+        elif reply['error']['code'] == -32002:
+            reply['error']['code'] = -32602
+    return reply
+
+
 def main():
     if os.name == 'nt':
         for stream in (sys.stdin, sys.stdout, sys.stderr): stream.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser()
     p.add_argument('--root', help='workspace directory (default: WS_ROOT or current directory)')
     root = core.find_root(p.parse_args().root)
+    legacy = {}
     for line in sys.stdin:
         if not line.strip():
             continue
         try:
-            reply = handle(root, json.loads(line))
+            reply = handle(root, json.loads(line), legacy)
         except json.JSONDecodeError:
             reply = {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': 'Parse error'}}
         if reply is not None:
