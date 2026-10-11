@@ -57,6 +57,20 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.rpc('resources/read', uri=uri)['error']['code'], -32002)
         self.assertEqual(self.rpc('resources/read', uri=[])['error']['code'], -32602)
 
+    def test_read_task_defaults_to_resume_sections_and_full_record_is_explicit(self):
+        sections = ['Next action', 'Blockers', 'Handoff']
+        core.task_new(self.root, 'T-1', 'Section read proof')
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Run the selected-section check',
+                        notes={'Blockers': 'None', 'Handoff': 'Keep this decision.'})
+        full = core.task_read(self.root, 'T-1')['text']
+        expected = {name: core.section(full, name) for name in sections}
+        result = self.rpc('tools/call', name='read_task', arguments={'id': 'T-1'})['result']['content'][0]['text']
+        selected = json.loads(result)
+        self.assertEqual(selected['sections'], expected)
+        complete = self.rpc('tools/call', name='read_task', arguments={'id': 'T-1', 'sections': []})
+        self.assertEqual(json.loads(complete['result']['content'][0]['text'])['text'], full)
+
     def test_stdio_protocol_recovers_after_bad_workflow_requests(self):
         messages = [('initialize', {}), ('prompts/list', {}), ('prompts/get', {'name': 'handoff'}),
                     ('resources/list', {}), ('resources/read', {'uri': 'workspace://brief'}),
