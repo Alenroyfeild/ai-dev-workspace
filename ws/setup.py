@@ -1,6 +1,8 @@
 """Assistant selection; read-only detection and explicit project configuration."""
 import json
 import difflib
+import subprocess
+import sys
 from pathlib import Path
 from . import core, orchestration, upgrade
 
@@ -10,6 +12,63 @@ def detect():
     return [dict(assistant=name, cli=data['cli'], cli_available=bool(core.shutil.which(data['cli'])),
                  apps=[app for app in data.get('apps', []) if core._has_app(app)])
             for name, data in providers.items()]
+
+
+def branch(repo):
+    try:
+        result = subprocess.run(['git', '-C', str(repo), 'symbolic-ref', '--quiet', '--short', 'HEAD'],
+                                capture_output=True, text=True, timeout=2)
+        return result.stdout.strip() if result.returncode == 0 else ''
+    except (OSError, subprocess.SubprocessError): return ''
+
+
+def start(yes=False, dry_run=False):
+    try:
+        result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.SubprocessError): raise core.WsError('Run ws start inside a git code repository.')
+    if result.returncode: raise core.WsError('Run ws start inside a git code repository.')
+    root = Path(result.stdout.strip()).resolve(); current = branch(root)
+    if not current: raise core.WsError('Choose a git branch before ws start; detached HEAD has no task name.')
+    paths = {str(p.relative_to(core.KIT / 'template')) for p in (core.KIT / 'template').rglob('*') if p.is_file()}
+    paths -= {'routing-presets.json'}
+    paths |= set(upgrade.skills()) | set(upgrade.pointer_files()) | {'workspace.json', '.ws/claims', '.ws/backups', 'vault/Tasks'}
+    paths |= {'.claude/settings.json', '.codex/hooks.json', '.cursor/hooks.json', '.github/hooks/ai-dev-workspace.json', '.gemini/settings.json'}
+    paths |= {relative for relative, _ in core.MCP_LOCATIONS.values()}
+    for relative in paths:
+        target = root / relative
+        if any(p.is_symlink() for p in (target, *target.parents) if p == root or root in p.parents):
+            raise core.WsError('Start refuses symlinked workspace paths: ' + relative)
+    task = 'BR-' + core.digest_text(str(root) + '\0' + current)[:10]
+    if (root / 'workspace.json').exists():
+        cfg = core.config(root)
+        task = next((t['id'] for t in core.task_list(root) if t['branch'] == current), '')
+        return dict(root=str(root), already=True, assistants=cfg.get('assistants', []), task=task, branch=current)
+    if (root / 'routing.json').exists(): raise core.WsError('Existing routing.json: review it before creating a workspace here.')
+    selected = [item['assistant'] for item in detect() if item['assistant'] in ('claude', 'codex', 'cursor', 'copilot', 'gemini')
+                and (item['cli_available'] or item['apps'])]
+    clients = ['vscode' if name == 'copilot' else name for name in selected]
+    print('Preview: create local workspace and branch task in ' + str(root) + '; assistants: ' + (', '.join(clients) or 'none detected'), file=sys.stderr)
+    for relative in sorted(paths):
+        if relative.startswith(('.claude/', '.codex/', '.cursor/', '.github/', '.vscode/', '.gemini/')) and not any(
+                relative.startswith(prefix) for client, prefix in (('claude', '.claude/'), ('codex', '.codex/'), ('cursor', '.cursor/'),
+                ('vscode', '.github/'), ('vscode', '.vscode/'), ('gemini', '.gemini/')) if client in clients): continue
+        if relative == '.mcp.json' and 'claude' not in clients: continue
+        print('  ' + relative + (' (preserve user content; merge managed entries or stage .ws-new)' if (root / relative).exists() else ' (create)'), file=sys.stderr)
+    if dry_run: return None
+    if not yes:
+        print('Apply this preview? [y/N] ', end='', file=sys.stderr)
+        try: answer = input().strip().lower()
+        except EOFError: raise core.WsError('No confirmation received; use --yes to apply or --dry-run to preview.')
+        if answer not in ('y', 'yes'): return None
+    cfg = core.init(root, root.name, repos=[str(root)], clients=clients)
+    report = configure(root, selected) if selected else {}
+    for collision in cfg['collisions']: print(collision, file=sys.stderr)
+    partial = bool(cfg['collisions'] or report.get('partial'))
+    if partial: print('Review the reported conflicts and .ws-new proposals before trusting hooks/MCP.', file=sys.stderr)
+    if report.get('partial'): print(report['note'], file=sys.stderr)
+    core.task_new(root, task, current, branch=current, repo=str(root))
+    core.claim(root, task, 'local'); core.checkpoint(root, task, 'in_progress', 'Follow the current request; save the next action before stopping.')
+    return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, partial=partial)
 
 
 def selection_json(text, values):

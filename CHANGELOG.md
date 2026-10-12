@@ -10,6 +10,7 @@
 Your saved decisions now survive long handoffs, the MCP server works with clients on the newest protocol, and Google ADK and LangGraph agents can share the same task memory.
 
 ### Improved
+- Start inside your code repo with `ws start`: preview local files, confirm once, connect detected assistants and claim a task for the branch. Existing files are preserved; running it again only shows status. [Quick start](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/README.md#quick-start-2-minutes).
 - **Decisions come first in the session brief.** A long checkpoint (blockers plus a handoff) used to push saved decisions past the 200-word limit, so the next session never saw them. Each section now has its own budget, decisions and corrections are kept first, and the brief points to the task file when it has to cut.
 - **Works with new and old MCP clients.** Clients on the 2026-07-28 MCP spec (no handshake, version on every request) connect directly; clients on 2025-11-25 and 2025-06-18 work as before. Tested with the official Python MCP SDK in both modes.
 - **Google ADK and LangGraph recipes.** Opt-in examples connect agents to your workspace over MCP with only four tools exposed (find task, brief, checkpoint, add lesson). A decision saved by one framework was picked up by a fresh agent in the other, both ways. See [docs/examples/frameworks](https://github.com/Alenroyfeild/ai-dev-workspace/blob/v0.1.0-beta.3/docs/examples/frameworks/README.md).
