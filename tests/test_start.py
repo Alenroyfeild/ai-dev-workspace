@@ -125,13 +125,17 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(config.read_bytes(), original)
         self.assertFalse(config.with_name('config.toml.ws-backup').exists())
 
-    def test_existing_start_gets_codex_connection_after_one_confirm(self):
+    def old_start(self):
         self.assertEqual(self.start('--yes')[0], 0)
         config = self.repo / '.codex/config.toml'; config.unlink(missing_ok=True)
         link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['files'].pop('.codex/config.toml', None)
         old = base64.b64decode(state['exclude_block']); block = old.replace(b'/.codex/config.toml\n', b'')
         exclude = Path(state['exclude']); exclude.write_bytes(exclude.read_bytes().replace(old, block))
         state['exclude_block'] = base64.b64encode(block).decode(); link.write_text(json.dumps(state))
+        return config, exclude
+
+    def test_existing_start_gets_codex_connection_after_one_confirm(self):
+        config, _ = self.old_start()
         hooks = (self.repo / '.codex/hooks.json').read_bytes()
         with mock.patch('builtins.input', return_value='n') as ask: self.assertEqual(self.start()[0], 0)
         ask.assert_called_once(); self.assertFalse(config.exists())
@@ -139,6 +143,15 @@ class StartTests(unittest.TestCase):
         ask.assert_called_once(); self.assertTrue(core.client_connected(core.find_root(), 'codex'))
         self.assertEqual((self.repo / '.codex/hooks.json').read_bytes(), hooks)
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_codex_migration_undo_recovers_interrupted_exclusion_write(self):
+        _, exclude = self.old_start(); write = core.atomic_write
+        def interrupted(target, data):
+            if Path(target).resolve() == exclude.resolve(): raise OSError('fixture interrupted exclude write')
+            return write(target, data)
+        with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
 
     def test_codex_existing_backup_and_tracked_config_refused_before_writes(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir(); config.write_text('model="fixture"\n')

@@ -48,6 +48,8 @@ def exclusions(repo, state):
     if exclude.resolve() != expected.resolve(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
     if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
     block = base64.b64decode(state['exclude_block'])
+    if state.get('complete') is False and state.get('exclude_previous') and exclude.is_file() and exclude.read_bytes().count(block) != 1:
+        block = base64.b64decode(state['exclude_previous'])
     if not exclude.is_file() or exclude.read_bytes().count(block) != 1: raise core.WsError('Git exclude block changed; restore the recorded block before ws start --undo.')
     return exclude, block
 
@@ -108,11 +110,12 @@ def upgrade_codex(repo, root, state, yes, dry_run):
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
     exclude, block = exclusions(repo, state)
     updated = block.replace(b'# /ws:start', ('\n'.join('/' + n for n in desired) + '\n# /ws:start').encode())
-    state.update(complete=False, exclude_block=base64.b64encode(updated).decode())
+    state.update(complete=False, exclude_previous=state['exclude_block'], exclude_block=base64.b64encode(updated).decode())
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, exclude.read_bytes().replace(block, updated, 1))
     for name, data in desired.items(): record_file(repo, state, name, data)
-    state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+    state['complete'] = True; state.pop('exclude_previous', None)
+    core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return True
 
 
