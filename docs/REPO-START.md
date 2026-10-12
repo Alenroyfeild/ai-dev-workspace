@@ -18,13 +18,19 @@ copy: setup explains this and never commits or silently shares instructions.
 `ws start --undo` removes unchanged repo wiring, restores preexisting local
 files and removes only its Git exclude block. Edited local files are kept and
 reported; private memory outside the repo is retained. Nothing is committed.
-Codex MCP configuration is the next separate change; existing ws connect works.
+Codex MCP is applied to `.codex/config.toml` during start. Existing config is
+backed up first to `.codex/config.toml.ws-backup`; both paths stay Git-excluded.
+Existing repo setups offer the connection in one confirmation without replacing
+hooks or saved memory. Existing backups and conflicting workspace entries are
+refused. Undo restores the original config and removes the added backup.
+Existing `ws connect codex` preview/`--write` behavior remains available.
 
 Sources: [Claude local memory](https://code.claude.com/docs/en/memory),
 [local settings](https://code.claude.com/docs/en/settings),
 [MCP scopes](https://code.claude.com/docs/en/mcp),
 [Codex project instructions](https://developers.openai.com/codex/guides/agents-md/),
 [project config](https://developers.openai.com/codex/config-basic/),
+[project MCP settings](https://developers.openai.com/codex/mcp/),
 [hooks and trust](https://developers.openai.com/codex/hooks/),
 [Cursor hooks](https://cursor.com/docs/hooks),
 [VS Code local hooks](https://code.visualstudio.com/docs/agent-customization/hooks),
