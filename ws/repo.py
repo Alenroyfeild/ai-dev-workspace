@@ -53,7 +53,7 @@ def undo(repo, state):
         target = path(repo, name)
         old = base64.b64decode(entry['before']) if entry['before'] is not None else None
         current = target.read_bytes() if target.exists() else None
-        if current is not None and current != old and hashlib.sha256(current).hexdigest() != entry['sha']:
+        if (current is None and old is not None) or (current is not None and current != old and hashlib.sha256(current).hexdigest() != entry['sha']):
             kept.append(name); continue
         if old is None: target.unlink(missing_ok=True)
         else: core.atomic_write(target, old)
@@ -148,6 +148,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
     for name, data in desired.items(): record_file(repo, state, name, data)
-    if not core.task_find(root, task): core.task_new(root, task, current, branch=current, repo=str(repo))
-    core.claim(root, task, 'local'); core.checkpoint(root, task, 'in_progress', 'Follow the current request; save the next action before stopping.')
+    new_task = not core.task_find(root, task)
+    if new_task: core.task_new(root, task, current, branch=current, repo=str(repo))
+    core.claim(root, task, 'local')
+    if new_task: core.checkpoint(root, task, 'in_progress', 'Follow the current request; save the next action before stopping.')
     return dict(root=str(root), already=False, assistants=clients, task=task, branch=current)

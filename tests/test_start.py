@@ -33,7 +33,7 @@ class StartTests(unittest.TestCase):
         before = (self.repo / '.git/info/exclude').read_bytes()
         code, _, preview = self.start('--dry-run')
         self.assertEqual(code, 0); self.assertIn('CLAUDE.local.md', preview); self.assertIn('.claude/settings.local.json', preview)
-        self.assertIn((self.home / '.ai-dev-workspace/repo').as_posix(), preview)
+        self.assertIn((self.home / '.ai-dev-workspace/repo').resolve().as_posix(), preview)
         with mock.patch('builtins.input', return_value='n') as ask: self.assertEqual(self.start()[0], 0)
         ask.assert_called_once(); self.assertFalse((self.home / '.ai-dev-workspace').exists())
         with mock.patch('builtins.input', return_value='y') as ask: code, output, preview = self.start()
@@ -48,12 +48,16 @@ class StartTests(unittest.TestCase):
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain'], cwd=self.repo), b'')
         snapshot = {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
         self.assertEqual(self.start('--yes')[0], 0); self.assertEqual(snapshot, {p:p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
+        core.checkpoint(workspace, task['id'], 'in_progress', 'Continue the saved next action')
         subprocess.run(['git', 'checkout', '-q', '--detach'], check=True)
         code, output, _ = self.start('--undo')
         self.assertEqual(code, 0); self.assertIn('Removed repo wiring', output)
         self.assertEqual((self.repo / '.git/info/exclude').read_bytes(), before)
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain'], cwd=self.repo), b'')
         self.assertTrue((workspace / 'workspace.json').exists())
+        subprocess.run(['git', 'checkout', '-q', 'feature/synthetic'], check=True)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn('Continue the saved next action', core.task_read(workspace, task['id'])['text'])
 
     def test_existing_local_settings_restored_and_user_edits_kept(self):
         local = self.repo / '.claude/settings.local.json'; local.parent.mkdir()
@@ -71,6 +75,8 @@ class StartTests(unittest.TestCase):
         (self.repo / '.git/info/exclude').write_bytes((self.repo / '.git/info/exclude').read_bytes() + b'\nuser-pattern\n')
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(local.read_bytes(), before)
         self.assertIn(b'user-pattern', (self.repo / '.git/info/exclude').read_bytes())
+        self.assertEqual(self.start('--yes')[0], 0); local.unlink()
+        self.assertEqual(self.start('--undo')[0], 2); self.assertFalse(local.exists())
 
     def test_detached_tracked_targets_and_workspace_collision_fail_before_writes(self):
         with mock.patch('ws.repo.subprocess.run', side_effect=subprocess.TimeoutExpired('git', 10)):
