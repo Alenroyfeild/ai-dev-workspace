@@ -1,5 +1,11 @@
 # Measurements
 
+## Beta.4 capture candidate — proof blocked (2026-10-12)
+
+A two-turn Codex `gpt-6-luna` diagnostic used a throwaway workspace and HOME on base `830886c`. The full transcript already retained the latest correction. Its real correction-only user message and assistant reply are retained as a turn-local fixture: replaying those two records was rejected because no tool was called. Separate failing tests showed missing Claude/Codex SessionEnd registration and a checkpoint deleting Captured blocks when explicit Handoff text was replaced. These cases do not prove the sole cause of every earlier rollout failure.
+
+The candidate passes 27 capture tests and seven brief-decision tests. The requested rollout n=5 and cross-assistant decisions n=3 were **not run**: the bounded Claude cross-check returned “Not logged in” under isolated HOME before inference. No gain or successful Claude review is claimed. The latest completed rollout remains workspace 2/5, Markdown 5/5, baseline 0/5. [Blocked proof and diagnostic usage](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/bench/results/2026-10-12-beta4-capture-status.json).
+
 ## Claude and cross-assistant runs (2026-10-09)
 
 `bench/run.py`, decisions scenario, Claude Code 2.1.278 `sonnet` for session 1, n=5 completions per arm, six hidden checks.

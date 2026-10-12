@@ -2,8 +2,20 @@
 
 ## 0.1.0-beta.4 (unreleased)
 
+This candidate preserves conversation corrections through handoff changes; its fresh cross-assistant comparison is still pending.
+
+### Improved
+- Explicit user decisions can be captured without a tool call. Final Claude/Codex SessionEnd hooks read task memory once more; existing workspaces need `ws upgrade --dry-run` and client hook review before applying these hook changes.
+
 ### Fixed
+- Updating explicit Handoff notes keeps existing Captured blocks instead of deleting them. Privacy filtering and local claim ownership still apply.
 - `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.
+
+### Measured
+- The latest completed rollout, before this candidate, remains workspace 2/5, Markdown-only 5/5, baseline 0/5. [Recorded outcomes](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/bench/README.md).
+
+### Known limits
+- Fresh rollout n=5 and cross-assistant decisions n=3 are blocked: Claude could not authenticate in the isolated benchmark home. The candidate has fixture tests, but no new measured rollout gain or successful Claude cross-check. [Proof status](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/bench/results/2026-10-12-beta4-capture-status.json).
 
 ## 0.1.0-beta.3 (2026-10-12)
 

@@ -414,13 +414,13 @@ def codebase_map(root, repo=None, allow_external=False):
 def memory_hooks(root, client='claude'):
     arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root)]
     command = command_line(arguments)
-    events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop')
+    events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop', 'SessionEnd')
     prompt_event = {'claude': 'UserPromptSubmit', 'codex': 'UserPromptSubmit', 'cursor': 'beforeSubmitPrompt', 'gemini': 'BeforeAgent'}.get(client)
     result = {'hooks': {}}
     if client == 'cursor': result['version'] = 1
     for event in events:
         suffix = ['brief' if event.lower() == 'sessionstart' else 'nudge', '--hook'] + ([] if client == 'claude' else ['--client', client])
-        hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
+        hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 3 if event == 'SessionEnd' and client == 'codex' else 10,
                 'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][event] = [hook if client in ('cursor', 'vscode') else {'hooks': [hook]}]
     if prompt_event:
@@ -999,6 +999,10 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         for name, body in (notes or {}).items():
             if name not in NOTE_SECTIONS:
                 raise WsError(f'Unknown section {name}. Valid note sections: {", ".join(NOTE_SECTIONS)}.')
+            if name == 'Handoff':
+                for captured in re.findall(r'<!-- ws:captured:[^\n]* -->\n.*?<!-- /ws:captured -->', section(text, name), re.S):
+                    if captured.splitlines()[0] not in body:
+                        body = body.rstrip() + '\n\n' + captured + '\n'
             text = set_section(text, name, redact(body))
         atomic_write(path, text)
         refresh_native(root, locked=True)
@@ -1423,7 +1427,7 @@ def _capture_decisions(root, transcript_path, client):
         return 'unreadable_transcript'
     if not recognized:
         return 'unsupported_transcript'
-    if not worked or not (decisions or summary):
+    if not decisions and not (worked and summary):
         return 'no_work_or_memory'
     # Newest corrections get the budget first; captured memory never replaces verified sections.
     body = 'User constraints:\n' + _constraint_budget(reversed(decisions), 95, multiline=True)
