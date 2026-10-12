@@ -7,7 +7,7 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). In a
 | Command | Does |
 |---|---|
 | `ws init <dir> [--name N] [--repo R] [--pack P]` | Create a workspace named for its folder unless `--name` is supplied. Never overwrites your files: conflicts are written beside them as `.ws-new`. With `--repo`, also writes the codebase map. |
-| `ws connect claude\|codex\|cursor\|vscode\|gemini` | Connect an assistant: MCP config, plus the `/handoff`, `/pickup`, `/lesson` and `/thinkbeforeact` skills for Claude and Codex (existing skill names are kept). Codex: prints the config block; `--write` appends it with a backup. |
+| `ws connect claude\|codex\|cursor\|vscode\|gemini` | Connect an assistant's project config (MCP, hooks). The kit skills (`/handoff`, `/pickup`, `/lesson` are already project-local) stay out of your global folders unless you add `--skills`, which links the extra ones (e.g. `/thinkbeforeact`) into `~/.claude/skills` or `~/.agents/skills`; existing names are kept. Codex: prints the config block; `--write` appends it with a backup. |
 | `ws tools [--cost]` | List recommended, optional and caution tools; `--cost` reports MCP schema bytes, skill/plugin metadata size and cached Codeburn use over 30 days. |
 | `ws doctor` | What is installed, which assistants are connected, what is missing under the active tool profile and overrides. |
 | `ws packs` / `ws pack add <name>` | List and add optional packs. |
