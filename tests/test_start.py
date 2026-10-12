@@ -40,7 +40,7 @@ class StartTests(unittest.TestCase):
         ask.assert_called_once(); self.assertFalse((self.repo / 'workspace.json').exists())
         with mock.patch('builtins.input', return_value='y') as ask:
             code, output, _ = self.start()
-        ask.assert_called_once(); self.assertEqual(code, 0); self.assertEqual(len(output.splitlines()), 3)
+        ask.assert_called_once(); self.assertEqual(code, 2); self.assertEqual(len(output.splitlines()), 3)
         self.assertEqual((self.repo / 'AGENTS.md').read_text(), 'User rules remain.\n')
         task = core.task_list(self.repo)[0]
         self.assertEqual(task['title'], 'feature/synthetic'); self.assertEqual(task['branch'], 'feature/synthetic')
@@ -83,3 +83,12 @@ class StartTests(unittest.TestCase):
         code, output, preview = self.start('--yes')
         self.assertEqual(code, 2); self.assertIn('Partial setup:', output)
         self.assertIn('conflict', preview.lower()); self.assertEqual(path.read_bytes(), before)
+
+    def test_preserved_hook_settings_report_partial_even_when_mcp_connects(self):
+        self.detected = [dict(assistant='claude', cli_available=True, apps=[])]
+        path = self.repo / '.claude/settings.json'; path.parent.mkdir()
+        path.write_text('{"hooks":{"SessionStart":[]}}')
+        before = path.read_bytes()
+        code, output, _ = self.start('--yes')
+        self.assertEqual(code, 2); self.assertIn('Partial setup:', output)
+        self.assertEqual(path.read_bytes(), before)
