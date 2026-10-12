@@ -316,12 +316,13 @@ def main(argv=None):
         if a.cmd == 'start':
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
-            result = repo.start(a.yes, a.dry_run, a.workspace, a.undo)
+            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo)
+            except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
             if result and result.get('undone'):
                 print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
                 return 2 if result.get('partial') else 0
             if result:
-                print(('Already set up: ' if result['already'] else 'Partial setup: ' if result.get('partial') else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected'))
+                print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected'))
                 print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
                 print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
             return 2 if result and result.get('partial') else 0

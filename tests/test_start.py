@@ -99,6 +99,15 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_text(), 'User changed this file\n')
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
 
+    def test_interrupted_setup_reports_partial_and_can_be_undone(self):
+        with mock.patch('ws.repo.record_file', side_effect=OSError('fixture interrupted write')):
+            self.assertEqual(self.start('--yes')[0], 2)
+        code, output, _ = self.start('--yes')
+        self.assertEqual(code, 2); self.assertIn('Partial setup', output)
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+        self.assertEqual(self.start('--yes')[0], 0)
+
     def test_detected_secondary_clients_share_confirmation_and_private_undo(self):
         detected = [dict(assistant=c, cli_available=True, apps=[]) for c in ('cursor', 'copilot', 'gemini')]
         with mock.patch('ws.setup.detect', return_value=detected), mock.patch('builtins.input', return_value='y') as ask:
