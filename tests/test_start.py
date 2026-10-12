@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-from ws import cli, core, setup
+from ws import cli, core
 
 
 class StartTests(unittest.TestCase):
@@ -15,80 +15,64 @@ class StartTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.home = Path(self.tmp.name) / 'home'; self.home.mkdir()
         self.repo = Path(self.tmp.name) / 'repo'; self.repo.mkdir()
-        patch = mock.patch.dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home),
-                                CODEX_HOME=str(self.home / '.codex'), WS_OFFLINE='1')
+        patch = mock.patch.dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home), CODEX_HOME=str(self.home / '.codex'), WS_OFFLINE='1')
         patch.start(); self.addCleanup(patch.stop)
         subprocess.run(['git', 'init', '-q', '-b', 'feature/synthetic'], cwd=self.repo, check=True)
-        self.old_cwd = Path.cwd(); os.chdir(self.repo); self.addCleanup(os.chdir, self.old_cwd)
-        self.detected = [dict(assistant=name, cli_available=True, apps=[]) for name in ('claude', 'codex', 'cursor', 'copilot', 'gemini')]
+        (self.repo / 'AGENTS.md').write_text('User rules remain.\n')
+        subprocess.run(['git', 'add', 'AGENTS.md'], cwd=self.repo, check=True)
+        subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'fixture'], cwd=self.repo, check=True)
+        self.old = Path.cwd(); os.chdir(self.repo); self.addCleanup(os.chdir, self.old)
 
     def start(self, *args):
         output = io.StringIO(); preview = io.StringIO()
-        with mock.patch.object(setup, 'detect', return_value=self.detected), \
-                contextlib.redirect_stdout(output), contextlib.redirect_stderr(preview):
-            result = cli.main(['start', *args])
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(preview): result = cli.main(['start', *args])
         return result, output.getvalue(), preview.getvalue()
 
-    def test_preview_decline_then_first_start_and_repeat_status(self):
-        (self.repo / 'AGENTS.md').write_text('User rules remain.\n')
-        before = {p.relative_to(self.repo): p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
+    def test_preview_confirmation_external_memory_repeat_and_undo(self):
+        before = (self.repo / '.git/info/exclude').read_bytes()
         code, _, preview = self.start('--dry-run')
-        self.assertEqual(code, 0); self.assertIn('AGENTS.md', preview)
-        self.assertEqual(before, {p.relative_to(self.repo): p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
-        with mock.patch('builtins.input', return_value='n') as ask:
-            self.assertEqual(self.start()[0], 0)
-        ask.assert_called_once(); self.assertFalse((self.repo / 'workspace.json').exists())
-        with mock.patch('builtins.input', return_value='y') as ask:
-            code, output, _ = self.start()
-        ask.assert_called_once(); self.assertEqual(code, 2); self.assertEqual(len(output.splitlines()), 3)
+        self.assertEqual(code, 0); self.assertIn('CLAUDE.local.md', preview); self.assertIn('.claude/settings.local.json', preview)
+        self.assertIn(str(self.home / '.ai-dev-workspace/repo'), preview)
+        with mock.patch('builtins.input', return_value='n') as ask: self.assertEqual(self.start()[0], 0)
+        ask.assert_called_once(); self.assertFalse((self.home / '.ai-dev-workspace').exists())
+        with mock.patch('builtins.input', return_value='y') as ask: code, output, preview = self.start()
+        ask.assert_called_once(); self.assertEqual(code, 0); self.assertEqual(len(output.splitlines()), 3)
+        workspace = core.find_root(); self.assertEqual(workspace, (self.home / '.ai-dev-workspace/repo').resolve())
+        self.assertFalse((self.repo / 'workspace.json').exists()); self.assertFalse((self.repo / '.gitignore').exists())
         self.assertEqual((self.repo / 'AGENTS.md').read_text(), 'User rules remain.\n')
-        task = core.task_list(self.repo)[0]
-        self.assertEqual(task['title'], 'feature/synthetic'); self.assertEqual(task['branch'], 'feature/synthetic')
-        self.assertTrue(core._local_claim_matches(self.repo, task['id'], core.task_read(self.repo, task['id'], ['Next action'])['meta']))
-        for path in ('.mcp.json', '.codex/hooks.json', '.cursor/hooks.json', '.vscode/mcp.json', '.gemini/settings.json'):
-            self.assertTrue((self.repo / path).is_file(), path)
-        self.assertFalse((self.home / '.codex/config.toml').exists())
-        before = {p.relative_to(self.repo): p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
-        with mock.patch.object(core, 'init', side_effect=AssertionError('repeat must only show status')):
-            code, output, _ = self.start('--yes')
-        self.assertEqual(code, 0); self.assertEqual(len(output.splitlines()), 3)
-        self.assertEqual(before, {p.relative_to(self.repo): p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
+        task = core.task_list(workspace)[0]; self.assertEqual(task['title'], 'feature/synthetic'); self.assertTrue(task['claimed_by'])
+        for relative in ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json'):
+            self.assertTrue((self.repo / relative).is_file()); self.assertIn(relative, preview)
+        self.assertFalse((self.home / '.claude').exists()); self.assertFalse((self.home / '.codex').exists())
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain'], cwd=self.repo), b'')
+        snapshot = {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
+        self.assertEqual(self.start('--yes')[0], 0); self.assertEqual(snapshot, {p:p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual((self.repo / '.git/info/exclude').read_bytes(), before)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain'], cwd=self.repo), b'')
+        self.assertTrue((workspace / 'workspace.json').exists())
 
-    @unittest.skipIf(os.name == 'nt', 'Symlink creation requires Windows privileges')
-    def test_symlink_target_and_unmanaged_routing_refused_before_any_write(self):
-        outside = self.home / 'outside'; outside.mkdir()
-        (self.repo / 'vault').symlink_to(outside, target_is_directory=True)
-        self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / 'workspace.json').exists())
-        self.assertEqual(list(outside.iterdir()), [])
-        (self.repo / 'vault').unlink(); (self.repo / 'routing.json').write_text('{"user":"keep"}')
-        self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / 'workspace.json').exists())
-        self.assertEqual((self.repo / 'routing.json').read_text(), '{"user":"keep"}')
+    def test_existing_local_settings_restored_and_user_edits_kept(self):
+        local = self.repo / '.claude/settings.local.json'; local.parent.mkdir()
+        local.write_text('{"permissions":{"allow":["Read"]},"hooks":{}}')
+        before = local.read_bytes(); self.assertEqual(self.start('--yes')[0], 0)
+        (self.repo / '.git/info/exclude').write_bytes((self.repo / '.git/info/exclude').read_bytes() + b'\nuser-pattern\n')
+        self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(local.read_bytes(), before)
+        self.assertIn(b'user-pattern', (self.repo / '.git/info/exclude').read_bytes())
 
-    def test_only_detected_clients_connected_and_partial_setup_reported(self):
-        self.detected = [dict(assistant='codex', cli_available=True, apps=[])]
-        code, _, _ = self.start('--yes'); self.assertEqual(code, 0)
-        self.assertFalse((self.repo / '.mcp.json').exists())
-        self.assertFalse((self.repo / '.claude/settings.json').exists())
-        self.assertEqual(core.config(self.repo)['assistants'], ['codex'])
+    def test_detached_tracked_targets_and_workspace_collision_fail_before_writes(self):
+        subprocess.run(['git', 'checkout', '-q', '--detach'], check=True)
+        self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / '.ws-start.json').exists())
+        subprocess.run(['git', 'checkout', '-q', 'feature/synthetic'], check=True)
+        (self.repo / '.mcp.json').write_text('{}'); subprocess.run(['git', 'add', '.mcp.json'], check=True)
+        self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / '.ws-start.json').exists())
+        self.assertFalse((self.home / '.ai-dev-workspace').exists())
+        workspace = self.home / '.ai-dev-workspace/repo'; core.init(workspace, 'other', clients=[])
+        original = (workspace / 'workspace.json').read_bytes()
+        self.assertEqual(self.start('--yes')[0], 2); self.assertEqual((workspace / 'workspace.json').read_bytes(), original)
 
-    def test_detached_head_refuses_before_initialization(self):
-        with mock.patch.object(setup, 'branch', return_value=''):
-            self.assertEqual(self.start('--yes')[0], 2)
-        self.assertFalse((self.repo / 'workspace.json').exists())
-
-    def test_existing_client_config_is_preserved_and_partial_is_reported(self):
-        self.detected = [dict(assistant='claude', cli_available=True, apps=[])]
-        path = self.repo / '.mcp.json'; path.write_text('{"mcpServers":{"user":{"command":"synthetic"}}}')
-        before = path.read_bytes()
-        code, output, preview = self.start('--yes')
-        self.assertEqual(code, 2); self.assertIn('Partial setup:', output)
-        self.assertIn('conflict', preview.lower()); self.assertEqual(path.read_bytes(), before)
-
-    def test_preserved_hook_settings_report_partial_even_when_mcp_connects(self):
-        self.detected = [dict(assistant='claude', cli_available=True, apps=[])]
-        path = self.repo / '.claude/settings.json'; path.parent.mkdir()
-        path.write_text('{"hooks":{"SessionStart":[]}}')
-        before = path.read_bytes()
-        code, output, _ = self.start('--yes')
-        self.assertEqual(code, 2); self.assertIn('Partial setup:', output)
-        self.assertEqual(path.read_bytes(), before)
+    def test_workspace_override_and_undo_preserves_modified_local_file(self):
+        workspace = self.home / 'private memory'
+        self.assertEqual(self.start('--yes', '--workspace', str(workspace))[0], 0)
+        local = self.repo / 'CLAUDE.local.md'; local.write_text('User changed this file\n')
+        self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_text(), 'User changed this file\n')

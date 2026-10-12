@@ -135,6 +135,11 @@ def find_root(start=None):
     for candidate in (path, *path.parents):
         if (candidate / 'workspace.json').is_file():
             return candidate
+        if (candidate / '.ws-start.json').is_file():
+            from .repo import load
+            root = Path(load(candidate)['workspace']).resolve()
+            if str(candidate) not in config(root).get('repos', []): raise WsError('Repo memory link does not match this repo; run ws start --undo.')
+            return root
     raise WsError('No workspace.json found here or above. Run `ws init <dir>` first, or set WS_ROOT.')
 
 
