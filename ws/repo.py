@@ -47,6 +47,7 @@ def undo(repo, state):
     if exclude.resolve() != expected.resolve(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
     if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
     block = base64.b64decode(state['exclude_block'])
+    if not exclude.is_file() or exclude.read_bytes().count(block) != 1: raise core.WsError('Git exclude block changed; restore the recorded block before ws start --undo.')
     kept = []
     for name, entry in list(state['files'].items()):
         target = path(repo, name)
@@ -75,7 +76,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     except (OSError, subprocess.SubprocessError) as exc: raise core.WsError('Cannot inspect this Git repo; check git and retry ws start: ' + str(exc))
     if result.returncode: raise core.WsError('Run ws start inside a git code repository.')
     repo = Path(result.stdout.strip()).resolve(); current = setup.branch(repo)
-    if not current: raise core.WsError('Choose a git branch before ws start; detached HEAD has no task name.')
+    if not current and not remove: raise core.WsError('Choose a git branch before ws start; detached HEAD has no task name.')
     if path(repo, LINK).exists():
         state = load(repo)
         if remove: return undo(repo, state)

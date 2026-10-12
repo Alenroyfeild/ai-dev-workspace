@@ -48,6 +48,7 @@ class StartTests(unittest.TestCase):
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain'], cwd=self.repo), b'')
         snapshot = {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
         self.assertEqual(self.start('--yes')[0], 0); self.assertEqual(snapshot, {p:p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
+        subprocess.run(['git', 'checkout', '-q', '--detach'], check=True)
         code, output, _ = self.start('--undo')
         self.assertEqual(code, 0); self.assertIn('Removed repo wiring', output)
         self.assertEqual((self.repo / '.git/info/exclude').read_bytes(), before)
@@ -63,6 +64,10 @@ class StartTests(unittest.TestCase):
         link.write_text(json.dumps(state)); self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_bytes(), saved)
         state['exclude'] = exclude
         state['exclude'] = str(Path(state['exclude']).parent / '..' / 'info/exclude'); link.write_text(json.dumps(state))
+        git_exclude = self.repo / '.git/info/exclude'; original = git_exclude.read_bytes()
+        git_exclude.write_bytes(original.replace(b'# /ws:start', b'# user-edited'))
+        self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_bytes(), saved); self.assertTrue(link.exists())
+        git_exclude.write_bytes(original)
         (self.repo / '.git/info/exclude').write_bytes((self.repo / '.git/info/exclude').read_bytes() + b'\nuser-pattern\n')
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(local.read_bytes(), before)
         self.assertIn(b'user-pattern', (self.repo / '.git/info/exclude').read_bytes())
