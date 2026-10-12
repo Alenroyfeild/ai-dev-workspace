@@ -477,6 +477,13 @@ def client_connected(root, client):
         return False
 
 
+def skills_to_link(client, root):
+    """Number of kit skills `connect --skills` would link (those the workspace does not already provide)."""
+    project = Path(root) / ('.claude/skills' if client == 'claude' else '.agents/skills')
+    have = {p.name for p in project.iterdir() if p.is_dir()} if project.is_dir() else set()
+    return sum(1 for s in (KIT / 'skills').iterdir() if (s / 'SKILL.md').is_file() and s.name not in have)
+
+
 def link_skills(client, root):
     location = '.claude/skills' if client == 'claude' else '.agents/skills'
     directory = Path.home() / location
