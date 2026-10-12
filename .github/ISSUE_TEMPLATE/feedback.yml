@@ -11,6 +11,7 @@ body:
       options:
         - friction
         - idea
+        - praise
     validations:
       required: true
   - type: textarea

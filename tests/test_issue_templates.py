@@ -14,3 +14,4 @@ class IssueTemplateTests(unittest.TestCase):
             self.assertIn('type: textarea', text)
             self.assertLessEqual(text.count('type: textarea'), 2)
             self.assertIn('redact secrets', text.lower())
+        self.assertIn('- praise', (ROOT / '.github/ISSUE_TEMPLATE/feedback.yml').read_text())
