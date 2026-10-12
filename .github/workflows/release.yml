@@ -19,5 +19,12 @@ jobs:
           v=${GITHUB_REF_NAME#v}
           awk -v v="$v" '$0 ~ "^## "v "([[:space:]]|$)" {f=1; next} /^## / && f {exit} f' CHANGELOG.md > notes.md
           [ -s notes.md ] || { echo "No CHANGELOG section for $v"; exit 1; }
-      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+          printf '\n### Upgrade\n- pipx: `pipx upgrade ai-dev-workspace` (or `pipx install --force git+https://github.com/%s@%s`)\n- Git clone: `ws update`\n- Then `ws upgrade --dry-run` in each workspace to see template changes.\n\nFull history: [CHANGELOG.md](https://github.com/%s/blob/%s/CHANGELOG.md)\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" >> notes.md
+      # Published as Latest, not pre-release: installs before beta.3 only see releases/latest.
+      - name: Publish (updates notes if the release already exists)
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            && gh release edit "$GITHUB_REF_NAME" --notes-file notes.md --prerelease=false --latest \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --latest
         env: {GH_TOKEN: "${{ github.token }}"}
