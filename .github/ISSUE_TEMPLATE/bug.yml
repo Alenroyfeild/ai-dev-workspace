@@ -1,5 +1,5 @@
-name: Bug report
-description: Report a problem with the kit
+name: Something broke
+description: Report a crash, error or unexpected result (about 30 seconds).
 title: "[bug] "
 labels:
   - feedback
@@ -16,29 +16,29 @@ body:
   - type: textarea
     id: text
     attributes:
-      label: Feedback text
-      description: The text recorded by ws feedback add and included by ws feedback submit.
-      placeholder: Include what happened, expected behavior, exact command/error, and redacted ws doctor output.
+      label: What happened?
+      description: Include the command or error if handy. Redact secrets and private data.
+      placeholder: I ran … and got …; I expected …
     validations:
       required: true
   - type: input
     id: recorded
     attributes:
-      label: Recorded date
-      description: ws feedback submit fills this from the local feedback record.
+      label: Recorded date (optional)
+      description: Filled automatically by ws feedback submit.
     validations:
       required: false
   - type: input
     id: kit_version
     attributes:
-      label: Kit version
-      description: ws feedback submit adds the current kit version.
+      label: Kit version (optional)
+      description: Filled automatically by ws feedback submit.
     validations:
       required: false
   - type: input
     id: packs
     attributes:
-      label: Enabled packs
-      description: ws feedback submit adds the workspace pack names.
+      label: Enabled packs (optional)
+      description: Filled automatically by ws feedback submit.
     validations:
       required: false
