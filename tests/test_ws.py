@@ -900,15 +900,29 @@ class MapTests(unittest.TestCase):
 
 class InterfaceTests(Base):
     @slow_subprocess
-    def test_connect_cli_installs_skills_in_isolated_home(self):
+    def test_connect_cli_writes_nothing_global_by_default(self):
         home = Path(self.tmp.name) / 'home'
-        with mock.patch.dict(os.environ, {'HOME': str(home)}):
-            proc = self.run_cli('connect', 'claude')
+        with mock.patch.dict(os.environ, {'HOME': str(home), 'USERPROFILE': str(home)}):
+            for client in ('claude', 'codex'):
+                proc = self.run_cli('connect', client)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertNotIn('skills', json.loads(proc.stdout) if client == 'claude' else {})
+                self.assertIn(f'Optional: ws connect {client} --skills links', proc.stderr)
+        self.assertFalse((home / '.claude').exists())
+        self.assertFalse((home / '.agents').exists())
+        self.assertFalse((home / '.codex').exists())
+
+    @slow_subprocess
+    def test_connect_cli_skills_flag_links_in_isolated_home(self):
+        home = Path(self.tmp.name) / 'home'
+        with mock.patch.dict(os.environ, {'HOME': str(home), 'USERPROFILE': str(home)}):
+            proc = self.run_cli('connect', 'claude', '--skills')
         self.assertEqual(proc.returncode, 0, proc.stderr)
         result = json.loads(proc.stdout)
         self.assertIn('handoff', result['skills']['skipped'])
         self.assertIn('already available in workspace: handoff, lesson, pickup', proc.stderr)
         self.assertTrue(result['mcp']['ok'])
+        self.assertTrue((home / '.claude/skills/thinkbeforeact').exists())
         self.assertFalse((home / '.claude/skills/pickup').exists())
 
     @slow_subprocess

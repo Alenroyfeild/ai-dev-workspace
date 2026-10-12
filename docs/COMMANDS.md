@@ -7,7 +7,7 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). In a
 | Command | Does |
 |---|---|
 | `ws init <dir> [--name N] [--repo R] [--pack P]` | Create a workspace named for its folder unless `--name` is supplied. Never overwrites your files: conflicts are written beside them as `.ws-new`. With `--repo`, also writes the codebase map. |
-| `ws connect claude\|codex\|cursor\|vscode\|gemini` | Connect an assistant: MCP config, plus the `/handoff`, `/pickup`, `/lesson` and `/thinkbeforeact` skills for Claude and Codex (existing skill names are kept). Codex: prints the config block; `--write` appends it with a backup. |
+| `ws connect claude\|codex\|cursor\|vscode\|gemini` | Connect an assistant's project config (MCP, hooks). The kit skills (`/handoff`, `/pickup`, `/lesson` are already project-local) stay out of your global folders unless you add `--skills`, which links the extra ones (e.g. `/thinkbeforeact`) into `~/.claude/skills` or `~/.agents/skills`; existing names are kept. Codex: prints the config block; `--write` appends it with a backup. |
 | `ws tools [--cost]` | List recommended, optional and caution tools; `--cost` reports MCP schema bytes, skill/plugin metadata size and cached Codeburn use over 30 days. |
 | `ws doctor` | What is installed, which assistants are connected, what is missing under the active tool profile and overrides. |
 | `ws packs` / `ws pack add <name>` | List and add optional packs. |
@@ -26,6 +26,7 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | `ws claim <ID> [--worker W]` | Take the task as `$USER` unless `--worker` is supplied. The claim is remembered locally, so the next commands need no token. |
 | `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Evidence=..."]` | Save progress and the exact next step. |
 | `ws release <ID>` | Give the task back. |
+| `ws remember "<decision>" [--task ID]` | Save one decision (e.g. `"use Postgres, not SQLite"`) in your claimed task; the next session's brief lists it first. Secrets and `<private>` text are removed. |
 | `ws brief` | Task memory in under 200 words, with separate section budgets: newest captured constraints and explicit decision lines first, then next action and blockers; long Handoff prose and matching lessons last. Explicit Handoff is labelled as saved task-record text, separate from unverified captures. `[truncated: see task record]` marks clipped or omitted context; read the task's sections for the full source. The brief cannot recover decisions missing from the saved record. Existing Copilot/Cursor native blocks receive the same brief on checkpoint or `ws brief --refresh`. The session-start hook also runs this. `Memory check` flags changed/undone code; unmatched lesson paths show `(paths gone)`, and more than three matches collapse to `Lessons: N more`. |
 | `ws lesson add "<what happened → rule>"` / `ws lesson search "<words>"` | Lessons learned. |
 | `ws search "<words>"` | Ranked snippets from the vault notes. |

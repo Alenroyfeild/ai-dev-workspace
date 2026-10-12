@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCS = ('README.md', 'docs/SETUP.md')
+DOCS = ('docs/OVERVIEW.md', 'docs/SETUP.md')
 
 
 class CompatibilityDocsTests(unittest.TestCase):
@@ -18,13 +18,14 @@ class CompatibilityDocsTests(unittest.TestCase):
 
     def test_first_user_docs_avoid_overclaims_and_duplicate_sections(self):
         readme = (ROOT / 'README.md').read_text(encoding='utf-8')
+        overview = (ROOT / 'docs/OVERVIEW.md').read_text(encoding='utf-8')
         commands = (ROOT / 'docs/COMMANDS.md').read_text(encoding='utf-8')
         setup = (ROOT / 'docs/SETUP.md').read_text(encoding='utf-8')
         advanced = (ROOT / 'docs/ADVANCED.md').read_text(encoding='utf-8')
         for claim in ('exactly where it left off', 'in any assistant'):
             self.assertNotIn(claim, readme)
-        self.assertIn('Your AI assistant picks up where it left off: tasks, decisions and lessons in Markdown you own.', readme)
-        self.assertEqual(readme.count('when product decisions were given in one session'), 1)
+        self.assertIn('Your AI assistant picks up where it left off: tasks, decisions and lessons in Markdown you own.', overview)
+        self.assertEqual(overview.count('when product decisions were given in one session'), 1)
         self.assertEqual(sum(line.startswith('`ws assist`') for line in commands.splitlines()), 1)
         self.assertEqual(sum(line.startswith('`ws run import codeburn') for line in commands.splitlines()), 1)
         self.assertNotIn('acpx', setup)
