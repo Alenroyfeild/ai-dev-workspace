@@ -1007,6 +1007,35 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     return {'task': task_id, 'status': status, 'sha': digest_text(text)}
 
 
+def remember(root, text, task_id=None):
+    """Save one explicit decision in the task's Handoff, where the brief lists decisions (before captured blocks)."""
+    if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
+        raise WsError('Not saved: the text is marked private.')
+    decision = ' '.join(redact(PRIVATE_RE.sub(' ', text)).split()).replace('<!--', '&lt;!--')
+    if not decision:
+        raise WsError('Nothing to save: say the decision, e.g. ws remember "use Postgres, not SQLite".')
+    with lock(root):
+        task_id = task_id or sole_local_claim(root)
+        if not task_id:
+            raise WsError('No single claimed task. Run `ws claim <ID>` or pass --task <ID>.')
+        path = task_path(root, task_id)
+        original = path.read_text(encoding='utf-8')
+        if conflicted(original): raise WsError(conflict_hint(task_id))
+        meta = parse_meta(original)
+        worker, token = _claim_defaults(root, task_id, None, None)
+        if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
+            raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; claim it or ask them.')
+        body = section(original, 'Handoff')
+        mark = body.find('<!-- ws:captured:')
+        head, tail = (body, '') if mark < 0 else (body[:mark], body[mark:])
+        placeholder = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Handoff')
+        head = '' if head.strip() == placeholder else head.strip()
+        text = set_section(original, 'Handoff', '\n'.join(filter(None, (head, f'Decision: {decision}'))) + ('\n\n' + tail if tail else ''))
+        atomic_write(path, set_meta(text, {'updated': now()}))
+        refresh_native(root, locked=True)
+    return {'task': task_id, 'remembered': decision}
+
+
 # Instruction files that clients read at session start (CLAUDE.md is skipped: its SessionStart hook already injects the brief).
 # Only clients without a session-start brief hook: Claude and Codex read AGENTS.md and already get the brief.
 NATIVE_FILES = ('.github/copilot-instructions.md', '.cursor/rules/ws-current-task.mdc')
