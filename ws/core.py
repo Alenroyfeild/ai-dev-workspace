@@ -1227,7 +1227,7 @@ def session_task(root, cwd=None):
             meta = task_read(root, task, ['Next action'])['meta']
             if meta.get('branch') != current or meta.get('repo') != str(repo): raise
             created = False  # A concurrent local SessionStart created the same branch task.
-    if task_read(root, task, ['Next action'])['meta'].get('status') == 'done': return task
+    if task_read(root, task, ['Next action'])['meta'].get('status') == 'done': return None
     claim(root, task, 'local')
     if created: checkpoint(root, task, 'in_progress', 'Follow the current request; save the next action before stopping.')
     return task
