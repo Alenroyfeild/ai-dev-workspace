@@ -414,7 +414,7 @@ def codebase_map(root, repo=None, allow_external=False):
 def memory_hooks(root, client='claude'):
     arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root)]
     command = command_line(arguments)
-    events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop', 'SessionEnd')
+    events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop') + (('SessionEnd',) if client in ('claude', 'codex') else ())
     prompt_event = {'claude': 'UserPromptSubmit', 'codex': 'UserPromptSubmit', 'cursor': 'beforeSubmitPrompt', 'gemini': 'BeforeAgent'}.get(client)
     result = {'hooks': {}}
     if client == 'cursor': result['version'] = 1
@@ -1000,9 +1000,16 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
             if name not in NOTE_SECTIONS:
                 raise WsError(f'Unknown section {name}. Valid note sections: {", ".join(NOTE_SECTIONS)}.')
             if name == 'Handoff':
-                for captured in re.findall(r'<!-- ws:captured:[^\n]* -->\n.*?<!-- /ws:captured -->', section(text, name), re.S):
-                    if captured.splitlines()[0] not in body:
-                        body = body.rstrip() + '\n\n' + captured + '\n'
+                captures = re.findall(CAPTURE_BLOCK_RE, section(text, name), re.S) or re.findall(CAPTURE_BLOCK_RE, body, re.S)
+                body = re.sub(CAPTURE_BLOCK_RE, '', body, flags=re.S).rstrip()
+                if captures:
+                    captured = captures[-1]; prior = _captured_constraints(captured)
+                    explicit = _user_constraints(_capture_text(body, root))
+                    kept = [line for line in prior if not any(_capture_conflicts(line, rule) for rule in explicit)]
+                    if kept != prior:
+                        text = set_meta(text, {'capture_prompt_digest': digest_text(_capture_text(body, root))})
+                        captured = _capture_block(captured.splitlines()[0], kept, '') if kept else ''
+                    if captured: body += '\n\n' + captured
             text = set_section(text, name, redact(body))
         atomic_write(path, text)
         refresh_native(root, locked=True)
@@ -1251,6 +1258,68 @@ def _constraint_clauses(text):
     return re.split(r'(?<=[.!?])\s+|\n+', text)
 
 
+CAPTURE_BLOCK_RE = r'(?:<!-- ws:captured:[^\n]* -->\n)?### Captured [^\n]*\n.*?<!-- /ws:captured -->\n?'
+
+
+def _capture_text(text, root):
+    if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'): return ''
+    return localize_paths(redact(PRIVATE_RE.sub(' ', text)), root)
+
+
+def _user_constraints(text):
+    return [part for sentence in _constraint_clauses(text)
+            if re.search(r'\b(must|do not|decided|decision|correction|only|always|never)\b', sentence, re.I)
+            and not re.search(r'\b(session|stop now|notes manually|report what happened and stop)\b', sentence, re.I)
+            for part in re.split(r';\s*|\s+(?=\(\d+\)\s)', sentence) if part.strip()]
+
+
+def _capture_subject(text):
+    # shortcut: lexical subjects, not semantic inference; use explicit Handoff for ambiguous paraphrases.
+    text = re.sub(r'^correction[^:]*:\s*', '', text, flags=re.I)
+    ignored = set('a an the we i you to of with for and or it is are be must do not decided decision correction only always never use used keep instead earlier old new replacement valid initially redacted'.split())
+    words = re.findall(r'\b[a-z][a-z0-9_.-]*\b', text.lower())
+    roots = {word.split('-')[0] for word in words if '-' in word}
+    keys = {word.split('-')[0] for word in words if not re.fullmatch(r'[0-9a-f]{16,}', word)} - ignored
+    prop = re.search(r'\b([a-z][a-z0-9_.-]*)\s+(?:is|must be|should be|=)\s+', text.lower())
+    if prop and not re.fullmatch(r'[0-9a-f]{16,}', prop[1]): roots.add(prop[1])
+    choice = re.search(r'\b(use|only)\b', text.lower())
+    return keys, roots - ignored, choice[1] if choice else ''
+
+
+def _same_capture_subject(left, right):
+    a, ar, ac = _capture_subject(left); b, br, bc = _capture_subject(right)
+    overlap = a & b
+    return bool(ar & br or len(overlap) >= 2 or overlap and min(len(a), len(b)) == 1
+                or not ar and not br and len(a) == len(b) == 1 and ac and ac == bc)
+
+
+def _capture_conflicts(left, right):
+    if not _same_capture_subject(left, right): return False
+    values = lambda text: set(re.findall(r'\b(?:[a-z0-9]+-[a-z0-9-]+|[0-9a-f]{16,}|\d+)\b', text.lower()))
+    a, b = values(left), values(right)
+    if a and b: return not b.issubset(a)
+    negative = lambda text: bool(re.search(r'\b(never|do not|must not|avoid)\b', text, re.I))
+    return _capture_subject(left)[0] != _capture_subject(right)[0] or negative(left) != negative(right)
+
+
+def _merge_constraints(prior, current):
+    current = current[-95:]
+    return ([line for line in prior[-95:] if not any(_same_capture_subject(line, new) for new in current)] + current)[-95:]
+
+
+def _captured_constraints(block):
+    match = re.search(r'User constraints:\n(.*?)\nLast assistant summary / next step:', block, re.S)
+    return list(reversed([line.removeprefix('- ').strip() for line in match[1].splitlines() if line.strip()])) if match else []
+
+
+def _capture_block(marker, decisions, summary, source='transcript'):
+    if not marker.startswith('<!-- ws:captured:'): marker = '<!-- ws:captured:' + digest_text(marker)[:16] + ' -->'
+    if any(_capture_conflicts(_captured_step(summary) or summary, rule) for rule in decisions): summary = ''
+    body = 'User constraints:\n' + _constraint_budget(reversed(decisions), 95, multiline=True)
+    body += '\nLast assistant summary / next step: ' + _capture_words(_captured_step(summary) or summary, 35)
+    return marker + '\n### Captured ' + now()[:10] + f' (unverified {source})\n' + body.replace('<!--', '&lt;!--') + '\n<!-- /ws:captured -->\n'
+
+
 def _constraint_budget(clauses, limit, multiline=False):
     parts = []
     for clause in clauses:
@@ -1347,6 +1416,10 @@ def brief(root):
                 return re.sub(r'^to\s+', '', ' '.join(value.strip(' \t\n*_`.:').split()).casefold())
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
                 plan_warning = 'Captured plan differs from saved checkpoint; verify before replacing.'
+        if any(_capture_conflicts(next_action, rule) for rule in clauses):
+            next_action = '[superseded by newer captured correction; verify task record]'
+        decisions = [('[superseded] ' + line) if any(_capture_conflicts(line, rule) for rule in clauses) else line for line in decisions]
+        prose = [('[superseded] ' + line) if any(_capture_conflicts(line, rule) for rule in clauses) else line for line in prose]
     fields += [('Explicit Handoff (saved task record):', _constraint_budget(reversed(decisions), 25), 25),
                ('Next action:', next_action if saved_next else 'Not saved yet. Choose the next step before continuing.', 25),
                ('Blockers:', record['sections']['Blockers'], 8),
@@ -1363,10 +1436,10 @@ def brief(root):
     return _bounded_brief(fields, truncated)
 
 
-def capture_decisions(root, transcript_path, client='claude'):
+def capture_decisions(root, transcript_path, client='claude', prompt=None):
     """Capture bounded, unverified transcript memory to a locally owned task."""
     with lock(root):
-        reason = _capture_decisions(root, transcript_path, client)
+        reason = _capture_decisions(root, transcript_path, client, prompt) if prompt is not None else _capture_decisions(root, transcript_path, client)
         outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
         health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
                   'outcome': outcome, 'reason': reason}
@@ -1377,21 +1450,24 @@ def capture_decisions(root, transcript_path, client='claude'):
     return reason == 'captured'
 
 
-def _capture_decisions(root, transcript_path, client):
-    if not isinstance(transcript_path, str) or not transcript_path:
+def _capture_decisions(root, transcript_path, client, prompt=None):
+    if prompt is None and (not isinstance(transcript_path, str) or not transcript_path):
         return 'missing_transcript_path'
     try:
         if config(root).get('capture') is False:
             return 'disabled_by_config'
     except (OSError, ValueError, AttributeError):
         pass  # Unreadable config keeps the default: capture on.
-    decisions, summary, worked, recognized = [], '', False, False
+    decisions, summary, worked, recognized = [], '', False, prompt is not None
+    last_user_digest = ''
     try:
-        path = Path(transcript_path)
-        if path.stat().st_size > 50 * 1024 * 1024:
-            return 'transcript_too_large'
+        if prompt is not None:
+            decisions = _user_constraints(_capture_text(prompt, root))
+        else:
+            path = Path(transcript_path)
+            if path.stat().st_size > 50 * 1024 * 1024: return 'transcript_too_large'
         # ponytail: scan at most 50 MB per hook; add incremental reads if sessions outgrow this.
-        with io.StringIO(read_text(path, errors='strict')) as stream:
+        with io.StringIO('' if prompt is not None else read_text(path, errors='strict')) as stream:
             from .transcripts import records
             for line in stream if client == 'claude' else records(stream, client):
                 try:
@@ -1407,20 +1483,18 @@ def _capture_decisions(root, transcript_path, client):
                 if isinstance(content, list):
                     text = _session_text([item for item in content if isinstance(item, dict) and item.get('type') == 'text'])
                 # Private markers: `#private` / leading `/private` drops the message, <private> blocks are cut.
-                if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
-                    continue
-                text = localize_paths(redact(PRIVATE_RE.sub(' ', text)), root)
+                raw_text = text; text = _capture_text(text, root)
+                if kind == 'user' and raw_text.strip(): last_user_digest = digest_text(text)
+                if raw_text.strip() and not text.strip(): continue
                 if kind == 'assistant':
                     worked |= isinstance(content, list) and any(isinstance(item, dict) and item.get('type') == 'tool_use' for item in content)
                     if text.strip():
                         summary = text
-                else:
+                elif text.strip():
                     # Session mechanics ("in this session only investigate") are not product decisions;
                     # numbered decisions in one sentence become separate items so none is clipped away.
-                    decisions.extend(item for sentence in _constraint_clauses(text)
-                                     if re.search(r'\b(must|do not|decided|only|always|never)\b', sentence, re.I)
-                                     and not re.search(r'\bsession\b', sentence, re.I)
-                                     for item in re.split(r';?\s+(?=\(\d+\)\s)', sentence))
+                    summary = ''
+                    decisions = _merge_constraints(decisions, _user_constraints(text))
     except WsError:
         return 'unreadable_transcript'
     except (OSError, UnicodeError, ValueError, TypeError, AttributeError, KeyError, RecursionError):
@@ -1430,12 +1504,9 @@ def _capture_decisions(root, transcript_path, client):
     if not decisions and not (worked and summary):
         return 'no_work_or_memory'
     # Newest corrections get the budget first; captured memory never replaces verified sections.
-    body = 'User constraints:\n' + _constraint_budget(reversed(decisions), 95, multiline=True)
-    body += '\nLast assistant summary / next step: ' + _capture_words(_captured_step(summary) or summary, 35)
-    body = body.replace('<!--', '&lt;!--')
-    # Keyed by session: the Stop hook fires every turn, so a session updates its own block instead of adding more.
-    marker = '<!-- ws:captured:' + digest_text(str(Path(transcript_path).resolve()))[:16] + ' -->'
-    block = marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
+    # Keep only the newest merged capture; a buffered Stop must not revive older corrections.
+    identity = 'prompt:' + str(client) if prompt is not None else str(Path(transcript_path).resolve())
+    marker = '<!-- ws:captured:' + digest_text(identity)[:16] + ' -->'
     owned = []
     for task in task_list(root):
         worker, token = _claim_defaults(root, task['id'], None, None)
@@ -1447,16 +1518,25 @@ def _capture_decisions(root, transcript_path, client):
     if len(owned) != 1:
         return 'ambiguous_claims' if owned else 'no_local_claim'
     path, original = owned[0]
-    text = original
+    meta = parse_meta(original)
+    if prompt is None and meta.get('capture_prompt_digest') and meta['capture_prompt_digest'] != last_user_digest:
+        return 'unchanged'  # A buffered Stop transcript cannot undo the already submitted user prompt.
+    text = set_meta(original, {'capture_prompt_digest': digest_text(_capture_text(prompt, root))}) if prompt is not None else original
     match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
     if not match:
         return 'missing_handoff'
     section_text = match.group()
-    own = re.search(re.escape(marker) + r'.*?<!-- /ws:captured -->\n?', section_text, re.S)
-    if own:
-        section_text = section_text[:own.start()] + block + section_text[own.end():]
-    else:
-        section_text = section_text.rstrip('\n') + '\n\n' + block
+    prior = re.findall(CAPTURE_BLOCK_RE, section_text, re.S)
+    if prior:
+        current = _captured_constraints(prior[-1])
+        if prompt is None and meta.get('capture_prompt_digest'):
+            decisions = current
+        elif prompt is not None or not prior[-1].startswith(marker):
+            current = []
+            for captured in prior: current = _merge_constraints(current, _captured_constraints(captured))
+            decisions = _merge_constraints(current, decisions)
+    block = _capture_block(marker, decisions, summary, 'prompt' if prompt is not None else 'transcript')
+    section_text = re.sub(CAPTURE_BLOCK_RE, '', section_text, flags=re.S).rstrip('\n') + '\n\n' + block
     text = text[:match.start()] + section_text + text[match.end():]
     if text == original:
         return 'unchanged'

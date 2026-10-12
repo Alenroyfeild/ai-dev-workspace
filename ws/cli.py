@@ -532,6 +532,7 @@ def main(argv=None):
                 prompt = payload.get('prompt', '')
                 lines = prompt.splitlines() if isinstance(prompt, str) else []
                 if not core.prompt_is_large(prompt) or lines and lines[0].strip() == '!raw':
+                    core.capture_decisions(root, payload.get('transcript_path'), a.client, prompt=prompt)
                     out({}); return 0
                 try:
                     path = core.paste_save(root, prompt)['path'].relative_to(root).as_posix()

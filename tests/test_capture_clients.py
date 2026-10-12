@@ -70,7 +70,7 @@ class ClientCaptureTests(Base):
             proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook', '--client', 'codex'], cwd=self.root, input=json.dumps({'hook_event_name': event, 'transcript_path': str(chat)}), capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr); json.loads(proc.stdout)
         text = core.task_read(self.root, 'T-1', ['Handoff'])['sections']['Handoff']
-        self.assertEqual(text.count('### Captured'), 2)
+        self.assertEqual(text.count('### Captured'), 1)
 
 
 class GeminiConnectTests(Base):

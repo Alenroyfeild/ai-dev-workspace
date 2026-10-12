@@ -18,7 +18,7 @@ class ClientDocShapeTests(unittest.TestCase):
         self.assertEqual(set(self.hooks('cursor')), {'sessionStart', 'preCompact', 'stop', 'sessionEnd', 'beforeSubmitPrompt'})
         self.assertEqual(set(self.hooks('gemini')), {'SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd', 'BeforeAgent'})
         self.assertEqual(set(self.hooks('vscode')), {'SessionStart', 'PreCompact', 'Stop'})
-        self.assertEqual(set(self.hooks('codex')), {'SessionStart', 'PreCompact', 'Stop', 'UserPromptSubmit'})
+        self.assertEqual(set(self.hooks('codex')), {'SessionStart', 'PreCompact', 'Stop', 'SessionEnd', 'UserPromptSubmit'})
         self.assertEqual(core.memory_hooks('/r', 'cursor')['version'], 1)
         # Gemini timeouts are milliseconds; Cursor, VS Code, Claude Code and Codex use seconds.
         for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
@@ -26,7 +26,8 @@ class ClientDocShapeTests(unittest.TestCase):
                 for entry in entries:
                     for hook in entry.get('hooks', [entry]):
                         with self.subTest(client=client, event=event):
-                            self.assertEqual(hook['timeout'], 10000 if client == 'gemini' else 10)
+                            timeout = 10000 if client == 'gemini' else (3 if client == 'codex' and event == 'SessionEnd' else 10)
+                            self.assertEqual(hook['timeout'], timeout)
 
     def test_session_start_context_output(self):
         for client in ('codex', 'cursor', 'vscode', 'gemini'):
