@@ -449,7 +449,8 @@ def main(argv=None):
                     print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
                 else:
                     count = core.skills_to_link(a.client, root)
-                    print(f'Optional: ws connect {a.client} --skills links {count} extra skills into ~/{location}', file=sys.stderr)
+                    if count:
+                        print(f"Optional: ws connect {a.client} --skills links {count} extra skill{'s' if count > 1 else ''} into ~/{location}", file=sys.stderr)
                 project_skills = Path(root) / location
                 if project_skills.is_dir() and any((p / 'SKILL.md').is_file() for p in project_skills.iterdir() if p.is_dir()):
                     print(f'Project skills: available in {location}.', file=sys.stderr)
