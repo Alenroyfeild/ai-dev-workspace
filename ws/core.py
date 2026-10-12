@@ -1320,6 +1320,27 @@ def _bounded_brief(fields, truncated=False):
 
 
 def brief(root):
+    return _brief(root)[0]
+
+
+def memory_summary(root):
+    """One user-facing line saying what the brief remembered; '' when no task is selected."""
+    return _brief(root)[1]
+
+
+def _summary_line(task_id, count, next_action):
+    lead, noun = 'Remembered: ', f"{count} decision{'s' * (count != 1)}" if count else ''
+    next_text = ' '.join(redact(next_action).split())
+    if not noun and not next_text:
+        return f'No saved memory yet for {task_id} · next: ws remember "<decision>" or /handoff'
+    if not next_text: return lead + noun
+    sep = ' · ' if noun else ''
+    room = 120 - len(lead + noun + sep) - len('next: ')
+    return f"{lead}{noun}{sep}next: {next_text if len(next_text) <= room else next_text[:room - 1].rstrip() + '…'}"
+
+
+def _brief(root):
+    """Return (brief text, one-line memory summary); the summary is '' when no task is selected."""
     guard = repeat_guard(root)
     tasks = task_list(root)
     active = [t for t in tasks if t['status'] == 'in_progress']
@@ -1338,10 +1359,10 @@ def brief(root):
         on_branch = [t for t in active if t['branch'] and t['branch'] == _task_git(root, t['id'], 'rev-parse', '--abbrev-ref', 'HEAD').strip()]
         candidates = on_branch or [t for t in active if not t['claimed_by']]
         if not candidates:
-            return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()])
+            return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()]), ''
         task = candidates[0]
     else:
-        return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()])
+        return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()]), ''
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     next_action = record['sections']['Next action']
     try:
@@ -1363,7 +1384,7 @@ def brief(root):
     for clause in _constraint_clauses(explicit):
         target = decisions if re.search(r'\b(decided|decisions?|correction|must|never|always|only|do not|return|keep|use|preserve|avoid|ruled out)\b', clause, re.I) else prose
         target.append(clause)
-    truncated = False; captured_step = ''; plan_warning = ''
+    truncated = False; captured_step = ''; plan_warning = ''; remembered = len([d for d in decisions if d.strip()])
     if captured:
         memory = captured[-1]
         constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
@@ -1371,6 +1392,7 @@ def brief(root):
         clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
         fields.append(('Captured last session (unverified): User constraints:', _constraint_budget(clauses, 70), 70))
         truncated |= len(' '.join(clauses).split()) > 70
+        remembered += len([c for c in clauses if c.strip()])
         if separator:
             captured_step = step
             action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
@@ -1391,7 +1413,7 @@ def brief(root):
     lessons = relevant_lessons(root, task)
     fields += [('Lesson:', line, 25) for line in lessons[:3]]
     if len(lessons) > 3: fields.append(('Lessons:', f'{len(lessons) - 3} more (ws lesson search)', 8))
-    return _bounded_brief(fields, truncated)
+    return _bounded_brief(fields, truncated), _summary_line(task['id'], remembered, next_action if saved_next else '')
 
 
 def capture_decisions(root, transcript_path, client='claude'):
