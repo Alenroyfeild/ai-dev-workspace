@@ -46,6 +46,7 @@ os.execv({shutil.which('git')!r}, [{shutil.which('git')!r}, *args])
                        GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=str(base / 'gitconfig'),
                        GIT_AUTHOR_NAME='Synthetic', GIT_AUTHOR_EMAIL='synthetic@example.invalid',
                        GIT_COMMITTER_NAME='Synthetic', GIT_COMMITTER_EMAIL='synthetic@example.invalid')
+            subprocess.run([shutil.which('git'), 'init', '-q', '-b', 'synthetic'], cwd=home / 'code/myapp', env=env, check=True)
             commands = (
                 (KIT / 'README.md', '## Quick start', base),
                 (KIT / 'docs/SETUP.md', '## 1. Install the kit', base),
@@ -53,7 +54,7 @@ os.execv({shutil.which('git')!r}, [{shutil.which('git')!r}, *args])
             )
             for document, heading, cwd in commands:
                 result = subprocess.run(['/bin/bash', '-e', '-c', code_block(document, heading)], cwd=cwd,
-                                        env=env, text=True, capture_output=True, timeout=30)
+                                        env=env, input='y\n', text=True, capture_output=True, timeout=30)
                 self.assertEqual(result.returncode, 0, f'{document.name} {heading}: {result.stderr}')
             self.assertTrue((base / 'pipx.log').is_file())  # fake pipx records the documented install; no install runs
             workspace = base / 'my-workspace'
