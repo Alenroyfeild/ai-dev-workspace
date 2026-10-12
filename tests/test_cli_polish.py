@@ -51,6 +51,7 @@ class CliPolishTests(unittest.TestCase):
                        'Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested'):
             self.assertIn(status, readme)
         self.assertIn('[Something broke]', readme)
+        self.assertIn('https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml', readme)
         self.assertNotIn('## FAQ', readme)
 
     def test_text_reports_and_default_json(self):
