@@ -2207,7 +2207,9 @@ def check_update(force=False):
         if time.time() - data.get('checked', 0) < meta.get('update_check_hours', 24) * 3600:
             return data['result']
     try:
-        rel = _get_json(f'https://api.github.com/repos/{_repo()}/releases/latest')
+        # releases/latest skips pre-releases, so every beta was invisible; pick the newest published tag.
+        rels = [r for r in _get_json(f'https://api.github.com/repos/{_repo()}/releases?per_page=20') if not r.get('draft')]
+        rel = max(rels, key=lambda r: _vtuple(r['tag_name']))
         latest = rel['tag_name'].lstrip('v')
         result = {'current': meta['version'], 'latest': latest,
                   'update_available': _vtuple(latest) > _vtuple(meta['version']),
@@ -2335,7 +2337,7 @@ def notices(root):
     if not offline:
         upd = check_update()
         if upd.get('update_available'):
-            first = next((l.strip('- ').strip() for l in upd.get('notes', '').splitlines() if l.strip()), '')
+            first = next((l.strip('- ').strip() for l in upd.get('notes', '').splitlines() if l.strip() and not l.startswith('#')), '')
             out.append({'kind': 'update', 'message': f"ai-dev-workspace {upd['latest']} is available (you have {upd['current']})"
                         + (f': {first[:120]}' if first else '.'), 'suggest': 'ws update'})
         stamp = root / '.ws' / 'sync.json'

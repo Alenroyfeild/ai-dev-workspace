@@ -1126,7 +1126,7 @@ class ReleaseFeedbackTests(Base):
         calls = []
         def fake(url):
             calls.append(url)
-            return {'tag_name': 'v9.0.0', 'body': '- new thing', 'html_url': 'https://github.com/acme/kit/releases/v9.0.0'}
+            return [{'tag_name': 'v9.0.0', 'body': '- new thing', 'html_url': 'https://github.com/acme/kit/releases/v9.0.0'}]
         with mock.patch.object(core, '_get_json', side_effect=fake):
             first = core.check_update(force=True)
             core.check_update()
@@ -1143,7 +1143,7 @@ class ReleaseFeedbackTests(Base):
         core.feedback_link(self.root, 2, 'https://github.com/acme/kit/issues/3')
         def fake(url):
             if 'releases' in url:
-                return {'tag_name': 'v0.2.0', 'body': '- Faster search', 'html_url': 'u'}
+                return [{'tag_name': 'v0.2.0', 'body': '### New\n- Faster search', 'html_url': 'u'}]
             return {'state': 'closed'}
         with mock.patch.object(core, '_get_json', side_effect=fake) as net:
             kinds = {n['kind']: n for n in core.notices(self.root)}
@@ -1156,6 +1156,18 @@ class ReleaseFeedbackTests(Base):
         self.assertEqual(next(n for n in again if n['kind'] == 'feedback')['suggest'], 'ws feedback submit 1')
         self.assertNotIn('fixed', {n['kind'] for n in again})
         self.assertEqual(net.call_count, 2)  # one release check + one issue sync, then cached
+
+    def test_update_check_sees_prereleases(self):
+        # GitHub's releases/latest returns 404 when every release is a pre-release.
+        rels = [{'tag_name': 'v0.1.0-beta.2', 'prerelease': True, 'body': 'older'},
+                {'tag_name': 'v0.1.0-beta.3', 'prerelease': True, 'body': 'Beta 3 summary', 'html_url': 'u'},
+                {'tag_name': 'v9.9.9', 'draft': True}]
+        with mock.patch.object(core, '_get_json', return_value=rels), \
+                mock.patch.object(core, 'kit_meta', return_value={'version': '0.1.0-beta.2'}):
+            res = core.check_update(force=True)
+        self.assertEqual(res['latest'], '0.1.0-beta.3')
+        self.assertTrue(res['update_available'])
+        self.assertEqual(res['notes'], 'Beta 3 summary')
 
     def test_version_order_handles_prereleases(self):
         v = core._vtuple
