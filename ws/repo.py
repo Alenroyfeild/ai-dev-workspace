@@ -57,11 +57,11 @@ def undo(repo, state):
     if exclude != expected.absolute(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
     if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
     block = base64.b64decode(state['exclude_block'])
-    if exclude.exists(): core.atomic_write(exclude, exclude.read_bytes().replace(block, b'', 1))
     if kept:
         core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
         print('Kept edited local files: ' + ', '.join(kept), file=sys.stderr)
     else:
+        if exclude.exists(): core.atomic_write(exclude, exclude.read_bytes().replace(block, b'', 1))
         path(repo, LINK).unlink()
         for name in state.get('directories', []):
             directory = path(repo, name)
