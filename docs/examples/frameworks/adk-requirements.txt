@@ -1,0 +1,2 @@
+google-adk[mcp]==2.11.0
+mcp==2.3.0

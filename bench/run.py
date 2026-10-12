@@ -17,6 +17,17 @@ KIT = HERE.parent
 sys.path.insert(0, str(KIT))
 from ws import core
 
+CLAUDE_ENV_KEYS = ('PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'SHELL', 'TERM')
+
+
+def claude_environment(home, workspace=None):
+    env = {key: os.environ[key] for key in CLAUDE_ENV_KEYS if key in os.environ}
+    env['HOME'] = str(home)
+    env['PATH'] = str(KIT / 'bin') + os.pathsep + env.get('PATH', '')
+    env.update(WS_OFFLINE='1', PYTHONDONTWRITEBYTECODE='1')
+    if workspace: env['WS_ROOT'] = str(workspace)
+    return env
+
 
 def command(args, cwd):
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=True)
@@ -28,7 +39,10 @@ def create(root, data):
         path = repo / name
         if Path(name).is_absolute() or '..' in Path(name).parts: raise ValueError('Fixture paths must stay in repo.')
         path.parent.mkdir(parents=True, exist_ok=True); path.write_text(text)
-    command(['git', 'init', '-q'], repo); command(['git', 'add', '.'], repo)
+    command(['git', 'init', '-q'], repo)
+    command(['git', 'config', 'maintenance.auto', 'false'], repo)
+    command(['git', 'config', 'gc.auto', '0'], repo)
+    command(['git', 'add', '.'], repo)
     command(['git', '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture'], repo)
 
 
@@ -68,10 +82,13 @@ def session(root, prompt, provider, model, workspace, auth):
         home = Path(temporary); codex = home / '.codex'; codex.mkdir()
         if auth.is_file(): (codex / 'auth.json').symlink_to(auth)
         (codex / 'config.toml').write_text('[projects.' + json.dumps(str(root)) + ']\ntrust_level="trusted"\n')
-        # Claude's sign-in is tied to the real HOME; its isolation is project-only settings plus strict MCP below.
-        env = dict(os.environ, HOME=str(home) if provider == 'codex' else os.environ['HOME'], CODEX_HOME=str(codex), PATH=str(KIT / 'bin') + os.pathsep + os.environ['PATH'], WS_OFFLINE='1')
-        env.pop('WS_ROOT', None)
-        if workspace: env['WS_ROOT'] = str(root)
+        if provider == 'claude':
+            # Claude hooks inherit only these non-secret variables.
+            env = claude_environment(home, root if workspace else None)
+        else:
+            env = dict(os.environ, HOME=str(home), CODEX_HOME=str(codex), PATH=str(KIT / 'bin') + os.pathsep + os.environ['PATH'], WS_OFFLINE='1')
+            env.pop('WS_ROOT', None)
+            if workspace: env['WS_ROOT'] = str(root)
         if provider == 'codex':
             args = ['codex', 'exec', '--json', '--dangerously-bypass-hook-trust', '--disable', 'apps', '--disable', 'plugins', '--enable' if workspace else '--disable', 'hooks', '-s', 'workspace-write', '-c', 'approval_policy="never"', '-m', model, '-c', 'model_reasoning_effort="high"', '--skip-git-repo-check', '-C', str(root), prompt]
         else:
@@ -103,6 +120,9 @@ def main():
     data = json.loads((HERE / 'scenarios' / (args.scenario + '.json')).read_text())
     auth = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))) / 'auth.json'
     result = {'date': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'provider': args.provider, 'model': args.model or ('gpt-6-luna' if args.provider == 'codex' else 'sonnet'), 'resume_provider': args.resume_provider, 'resume_model': args.resume_model or (args.model if args.resume_provider == args.provider else None) or ('gpt-6-luna' if args.resume_provider == 'codex' else 'sonnet'), 'scenario': args.scenario, 'n': args.n, 'kit': command(['git', 'rev-parse', 'HEAD'], KIT).stdout.strip(), 'session1': {}, 'runs': []}
+    from bench.rollout_run import save, transport_failures
+    output = args.output or HERE / 'results' / (result['date'][:10] + '-' + args.provider + ('' if args.resume_provider == args.provider else '-to-' + args.resume_provider) + '.json')
+    output.parent.mkdir(parents=True, exist_ok=True); failures = 0
     with tempfile.TemporaryDirectory(prefix='ws-bench-') as temporary:
         base = Path(temporary).resolve()
         for arm in ('baseline', 'workspace'):
@@ -111,7 +131,9 @@ def main():
                 core.init(root, 'Synthetic benchmark', [], [str(root / 'repo')]); core.task_new(root, 'BENCH-1', data['title'], data['objective'], repo=str(root / 'repo'))
                 core.claim(root, 'BENCH-1', 'synthetic'); core.checkpoint(root, 'BENCH-1', 'in_progress', 'Investigate the synthetic task.')
             result['session1'][arm] = session(root, data['session1'], args.provider, result['model'], arm == 'workspace', auth)
+            save(output, result)
             if not result['session1'][arm]['completed']: raise RuntimeError('Session 1 did not complete; benchmark is inconclusive.')
+            failures = 0
             prepare_snapshot(root, data)
             snapshot = base / ('snapshot-' + arm); shutil.copytree(root, snapshot)
             for trial in range(1, args.n + 1):
@@ -120,9 +142,11 @@ def main():
                 record.update(arm=arm, trial=trial, **score(root, data)); record['success'] = record['completed'] and record['tests_pass'] and all(record['checks'].values())
                 record['result'] = 'inconclusive' if not record['completed'] else 'pass' if record['success'] else 'fail'
                 result['runs'].append(record); print(json.dumps(record), flush=True)
-    output = args.output or HERE / 'results' / (result['date'][:10] + '-' + args.provider + ('' if args.resume_provider == args.provider else '-to-' + args.resume_provider) + '.json')
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text('{\n' + '\n'.join(json.dumps(k) + ': ' + json.dumps(v) + ',' for k, v in result.items() if k != 'runs') + '\n"runs": [\n' + ',\n'.join(map(json.dumps, result['runs'])) + '\n]}\n')
+                failures = transport_failures([record], failures); save(output, result)
+                if failures >= 2:
+                    result['stopped'] = 'two consecutive transport failures'; save(output, result)
+                    raise RuntimeError(result['stopped'])
+    save(output, result)
     table = '| Arm | Successful session 2 | Mean seconds | Mean cost (USD) |\n|---|---|---|---|\n'
     for arm in ('baseline', 'workspace'):
         rows = [r for r in result['runs'] if r['arm'] == arm]

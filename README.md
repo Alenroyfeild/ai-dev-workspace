@@ -113,7 +113,7 @@ Use it with them, not instead: `ws import native` reads built-in memories, `ws t
 
 **Does it cost tokens?** The brief is under 200 words. In the benchmark a completion session cost about $0.05 more with the workspace; the gain is correctness across sessions, not lower spend.
 
-**Can a team share it?** The workspace is plain files: commit it to a private repo. Claims show who is working on which task.
+**Can a team share it?** The workspace is plain files: commit it to a private repo. Claims show who is working on which task. See [docs/TEAM.md](docs/TEAM.md).
 
 ## Optional packs
 
