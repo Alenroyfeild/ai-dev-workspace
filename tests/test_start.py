@@ -1,4 +1,5 @@
 import contextlib
+import base64
 import io
 import json
 import os
@@ -107,6 +108,45 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0)
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
         self.assertEqual(self.start('--yes')[0], 0)
+
+    def test_codex_project_config_backed_up_and_legacy_connect_preserved(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n[mcp_servers.other]\ncommand = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual(config.with_name('config.toml.ws-backup').read_bytes(), original)
+        workspace = core.find_root(); self.assertTrue(core.client_connected(workspace, 'codex'))
+        self.assertIn('[mcp_servers.other]', config.read_text()); self.assertFalse((self.home / '.codex').exists())
+        with mock.patch('ws.core.Path.cwd', return_value=workspace): self.assertTrue(core.connect(workspace, 'codex', write=True)['connected'])
+        self.assertTrue((self.home / '.codex/config.toml').exists())
+        config.write_text('[mcp_servers.ai-dev-workspace]\ncommand="wrong"\nargs=[]\n')
+        self.assertFalse(core.client_connected(workspace, 'codex'))
+        config.write_bytes(original + ('\n' + core.codex_mcp_config(workspace)).encode())
+        self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(config.read_bytes(), original)
+        self.assertFalse(config.with_name('config.toml.ws-backup').exists())
+
+    def test_existing_start_gets_codex_connection_after_one_confirm(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.repo / '.codex/config.toml'; config.unlink(missing_ok=True)
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['files'].pop('.codex/config.toml', None)
+        old = base64.b64decode(state['exclude_block']); block = old.replace(b'/.codex/config.toml\n', b'')
+        exclude = Path(state['exclude']); exclude.write_bytes(exclude.read_bytes().replace(old, block))
+        state['exclude_block'] = base64.b64encode(block).decode(); link.write_text(json.dumps(state))
+        hooks = (self.repo / '.codex/hooks.json').read_bytes()
+        with mock.patch('builtins.input', return_value='n') as ask: self.assertEqual(self.start()[0], 0)
+        ask.assert_called_once(); self.assertFalse(config.exists())
+        with mock.patch('builtins.input', return_value='y') as ask: self.assertEqual(self.start()[0], 0)
+        ask.assert_called_once(); self.assertTrue(core.client_connected(core.find_root(), 'codex'))
+        self.assertEqual((self.repo / '.codex/hooks.json').read_bytes(), hooks)
+        self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_codex_existing_backup_and_tracked_config_refused_before_writes(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(); config.write_text('model="fixture"\n')
+        backup = config.with_name('config.toml.ws-backup'); backup.write_text('Earlier backup\n')
+        self.assertEqual(self.start('--yes')[0], 2); self.assertEqual(backup.read_text(), 'Earlier backup\n')
+        backup.unlink(); subprocess.run(['git', 'add', '.codex/config.toml'], check=True)
+        self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / '.ws-start.json').exists())
+        self.assertEqual(config.read_text(), 'model="fixture"\n'); self.assertFalse((self.home / '.ai-dev-workspace').exists())
 
     def test_detected_secondary_clients_share_confirmation_and_private_undo(self):
         detected = [dict(assistant=c, cli_available=True, apps=[]) for c in ('cursor', 'copilot', 'gemini')]

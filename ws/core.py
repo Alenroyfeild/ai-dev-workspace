@@ -451,6 +451,11 @@ def mcp_command(root):
     return {'command': python_command(), 'args': [str(KIT / 'mcp/server.py'), '--root', str(Path(root).resolve())]}
 
 
+def codex_mcp_config(root):
+    server = mcp_command(root)
+    return '[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = ' + json.dumps(server['command']) + '\nargs = ' + json.dumps(server['args']) + '\n'
+
+
 # Project MCP config per client: (file, key holding the server map).
 MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
                  'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
@@ -459,11 +464,14 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
 def client_connected(root, client):
     if client == 'copilot': client = 'vscode'
     if client == 'codex':
-        path = Path.home() / '.codex/config.toml'
-        text = path.read_text(encoding='utf-8') if path.is_file() else ''
-        match = re.search(r'^\[mcp_servers\.(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
-        if not match:
-            return False
+        cwd = Path.cwd().resolve()
+        project = next((p.resolve() for p in read_roots(root)[1:] if p.resolve() == cwd or p.resolve() in cwd.parents), root)
+        for path in (project / '.codex/config.toml', Path.home() / '.codex/config.toml'):
+            text = path.read_text(encoding='utf-8') if path.is_file() else ''
+            match = re.search(r'^\[mcp_servers\.(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
+            if match: break
+        else: return False
+        if re.search(r'^enabled\s*=\s*false\b', match[1], re.M): return False
         fields = {}
         for key in ('command', 'args'):
             value = re.search(r'^' + key + r'\s*=\s*(\[.*?\]|"[^"\n]*"|\'[^\'\n]*\')', match[1], re.M | re.S)
@@ -570,7 +578,7 @@ def _connect_config(root, client, write=False):
         raise WsError('--write applies only to the Codex global configuration.')
     server = mcp_command(root)
     if client == 'codex':
-        block = '[mcp_servers.ai-dev-workspace]\ncommand = ' + json.dumps(server['command']) + '\nargs = ' + json.dumps(server['args']) + '\n'
+        block = codex_mcp_config(root)
         result = {'client': client, 'connected': client_connected(root, client), 'config': block}
         if not write or result['connected']:
             return result
