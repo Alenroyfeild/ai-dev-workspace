@@ -1,10 +1,14 @@
 # Measurements
 
-## Beta.4 capture candidate — proof blocked (2026-10-12)
+## Beta.4 Codex capture rerun (2026-10-12)
 
-A two-turn Codex `gpt-6-luna` diagnostic used a throwaway workspace and HOME on base `830886c`. The full transcript already retained the latest correction. Its real correction-only user message and assistant reply are retained as a turn-local fixture: replaying those two records was rejected because no tool was called. Separate failing tests showed missing Claude/Codex SessionEnd registration and a checkpoint deleting Captured blocks when explicit Handoff text was replaced. These cases do not prove the sole cause of every earlier rollout failure.
+Candidate `756a412`, Codex `gpt-6-luna/high`, uses the same five rollout seeds as the prior 2/5 versus 5/5 run (seed base `978207194577267098`). Workspace **3/5**, Markdown-only **5/5**, baseline **0/5**; all 45 calls completed. Two workspace failures became passes and one prior pass failed. Small n and different kit revisions prevent a causal improvement claim. The rollout gate failed; PR #89 remains draft.
 
-The candidate passes 27 capture tests and seven brief-decision tests. The requested rollout n=5 and cross-assistant decisions n=3 were **not run**: the bounded Claude cross-check returned “Not logged in” under isolated HOME before inference. No gain or successful Claude review is claimed. The latest completed rollout remains workspace 2/5, Markdown 5/5, baseline 0/5. [Blocked proof and diagnostic usage](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/bench/results/2026-10-12-beta4-capture-status.json).
+Codex→Codex decisions, n=3: workspace **3/3**, baseline **0/3**, all eight calls completed. Across both proofs: **5,191,712 input + 81,820 output tokens**; USD is unavailable, not zero. [Raw rollout](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-rollout-codex.json), [raw decisions](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-decisions-codex.json), [per-trial failures and prior comparison](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-rollout-codex.md).
+
+All five prepared workspace Handoffs lack the latest lane and receipt. Successful trials recovered them from Next action. Trial 1 failed the lane check; trial 4 abstained despite both current values in its brief, alongside stale captured constraints. The next hypothesis is to persist the current correction from UserPromptSubmit before relying on a later transcript read, protecting it against stale Stop reads. This was not implemented or rerun. The earlier real full-transcript diagnostic already captured correctly; a tool-free turn-local replay, missing SessionEnd registration and Handoff replacement were concrete regressions, not the proven sole cause of every rollout failure.
+
+Claude→Codex cross-check pending (Claude runs it). No Claude sessions were started for these proofs. The recorded 27 capture and seven brief-decision tests remain passing evidence for unchanged candidate code; proven scenarios were not repeated beyond the requested decisions proof.
 
 ## Claude and cross-assistant runs (2026-10-09)
 

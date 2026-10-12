@@ -2,7 +2,7 @@
 
 ## 0.1.0-beta.4 (unreleased)
 
-This candidate preserves conversation corrections through handoff changes; its fresh cross-assistant comparison is still pending.
+Decision-only turns and handoff edits retain task memory, but automatic mid-session correction capture remains unreliable.
 
 ### Improved
 - Explicit user decisions can be captured without a tool call. Final Claude/Codex SessionEnd hooks read task memory once more; existing workspaces need `ws upgrade --dry-run` and client hook review before applying these hook changes.
@@ -12,10 +12,10 @@ This candidate preserves conversation corrections through handoff changes; its f
 - `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.
 
 ### Measured
-- The latest completed rollout, before this candidate, remains workspace 2/5, Markdown-only 5/5, baseline 0/5. [Recorded outcomes](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/bench/README.md).
+- Codex rollout on the same five seeds: workspace 3/5 (previously 2/5), Markdown-only 5/5, baseline 0/5. Codex→Codex decisions remained 3/3 versus 0/3. All 53 calls completed; the rollout target was not met. [Results and per-trial failures](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-rollout-codex.md).
 
 ### Known limits
-- Fresh rollout n=5 and cross-assistant decisions n=3 are blocked: Claude could not authenticate in the isolated benchmark home. The candidate has fixture tests, but no new measured rollout gain or successful Claude cross-check. [Proof status](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/bench/results/2026-10-12-beta4-capture-status.json).
+- Captured Handoffs still missed the latest correction in all five rollout trials; passes relied on Next action. One trial failed its lane check and another abstained. This candidate remains draft. Claude→Codex cross-check pending (Claude runs it). [Proof status](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-proof-summary.json).
 
 ## 0.1.0-beta.3 (2026-10-12)
 
