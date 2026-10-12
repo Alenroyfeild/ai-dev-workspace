@@ -420,20 +420,23 @@ def main(argv=None):
             out(result)
         elif a.cmd in ('brief', 'nudge'):
             payload = json.load(sys.stdin) if a.hook else {}
+            branch_task = None
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
+            if a.hook and a.cmd == 'brief' and payload.get('hook_event_name') in ('SessionStart', 'sessionStart'):
+                branch_task = core.session_task(root, payload.get('cwd'))
             if a.hook: assist.observe(root, payload)
             if a.hook and a.client != 'claude':
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client)
-                message = core.brief(root) if a.cmd == 'brief' else ''
+                message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else ''
                 out({'additional_context': message} if a.client == 'cursor' and message else
                     {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if message else {})
                 return 0
             if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop'):
                 core.capture_decisions(root, payload.get('transcript_path'))
             if a.cmd == 'brief' and a.refresh: core.refresh_native(root)
-            message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
+            message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else core.nudge(root)
             if a.hook and a.cmd == 'nudge':
                 if payload.get('hook_event_name') == 'Stop':
                     uses = claude_tool_uses(payload.get('transcript_path'))
