@@ -3,7 +3,7 @@
 ## 0.1.0-beta.4 (unreleased)
 
 ### Improved
-- `ws remember "use Postgres, not SQLite"` saves one decision in your current task, and the next session's brief shows it ahead of automatically captured notes.
+- `ws remember "use Postgres, not SQLite"` saves one decision in your current task, and the next session's brief shows it ahead of automatically captured notes. Assistants can save one too through the new MCP `remember` tool, so a decision you state in chat holds in later sessions.
 
 ### Fixed
 - Codex session-start memory survives a missing transcript and read-only usage metadata. Plain brief and MCP memory reads need no write access. [Setup and hook trust](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/SETUP.md).
