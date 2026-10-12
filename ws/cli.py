@@ -35,7 +35,7 @@ def _block_prompt(client, reason):
     return 0
 
 
-DAILY_COMMANDS = ('status', 'task', 'claim', 'checkpoint', 'search', 'lesson', 'doctor')
+DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
@@ -224,6 +224,9 @@ def main(argv=None):
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
+    s = sub.add_parser('start', help='create and connect a workspace in this code repo')
+    s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
+    s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s = sub.add_parser('setup', help='choose assistants and configure project connections')
     s.add_argument('--assistants', help='comma-separated assistants; no client is launched')
     s.add_argument('--preset', help='routing preset name')
@@ -307,6 +310,15 @@ def main(argv=None):
         p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
     a = p.parse_args(argv)
     try:
+        if a.cmd == 'start':
+            from . import setup
+            if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
+            result = setup.start(a.yes, a.dry_run)
+            if result:
+                print(('Already set up: ' if result['already'] else 'Partial setup: ' if result.get('partial') else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected'))
+                print('Open: this code repo in your assistant; trust the project hooks/MCP when asked.')
+                print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
+            return 2 if result and result.get('partial') else 0
         if a.cmd == 'setup' and a.detect:
             from . import setup
             if a.assistants is not None or a.preset: raise core.WsError('--detect cannot configure assistants.')

@@ -7,11 +7,9 @@ AI Dev Workspace keeps task notes in Markdown your assistant can read next time.
 
 ```bash
 pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace
-ws init ~/work/myapp-ws --repo ~/code/myapp
-cd ~/work/myapp-ws && ws connect claude
-ws task new APP-123 "Fix login crash" && ws claim APP-123
+cd ~/code/myapp && ws start
 ```
-Open the workspace in your assistant and add the code folder too.
+`ws start` creates local memory in this repository and previews project files before confirmation.
 
 ## Example
 
