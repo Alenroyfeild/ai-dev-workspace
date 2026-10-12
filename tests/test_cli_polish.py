@@ -16,13 +16,28 @@ class CliPolishTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), *args], cwd=cwd, env=env,
                               text=True, capture_output=True)
 
-    def test_help_lists_commands_in_groups(self):
-        result = self.run_ws('--help')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        for group in ('Setup:', 'Daily:', 'Orchestration:', 'Measure:', 'Maintain:'):
-            self.assertIn(group, result.stdout)
-        for command in ('init', 'claim', 'checkpoint', 'route', 'tools', 'doctor', 'feedback'):
-            self.assertIn('    ' + command, result.stdout)
+    def test_short_help_only_shows_daily_commands_and_all_help_keeps_rest(self):
+        short = self.run_ws('--help')
+        self.assertEqual(short.returncode, 0, short.stderr)
+        for command in ('status', 'task', 'claim', 'checkpoint', 'search', 'lesson', 'doctor'):
+            self.assertIn('    ' + command, short.stdout)
+        for command in ('init', 'route', 'tools', 'delegate', 'feedback', 'upgrade'):
+            self.assertNotIn('    ' + command, short.stdout)
+
+        full = self.run_ws('help', 'all')
+        self.assertEqual(full.returncode, 0, full.stderr)
+        for command in ('init', 'status', 'task', 'claim', 'checkpoint', 'search', 'doctor',
+                        'route', 'tools', 'delegate', 'feedback', 'upgrade'):
+            self.assertIn('    ' + command, full.stdout)
+
+    def test_readme_is_short_and_points_to_extended_docs(self):
+        readme = (ROOT / 'README.md').read_text()
+        self.assertLessEqual(len(readme.splitlines()), 40)
+        sections = ('## Quick start', '## Example', '## Results', '## More')
+        self.assertEqual(sorted(readme.index(section) for section in sections),
+                         [readme.index(section) for section in sections])
+        self.assertIn('docs/OVERVIEW.md', readme)
+        self.assertNotIn('## FAQ', readme)
 
     def test_text_reports_and_default_json(self):
         with tempfile.TemporaryDirectory() as temporary:
