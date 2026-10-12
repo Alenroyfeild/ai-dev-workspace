@@ -135,6 +135,11 @@ def find_root(start=None):
     for candidate in (path, *path.parents):
         if (candidate / 'workspace.json').is_file():
             return candidate
+        if (candidate / '.ws-start.json').is_file():
+            from .repo import load
+            root = Path(load(candidate)['workspace']).resolve()
+            if str(candidate) not in config(root).get('repos', []): raise WsError('Repo memory link does not match this repo; run ws start --undo.')
+            return root
     raise WsError('No workspace.json found here or above. Run `ws init <dir>` first, or set WS_ROOT.')
 
 
@@ -475,6 +480,13 @@ def client_connected(root, client):
         return data.get(key, {}).get('ai-dev-workspace') == mcp_command(root)
     except (OSError, ValueError, AttributeError):
         return False
+
+
+def skills_to_link(client, root):
+    """Number of kit skills `connect --skills` would link (those the workspace does not already provide)."""
+    project = Path(root) / ('.claude/skills' if client == 'claude' else '.agents/skills')
+    have = {p.name for p in project.iterdir() if p.is_dir()} if project.is_dir() else set()
+    return sum(1 for s in (KIT / 'skills').iterdir() if (s / 'SKILL.md').is_file() and s.name not in have)
 
 
 def link_skills(client, root):
@@ -1002,10 +1014,47 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         for name, body in (notes or {}).items():
             if name not in NOTE_SECTIONS:
                 raise WsError(f'Unknown section {name}. Valid note sections: {", ".join(NOTE_SECTIONS)}.')
+            if name == 'Handoff':
+                # Decisions saved with `ws remember` outlive Handoff rewrites; editing the file is how to drop one.
+                outside = lambda s: re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', s, flags=re.S).splitlines()
+                present = {l.strip() for l in outside(body)}
+                kept = [l for l in outside(section(text, name)) if l.startswith('Decision: ') and l.strip() not in present]
+                body = '\n'.join(kept + [body.strip()]) if kept else body
             text = set_section(text, name, redact(body))
         atomic_write(path, text)
         refresh_native(root, locked=True)
     return {'task': task_id, 'status': status, 'sha': digest_text(text)}
+
+
+def remember(root, text, task_id=None):
+    """Save one explicit decision in the task's Handoff, where the brief lists decisions (before captured blocks)."""
+    if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
+        raise WsError('Not saved: the text is marked private.')
+    decision = ' '.join(redact(PRIVATE_RE.sub(' ', text)).split()).replace('<!--', '&lt;!--')
+    if not decision:
+        raise WsError('Nothing to save: say the decision, e.g. ws remember "use Postgres, not SQLite".')
+    with lock(root):
+        task_id = task_id or sole_local_claim(root)
+        if not task_id:
+            raise WsError('No single claimed task. Run `ws claim <ID>` or pass --task <ID>.')
+        path = task_path(root, task_id)
+        if not path.is_file():
+            raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
+        original = path.read_text(encoding='utf-8')
+        if conflicted(original): raise WsError(conflict_hint(task_id))
+        meta = parse_meta(original)
+        worker, token = _claim_defaults(root, task_id, None, None)
+        if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
+            raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; claim it or ask them.')
+        body = section(original, 'Handoff')
+        mark = body.find('<!-- ws:captured:')
+        head, tail = (body, '') if mark < 0 else (body[:mark], body[mark:])
+        placeholder = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Handoff')
+        head = '' if head.strip() == placeholder else head.strip()
+        text = set_section(original, 'Handoff', '\n'.join(filter(None, (head, f'Decision: {decision}'))) + ('\n\n' + tail if tail else ''))
+        atomic_write(path, set_meta(text, {'updated': now()}))
+        refresh_native(root, locked=True)
+    return {'task': task_id, 'remembered': decision}
 
 
 # Instruction files that clients read at session start (CLAUDE.md is skipped: its SessionStart hook already injects the brief).

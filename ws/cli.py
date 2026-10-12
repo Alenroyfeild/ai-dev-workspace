@@ -35,32 +35,18 @@ def _block_prompt(client, reason):
     return 0
 
 
-COMMAND_GROUPS = (
-    ('Setup', ('start', 'init', 'setup', 'connect', 'packs', 'pack')),
-    ('Daily', ('status', 'task', 'next', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'import', 'lesson')),
-    ('Orchestration', ('route', 'delegate')),
-    ('Measure', ('tools', 'digest', 'run', 'trace')),
-    ('Maintain', ('doctor', 'validate', 'map', 'feedback', 'update', 'version', 'upgrade', 'notices', 'assist')),
-)
+DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
     def _format_action(self, action):
         if isinstance(action, argparse._SubParsersAction) and action.dest == 'cmd':
             choices = {item.dest: item for item in action._choices_actions}
-            output = []
-            for label, commands in COMMAND_GROUPS:
-                output.append(' ' * self._current_indent + label + ':\n')
-                self._indent()
-                output.extend(argparse.HelpFormatter._format_action(self, choices[name])
-                              for name in commands if name in choices)
-                self._dedent()
-            extra = choices.keys() - {name for _, commands in COMMAND_GROUPS for name in commands}
-            if extra:
-                output.append(' ' * self._current_indent + 'Other:\n')
-                self._indent()
-                output.extend(argparse.HelpFormatter._format_action(self, choices[name]) for name in sorted(extra))
-                self._dedent()
+            output = [' ' * self._current_indent + 'Daily:\n']
+            self._indent()
+            output.extend(argparse.HelpFormatter._format_action(self, choices[name])
+                          for name in DAILY_COMMANDS if name in choices)
+            self._dedent()
             return ''.join(output)
         return super()._format_action(action)
 
@@ -238,9 +224,12 @@ def main(argv=None):
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
-    s = sub.add_parser('start', help='create and connect a workspace in this code repo')
+    s.add_argument('--skills', action='store_true', help='also link the kit skills into your global ~/.claude/skills or ~/.agents/skills')
+    s = sub.add_parser('start', help='connect this repo to private memory outside the checkout')
     s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
+    s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
+    s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep private memory')
     s = sub.add_parser('setup', help='choose assistants and configure project connections')
     s.add_argument('--assistants', help='comma-separated assistants; no client is launched')
     s.add_argument('--preset', help='routing preset name')
@@ -269,6 +258,9 @@ def main(argv=None):
     s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
     s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
+
+    s = sub.add_parser('remember', help='save one decision in the current task for the next session')
+    s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
 
     s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
@@ -315,15 +307,26 @@ def main(argv=None):
     s = r.add_parser('import'); s.add_argument('source', choices=('codeburn',)); s.add_argument('--since'); s.add_argument('--task')
     s = sub.add_parser('trace', help='read-only Markdown timeline of reported orchestration steps'); s.add_argument('task')
 
+    args = sys.argv[1:] if argv is None else argv
+    if args == ['help', 'all']:
+        p.formatter_class = argparse.HelpFormatter
+        p.print_help()
+        return 0
+    if args in (['--help'], ['-h']):
+        p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
     a = p.parse_args(argv)
     try:
         if a.cmd == 'start':
-            from . import setup
+            from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
-            result = setup.start(a.yes, a.dry_run)
+            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo)
+            except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
+            if result and result.get('undone'):
+                print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
+                return 2 if result.get('partial') else 0
             if result:
-                print(('Already set up: ' if result['already'] else 'Partial setup: ' if result.get('partial') else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected'))
-                print('Open: this code repo in your assistant; trust the project hooks/MCP when asked.')
+                print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected'))
+                print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
                 print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
             return 2 if result and result.get('partial') else 0
         if a.cmd == 'setup' and a.detect:
@@ -425,7 +428,9 @@ def main(argv=None):
                 raise core.WsError('Hook input must be a JSON object.')
             if a.hook and a.cmd == 'brief' and payload.get('hook_event_name') in ('SessionStart', 'sessionStart'):
                 branch_task = core.session_task(root, payload.get('cwd'))
-            if a.hook: assist.observe(root, payload)
+            if a.hook:
+                try: assist.observe(root, payload)
+                except OSError: pass  # Optional usage metadata must not block read-only memory.
             if a.hook and a.client != 'claude':
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client)
@@ -448,13 +453,18 @@ def main(argv=None):
             elif message:
                 out(message)
         elif a.cmd == 'connect':
-            result = core.connect(root, a.client, a.write, skills=True, verify=True)
-            if 'skills' in result:
-                linked = ', '.join(result['skills']['linked']) or 'none'
-                kept = ', '.join(result['skills']['kept']) or 'none'
-                skipped = ', '.join(result['skills']['skipped']) or 'none'
-                print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+            result = core.connect(root, a.client, a.write, skills=a.skills, verify=True)
+            if a.client in ('claude', 'codex'):
                 location = '.claude/skills' if a.client == 'claude' else '.agents/skills'
+                if 'skills' in result:
+                    linked = ', '.join(result['skills']['linked']) or 'none'
+                    kept = ', '.join(result['skills']['kept']) or 'none'
+                    skipped = ', '.join(result['skills']['skipped']) or 'none'
+                    print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+                else:
+                    count = core.skills_to_link(a.client, root)
+                    if count:
+                        print(f"Optional: ws connect {a.client} --skills links {count} extra skill{'s' if count > 1 else ''} into ~/{location}", file=sys.stderr)
                 project_skills = Path(root) / location
                 if project_skills.is_dir() and any((p / 'SKILL.md').is_file() for p in project_skills.iterdir() if p.is_dir()):
                     print(f'Project skills: available in {location}.', file=sys.stderr)
@@ -498,6 +508,9 @@ def main(argv=None):
             notes = dict(n.split('=', 1) for n in a.note)
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
             if a.status == 'done' and (hint := native.goal_hint(root, a.id)): print(hint, file=sys.stderr)  # stderr keeps stdout JSON clean
+        elif a.cmd == 'remember':
+            result = core.remember(root, a.text, a.task)
+            out(f"Remembered in {result['task']}: {result['remembered']}" if human() else result)
         elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query))
         elif a.cmd == 'lesson':
