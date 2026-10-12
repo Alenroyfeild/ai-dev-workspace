@@ -78,14 +78,14 @@ class MoreClientTests(Base):
         data = json.loads((self.root / '.vscode/mcp.json').read_text())
         self.assertEqual(data['servers']['ai-dev-workspace'], core.mcp_command(self.root))
         self.assertTrue(core.mcp_doctor(self.root, ('vscode',))[0]['ok'])
-        self.assertTrue(core.doctor(self.root)['clients']['vscode'])
+        self.assertTrue(core.doctor(self.root)['configured_clients']['vscode'])
 
     def test_gemini_connect_writes_project_settings_and_doctor_checks_them(self):
         core.connect(self.root, 'gemini')
         data = json.loads((self.root / '.gemini/settings.json').read_text())
         self.assertEqual(data['mcpServers']['ai-dev-workspace'], core.mcp_command(self.root))
         self.assertTrue(core.mcp_doctor(self.root, ('gemini',))[0]['ok'])
-        self.assertTrue(core.doctor(self.root)['clients']['gemini'])
+        self.assertTrue(core.doctor(self.root)['configured_clients']['gemini'])
 
     def test_pointer_files_are_managed_and_existing_files_are_preserved(self):
         target = Path(self.tmp.name) / 'pointer-collision'
@@ -131,6 +131,45 @@ class SkillDuplicateTests(Base):
             report = core.doctor(self.root)
         self.assertIn({'client': 'codex', 'name': 'pickup'}, report['skill_duplicates'])
         self.assertEqual(user_skill.read_bytes(), before)
+
+    def test_doctor_separates_configuration_protocol_and_capture_health(self):
+        from ws import cli
+        report = core.doctor(self.root)
+        self.assertTrue(report['configured_clients']['claude'])
+        self.assertEqual(report['protocol_checks']['claude']['status'], 'not_run')
+        self.assertEqual(report['capture_health']['outcome'], 'not_run')
+        rendered = cli.text_doctor(report)
+        self.assertIn('Configured clients:', rendered)
+        self.assertIn('Last protocol check: claude=not_run', rendered)
+        self.assertIn('Last capture outcome: not_run', rendered)
+        self.assertNotIn('Connected clients:', rendered)
+
+    def test_doctor_protocol_check_is_separate_from_configured_state(self):
+        report = core.doctor(self.root, mcp=True)
+        self.assertTrue(report['configured_clients']['claude'])
+        self.assertEqual(report['protocol_checks']['claude']['status'], 'passed')
+        self.assertNotEqual(report['protocol_check_date'], 'not_run')
+        self.assertEqual(core.doctor(self.root)['protocol_checks']['claude']['status'], 'passed')
+
+    def test_doctor_retains_failed_protocol_check_without_unconfiguring_client(self):
+        failure = [{'client': 'claude', 'config': '.mcp.json', 'ok': False, 'step': 'launch', 'stderr': 'missing'}]
+        with mock.patch.object(core, 'mcp_doctor', return_value=failure):
+            checked = core.doctor(self.root, mcp=True)
+        self.assertTrue(checked['configured_clients']['claude'])
+        self.assertEqual(checked['protocol_checks']['claude']['status'], 'failed')
+        self.assertEqual(checked['protocol_checks']['claude']['step'], 'launch')
+        self.assertNotEqual(checked['protocol_check_date'], 'not_run')
+        later = core.doctor(self.root)
+        self.assertTrue(later['configured_clients']['claude'])
+        self.assertEqual(later['protocol_checks']['claude']['status'], 'failed')
+        self.assertEqual(later['protocol_checks']['claude']['step'], 'launch')
+
+    def test_disconnected_client_overrides_its_saved_protocol_result(self):
+        self.assertEqual(core.doctor(self.root, mcp=True)['protocol_checks']['claude']['status'], 'passed')
+        (self.root / '.mcp.json').unlink()
+        report = core.doctor(self.root)
+        self.assertFalse(report['configured_clients']['claude'])
+        self.assertEqual(report['protocol_checks']['claude']['status'], 'not_configured')
 
     def test_doctor_lists_role_bindings_and_path_availability(self):
         def executable(name): return '/fake/' + name if name == 'codex' else None
@@ -395,7 +434,7 @@ class TaskTests(Base):
         self.assertEqual(core.nudge(self.root), '')
     def test_connect_clients_and_doctor_status(self):
         core.connect(self.root, 'cursor')
-        rep = core.doctor(self.root)['clients']
+        rep = core.doctor(self.root)['configured_clients']
         self.assertTrue(rep['claude'])
         self.assertTrue(rep['cursor'])
         config = json.loads((self.root / '.cursor/mcp.json').read_text())
@@ -422,7 +461,7 @@ class TaskTests(Base):
             self.assertEqual(path.read_bytes(), original)
             result = core.connect(self.root, 'codex', write=True)
             self.assertEqual(Path(result['backup']).read_bytes(), original)
-            self.assertTrue(core.doctor(self.root)['clients']['codex'])
+            self.assertTrue(core.doctor(self.root)['configured_clients']['codex'])
             self.assertTrue(core.connect(self.root, 'codex', write=True)['connected'])
 
     def test_codex_connect_refuses_conflicting_global_entry(self):
@@ -887,13 +926,16 @@ class InterfaceTests(Base):
                  'params': {'name': name, 'arguments': args}} for name, args in calls]
         for message in bad:
             with self.subTest(message=message):
+                initialize = {'jsonrpc': '2.0', 'id': 0, 'method': 'initialize',
+                              'params': {'protocolVersion': '2025-06-18'}}
                 ping = {'jsonrpc': '2.0', 'id': 2, 'method': 'ping'}
                 proc = subprocess.run([sys.executable, str(KIT / 'mcp/server.py'), '--root', str(self.root)],
-                                      input=json.dumps(message) + '\n' + json.dumps(ping) + '\n',
+                                      input='\n'.join(map(json.dumps, (initialize, message, ping))) + '\n',
                                       capture_output=True, text=True, timeout=10)
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 replies = list(map(json.loads, proc.stdout.splitlines()))
-                self.assertIn(replies[0]['error']['code'], (-32600, -32602))
+                self.assertEqual(replies[0]['result']['protocolVersion'], '2025-06-18')
+                self.assertIn(replies[1]['error']['code'], (-32600, -32602))
                 self.assertEqual(replies[-1], {'jsonrpc': '2.0', 'id': 2, 'result': {}})
     def test_decision_capture_appends_redacts_caps_and_deduplicates(self):
         core.claim(self.root, 'T-1', 'synthetic')

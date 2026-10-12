@@ -126,7 +126,8 @@ def reset_fixture(repo):
         with environment(GIT_AUTHOR_DATE='2023-11-14T22:13:20Z', GIT_COMMITTER_DATE='2023-11-14T22:13:20Z'):
             run.create(Path(d), DATA)
         for path in (Path(d) / 'repo').iterdir():
-            if path.is_dir(): shutil.copytree(path, repo / path.name)
+            if path.is_dir(): shutil.copytree(path, repo / path.name,
+                    ignore=shutil.ignore_patterns('*.lock') if path.name == '.git' else None)
             else: shutil.copy2(path, repo / path.name)
     fixture(repo)
 
@@ -164,9 +165,14 @@ def trial(root, expected, arm, auth):
             if not workspace and path.name not in (('repo', 'HANDOFF.md') if arm == 'markdown' else ('repo',)):
                 if path.is_dir() and not path.is_symlink(): shutil.rmtree(path)
                 else: path.unlink()
+        prepared_memory = {}
+        if workspace:
+            prepared_memory = {'brief': core.brief(root), 'handoff': core.task_read(root, 'BENCH-1', ['Handoff'])['sections']['Handoff']}
+        elif arm == 'markdown' and (root / 'HANDOFF.md').is_file():
+            prepared_memory = {'handoff': core.redact((root / 'HANDOFF.md').read_text())}
         done, message, _ = session(root, home / 'complete', DATA['complete'], workspace, auth); calls.append(done)
         checked = checks(repo, expected, audit, observed, canonical / 'repo')
         costs = {'setup': cost(home / 'investigate'), 'completion': cost(home / 'complete')}
         guessed = checked['manifest_attempted']
         return {'arm': arm, 'result': classify(done['completed'], checked, message, guessed), 'checks': checked,
-                'calls': calls, 'cost_usd': costs, 'seconds': round(time.monotonic()-start, 2)}
+                'calls': calls, 'prepared_memory': prepared_memory, 'cost_usd': costs, 'seconds': round(time.monotonic()-start, 2)}

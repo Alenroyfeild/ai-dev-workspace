@@ -14,10 +14,18 @@ def save(output, result):
                       ',\n"runs": [\n' + ',\n'.join(map(json.dumps, result['runs'])) + '\n]}\n')
 
 
+def transport_failures(calls, previous=0):
+    for call in calls:
+        previous = 0 if call['completed'] else previous + 1
+    return previous
+
+
 def run_trials(benchmark, args, auth):
     base_seed = args.seed if args.seed is not None else random.SystemRandom().getrandbits(64)
-    result = {'model': 'gpt-6-luna', 'effort': 'high', 'seed': None, 'n': args.n,
+    claude = os.environ.get('WS_BENCH_PROVIDER') == 'claude'
+    result = {'model': 'sonnet' if claude else 'gpt-6-luna', 'effort': 'default' if claude else 'high', 'seed': None, 'n': args.n,
               'kit': benchmark.run.command(['git', 'rev-parse', 'HEAD'], benchmark.run.KIT).stdout.strip(), 'runs': []}
+    failures = 0
     with tempfile.TemporaryDirectory(prefix='ws-rollout-') as d:
         for number in range(args.n):
             expected = benchmark.seed(base_seed + number)
@@ -26,16 +34,24 @@ def run_trials(benchmark, args, auth):
                 record['seed_index'] = number; result['runs'].append(record)
                 # Persist progress without publishing the answer-generating seed during worker runs.
                 save(args.output, result); print(json.dumps(record), flush=True)
+                failures = transport_failures(record.get('calls', []), failures)
+                if failures >= 2:
+                    result.update(seed=base_seed, stopped='two consecutive transport failures')
+                    save(args.output, result); return False
     result['seed'] = base_seed; save(args.output, result)
+    return True
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__); p.add_argument('-n', type=int, default=5)
-    p.add_argument('--seed', type=int); p.add_argument('--output', type=Path, required=True); args = p.parse_args()
-    if os.name == 'nt' or args.n < 5 or not shutil.which('codex'): p.error('Needs POSIX process isolation, installed Codex and n >= 5; no installs or fallback.')
+    p.add_argument('--seed', type=int); p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--provider', choices=('codex', 'claude'), default='codex', help='claude runs Claude Code sonnet with its saved transcripts kept, as for a real user')
+    args = p.parse_args()
+    if os.name == 'nt' or args.n < 5 or not shutil.which(args.provider): p.error('Needs POSIX process isolation, the selected CLI and n >= 5; no installs or fallback.')
+    os.environ['WS_BENCH_PROVIDER'] = args.provider
     from bench import rollout
     auth = Path(os.environ.get('CODEX_HOME', str(Path.home() / '.codex'))) / 'auth.json'
-    run_trials(rollout, args, auth)
+    if not run_trials(rollout, args, auth): raise SystemExit(2)
 
 
 if __name__ == '__main__': main()

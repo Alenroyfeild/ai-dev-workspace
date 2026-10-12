@@ -60,3 +60,7 @@ user request
 - **Versioned formats**: `workspace.json` has `schema_version`; migrations will go in `core` keyed on it.
 - **Third-party pins**: worker packs pin exact upstream versions and verify a hash before patching. An upstream change means re-running the self-test, never silently trusting it.
 - **Tests guard invariants**, not counts: one-writer claims, stale-write rejection, redaction, MCP protocol replies, pack idempotence, and regressions for every bug found.
+
+## MCP compatibility
+
+The stdio boundary supports both legacy initialize and modern per-request metadata; see [protocol versions, errors and measured client evidence](MCP.md). Task behavior is shared across eras.

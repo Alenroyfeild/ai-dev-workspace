@@ -36,7 +36,7 @@ def _block_prompt(client, reason):
 
 
 COMMAND_GROUPS = (
-    ('Setup', ('init', 'connect', 'packs', 'pack')),
+    ('Setup', ('init', 'setup', 'connect', 'packs', 'pack')),
     ('Daily', ('status', 'task', 'next', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'import', 'lesson')),
     ('Orchestration', ('route', 'delegate')),
     ('Measure', ('tools', 'digest', 'run', 'trace')),
@@ -97,6 +97,7 @@ def text_status(report):
     lines.append('Tasks: ' + tasks)
     for label, key in (('Active claims', 'active_claims'), ('Blocked', 'blocked')):
         lines.append(label + ': ' + ('; '.join(report[key]) or 'none'))
+    lines.extend(f'Conflicted: {hint}' for hint in report.get('conflicted', []))
     lines.extend((f"Open feedback: {report['open_feedback']}", f"Lessons: {report['lessons']}",
                   f"Recent runs: {report['runs']['steps']}"))
     if 'codex_goals' in report:
@@ -124,16 +125,27 @@ def text_doctor(report):
     lines = [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
-    clients = report.get('clients', {})
+    if report.get('setup'):
+        lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
+    clients = report.get('configured_clients', {})
     if clients:
-        lines.append('Connected clients: ' + (', '.join(name for name, connected in clients.items() if connected) or 'none'))
+        lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
     goals = report.get('codex_goals')
     if goals:
         lines.append(f"Codex goals: {goals['active']} active, {goals['complete']} complete" if 'active' in goals
                      else f"Codex goals: skipped ({goals['skipped']})")
+    lines.extend(f'Conflicted: {hint}' for hint in report.get('conflicted', []))
+    lines.extend(f'Team: {warning}' for warning in report.get('team', {}).get('warnings', []))
     health = report.get('capture_health')
     if health:
-        lines.append('Last capture: ' + ' / '.join(health.get(key, 'unknown') for key in ('date', 'client', 'outcome', 'reason')))
+        lines.append(f"Last capture outcome: {health.get('outcome', 'unknown')} "
+                     f"({health.get('client', 'unknown')}, {health.get('date', 'unknown')}; {health.get('reason', 'unknown')})")
+    checks = report.get('protocol_checks', {})
+    if checks:
+        rendered = [f"{name}={value['status']}" + (f" ({value['step']})" if value.get('step') else '')
+                    for name, value in checks.items()]
+        date = report.get('protocol_check_date', 'unknown')
+        lines.append('Last protocol check: ' + ', '.join(rendered) + f' (date: {date})')
     routes = report.get('routes', {})
     if routes:
         rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"
@@ -224,8 +236,15 @@ def main(argv=None):
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
-    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'vscode', 'gemini'))
+    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
+    s = sub.add_parser('setup', help='choose assistants and configure project connections')
+    s.add_argument('--assistants', help='comma-separated assistants; no client is launched')
+    s.add_argument('--preset', help='routing preset name')
+    s.add_argument('--detect', action='store_true', help='read-only CLI/app detection, no workspace needed')
+    choice = s.add_mutually_exclusive_group()
+    choice.add_argument('--dry-run', action='store_true', help='preview only (default)')
+    choice.add_argument('--apply', action='store_true', help='apply the previewed preset and project connections')
 
     t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
     s = t.add_parser('new'); s.add_argument('id'); s.add_argument('title')
@@ -240,7 +259,11 @@ def main(argv=None):
 
     s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker')
     s = sub.add_parser('release', help='release a task claim'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
-    s = sub.add_parser('checkpoint', help='save task status and next action'); s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
+    valid_notes = ', '.join(core.NOTE_SECTIONS)
+    s = sub.add_parser('checkpoint', help='save task status and next action',
+                       description='Save task status, next action, and optional notes.',
+                       epilog='Valid note sections: ' + valid_notes)
+    s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
     s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
 
@@ -291,6 +314,10 @@ def main(argv=None):
 
     a = p.parse_args(argv)
     try:
+        if a.cmd == 'setup' and a.detect:
+            from . import setup
+            if a.assistants is not None or a.preset: raise core.WsError('--detect cannot configure assistants.')
+            out(setup.detect()); return 0
         if a.cmd == 'init':
             cfg = core.init(a.dir, a.name or Path(a.dir).expanduser().resolve().name, a.pack, a.repo)
             collision_notices(cfg)
@@ -338,6 +365,18 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        if a.cmd == 'setup':
+            from . import setup
+            if a.assistants is not None: selected = [name.strip().lower() for name in a.assistants.split(',')]
+            elif a.preset:
+                selected = json.loads(orchestration.routing_template(a.preset))['assistants']
+            elif sys.stdin.isatty():
+                detected = [item['assistant'] for item in setup.detect() if item['cli_available'] or item['apps']]
+                print('Detected: ' + (', '.join(detected) or 'none') + '. Login/model access is not checked.', file=sys.stderr)
+                selected = [name.strip().lower() for name in input('Which assistants do you use? (comma-separated names): ').split(',')]
+            else: raise core.WsError('Non-interactive setup needs --assistants a,b or --preset NAME.')
+            result = setup.configure(root, selected, a.preset, dry_run=not a.apply)
+            out(result); return 2 if result.get('partial') else 0
         if a.cmd == 'route':
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2

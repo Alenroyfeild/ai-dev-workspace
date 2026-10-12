@@ -11,6 +11,21 @@ from bench import rollout
 
 @unittest.skipIf(os.name == 'nt', 'Benchmark transport requires POSIX process-group isolation; open-file replacement probe is POSIX-only.')
 class RolloutTests(unittest.TestCase):
+    def test_reset_does_not_copy_transient_git_locks(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); rollout.run.create(root, rollout.DATA); repo = root / 'repo'
+            copytree = rollout.shutil.copytree
+            def copying(*args, **kwargs):
+                if Path(args[0]).name == '.git':
+                    ignored = kwargs.get('ignore')
+                    if not ignored or 'maintenance.lock' not in ignored(str(args[0]), ['maintenance.lock', 'config']):
+                        raise rollout.shutil.Error([('objects/maintenance.lock', 'snapshot', 'File disappeared during copy')])
+                    self.assertNotIn('config', ignored(str(args[0]), ['maintenance.lock', 'config']))
+                return copytree(*args, **kwargs)
+            with mock.patch.object(rollout.shutil, 'copytree', side_effect=copying):
+                rollout.reset_fixture(repo)
+            self.assertEqual((repo / 'release.json').read_text(), rollout.DATA['files']['release.json'])
+
     def test_append_only_step_log_records_failure(self):
         with tempfile.TemporaryDirectory() as d:
             repo = Path(d); rollout.fixture(repo)
@@ -38,6 +53,9 @@ class RolloutTests(unittest.TestCase):
     def test_reset_removes_conversation_hints_from_git_history(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d); rollout.run.create(root, rollout.DATA); repo = root / 'repo'
+            for key, expected in (('maintenance.auto', 'false'), ('gc.auto', '0')):
+                configured = subprocess.run(['git', 'config', '--get', key], cwd=repo, capture_output=True, text=True)
+                self.assertEqual(configured.stdout.strip(), expected, key)
             (repo / 'release.json').write_text('conversation-only hint')
             rollout.run.command(['git', 'add', '.'], repo)
             rollout.run.command(['git', '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'opaque-conversation-hint'], repo)

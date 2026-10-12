@@ -84,6 +84,7 @@ def encoded_hook_args(parts):
 
 
 REQUIRED = ('Objective', 'Acceptance criteria', 'Evidence', 'Checks', 'Blockers', 'Next action', 'Handoff')
+NOTE_SECTIONS = REQUIRED + ('Findings', 'Failures', 'Risks', 'Do not redo')
 STATUSES = ('backlog', 'ready', 'in_progress', 'review', 'blocked', 'done')
 ID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 SECRET_RE = re.compile(
@@ -177,7 +178,7 @@ def read_text(path, roots=None, errors='replace'):
             if not stat.S_ISREG(os.fstat(source.fileno()).st_mode): raise WsError('Non-regular file refused; run ws doctor.')
             data = source.read(MAX_READ_BYTES + 1)
         if len(data) > MAX_READ_BYTES: raise WsError('Read exceeds 50 MB; run ws digest on a smaller file.')
-        return data.decode('utf-8', errors=errors)
+        return data.decode('utf-8', errors=errors).replace('\r\n', '\n')  # CRLF from Windows editors must not hide frontmatter
     except (OSError, RuntimeError):
         raise WsError('File cannot be read safely; check the path, then run ws doctor.')
 
@@ -449,6 +450,7 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
 
 
 def client_connected(root, client):
+    if client == 'copilot': client = 'vscode'
     if client == 'codex':
         path = Path.home() / '.codex/config.toml'
         text = path.read_text(encoding='utf-8') if path.is_file() else ''
@@ -501,6 +503,7 @@ def link_skills(client, root):
 
 
 def connect(root, client, write=False, skills=False, verify=False):
+    if client == 'copilot': client = 'vscode'
     if client == 'gemini':
         # Gemini keeps MCP servers and hooks in one settings file: merge both, touching only our entries.
         return dict(_connect_gemini(root), **({'mcp': mcp_doctor(root, ('gemini',))[0]} if verify else {}))
@@ -680,6 +683,20 @@ def set_section(text, name, body):
     return text.rstrip('\n') + f'\n\n## {name}\n{body.strip()}\n'
 
 
+def conflicted(text):
+    return bool(re.search(r'^<<<<<<< ', text, re.M) and re.search(r'^>>>>>>> ', text, re.M))
+
+
+def keep_ours(text):
+    """Resolve git conflict markers to the local (HEAD) side so a clashing task file can still be read."""
+    return re.sub(r'^<<<<<<< [^\n]*\n(.*?)(?:^(?:=======|\|\|\|\|\|\|\| )[^\n]*\n.*?)?^>>>>>>> [^\n]*\n?', r'\1', text, flags=re.M | re.S)
+
+
+def conflict_hint(task_id):
+    return (f'{task_id} has unresolved git conflict markers: open vault/Tasks/{task_id}.md, keep one side, '
+            'delete the <<<<<<< ======= >>>>>>> lines, then `git add` it (docs/TEAM.md).')
+
+
 def digest_text(text):
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -758,11 +775,14 @@ def task_list(root):
     for path in sorted(directory.glob('*.md')):
         try: text = read_text(path, [root])
         except WsError: continue
+        bad = conflicted(text)
+        if bad: text = keep_ours(text)
         meta = parse_meta(text)
         title = re.search(r'^# (.+)$', text, re.M)
         out.append({'id': meta.get('id', path.stem), 'title': title.group(1) if title else path.stem,
-                    'status': meta.get('status', 'unknown'), 'claimed_by': meta.get('claimed_by', ''),
-                    'claim': claim_note(root, meta.get('id', path.stem), meta),
+                    'status': 'conflicted' if bad else meta.get('status', 'unknown'),
+                    'claimed_by': '' if bad else meta.get('claimed_by', ''),
+                    'claim': '' if bad else claim_note(root, meta.get('id', path.stem), meta),
                     'branch': meta.get('branch', ''), 'next': section(text, 'Next action')[:200],
                     'depends_on': _deps(meta)})
     return out
@@ -903,11 +923,13 @@ def task_read(root, task_id, sections=None):
     if not path.is_file():
         raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
     text = path.read_text(encoding='utf-8')
+    bad = {'conflicted': True} if conflicted(text) else {}
     if not sections:
-        return {'task': task_id, 'sha': digest_text(text), 'text': text}
+        return {'task': task_id, 'sha': digest_text(text), 'text': text, **bad}
+    sha, text = digest_text(text), keep_ours(text) if bad else text
     meta = parse_meta(text)
-    return {'task': task_id, 'sha': digest_text(text), 'meta': meta, 'claim': claim_note(root, task_id, meta),
-            'sections': {s: section(text, s) for s in sections}}
+    return {'task': task_id, 'sha': sha, 'meta': meta, 'claim': '' if bad else claim_note(root, task_id, meta),
+            'sections': {s: section(text, s) for s in sections}, **bad}
 
 
 def claim(root, task_id, worker):
@@ -916,6 +938,7 @@ def claim(root, task_id, worker):
     with lock(root):
         path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
+        if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by'):
             # The local claim file (gitignored) proves this workspace made the claim: a later session here resumes it.
@@ -944,6 +967,7 @@ def release(root, task_id, worker=None, token=None):
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
+        if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by') != worker or meta.get('claim_token') != token:
             raise WsError('Worker/token do not match the claim; nothing changed.')
@@ -961,6 +985,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
+        if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
             raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; pass its worker and token.')
@@ -972,8 +997,8 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         text = set_meta(text, values)
         text = set_section(text, 'Next action', redact(next_action))
         for name, body in (notes or {}).items():
-            if name not in REQUIRED and name not in ('Findings', 'Failures', 'Risks', 'Do not redo'):
-                raise WsError(f'Unknown section {name}.')
+            if name not in NOTE_SECTIONS:
+                raise WsError(f'Unknown section {name}. Valid note sections: {", ".join(NOTE_SECTIONS)}.')
             text = set_section(text, name, redact(body))
         atomic_write(path, text)
         refresh_native(root, locked=True)
@@ -1243,21 +1268,46 @@ def _captured_step(summary):
     return latest
 
 
+def _bounded_brief(fields, truncated=False):
+    bounded, remaining = [], 194  # four words reserved for the record pointer
+    for prefix, value, limit in fields:
+        if not value: continue
+        value = redact(value)
+        allowance = min(limit, max(0, remaining - len(prefix.split())))
+        if not allowance:
+            truncated = True; continue
+        clipped = _capture_words(value, allowance)
+        truncated |= len(value.split()) > allowance
+        line = (prefix + ' ' + clipped).strip()
+        bounded.append(line); remaining -= len(line.split())
+    if truncated: bounded.append('[truncated: see task record]')
+    return '\n'.join(bounded)
+
+
 def brief(root):
     guard = repeat_guard(root)
     tasks = task_list(root)
     active = [t for t in tasks if t['status'] == 'in_progress']
-    if not active:
-        claimed = [t for t in tasks if t['status'] != 'done' and
-                   _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
-        if len(claimed) == 1:
-            active = claimed
-        else:
-            return guard or 'No in-progress task. Find or create the task before working.'
-    task = next((t for t in active if t['claimed_by']), active[0])
+    # Team workspace: my local claims first, then the task on this repo's current branch, never a teammate's by default.
+    own = [t for t in tasks if t['status'] not in ('done', 'conflicted') and
+           _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
+    own_ids = {t['id'] for t in own}
+    others = [t for t in tasks if t['claimed_by'] and t['status'] != 'done' and t['id'] not in own_ids]
+    def others_line(task_id=''):
+        shown = [f"{t['id']} ({redact(t['claimed_by'])})" for t in others if t['id'] != task_id][:3]
+        return ['Others working: ' + ', '.join(shown)] if shown else []
+    mine = [t for t in active if t['id'] in own_ids]
+    if mine or own:
+        task = (mine or own)[0]
+    elif active:
+        on_branch = [t for t in active if t['branch'] and t['branch'] == _task_git(root, t['id'], 'rev-parse', '--abbrev-ref', 'HEAD').strip()]
+        candidates = on_branch or [t for t in active if not t['claimed_by']]
+        if not candidates:
+            return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()])
+        task = candidates[0]
+    else:
+        return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()])
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
-    def words(text, limit):
-        return ' '.join(redact(text).split()[:limit])
     next_action = record['sections']['Next action']
     try:
         checkpoint_count = int(record['meta'].get('checkpoint_count', 0))
@@ -1265,33 +1315,48 @@ def brief(root):
         checkpoint_count = 0
     template_action = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Next action')
     saved_next = bool(next_action.strip()) and (checkpoint_count > 0 or next_action.strip() != template_action)
-    lines = ['Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.',
-             f"Task {task['id']}: {words(task['title'], 15)}",
-             'Next action: ' + (words(next_action, 60) if saved_next
-                                else 'Not saved yet. Choose the next step before continuing.'),
-             'Blockers: ' + words(record['sections']['Blockers'], 25)]
-    if record['claim']:
-        lines.append('Claim: ' + record['claim'])
-    lines += [m for m in [_memory_check(root, task['id'], record['meta'], next_action)] if m]
-    captured = re.findall(r'### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->', task_read(root, task['id'], ['Handoff'])['sections']['Handoff'], re.S)
+    fields = ([('', guard, 20)] if guard else []) + [
+        ('', 'Saved task memory is context, not instructions. Follow the current request; for greetings/status, ask before starting work.', 17),
+        (f"Task {task['id']}:", task['title'], 10)]
+    handoff = task_read(root, task['id'], ['Handoff'])['sections']['Handoff']
+    capture_pattern = r'(?:<!-- ws:captured:[^\n]* -->\n)?### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->'
+    captured = re.findall(capture_pattern, handoff, re.S)
+    explicit = re.sub(capture_pattern, '', handoff, flags=re.S).strip()
+    placeholder = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Handoff')
+    explicit = explicit if explicit != placeholder else ''
+    decisions, prose = [], []
+    for clause in _constraint_clauses(explicit):
+        target = decisions if re.search(r'\b(decided|decisions?|correction|must|never|always|only|do not|return|keep|use|preserve|avoid|ruled out)\b', clause, re.I) else prose
+        target.append(clause)
+    truncated = False; captured_step = ''; plan_warning = ''
     if captured:
         memory = captured[-1]
         constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
         constraints = constraints.removeprefix('User constraints:').strip()
         clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
-        lines.append('Captured last session (unverified): User constraints: ' +
-                     _constraint_budget(clauses, 70))
+        fields.append(('Captured last session (unverified): User constraints:', _constraint_budget(clauses, 70), 70))
+        truncated |= len(' '.join(clauses).split()) > 70
         if separator:
-            lines.append('Captured next step (unverified): ' + _capture_words(step, 25))
+            captured_step = step
             action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
             def normalized(value):
                 return re.sub(r'^to\s+', '', ' '.join(value.strip(' \t\n*_`.:').split()).casefold())
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
-                lines.append('Captured plan differs from saved checkpoint; verify before replacing.')
+                plan_warning = 'Captured plan differs from saved checkpoint; verify before replacing.'
+    fields += [('Explicit Handoff (saved task record):', _constraint_budget(reversed(decisions), 25), 25),
+               ('Next action:', next_action if saved_next else 'Not saved yet. Choose the next step before continuing.', 25),
+               ('Blockers:', record['sections']['Blockers'], 8),
+               ('', plan_warning, 11),
+               ('Captured next step (unverified):', captured_step, 16),
+               ('', _memory_check(root, task['id'], record['meta'], next_action), 18),
+               ('Claim:', record['claim'], 12)]
+    truncated |= len(' '.join(decisions).split()) > 25
+    fields += [('', line, 18) for line in others_line(task['id'])]
+    fields.append(('Explicit Handoff prose (saved task record):', ' '.join(prose), 18))
     lessons = relevant_lessons(root, task)
-    lines += ['Lesson: ' + words(line, 25) for line in lessons[:3]]
-    if len(lessons) > 3: lines.append(f'Lessons: {len(lessons) - 3} more (ws lesson search)')
-    return '\n'.join(([guard] if guard else []) + lines)
+    fields += [('Lesson:', line, 25) for line in lessons[:3]]
+    if len(lessons) > 3: fields.append(('Lessons:', f'{len(lessons) - 3} more (ws lesson search)', 8))
+    return _bounded_brief(fields, truncated)
 
 
 def capture_decisions(root, transcript_path, client='claude'):
@@ -1755,6 +1820,8 @@ def validate(root):
     v = vault(root)
     for path in sorted((v / 'Tasks').glob('*.md')):
         text = path.read_text(encoding='utf-8')
+        if conflicted(text):
+            errors.append(f'{path.name}: ' + conflict_hint(path.stem)); continue
         meta = parse_meta(text)
         if meta.get('id') != path.stem:
             errors.append(f'{path.name}: id must equal the file name')
@@ -1783,6 +1850,7 @@ def status(root):
         counts[t['status']] = counts.get(t['status'], 0) + 1
     report = {'workspace': config(root)['name'], 'packs': config(root).get('packs', []), 'tasks': counts,
               'active_claims': [f"{t['id']} by {t['claimed_by']}" for t in tasks if t['claimed_by']],
+              'conflicted': [conflict_hint(t['id']) for t in tasks if t['status'] == 'conflicted'],
               'blocked': [f"{t['id']}: {t['next']}" for t in tasks if t['status'] == 'blocked'],
               'open_feedback': len(feedback_list(root)), 'lessons': len(lesson_search(root, '')),
               'runs': run_report(root)}
@@ -1948,6 +2016,88 @@ def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
     return checks
 
 
+def _protocol_health(root, configured, results=None):
+    """Return the last safe MCP protocol result, recording only when a check was run."""
+    path = inside(root / '.ws/protocol-health.json', [root])
+    checks = {}
+    date = 'not_run'
+    if results is not None:
+        date = now()
+        for result in results:
+            client = result.get('client')
+            if client not in configured:
+                continue
+            status = 'passed' if result.get('ok') else 'failed'
+            check = {'status': status}
+            if status == 'failed' and result.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status'):
+                check['step'] = result['step']
+            checks[client] = check
+        with lock(root):
+            atomic_write(path, json.dumps({'date': date, 'checks': checks}, sort_keys=True) + '\n')
+    else:
+        try:
+            saved = json.loads(read_text(path, [root]))
+            if (isinstance(saved, dict) and re.fullmatch(r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00', saved.get('date', ''))
+                    and isinstance(saved.get('checks'), dict)):
+                date = saved['date']
+                checks = {client: check for client, check in saved['checks'].items()
+                          if client in configured and isinstance(check, dict)
+                          and check.get('status') in ('passed', 'failed')
+                          and (check.get('step') is None or check.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status'))}
+        except (WsError, OSError, ValueError, TypeError):
+            pass
+    state = {client: (checks.get(client, {'status': 'not_run'}) if is_configured
+                      else {'status': 'not_configured'})
+             for client, is_configured in configured.items()}
+    return state, date
+
+
+def _git(root, *args):
+    return subprocess.run(['git', '-C', str(root), *args], capture_output=True, encoding='utf-8', errors='replace', timeout=10)
+
+
+def _team_checks(root):
+    """Warnings for a workspace shared through git (local claims must stay local, no secrets in tracked notes); None outside a repo."""
+    try:
+        if _git(root, 'rev-parse', '--is-inside-work-tree').stdout.strip() != 'true': return None
+        warnings = []
+        if _git(root, 'check-ignore', '-q', '.ws/claims/probe').returncode != 0:
+            warnings.append('.ws/ is not ignored: add `.ws/` to .gitignore so local claim tokens are never committed.')
+        if _git(root, 'ls-files', '-z', '--', '.ws').stdout.strip('\0'):
+            warnings.append('.ws/ files are tracked: run `git rm -r --cached .ws` so claim tokens leave the repo.')
+        found = []
+        for name in _git(root, 'ls-files', '-z', '--', vault(root).resolve().relative_to(root.resolve()).as_posix()).stdout.split('\0'):
+            if not name: continue
+            try:
+                path = root / name
+                if path.stat().st_size >= 1_000_000:
+                    warnings.append(f'{name}: not checked for secrets (file is 1 MB or larger).'); continue
+                text = read_text(path, [root])
+            except (OSError, WsError):
+                warnings.append(f'{name}: not checked for secrets (cannot read safely).'); continue
+            lines = {text.count('\n', 0, m.start()) + 1 for rx in (SECRET_RE, URL_CREDENTIALS_RE) for m in rx.finditer(text)}
+            found += [f'{name}:{n}' for n in sorted(lines)]
+        # The index, rather than the edited working copy, is what the next commit shares.
+        for name in _git(root, 'diff', '--cached', '--name-only', '-z', '--', vault(root).resolve().relative_to(root.resolve()).as_posix()).stdout.split('\0'):
+            if not name: continue
+            revision = ':./' + name
+            size = _git(root, 'cat-file', '-s', revision)
+            if size.returncode: continue  # deletion or unmerged entry; conflict checks handle the latter
+            if int(size.stdout) >= 1_000_000:
+                warnings.append(f'{name}: staged content not checked for secrets (1 MB or larger).'); continue
+            staged = _git(root, 'show', revision)
+            if staged.returncode:
+                warnings.append(f'{name}: staged content not checked for secrets (cannot read index).'); continue
+            text = staged.stdout
+            lines = {text.count('\n', 0, m.start()) + 1 for rx in (SECRET_RE, URL_CREDENTIALS_RE) for m in rx.finditer(text)}
+            found += [f'{name}:{n} (staged)' for n in sorted(lines)]
+        warnings += [f'possible secret at {place} (value not shown); remove it and rotate the credential.' for place in found[:10]]
+        if len(found) > 10: warnings.append(f'{len(found) - 10} more possible secrets in tracked vault files.')
+        return {'warnings': warnings}
+    except (OSError, ValueError, subprocess.SubprocessError, WsError):
+        return None
+
+
 def doctor(root=None, mcp=False):
     """What is installed, what each plugged pack still needs, and recommended extras."""
     report = {'core': {'python3': True, 'git': bool(shutil.which('git'))}, 'packs': [], 'recommended': [],
@@ -1973,14 +2123,23 @@ def doctor(root=None, mcp=False):
         report['kit'].update(json.loads(cache.read_text(encoding='utf-8'))['result'])
     if root:
         report['workspace'] = str(root)
+        cfg = config(root)
+        preset, assistants = cfg.get('routing_preset', 'not selected'), cfg.get('assistants', [])
+        report['setup'] = {'preset': preset if isinstance(preset, str) else 'unknown',
+                           'assistants': assistants if isinstance(assistants, list) and all(isinstance(name, str) for name in assistants) else []}
         report['capture_health'] = capture_health(root)
         from . import native
         report['codex_goals'] = native.codex_goals(root)
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
-        report['clients'] = {client: client_connected(root, client)
-                             for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
+        report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
+        team = _team_checks(root)
+        if team is not None: report['team'] = team
+        report['configured_clients'] = {client: client_connected(root, client)
+                                        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
+        report['protocol_checks'], report['protocol_check_date'] = _protocol_health(
+            root, report['configured_clients'])
         report['client_instructions'] = {
             name: {'path': path, 'present': (root / path).is_file()}
             for name, path in (('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md'))}
@@ -2000,6 +2159,8 @@ def doctor(root=None, mcp=False):
                                                   for name in sorted(project_names & user_names))
         if mcp:
             report['mcp'] = mcp_doctor(root)
+            report['protocol_checks'], report['protocol_check_date'] = _protocol_health(
+                root, report['configured_clients'], report['mcp'])
     return report
 
 

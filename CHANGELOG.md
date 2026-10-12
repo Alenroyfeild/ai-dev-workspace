@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.0-beta.3 (2026-10-12)
+
+### Proven
+- The latest Codex rollout passed workspace 2/5, Markdown-only 5/5, baseline 0/5; all calls completed. Missing saved corrections remain a release risk. Earlier 4/5 versus 3/5 used different seeds; see [all outcomes and limitations](bench/README.md).
+
+### New
+- `ws setup` previews assistant choices and project connections before applying them, and reports setup failures with next steps.
+- Shared workspaces show tasks and claims matched to the current branch and flag conflicting task records.
+- Session briefs carry bounded excerpts of explicit saved handoff decisions into the next session.
+- `ws doctor --mcp` checks configured clients; `ws doctor` shows configuration separately from the latest protocol check and capture outcome.
+- The MCP server speaks both protocol eras: 2026-07-28 clients use per-request metadata and `server/discover`; 2025-11-25 and 2025-06-18 clients keep the initialize handshake. Proven with the Python MCP SDK 2.3.0 in both modes (docs/examples/mcp-protocol-proof.json); no live assistant was tested on the new era.
+- Opt-in Google ADK and LangGraph recipes connect agents to the same task memory over native MCP (docs/examples/frameworks/). A decision written from one framework was recovered by a fresh agent in the other, both directions, with stub models only.
+- Maintainers can read recent repository stars, clones and page views in the activity report.
+
+### Fixed
+- Briefs prioritize saved decisions and corrections within section budgets, with a task-record pointer when truncated; this does not recover corrections absent from task memory.
+- Task records preserve CRLF line endings, and team claims and conflicts remain readable across shared work.
+- The Claude rollout benchmark uses a per-trial home and allowlisted environment so shell credentials and user settings are not passed into project hooks. API-key-only authentication and live Claude runs were not verified.
+- The benchmark fixture no longer races Git's automatic maintenance lock on macOS.
+- TEAM claim examples and checkpoint help now match the supported commands and note sections; README, TEAM and SETUP quick-start commands are smoke-tested in throwaway workspaces.
+
 ## 0.1.0-beta.2 (2026-10-09)
 
 ### Proven
