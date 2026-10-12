@@ -5,17 +5,17 @@
 Decision-only turns and handoff edits retain task memory, but automatic mid-session correction capture remains unreliable.
 
 ### Improved
-- Explicit user decisions can be captured without a tool call. Final Claude/Codex SessionEnd hooks read task memory once more; existing workspaces need `ws upgrade --dry-run` and client hook review before applying these hook changes.
+- The existing prompt hook can save short user corrections before a transcript flush, with privacy and local-claim checks (fixture-tested). Explicit user decisions can be captured without a tool call. Final Claude/Codex SessionEnd hooks read task memory once more; existing workspaces need `ws upgrade --dry-run` and client hook review before applying these hook changes.
 
 ### Fixed
-- Updating explicit Handoff notes keeps existing Captured blocks instead of deleting them. Privacy filtering and local claim ownership still apply.
+- Updating explicit Handoff notes retains at most the newest Captured block, filtering conflicting older constraints (fixture-tested). Privacy filtering and local claim ownership still apply.
 - `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.
 
 ### Measured
-- Codex rollout on the same five seeds: workspace 3/5 (previously 2/5), Markdown-only 5/5, baseline 0/5. Codex→Codex decisions remained 3/3 versus 0/3. All 53 calls completed; the rollout target was not met. [Results and per-trial failures](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-rollout-codex.md).
+- Final Codex rollout on the original five seeds: workspace 1/5, Markdown-only 4/5, baseline 0/5 (iteration 1: 3/5, 5/5, 0/5). Codex→Codex decisions stayed 3/3 versus 0/3. All 53 calls completed; the candidate regressed and stays draft. [Results and every trial](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-iteration2-rollout-codex.md).
 
 ### Known limits
-- Captured Handoffs still missed the latest correction in all five rollout trials; passes relied on Next action. One trial failed its lane check and another abstained. This candidate remains draft. Claude→Codex cross-check pending (Claude runs it). [Proof status](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-proof-summary.json).
+- All five resumed Codex trials still missed the correction in Captured memory and the brief; stale captures suppressed the saved Next action. #89 is parked, with no third iteration or more benchmarks. Claude→Codex cross-check pending (Claude runs it). [Diagnosis](https://github.com/Alenroyfeild/ai-dev-workspace/blob/codex/beta4-capture-corrections/bench/results/2026-10-12-beta4-iteration2-summary.json).
 
 ## 0.1.0-beta.3 (2026-10-12)
 
