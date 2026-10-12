@@ -4,6 +4,7 @@
 
 ### Improved
 - `ws remember "use Postgres, not SQLite"` saves one decision in your current task, and the next session's brief shows it ahead of automatically captured notes.
+- At session start, Claude Code and Codex now show you one line such as `Remembered: 3 decisions · next: write the migration`, so you can see the saved memory was loaded. With nothing saved, it tells you how to save something.
 
 ### Fixed
 - `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.

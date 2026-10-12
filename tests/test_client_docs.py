@@ -33,6 +33,7 @@ class ClientDocShapeTests(unittest.TestCase):
             output = io.StringIO()
             with mock.patch.object(core, 'find_root', return_value=ROOT), \
                     mock.patch.object(core, 'brief', return_value='Saved next action.'), \
+                    mock.patch.object(core, 'memory_summary', return_value=''), \
                     mock.patch.object(cli.assist, 'observe'), \
                     mock.patch('sys.stdin', io.StringIO('{"hook_event_name":"SessionStart"}')), \
                     mock.patch('sys.stdout', output):
