@@ -31,3 +31,7 @@ Cursor, Copilot CLI and Gemini are **prepare-only and live-untested** here. Curs
 Kit data in `template/routing-presets.json` defines `claude-only`, `codex-only`, `cursor-only`, `copilot-only`, `gemini-only`, `claude+codex` and `mixed`. A single-provider preset binds every default role to that provider and disables automatic delegation; it still prepares a brief and a manual command. Combined presets allow only the providers with read-only headless commands to execute explorer/reviewer work explicitly. A selected mixed preset limits every preference list to the chosen assistants. Missing login/model access is never inferred from PATH detection.
 
 The generated `routing.json` records `preset`, `assistants` and `delegation_mode`. Upgrade uses that selection, retains user provider settings and root role overrides, and is idempotent. Legacy files without preset metadata keep their existing execution policy. Explicit user role overrides remain authoritative. Preview with `ws setup --assistants codex`, `ws setup --assistants claude,codex` or `--preset NAME`, then repeat with `--apply`; see [setup commands](COMMANDS.md#select-assistants).
+
+## Framework recipes
+
+Existing ADK or LangGraph users can opt into the [stub-model-tested MCP examples](examples/frameworks/README.md). They use four native-adapter tools and disposable memory, add no core dependencies, and distinguish saved task memory from framework execution state. Hosted models are untested.
