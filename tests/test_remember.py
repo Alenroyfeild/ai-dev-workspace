@@ -69,7 +69,7 @@ class RememberTests(Base):
     def test_task_override_and_unknown_task(self):
         core.remember(self.root, 'use Postgres', task_id='T-1')
         self.assertIn('use Postgres', self.handoff())
-        with self.assertRaises(Exception):
+        with self.assertRaisesRegex(core.WsError, r'No task NOPE-9'):
             core.remember(self.root, 'use Postgres', task_id='NOPE-9')
 
     def test_decision_stays_above_captured_block_and_is_not_captured(self):
