@@ -1,63 +1,14 @@
 {
-  "date": "2026-10-12",
-  "base_kit": "830886c1bcd3602dc63656e127d77606a2ae52ed",
-  "candidate": "codex/beta4-capture-corrections",
-  "result": "blocked",
-  "tests": {
-    "capture": 27,
-    "brief_decisions": 7,
-    "new_regressions": 4,
-    "before_fix_failures": 5
-  },
-  "diagnostic": {
-    "provider": "codex",
-    "model": "gpt-6-luna",
-    "client_version": "0.155.1",
-    "calls": [
-      {
-        "completed": true,
-        "exit_code": 0,
-        "tool_calls": 14,
-        "input_tokens": 153433,
-        "output_tokens": 2327,
-        "cache_read_tokens": 114688,
-        "cache_write_tokens": 0,
-        "cost_usd": null,
-        "seconds": 45.65
-      },
-      {
-        "completed": true,
-        "exit_code": 0,
-        "tool_calls": 0,
-        "input_tokens": 17809,
-        "output_tokens": 302,
-        "cache_read_tokens": 17152,
-        "cache_write_tokens": 0,
-        "cost_usd": null,
-        "seconds": 8.36
-      }
-    ],
-    "full_transcript_before_fix_retained_correction": true,
-    "fixture": "tests/fixtures/rollout-correction-turn.jsonl",
-    "fixture_scope": "Actual correction user message and assistant reply from the resumed diagnostic; tool calls and earlier history omitted, explicitly a turn-local replay."
-  },
-  "rollout": {
-    "planned_n": 5,
-    "attempted": false
-  },
-  "cross_assistant_decisions": {
-    "planned_n": 3,
-    "attempted": false,
-    "reason": "Claude isolated HOME returned Not logged in during the required cross-check; stopped before benchmark calls."
-  },
-  "claude_review": {
-    "client_version": "2.1.278",
-    "completed": false,
-    "cost_usd": 0
-  },
-  "limits": [
-    "No measured improvement over the prior workspace 2/5 versus Markdown 5/5.",
-    "The three regression cases do not establish the sole cause of every prior rollout failure.",
-    "No authentication or personal configuration was changed."
-  ]
+"date": "2026-10-12",
+"base_kit": "830886c1bcd3602dc63656e127d77606a2ae52ed",
+"candidate": "codex/beta4-capture-corrections",
+"result": "gate_failed",
+"tests": {"capture": 27, "brief_decisions": 7, "new_regressions": 4, "before_fix_failures": 5},
+"diagnostic": {"provider": "codex", "model": "gpt-6-luna", "client_version": "0.155.1", "calls": [{"completed": true, "exit_code": 0, "tool_calls": 14, "input_tokens": 153433, "output_tokens": 2327, "cache_read_tokens": 114688, "cache_write_tokens": 0, "cost_usd": null, "seconds": 45.65}, {"completed": true, "exit_code": 0, "tool_calls": 0, "input_tokens": 17809, "output_tokens": 302, "cache_read_tokens": 17152, "cache_write_tokens": 0, "cost_usd": null, "seconds": 8.36}], "full_transcript_before_fix_retained_correction": true, "fixture": "tests/fixtures/rollout-correction-turn.jsonl", "fixture_scope": "Actual correction user message and assistant reply from the resumed diagnostic; tool calls and earlier history omitted, explicitly a turn-local replay."},
+"rollout": {"planned_n": 5, "attempted": true, "workspace": 3, "markdown": 5, "baseline": 0, "raw": "bench/results/2026-10-12-beta4-rollout-codex.json"},
+"cross_assistant_decisions": {"planned_n": 3, "attempted": false, "reason": "Claude->Codex pending (Claude runs it); maintainer reaffirmed RHYTHM."},
+"claude_review": {"client_version": "2.1.278", "completed": false, "cost_usd": 0, "scope": "Historical attempt in the previous run; no Claude session attempted in this proof."},
+"limits": ["Same seeds and model, different kit revisions; small n does not establish causality.", "Captured Handoff lacks the corrected lane and receipt in all five workspace trials. Passes depended on values saved in Next action.", "Trial 4 abstained despite both corrected values in the brief; stale captured constraints may conflict with the updated Next action."],
+"proof_kit": "756a412dff33cc43c7c81f38abdeb7ab66ab4032",
+"codex_decisions": {"n": 3, "workspace": 3, "baseline": 0, "raw": "bench/results/2026-10-12-beta4-decisions-codex.json"}
 }

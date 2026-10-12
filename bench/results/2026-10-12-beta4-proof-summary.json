@@ -1,0 +1,16 @@
+{
+"date": "2026-10-12",
+"kit": "756a412dff33cc43c7c81f38abdeb7ab66ab4032",
+"rollout_seed": 978207194577267098,
+"rollout": {"workspace": 3, "markdown": 5, "baseline": 0, "n": 5},
+"decisions": {"workspace": 3, "baseline": 0, "n": 3},
+"gate": "failed: workspace 3/5 < Markdown 5/5",
+"calls": 53,
+"input_tokens": 5191712,
+"output_tokens": 81820,
+"cost_usd": null,
+"claude_cross_check": "Claude->Codex pending (Claude runs it); no Claude calls in this proof",
+"trials": [{"trial": 1, "seed_index": 0, "previous_workspace_result": "pass", "results": {"baseline": "guess_or_incomplete", "workspace": "guess_or_incomplete", "markdown": "pass"}, "failed_checks": {"baseline": ["lane", "receipt", "manifest_attempted"], "workspace": ["lane"], "markdown": []}, "workspace_memory": {"brief": {"lane": false, "receipt": true}, "handoff": {"lane": false, "receipt": false}}}, {"trial": 2, "seed_index": 1, "previous_workspace_result": "pass", "results": {"baseline": "guess_or_incomplete", "workspace": "pass", "markdown": "pass"}, "failed_checks": {"baseline": ["lane", "receipt"], "workspace": [], "markdown": []}, "workspace_memory": {"brief": {"lane": true, "receipt": true}, "handoff": {"lane": false, "receipt": false}}}, {"trial": 3, "seed_index": 2, "previous_workspace_result": "guess_or_incomplete", "results": {"baseline": "abstention", "workspace": "pass", "markdown": "pass"}, "failed_checks": {"baseline": ["lane", "receipt", "manifest_attempted"], "workspace": [], "markdown": []}, "workspace_memory": {"brief": {"lane": true, "receipt": true}, "handoff": {"lane": false, "receipt": false}}}, {"trial": 4, "seed_index": 3, "previous_workspace_result": "abstention", "results": {"baseline": "abstention", "workspace": "abstention", "markdown": "pass"}, "failed_checks": {"baseline": ["lane", "receipt", "manifest_attempted"], "workspace": ["lane", "receipt", "manifest_attempted"], "markdown": []}, "workspace_memory": {"brief": {"lane": true, "receipt": true}, "handoff": {"lane": false, "receipt": false}}}, {"trial": 5, "seed_index": 4, "previous_workspace_result": "guess_or_incomplete", "results": {"baseline": "abstention", "workspace": "pass", "markdown": "pass"}, "failed_checks": {"baseline": ["lane", "receipt", "manifest_attempted"], "workspace": [], "markdown": []}, "workspace_memory": {"brief": {"lane": true, "receipt": true}, "handoff": {"lane": false, "receipt": false}}}],
+"next_hypothesis": "The latest correction is not persisted before end-of-turn transcript reads. Capture UserPromptSubmit prompt text with the same privacy and claim checks; protect it against a subsequent stale Stop read. Requires a new failing real-payload replay before any fix.",
+"limits": ["Same seeds and model, different kit revisions; small n does not establish causality.", "Captured Handoff lacks the corrected lane and receipt in all five workspace trials. Passes depended on values saved in Next action.", "Trial 4 abstained despite both corrected values in the brief; stale captured constraints may conflict with the updated Next action."]
+}
