@@ -81,6 +81,7 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes', '--workspace', str(workspace))[0], 0)
         local = self.repo / 'CLAUDE.local.md'; local.write_text('User changed this file\n')
         self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_text(), 'User changed this file\n')
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
 
     def test_detected_secondary_clients_share_confirmation_and_private_undo(self):
         detected = [dict(assistant=c, cli_available=True, apps=[]) for c in ('cursor', 'copilot', 'gemini')]
