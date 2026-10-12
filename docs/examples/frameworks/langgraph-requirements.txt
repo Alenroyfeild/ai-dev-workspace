@@ -1,0 +1,4 @@
+langgraph==1.2.14
+langchain-mcp-adapters==0.3.2
+langchain-core==1.6.9
+mcp==1.30.0
