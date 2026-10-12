@@ -35,7 +35,7 @@ def _block_prompt(client, reason):
     return 0
 
 
-DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'search', 'lesson', 'doctor')
+DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
@@ -255,6 +255,9 @@ def main(argv=None):
     s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
     s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
+
+    s = sub.add_parser('remember', help='save one decision in the current task for the next session')
+    s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
 
     s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
@@ -488,6 +491,9 @@ def main(argv=None):
             notes = dict(n.split('=', 1) for n in a.note)
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
             if a.status == 'done' and (hint := native.goal_hint(root, a.id)): print(hint, file=sys.stderr)  # stderr keeps stdout JSON clean
+        elif a.cmd == 'remember':
+            result = core.remember(root, a.text, a.task)
+            out(f"Remembered in {result['task']}: {result['remembered']}" if human() else result)
         elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query))
         elif a.cmd == 'lesson':
