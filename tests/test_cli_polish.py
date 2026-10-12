@@ -19,6 +19,9 @@ class CliPolishTests(unittest.TestCase):
     def test_short_help_only_shows_daily_commands_and_all_help_keeps_rest(self):
         short = self.run_ws('--help')
         self.assertEqual(short.returncode, 0, short.stderr)
+        usage = short.stdout.splitlines()[0]
+        self.assertIn('{status,task,claim,checkpoint,search,lesson,doctor}', usage)
+        self.assertNotIn('init', usage)
         for command in ('status', 'task', 'claim', 'checkpoint', 'search', 'lesson', 'doctor'):
             self.assertIn('    ' + command, short.stdout)
         for command in ('init', 'route', 'tools', 'delegate', 'feedback', 'upgrade'):
