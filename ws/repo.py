@@ -82,7 +82,9 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         if remove: return undo(repo, state)
         root = Path(state['workspace'])
         task = next((t['id'] for t in core.task_list(root) if t['branch'] == current), '')
-        return dict(root=str(root), already=True, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current)
+        partial = state.get('complete') is False or any(not path(repo, n).is_file() or hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha'] for n, e in state['files'].items())
+        if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
+        return dict(root=str(root), already=True, partial=partial, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current)
     if remove: raise core.WsError('No repo setup to undo; run ws start first.')
     root = Path(workspace).expanduser().resolve() if workspace else (Path.home() / '.ai-dev-workspace' / repo.name).resolve()
     if root == repo or repo in root.parents: raise core.WsError('Choose a workspace outside the repo with ws start --workspace <dir>.')
@@ -144,7 +146,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
-    state = dict(workspace=str(root), files=owned, assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    state = dict(workspace=str(root), files=owned, complete=False, assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
     for name, data in desired.items(): record_file(repo, state, name, data)
@@ -152,4 +154,5 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     if new_task: core.task_new(root, task, current, branch=current, repo=str(repo))
     core.claim(root, task, 'local')
     if new_task: core.checkpoint(root, task, 'in_progress', 'Follow the current request; save the next action before stopping.')
+    state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return dict(root=str(root), already=False, assistants=clients, task=task, branch=current)
