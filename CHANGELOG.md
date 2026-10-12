@@ -3,7 +3,7 @@
 ## 0.1.0-beta.4 (unreleased)
 
 ### Improved
-- `ws remember "use Postgres, not SQLite"` saves one decision in your current task, and the next session's brief shows it ahead of automatically captured notes.
+- `ws remember "use Postgres, not SQLite"` saves one decision in your current task, and the next session's brief shows it ahead of automatically captured notes. Assistants can save one too through the new MCP `remember` tool, so a decision you state in chat holds in later sessions.
 
 ### Fixed
 - `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.

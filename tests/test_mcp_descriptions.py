@@ -24,10 +24,10 @@ class McpDescriptionTests(unittest.TestCase):
         result = server.handle(None, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})['result']['tools']
         names = {item['name'] for item in result}
         self.assertEqual(names, set(server.TOOLS))
-        self.assertEqual(len(names), 24)
+        self.assertEqual(len(names), 25)
         size = sum(len(json.dumps({key: item[key] for key in ('name', 'description', 'inputSchema')},
                                   separators=(',', ':')).encode()) for item in result)
-        self.assertLessEqual(size, 6200)  # Includes optional lesson paths/area; keep the payload bounded.
+        self.assertLessEqual(size, 6460)  # +261 for `remember`; includes optional lesson paths/area; keep the payload bounded.
         descriptions = ' '.join(item['description'] for item in result).lower()
         for intent in ('never execute', 'ask before', 'redacted', 'preview-only', 'skip ambiguous'):
             self.assertIn(intent, descriptions)
