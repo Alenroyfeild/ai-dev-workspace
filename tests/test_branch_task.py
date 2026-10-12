@@ -89,3 +89,11 @@ class BranchTaskTests(unittest.TestCase):
         self.assertEqual(core.session_task(self.root, str(self.root)), 'T-1')
         self.assertEqual(len(core.task_list(self.root)), 1)
         with self.assertRaises(core.WsError): core.session_task(self.root, {'cwd':'invalid'})
+
+    def test_completed_branch_does_not_inject_a_stale_next_action_or_reopen(self):
+        self.hook(); task = core.task_list(self.root)[0]['id']
+        core.checkpoint(self.root, task, 'done', 'STALE_COMPLETED_ACTION')
+        before = core.task_path(self.root, task).read_bytes()
+        self.assertNotIn('STALE_COMPLETED_ACTION', self.hook())
+        self.assertEqual(before, core.task_path(self.root, task).read_bytes())
+        self.assertEqual(len(core.task_list(self.root)), 1)
