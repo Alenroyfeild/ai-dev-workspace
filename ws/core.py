@@ -271,7 +271,7 @@ def pack_add(root, name):
             'missing': [r for r in requirement_status(manifest) if not r['ok']]}
 
 
-def init(target, name, packs=(), repos=()):
+def init(target, name, packs=(), repos=(), clients=None):
     target = Path(target).resolve()
     if (target / 'workspace.json').exists():
         raise WsError(f'{target} is already a workspace.')
@@ -291,17 +291,18 @@ def init(target, name, packs=(), repos=()):
     cfg = {'schema_version': 2, 'kit_version': kit_meta()['version'], 'content_version': upgrade.fingerprint(target), 'upgrade_pending': [], 'name': name, 'vault': 'vault', 'packs': list(packs),
            'repos': [str(Path(r).expanduser().resolve()) for r in repos], 'created': now()}
     # Claude Code reads the project .mcp.json; other detected clients are connected or previewed.
-    connections = [connect(target, 'claude')]
-    if not connections[0]['connected']:
-        collisions.append(f"Kept .mcp.json; kit content is in {Path(connections[0]['path']).name}")
-    install_memory_hooks(target, collisions)
+    connections = [connect(target, client) for client in (['claude'] if clients is None else clients)]
+    for connection in connections:
+        if connection['client'] == 'claude' and not connection['connected']:
+            collisions.append(f"Kept .mcp.json; kit content is in {Path(connection['path']).name}")
+    install_memory_hooks(target, collisions, clients)
     for relative, text in upgrade.skills().items():
         write_preserving(target / relative, text.encode(), collisions)
     for relative, text in upgrade.pointer_files().items():
         write_preserving(target / relative, text.encode(), collisions)
     write_preserving(target / 'workspace.json', (json.dumps(cfg, indent=2) + '\n').encode(), collisions)
     for client in ('cursor', 'codex'):
-        if shutil.which(client) or (client == 'cursor' and _has_app('Cursor')):
+        if clients is None and (shutil.which(client) or (client == 'cursor' and _has_app('Cursor'))):
             connections.append(connect(target, client))
     if repos:
         codebase_map(target, repos[0])
@@ -429,8 +430,9 @@ def memory_hooks(root, client='claude'):
                 'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][prompt_event] = [hook if client == 'cursor' else {'hooks': [hook]}]
     return result
-def install_memory_hooks(root, collisions):
+def install_memory_hooks(root, collisions, clients=None):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
+        if clients is not None and client not in clients: continue
         data = (json.dumps(memory_hooks(root, client), indent=2) + '\n').encode()
         write_preserving(root / relative, data, collisions)
 

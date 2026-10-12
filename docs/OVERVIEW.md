@@ -48,13 +48,11 @@ The decision was captured from the conversation and the session-start brief brou
 ## Quick start (2 minutes)
 
 ```bash
-pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace     # 1. install
-ws init ~/work/myapp-ws --repo ~/code/myapp                            # 2. create a workspace
-cd ~/work/myapp-ws && ws connect claude                                # 3. connect: claude, codex, cursor, vscode, gemini
-ws task new APP-123 "Fix login crash" && ws claim APP-123              # 4. start a task
+pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace
+cd ~/code/myapp && ws start
 ```
 
-Open the workspace folder in your assistant (add your code folder as a working directory) and work as usual. Memory is saved by hooks and checkpoints; `/handoff` and `/pickup` (Codex: `$handoff`, `$pickup`) are there when you want to be explicit. No pipx? Clone the repo and put its `bin/` on your PATH. Windows: `python bin/ws <command>`, see [Windows notes](WINDOWS.md). Full guide: [docs/SETUP.md](SETUP.md).
+`ws start` creates local memory in this repository, connects detected assistants and claims a task named for your git branch. It previews project files before one confirmation; user files are preserved and conflicts are reported. Repeating it shows status. Use `--dry-run` for preview only or `--yes` for automation. Open this code repo in your assistant and trust project hooks/MCP when asked. Memory is saved by hooks and checkpoints; `/handoff` and `/pickup` (Codex: `$handoff`, `$pickup`) are there when you want to be explicit. No pipx? Clone the repo and put its `bin/` on your PATH. Windows: `python bin/ws <command>`, see [Windows notes](WINDOWS.md). For a separate workspace, use `ws init`; full guide: [SETUP.md](SETUP.md).
 
 ## What you get
 
