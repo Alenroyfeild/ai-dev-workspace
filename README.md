@@ -9,8 +9,6 @@ AI Dev Workspace keeps task notes in Markdown your assistant can read next time.
 pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace
 cd ~/code/myapp && ws start
 ```
-`ws start` creates local memory in this repository and previews project files before confirmation.
-
 ## Example
 
 ```text
@@ -21,8 +19,7 @@ Session 2 — You: “Continue the login fix.”
 Assistant: “The saved note says return missing_email and leave signup unchanged.”
 You: “Yes, continue.”
 ```
-
-## Results
+## Results (small synthetic samples, not general productivity)
 
 | Session 1 → session 2 | Without workspace | With workspace |
 |---|---:|---:|
@@ -30,8 +27,14 @@ You: “Yes, continue.”
 | Claude Code → Codex | 0/5 | **5/5** |
 | Codex → Codex | 0/3 | **3/3** |
 
-Small synthetic samples; they show decisions surviving between sessions, not general productivity.
+## Compatibility
 
-## More
+| Client | macOS | Linux/Windows |
+|---|---|---|
+| Claude Code | supported, tested live on macOS | CI-tested |
+| Codex | supported, tested live on macOS | CI-tested |
+| Cursor | supported, fixture-tested; live reports welcome | CI-tested |
+| Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested |
+| Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested |
 
-[Extended overview](docs/OVERVIEW.md) · [Setup](docs/SETUP.md) · [Commands](docs/COMMANDS.md) · [Measurements](docs/MEASUREMENTS.md) · [Client verification](docs/CLIENT-VERIFICATION.md) · [Packs](docs/PACKS.md) · [Team use](docs/TEAM.md) · [Windows](docs/WINDOWS.md) · [Roadmap](docs/ROADMAP.md) · [License](LICENSE)
+Testers on Cursor, Copilot (VS Code), or Gemini CLI: please share problems through [Something broke](.github/ISSUE_TEMPLATE/bug.yml). · [Overview](docs/OVERVIEW.md) · [Setup](docs/SETUP.md) · [Commands](docs/COMMANDS.md) · [Measurements](docs/MEASUREMENTS.md) · [Client verification](docs/CLIENT-VERIFICATION.md) · [Packs](docs/PACKS.md) · [Team use](docs/TEAM.md) · [Windows](docs/WINDOWS.md) · [Roadmap](docs/ROADMAP.md) · [License](LICENSE)

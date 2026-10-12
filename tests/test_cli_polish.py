@@ -39,11 +39,18 @@ class CliPolishTests(unittest.TestCase):
     def test_readme_is_short_and_points_to_extended_docs(self):
         readme = (ROOT / 'README.md').read_text()
         self.assertLessEqual(len(readme.splitlines()), 40)
-        sections = ('## Quick start', '## Example', '## Results', '## More')
+        sections = ('## Quick start', '## Example', '## Results', '## Compatibility')
         self.assertEqual(sorted(readme.index(section) for section in sections),
                          [readme.index(section) for section in sections])
         self.assertIn('docs/OVERVIEW.md', readme)
         self.assertIn('cd ~/code/myapp && ws start', readme)
+        for status in ('Claude Code | supported, tested live on macOS | CI-tested',
+                       'Codex | supported, tested live on macOS | CI-tested',
+                       'Cursor | supported, fixture-tested; live reports welcome | CI-tested',
+                       'Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested',
+                       'Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested'):
+            self.assertIn(status, readme)
+        self.assertIn('[Something broke]', readme)
         self.assertNotIn('## FAQ', readme)
 
     def test_text_reports_and_default_json(self):
