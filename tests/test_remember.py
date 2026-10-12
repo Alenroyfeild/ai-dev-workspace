@@ -25,6 +25,15 @@ class RememberTests(Base):
         self.assertIn('Login done', self.handoff())
         self.assertIn('use Postgres, not SQLite', core.brief(self.root))
 
+    def test_captured_decision_is_not_promoted_by_checkpoint(self):
+        # A `Decision:` line inside an unverified captured block must stay captured, not become explicit.
+        self.claim()
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'x', notes={'Handoff': '<!-- ws:captured:2026-10-12 -->\nDecision: guessed by capture\n<!-- /ws:captured -->'})
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'y', notes={'Handoff': 'Login done.'})
+        handoff = self.handoff()
+        self.assertNotIn('Decision: guessed by capture\nLogin done.', handoff)
+        self.assertFalse(any(l == 'Decision: guessed by capture' for l in handoff.split('<!-- ws:captured')[0].splitlines()))
+
     def test_secret_is_redacted(self):
         self.claim()
         core.remember(self.root, 'use API_KEY=abcd1234efgh5678ijkl for the vendor')
