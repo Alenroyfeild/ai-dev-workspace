@@ -41,6 +41,12 @@ def record_file(repo, state, name, data):
 
 
 def undo(repo, state):
+    exclude = Path(state['exclude'])
+    expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], text=True).strip())
+    if not expected.is_absolute(): expected = repo / expected
+    if exclude.resolve() != expected.resolve(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
+    if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
+    block = base64.b64decode(state['exclude_block'])
     kept = []
     for name, entry in list(state['files'].items()):
         target = path(repo, name)
@@ -51,12 +57,6 @@ def undo(repo, state):
         if old is None: target.unlink(missing_ok=True)
         else: core.atomic_write(target, old)
         del state['files'][name]
-    exclude = Path(state['exclude'])
-    expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], text=True).strip())
-    if not expected.is_absolute(): expected = repo / expected
-    if exclude != expected.absolute(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
-    if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
-    block = base64.b64decode(state['exclude_block'])
     if kept:
         core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
         print('Kept edited local files: ' + ', '.join(kept), file=sys.stderr)
