@@ -26,6 +26,7 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | `ws claim <ID> [--worker W]` | Take the task as `$USER` unless `--worker` is supplied. The claim is remembered locally, so the next commands need no token. |
 | `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Evidence=..."]` | Save progress and the exact next step. |
 | `ws release <ID>` | Give the task back. |
+| `ws remember "<decision>" [--task ID]` | Save one decision (e.g. `"use Postgres, not SQLite"`) in your claimed task; the next session's brief lists it first. Secrets and `<private>` text are removed. |
 | `ws brief` | Task memory in under 200 words, with separate section budgets: newest captured constraints and explicit decision lines first, then next action and blockers; long Handoff prose and matching lessons last. Explicit Handoff is labelled as saved task-record text, separate from unverified captures. `[truncated: see task record]` marks clipped or omitted context; read the task's sections for the full source. The brief cannot recover decisions missing from the saved record. Existing Copilot/Cursor native blocks receive the same brief on checkpoint or `ws brief --refresh`. The session-start hook also runs this. `Memory check` flags changed/undone code; unmatched lesson paths show `(paths gone)`, and more than three matches collapse to `Lessons: N more`. |
 | `ws lesson add "<what happened → rule>"` / `ws lesson search "<words>"` | Lessons learned. |
 | `ws search "<words>"` | Ranked snippets from the vault notes. |
