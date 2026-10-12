@@ -48,8 +48,10 @@ def exclusions(repo, state):
     if exclude.resolve() != expected.resolve(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
     if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
     block = base64.b64decode(state['exclude_block'])
-    if state.get('complete') is False and state.get('exclude_previous') and exclude.is_file() and exclude.read_bytes().count(block) != 1:
-        block = base64.b64decode(state['exclude_previous'])
+    if state.get('complete') is False and 'exclude_previous' in state and (not exclude.is_file() or exclude.read_bytes().count(block) != 1):
+        previous = base64.b64decode(state['exclude_previous'])
+        if not previous and (not exclude.exists() or block.splitlines()[1] not in exclude.read_bytes()): return exclude, b''
+        block = previous
     if not exclude.is_file() or exclude.read_bytes().count(block) != 1: raise core.WsError('Git exclude block changed; restore the recorded block before ws start --undo.')
     return exclude, block
 
@@ -193,9 +195,10 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
-    state = dict(workspace=str(root), files=owned, complete=False, assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    state = dict(workspace=str(root), files=owned, complete=False, exclude_previous='', assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
+    state.pop('exclude_previous'); core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     for name, data in desired.items(): record_file(repo, state, name, data)
     new_task = not core.task_find(root, task)
     if new_task: core.task_new(root, task, current, branch=current, repo=str(repo))
