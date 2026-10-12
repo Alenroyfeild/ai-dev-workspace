@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -41,8 +42,11 @@ exit 2
     def publish(self, view_status, recheck_status=1, create_status=0):
         env = {**os.environ, 'GH_LOG': str(self.log), 'GH_VIEW_STATUS': str(view_status),
                'GH_VIEW_RECHECK_STATUS': str(recheck_status), 'GH_CREATE_STATUS': str(create_status),
-               'PATH': f"{self.bin}:{os.environ.get('PATH', '')}"}
-        return subprocess.run([ROOT / 'bin' / 'publish-release', 'v0.1.0-beta.3', str(self.notes)],
+               'PATH': os.pathsep.join((str(self.bin), os.environ.get('PATH', '')))}
+        bash = shutil.which('bash')
+        if not bash:
+            self.skipTest('bash is required to exercise the release publisher')
+        return subprocess.run([bash, str(ROOT / 'bin' / 'publish-release'), 'v0.1.0-beta.3', str(self.notes)],
                               env=env, text=True, capture_output=True)
 
     def test_existing_release_skips_create(self):
