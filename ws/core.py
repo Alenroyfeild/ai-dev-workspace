@@ -1025,6 +1025,8 @@ def remember(root, text, task_id=None):
         if not task_id:
             raise WsError('No single claimed task. Run `ws claim <ID>` or pass --task <ID>.')
         path = task_path(root, task_id)
+        if not path.is_file():
+            raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
         original = path.read_text(encoding='utf-8')
         if conflicted(original): raise WsError(conflict_hint(task_id))
         meta = parse_meta(original)
