@@ -34,6 +34,14 @@ class RememberTests(Base):
         self.assertNotIn('Decision: guessed by capture\nLogin done.', handoff)
         self.assertFalse(any(l == 'Decision: guessed by capture' for l in handoff.split('<!-- ws:captured')[0].splitlines()))
 
+    def test_same_text_in_new_captured_block_does_not_drop_explicit_decision(self):
+        # Only an explicit (non-captured) copy in the new Handoff counts as already present.
+        self.claim()
+        core.remember(self.root, 'use Postgres')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'y', notes={'Handoff': 'Login done.\n\n<!-- ws:captured:2026-10-12 -->\nDecision: use Postgres\n<!-- /ws:captured -->'})
+        explicit = self.handoff().split('<!-- ws:captured')[0]
+        self.assertIn('Decision: use Postgres', explicit.splitlines())
+
     def test_secret_is_redacted(self):
         self.claim()
         core.remember(self.root, 'use API_KEY=abcd1234efgh5678ijkl for the vendor')
