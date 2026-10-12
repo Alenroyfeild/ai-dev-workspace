@@ -5,7 +5,8 @@ tag=${1:?usage: publish-release TAG NOTES_FILE}
 notes=${2:?usage: publish-release TAG NOTES_FILE}
 
 if view_error=$(gh release view "$tag" 2>&1 >/dev/null); then
-  echo "Release $tag already exists; skipping creation."
+  gh release edit "$tag" --notes-file "$notes" --prerelease=false --latest
+  echo "Release $tag already exists; updated notes."
   exit 0
 fi
 
@@ -15,7 +16,7 @@ case "$view_error" in
 esac
 
 set +e
-create_error=$(gh release create "$tag" --title "$tag" --notes-file "$notes" 2>&1)
+create_error=$(gh release create "$tag" --title "$tag" --notes-file "$notes" --latest 2>&1)
 create_status=$?
 set -e
 if [ "$create_status" -eq 0 ]; then
@@ -24,7 +25,8 @@ if [ "$create_status" -eq 0 ]; then
 fi
 
 if gh release view "$tag" >/dev/null 2>&1; then
-  echo "Release $tag appeared during creation; skipping duplicate."
+  gh release edit "$tag" --notes-file "$notes" --prerelease=false --latest
+  echo "Release $tag appeared during creation; updated notes."
   exit 0
 fi
 

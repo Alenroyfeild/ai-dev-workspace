@@ -1,25 +1,34 @@
 # Changelog
 
-## 0.1.0-beta.3 (2026-10-12)
-
-### Proven
-- The latest Codex rollout passed workspace 2/5, Markdown-only 5/5, baseline 0/5; all calls completed. Missing saved corrections remain a release risk. Earlier 4/5 versus 3/5 used different seeds; see [all outcomes and limitations](bench/README.md).
-
-### New
-- `ws setup` previews assistant choices and project connections before applying them, and reports setup failures with next steps.
-- Shared workspaces show tasks and claims matched to the current branch and flag conflicting task records.
-- Session briefs carry bounded excerpts of explicit saved handoff decisions into the next session.
-- `ws doctor --mcp` checks configured clients; `ws doctor` shows configuration separately from the latest protocol check and capture outcome.
-- The MCP server speaks both protocol eras: 2026-07-28 clients use per-request metadata and `server/discover`; 2025-11-25 and 2025-06-18 clients keep the initialize handshake. Proven with the Python MCP SDK 2.3.0 in both modes (docs/examples/mcp-protocol-proof.json); no live assistant was tested on the new era.
-- Opt-in Google ADK and LangGraph recipes connect agents to the same task memory over native MCP (docs/examples/frameworks/). A decision written from one framework was recovered by a fresh agent in the other, both directions, with stub models only.
-- Maintainers can read recent repository stars, clones and page views in the activity report.
+## 0.1.0-beta.4 (unreleased)
 
 ### Fixed
-- Briefs prioritize saved decisions and corrections within section budgets, with a task-record pointer when truncated; this does not recover corrections absent from task memory.
-- Task records preserve CRLF line endings, and team claims and conflicts remain readable across shared work.
-- The Claude rollout benchmark uses a per-trial home and allowlisted environment so shell credentials and user settings are not passed into project hooks. API-key-only authentication and live Claude runs were not verified.
-- The benchmark fixture no longer races Git's automatic maintenance lock on macOS.
-- TEAM claim examples and checkpoint help now match the supported commands and note sections; README, TEAM and SETUP quick-start commands are smoke-tested in throwaway workspaces.
+- `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.
+
+## 0.1.0-beta.3 (2026-10-12)
+
+Your saved decisions now survive long handoffs, the MCP server works with clients on the newest protocol, and Google ADK and LangGraph agents can share the same task memory.
+
+### Improved
+- **Decisions come first in the session brief.** A long checkpoint (blockers plus a handoff) used to push saved decisions past the 200-word limit, so the next session never saw them. Each section now has its own budget, decisions and corrections are kept first, and the brief points to the task file when it has to cut.
+- **Works with new and old MCP clients.** Clients on the 2026-07-28 MCP spec (no handshake, version on every request) connect directly; clients on 2025-11-25 and 2025-06-18 work as before. Tested with the official Python MCP SDK in both modes.
+- **Google ADK and LangGraph recipes.** Opt-in examples connect agents to your workspace over MCP with only four tools exposed (find task, brief, checkpoint, add lesson). A decision saved by one framework was picked up by a fresh agent in the other, both ways. See [docs/examples/frameworks](https://github.com/Alenroyfeild/ai-dev-workspace/blob/v0.1.0-beta.3/docs/examples/frameworks/README.md).
+- **Safer setup.** `ws setup` shows which assistants and project connections it will change before it changes them, and tells you what to do if a step fails.
+- **Team work.** Shared workspaces show the tasks and claims for your current branch and flag task files that conflict.
+- **Clearer health check.** `ws doctor --mcp` checks every configured client; `ws doctor` separates "configured" from "last proven working".
+
+### Fixed
+- Task files edited on Windows keep their line endings.
+- Team claims and conflicts stay readable when several people share a workspace.
+- Command examples in the README, TEAM and SETUP guides now match the real commands and are tested on every change.
+
+### Measured
+- Handing decisions from Claude Code to Codex: 5/5 with the workspace, 0/5 without (unchanged from beta.2).
+- Hard rollout test, where the user corrects the assistant mid-task: workspace 2/5, a plain Markdown notes file 5/5, nothing 0/5. Corrections said only in chat are not yet captured into the task, so the brief cannot carry them. This is the main fix planned for beta.4. Details: [bench/README.md](https://github.com/Alenroyfeild/ai-dev-workspace/blob/v0.1.0-beta.3/bench/README.md).
+
+### Known limits
+- The new MCP protocol was tested with the Python SDK, not yet with a live assistant.
+- The ADK and LangGraph recipes were tested with stub models, not hosted ones.
 
 ## 0.1.0-beta.2 (2026-10-09)
 

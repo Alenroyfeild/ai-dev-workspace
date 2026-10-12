@@ -31,6 +31,9 @@ if [ "$1 $2" = "release view" ]; then
     2) echo 'HTTP 502: Bad Gateway' >&2; exit 1 ;;
   esac
 fi
+if [ "$1 $2" = "release edit" ]; then
+  exit 0
+fi
 if [ "$1 $2" = "release create" ]; then
   [ "$GH_CREATE_STATUS" -eq 0 ] || { echo 'HTTP 422: Release.tag_name already exists' >&2; exit "$GH_CREATE_STATUS"; }
   exit 0
@@ -49,18 +52,21 @@ exit 2
         return subprocess.run([bash, str(ROOT / 'bin' / 'publish-release'), 'v0.1.0-beta.3', str(self.notes)],
                               env=env, text=True, capture_output=True)
 
-    def test_existing_release_skips_create(self):
+    def test_existing_release_updates_notes_and_latest_state(self):
         result = self.publish(0)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('already exists', result.stdout)
-        self.assertEqual(self.log.read_text().splitlines(), ['release view v0.1.0-beta.3'])
+        self.assertIn('already exists; updated notes', result.stdout)
+        self.assertEqual(self.log.read_text().splitlines(), [
+            'release view v0.1.0-beta.3',
+            f'release edit v0.1.0-beta.3 --notes-file {self.notes} --prerelease=false --latest',
+        ])
 
     def test_missing_release_is_created(self):
         result = self.publish(1, create_status=0)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.log.read_text().splitlines(), [
             'release view v0.1.0-beta.3',
-            f'release create v0.1.0-beta.3 --title v0.1.0-beta.3 --notes-file {self.notes}',
+            f'release create v0.1.0-beta.3 --title v0.1.0-beta.3 --notes-file {self.notes} --latest',
         ])
 
     def test_view_api_error_does_not_attempt_create(self):
@@ -75,8 +81,9 @@ exit 2
         self.assertIn('appeared during creation', result.stdout)
         self.assertEqual(self.log.read_text().splitlines(), [
             'release view v0.1.0-beta.3',
-            f'release create v0.1.0-beta.3 --title v0.1.0-beta.3 --notes-file {self.notes}',
+            f'release create v0.1.0-beta.3 --title v0.1.0-beta.3 --notes-file {self.notes} --latest',
             'release view v0.1.0-beta.3',
+            f'release edit v0.1.0-beta.3 --notes-file {self.notes} --prerelease=false --latest',
         ])
 
     def test_create_failure_without_concurrent_release_is_reported(self):
@@ -85,13 +92,14 @@ exit 2
         self.assertIn('HTTP 422: Release.tag_name already exists', result.stderr)
         self.assertEqual(self.log.read_text().splitlines(), [
             'release view v0.1.0-beta.3',
-            f'release create v0.1.0-beta.3 --title v0.1.0-beta.3 --notes-file {self.notes}',
+            f'release create v0.1.0-beta.3 --title v0.1.0-beta.3 --notes-file {self.notes} --latest',
             'release view v0.1.0-beta.3',
         ])
 
     def test_workflow_uses_tested_publisher(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
         self.assertIn('bin/publish-release "$GITHUB_REF_NAME" notes.md', workflow)
+        self.assertIn('### Upgrade', workflow)
 
 
 if __name__ == '__main__':
