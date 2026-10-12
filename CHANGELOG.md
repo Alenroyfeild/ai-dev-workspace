@@ -21,6 +21,7 @@ Your saved decisions now survive long handoffs, the MCP server works with client
 - Task files edited on Windows keep their line endings.
 - Team claims and conflicts stay readable when several people share a workspace.
 - Command examples in the README, TEAM and SETUP guides now match the real commands and are tested on every change.
+- Briefs keep captured decisions and corrections when a checkpoint also has blockers and a long Handoff note (regression from the explicit-Handoff change).
 
 ### Measured
 - Handing decisions from Claude Code to Codex: 5/5 with the workspace, 0/5 without (unchanged from beta.2).
