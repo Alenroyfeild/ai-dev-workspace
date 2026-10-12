@@ -2208,7 +2208,12 @@ def check_update(force=False):
             return data['result']
     try:
         # releases/latest skips pre-releases, so every beta was invisible; pick the newest published tag.
-        rels = [r for r in _get_json(f'https://api.github.com/repos/{_repo()}/releases?per_page=20') if not r.get('draft')]
+        rels = []; page = 1
+        while True:
+            batch = _get_json(f'https://api.github.com/repos/{_repo()}/releases?per_page=100&page={page}')
+            rels.extend(r for r in batch if not r.get('draft'))
+            if len(batch) < 100: break
+            page += 1
         rel = max(rels, key=lambda r: _vtuple(r['tag_name']))
         latest = rel['tag_name'].lstrip('v')
         result = {'current': meta['version'], 'latest': latest,
