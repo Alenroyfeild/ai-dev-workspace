@@ -55,7 +55,7 @@ class SurfaceSecurityTests(Base):
 
     def test_idle_malformed_gemini_tools_cannot_capture(self):
         core.claim(self.root,'T-1','synthetic');p=self.root/'bad.json'
-        p.write_text(json.dumps({'messages':[{'type':'user','id':'u','content':'Never write real data.'},{'type':'gemini','id':'a','content':'Done.','toolCalls':'not a tool list'}]}))
+        p.write_text(json.dumps({'messages':[{'type':'user','id':'u','content':'Hello.'},{'type':'gemini','id':'a','content':'Done.','toolCalls':'not a tool list'}]}))
         self.assertFalse(core.capture_decisions(self.root,str(p),'gemini'))
 
     def test_regular_read_bound_and_hostile_transcript_shapes(self):

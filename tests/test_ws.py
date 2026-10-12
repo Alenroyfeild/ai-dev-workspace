@@ -384,7 +384,7 @@ class TaskTests(Base):
         self.assertLess(len(core.brief(self.root).split()), 200)
         for name in ('.claude/settings.json', '.codex/hooks.json'):
             hooks = json.loads((self.root / name).read_text())['hooks']
-            self.assertEqual(set(hooks), {'SessionStart', 'PreCompact', 'Stop', 'UserPromptSubmit'})
+            self.assertEqual(set(hooks), {'SessionStart', 'PreCompact', 'Stop', 'SessionEnd', 'UserPromptSubmit'})
 
     @slow_subprocess
     def test_generated_codex_session_start_reads_saved_memory_without_writes(self):
