@@ -32,3 +32,11 @@ The writer checkpoints the supplied decision and adds a lesson. The fresh reader
 [Recorded proof](proof.json): both write flows and fresh cross-framework reads pass against the dual-era server, with random rollback markers absent from each pre-checkpoint brief and supplied only to the writer. Zero external model calls; dollar inference cost is zero. The original adapter experiment used legacy 2025-11-25 on the wire; an SDK package version alone does not establish a modern wire revision. See [separate protocol evidence](../../MCP.md). Windows framework execution, hosted model behavior and other dependency versions remain unverified.
 
 ADK sessions and LangGraph execution state control the current run. The workspace's Markdown task record is the shared durable memory across processes/frameworks; it does not restore a graph's internal execution checkpoint. Replacing the stub with a paid model is a separate, untested integration, including its credentials, permissions and tracing decisions.
+
+Run the included verifier (it creates its own disposable home/workspaces and passes a fresh random decision only to each writer):
+
+```sh
+python3 "$KIT/docs/examples/frameworks/prove.py" --adk-python "$ADK_PY" --langgraph-python "$GRAPH_PY"
+```
+
+It fails unless the initial brief lacks that decision and the fresh cross-framework brief contains it; response counts alone cannot pass. The normal suite tests that a missing decision is rejected, without installing either framework.

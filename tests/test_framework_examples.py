@@ -1,6 +1,7 @@
 """Example launch boundaries without optional framework dependencies."""
 import json
 import os
+import runpy
 from pathlib import Path
 import subprocess
 import sys
@@ -9,6 +10,15 @@ from test_ws import Base, KIT
 
 
 class FrameworkExamplesTests(Base):
+    def test_cross_framework_verifier_rejects_a_missing_decision(self):
+        verify = runpy.run_path(str(KIT / 'docs/examples/frameworks/prove.py'))['verify']
+        written = {'results': [{'name': 'find_task'}, {'name': 'brief', 'output': 'No saved decision'}]}
+        resumed = {'results': [{'name': 'brief'}], 'final': 'No saved decision'}
+        with self.assertRaises(AssertionError):
+            verify(written, resumed, 'Keep violet.')
+        resumed['final'] = 'Keep violet.'
+        verify(written, resumed, 'Keep violet.')
+
     def run_plan(self, *args):
         script = KIT / 'docs/examples/frameworks/common.py'
         code = "import runpy,json; d=runpy.run_path(" + repr(str(script)) + "); print(json.dumps({'plan':d['PLAN'],'connection':d['connection']()}))"
