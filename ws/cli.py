@@ -418,8 +418,10 @@ def main(argv=None):
                 out({'additional_context': message} if a.client == 'cursor' and message else
                     {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if message else {})
                 return 0
-            if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop'):
+            if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'SessionEnd'):
                 core.capture_decisions(root, payload.get('transcript_path'))
+                if payload.get('hook_event_name') == 'SessionEnd':
+                    out({}); return 0
             if a.cmd == 'brief' and a.refresh: core.refresh_native(root)
             message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
             if a.hook and a.cmd == 'nudge':

@@ -48,7 +48,7 @@ class CaptureHealthTests(Base):
     def test_missing_transcript_and_idle_session(self):
         self.assertEqual(self.hook(self.root / 'missing')['reason'], 'unreadable_transcript')
         path = self.root / 'idle.jsonl'
-        path.write_text(json.dumps({'type': 'user', 'message': {'content': 'Only synthetic.'}}))
+        path.write_text(json.dumps({'type': 'user', 'message': {'content': 'Hello.'}}))
         self.assertEqual(self.hook(path)['reason'], 'no_work_or_memory')
         with mock.patch('pathlib.Path.exists', side_effect=PermissionError('private details')):
             self.assertEqual(core.capture_health(self.root)['reason'], 'unreadable_health')
