@@ -113,6 +113,8 @@ Claude Code, Codex, Cursor and Gemini CLI have documented blocking prompt hooks:
 
 For Codex, trust the workspace when prompted, then use `/hooks` to review and trust the generated `.codex/hooks.json`. Changed hook definitions need review again. A fresh session receives the saved next action and asks before starting it. See the current [Codex hooks docs](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks) and [skills docs](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
 
+`ws brief` and MCP brief/task reads do not acquire a write lock or refresh instruction files. Session-start hooks may record optional assist usage when storage is writable; an unwritable usage record does not block memory context. Use `ws brief --refresh` explicitly when you want native instruction files updated. Codex's read-only sandbox does not grant write access merely because a command reads memory.
+
 To try the skills without personal links, put symlinks to the kit's `skills/handoff`, `skills/pickup` and `skills/lesson` directories under a throwaway workspace's `.agents/skills/`. Run Codex from that workspace with `ws` on PATH. For headless proof, use separate `codex exec --ephemeral` calls: first `$handoff <ID>` with an exact next action, then `$pickup` without supplying that action. Review hooks interactively first; `--dangerously-bypass-hook-trust` is only for automation that has already vetted every active hook. It does not replace project trust. `WS_OFFLINE=1` disables workspace network checks, not the Codex model session.
 
 ```text

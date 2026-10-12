@@ -425,7 +425,9 @@ def main(argv=None):
             payload = json.load(sys.stdin) if a.hook else {}
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
-            if a.hook: assist.observe(root, payload)
+            if a.hook:
+                try: assist.observe(root, payload)
+                except OSError: pass  # Optional usage metadata must not block read-only memory.
             if a.hook and a.client != 'claude':
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client)
