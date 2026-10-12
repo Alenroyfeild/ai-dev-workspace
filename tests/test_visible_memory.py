@@ -29,9 +29,29 @@ class VisibleMemoryTests(Base):
         self.capture()
         self.assertEqual(core.memory_summary(self.root), 'Remembered: 4 decisions · next: Write the migration')
 
+    def test_captured_request_does_not_count_as_a_decision(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Test pagination')
+        path = core.task_path(self.root, 'T-1')
+        handoff = '<!-- ws:captured:fixture -->\n### Captured 2026-10-12 (unverified transcript)\nUser constraints:\n- Please add pagination to the invoice list.\nLast assistant summary / next step: I will test pagination.\n<!-- /ws:captured -->'
+        path.write_text(core.set_section(path.read_text(), 'Handoff', handoff))
+        self.assertEqual(core.memory_summary(self.root), 'Remembered: next: Test pagination')
+
     def test_empty_memory_says_how_to_save(self):
         core.claim(self.root, 'T-1', 'synthetic')
         self.assertEqual(core.memory_summary(self.root), 'No saved memory yet for T-1 · next: ws remember "<decision>" or /handoff')
+
+    def test_saved_handoff_prose_is_not_empty_memory(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        path = core.task_path(self.root, 'T-1')
+        path.write_text(core.set_section(path.read_text(), 'Handoff', 'Waiting for the product answer.'))
+        self.assertEqual(core.memory_summary(self.root), 'Remembered: saved context')
+
+    def test_saved_blocker_is_not_empty_memory(self):
+        core.claim(self.root, 'T-1', 'synthetic')
+        path = core.task_path(self.root, 'T-1')
+        path.write_text(core.set_section(path.read_text(), 'Blockers', 'Waiting for the product answer.'))
+        self.assertEqual(core.memory_summary(self.root), 'Remembered: saved context')
 
     def test_next_action_alone_and_no_task(self):
         self.assertEqual(core.memory_summary(self.root), '')
