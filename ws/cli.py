@@ -316,6 +316,9 @@ def main(argv=None):
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
             result = repo.start(a.yes, a.dry_run, a.workspace, a.undo)
+            if result and result.get('undone'):
+                print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
+                return 2 if result.get('partial') else 0
             if result:
                 print(('Already set up: ' if result['already'] else 'Partial setup: ' if result.get('partial') else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected'))
                 print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
