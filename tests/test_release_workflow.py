@@ -75,6 +75,16 @@ exit 2
             'release view v0.1.0-beta.3',
         ])
 
+    def test_create_failure_without_concurrent_release_is_reported(self):
+        result = self.publish(1, recheck_status=1, create_status=1)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('HTTP 422: Release.tag_name already exists', result.stderr)
+        self.assertEqual(self.log.read_text().splitlines(), [
+            'release view v0.1.0-beta.3',
+            f'release create v0.1.0-beta.3 --title v0.1.0-beta.3 --notes-file {self.notes}',
+            'release view v0.1.0-beta.3',
+        ])
+
     def test_workflow_uses_tested_publisher(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
         self.assertIn('bin/publish-release "$GITHUB_REF_NAME" notes.md', workflow)
