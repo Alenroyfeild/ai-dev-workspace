@@ -27,13 +27,13 @@ class StartTests(unittest.TestCase):
     def start(self, *args):
         output = io.StringIO(); preview = io.StringIO()
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(preview): result = cli.main(['start', *args])
-        return result, output.getvalue(), preview.getvalue()
+        return result, output.getvalue(), preview.getvalue().replace(os.sep, '/')
 
     def test_preview_confirmation_external_memory_repeat_and_undo(self):
         before = (self.repo / '.git/info/exclude').read_bytes()
         code, _, preview = self.start('--dry-run')
         self.assertEqual(code, 0); self.assertIn('CLAUDE.local.md', preview); self.assertIn('.claude/settings.local.json', preview)
-        self.assertIn(str(self.home / '.ai-dev-workspace/repo'), preview)
+        self.assertIn((self.home / '.ai-dev-workspace/repo').as_posix(), preview)
         with mock.patch('builtins.input', return_value='n') as ask: self.assertEqual(self.start()[0], 0)
         ask.assert_called_once(); self.assertFalse((self.home / '.ai-dev-workspace').exists())
         with mock.patch('builtins.input', return_value='y') as ask: code, output, preview = self.start()
@@ -58,6 +58,11 @@ class StartTests(unittest.TestCase):
         local = self.repo / '.claude/settings.local.json'; local.parent.mkdir()
         local.write_text('{"permissions":{"allow":["Read"]},"hooks":{}}')
         before = local.read_bytes(); self.assertEqual(self.start('--yes')[0], 0)
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text())
+        saved = local.read_bytes(); exclude = state['exclude']; state['exclude'] = str(self.home / 'elsewhere')
+        link.write_text(json.dumps(state)); self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_bytes(), saved)
+        state['exclude'] = exclude
+        state['exclude'] = str(Path(state['exclude']).parent / '..' / 'info/exclude'); link.write_text(json.dumps(state))
         (self.repo / '.git/info/exclude').write_bytes((self.repo / '.git/info/exclude').read_bytes() + b'\nuser-pattern\n')
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(local.read_bytes(), before)
         self.assertIn(b'user-pattern', (self.repo / '.git/info/exclude').read_bytes())
