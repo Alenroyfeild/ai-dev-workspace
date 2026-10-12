@@ -1001,6 +1001,10 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         for name, body in (notes or {}).items():
             if name not in NOTE_SECTIONS:
                 raise WsError(f'Unknown section {name}. Valid note sections: {", ".join(NOTE_SECTIONS)}.')
+            if name == 'Handoff':
+                # Decisions saved with `ws remember` outlive Handoff rewrites; editing the file is how to drop one.
+                kept = [l for l in section(text, name).splitlines() if l.startswith('Decision: ') and l not in body]
+                body = '\n'.join(kept + [body.strip()]) if kept else body
             text = set_section(text, name, redact(body))
         atomic_write(path, text)
         refresh_native(root, locked=True)

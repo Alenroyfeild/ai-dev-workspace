@@ -16,6 +16,15 @@ class RememberTests(Base):
         self.assertIn('Decision: use Postgres, not SQLite', self.handoff())
         self.assertIn('use Postgres, not SQLite', core.brief(self.root))
 
+    def test_decision_survives_a_later_handoff_checkpoint(self):
+        # /handoff rewrites the Handoff section; remembered decisions must not vanish with it.
+        self.claim()
+        core.remember(self.root, 'use Postgres, not SQLite')
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Write the migration.', notes={'Handoff': 'Login done; migration next.'})
+        self.assertIn('Decision: use Postgres, not SQLite', self.handoff())
+        self.assertIn('Login done', self.handoff())
+        self.assertIn('use Postgres, not SQLite', core.brief(self.root))
+
     def test_secret_is_redacted(self):
         self.claim()
         core.remember(self.root, 'use API_KEY=abcd1234efgh5678ijkl for the vendor')
