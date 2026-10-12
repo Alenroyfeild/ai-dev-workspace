@@ -224,6 +224,7 @@ def main(argv=None):
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
+    s.add_argument('--skills', action='store_true', help='also link the kit skills into your global ~/.claude/skills or ~/.agents/skills')
     s = sub.add_parser('start', help='connect this repo to private memory outside the checkout')
     s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
@@ -443,13 +444,18 @@ def main(argv=None):
             elif message:
                 out(message)
         elif a.cmd == 'connect':
-            result = core.connect(root, a.client, a.write, skills=True, verify=True)
-            if 'skills' in result:
-                linked = ', '.join(result['skills']['linked']) or 'none'
-                kept = ', '.join(result['skills']['kept']) or 'none'
-                skipped = ', '.join(result['skills']['skipped']) or 'none'
-                print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+            result = core.connect(root, a.client, a.write, skills=a.skills, verify=True)
+            if a.client in ('claude', 'codex'):
                 location = '.claude/skills' if a.client == 'claude' else '.agents/skills'
+                if 'skills' in result:
+                    linked = ', '.join(result['skills']['linked']) or 'none'
+                    kept = ', '.join(result['skills']['kept']) or 'none'
+                    skipped = ', '.join(result['skills']['skipped']) or 'none'
+                    print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+                else:
+                    count = core.skills_to_link(a.client, root)
+                    if count:
+                        print(f"Optional: ws connect {a.client} --skills links {count} extra skill{'s' if count > 1 else ''} into ~/{location}", file=sys.stderr)
                 project_skills = Path(root) / location
                 if project_skills.is_dir() and any((p / 'SKILL.md').is_file() for p in project_skills.iterdir() if p.is_dir()):
                     print(f'Project skills: available in {location}.', file=sys.stderr)
