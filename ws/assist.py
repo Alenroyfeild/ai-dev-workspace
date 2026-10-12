@@ -65,7 +65,8 @@ def observe(root, payload):
                 if record.get('last') != sid:
                     record.update(last=sid, count=(record.get('count', 0) if record.get('checkpoint') == count else 0) + 1, checkpoint=count)
         try:
-            size = Path(payload.get('transcript_path', '')).stat().st_size
+            transcript = payload.get('transcript_path')
+            size = Path(transcript).stat().st_size if isinstance(transcript, str) and transcript else 0
             if size > 2000000:
                 data['long_session_bytes'] = size
         except OSError:
