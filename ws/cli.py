@@ -35,32 +35,18 @@ def _block_prompt(client, reason):
     return 0
 
 
-COMMAND_GROUPS = (
-    ('Setup', ('start', 'init', 'setup', 'connect', 'packs', 'pack')),
-    ('Daily', ('status', 'task', 'next', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'import', 'lesson')),
-    ('Orchestration', ('route', 'delegate')),
-    ('Measure', ('tools', 'digest', 'run', 'trace')),
-    ('Maintain', ('doctor', 'validate', 'map', 'feedback', 'update', 'version', 'upgrade', 'notices', 'assist')),
-)
+DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
     def _format_action(self, action):
         if isinstance(action, argparse._SubParsersAction) and action.dest == 'cmd':
             choices = {item.dest: item for item in action._choices_actions}
-            output = []
-            for label, commands in COMMAND_GROUPS:
-                output.append(' ' * self._current_indent + label + ':\n')
-                self._indent()
-                output.extend(argparse.HelpFormatter._format_action(self, choices[name])
-                              for name in commands if name in choices)
-                self._dedent()
-            extra = choices.keys() - {name for _, commands in COMMAND_GROUPS for name in commands}
-            if extra:
-                output.append(' ' * self._current_indent + 'Other:\n')
-                self._indent()
-                output.extend(argparse.HelpFormatter._format_action(self, choices[name]) for name in sorted(extra))
-                self._dedent()
+            output = [' ' * self._current_indent + 'Daily:\n']
+            self._indent()
+            output.extend(argparse.HelpFormatter._format_action(self, choices[name])
+                          for name in DAILY_COMMANDS if name in choices)
+            self._dedent()
             return ''.join(output)
         return super()._format_action(action)
 
@@ -315,6 +301,13 @@ def main(argv=None):
     s = r.add_parser('import'); s.add_argument('source', choices=('codeburn',)); s.add_argument('--since'); s.add_argument('--task')
     s = sub.add_parser('trace', help='read-only Markdown timeline of reported orchestration steps'); s.add_argument('task')
 
+    args = sys.argv[1:] if argv is None else argv
+    if args == ['help', 'all']:
+        p.formatter_class = argparse.HelpFormatter
+        p.print_help()
+        return 0
+    if args in (['--help'], ['-h']):
+        p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
     a = p.parse_args(argv)
     try:
         if a.cmd == 'start':
