@@ -22,6 +22,7 @@ class StartTests(unittest.TestCase):
         subprocess.run(['git', 'add', 'AGENTS.md'], cwd=self.repo, check=True)
         subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'fixture'], cwd=self.repo, check=True)
         self.old = Path.cwd(); os.chdir(self.repo); self.addCleanup(os.chdir, self.old)
+        detection = mock.patch('ws.setup.detect', return_value=[]); detection.start(); self.addCleanup(detection.stop)
 
     def start(self, *args):
         output = io.StringIO(); preview = io.StringIO()
@@ -47,7 +48,8 @@ class StartTests(unittest.TestCase):
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain'], cwd=self.repo), b'')
         snapshot = {p: p.read_bytes() for p in self.repo.rglob('*') if p.is_file()}
         self.assertEqual(self.start('--yes')[0], 0); self.assertEqual(snapshot, {p:p.read_bytes() for p in self.repo.rglob('*') if p.is_file()})
-        self.assertEqual(self.start('--undo')[0], 0)
+        code, output, _ = self.start('--undo')
+        self.assertEqual(code, 0); self.assertIn('Removed repo wiring', output)
         self.assertEqual((self.repo / '.git/info/exclude').read_bytes(), before)
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain'], cwd=self.repo), b'')
         self.assertTrue((workspace / 'workspace.json').exists())
@@ -61,6 +63,9 @@ class StartTests(unittest.TestCase):
         self.assertIn(b'user-pattern', (self.repo / '.git/info/exclude').read_bytes())
 
     def test_detached_tracked_targets_and_workspace_collision_fail_before_writes(self):
+        with mock.patch('ws.repo.subprocess.run', side_effect=subprocess.TimeoutExpired('git', 10)):
+            self.assertEqual(self.start('--yes')[0], 2)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
         subprocess.run(['git', 'checkout', '-q', '--detach'], check=True)
         self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / '.ws-start.json').exists())
         subprocess.run(['git', 'checkout', '-q', 'feature/synthetic'], check=True)
@@ -76,3 +81,20 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes', '--workspace', str(workspace))[0], 0)
         local = self.repo / 'CLAUDE.local.md'; local.write_text('User changed this file\n')
         self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_text(), 'User changed this file\n')
+
+    def test_detected_secondary_clients_share_confirmation_and_private_undo(self):
+        detected = [dict(assistant=c, cli_available=True, apps=[]) for c in ('cursor', 'copilot', 'gemini')]
+        with mock.patch('ws.setup.detect', return_value=detected), mock.patch('builtins.input', return_value='y') as ask:
+            code, output, preview = self.start()
+        ask.assert_called_once(); self.assertEqual(code, 0)
+        self.assertIn('normally shared', preview); self.assertIn('local VS Code', preview)
+        for name, event in (('.cursor/hooks.json', 'sessionStart'), ('.github/hooks/ws.json', 'SessionStart'), ('.gemini/settings.json', 'SessionStart')):
+            hooks = json.loads((self.repo / name).read_text())['hooks']
+            self.assertIn(event, hooks); self.assertIn(name, preview)
+        for name in ('.cursor/mcp.json', '.vscode/mcp.json', '.github/copilot-instructions.md', '.cursor/rules/ws-current-task.mdc', 'GEMINI.md'):
+            self.assertTrue((self.repo / name).exists()); self.assertIn(name, preview)
+        self.assertTrue((self.repo / '.cursor/rules/ws-current-task.mdc').read_text().startswith('---\n'))
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+        with mock.patch('ws.setup.detect', return_value=detected): self.assertEqual(self.start('--yes', '--undo', '--dry-run')[0], 2)
