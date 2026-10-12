@@ -1,0 +1,161 @@
+{
+  "date": "2026-10-12",
+  "kit": "9c962a8aa7752eaac088922e583783deaa1ff375",
+  "seed": 978207194577267098,
+  "rollout": {
+    "workspace": 1,
+    "markdown": 4,
+    "baseline": 0,
+    "n": 5
+  },
+  "decisions": {
+    "workspace": 3,
+    "baseline": 0,
+    "n": 3
+  },
+  "gate": "failed",
+  "calls": 53,
+  "input_tokens": 5148411,
+  "output_tokens": 83919,
+  "cost_usd": null,
+  "trials": [
+    {
+      "trial": 1,
+      "results": {
+        "workspace": "pass",
+        "markdown": "pass",
+        "baseline": "abstention"
+      },
+      "failed_checks": {
+        "workspace": [],
+        "markdown": [],
+        "baseline": [
+          "lane",
+          "receipt",
+          "manifest_attempted"
+        ]
+      },
+      "captured_corrected": {
+        "lane": false,
+        "receipt": false
+      },
+      "brief_corrected": {
+        "lane": false,
+        "receipt": false
+      }
+    },
+    {
+      "trial": 2,
+      "results": {
+        "workspace": "guess_or_incomplete",
+        "markdown": "guess_or_incomplete",
+        "baseline": "guess_or_incomplete"
+      },
+      "failed_checks": {
+        "workspace": [
+          "lane"
+        ],
+        "markdown": [
+          "lane"
+        ],
+        "baseline": [
+          "lane",
+          "receipt",
+          "manifest_attempted"
+        ]
+      },
+      "captured_corrected": {
+        "lane": false,
+        "receipt": false
+      },
+      "brief_corrected": {
+        "lane": false,
+        "receipt": false
+      }
+    },
+    {
+      "trial": 3,
+      "results": {
+        "workspace": "guess_or_incomplete",
+        "markdown": "pass",
+        "baseline": "guess_or_incomplete"
+      },
+      "failed_checks": {
+        "workspace": [
+          "lane"
+        ],
+        "markdown": [],
+        "baseline": [
+          "lane",
+          "receipt"
+        ]
+      },
+      "captured_corrected": {
+        "lane": false,
+        "receipt": false
+      },
+      "brief_corrected": {
+        "lane": false,
+        "receipt": false
+      }
+    },
+    {
+      "trial": 4,
+      "results": {
+        "workspace": "guess_or_incomplete",
+        "markdown": "pass",
+        "baseline": "guess_or_incomplete"
+      },
+      "failed_checks": {
+        "workspace": [
+          "lane"
+        ],
+        "markdown": [],
+        "baseline": [
+          "lane",
+          "receipt",
+          "manifest_attempted"
+        ]
+      },
+      "captured_corrected": {
+        "lane": false,
+        "receipt": false
+      },
+      "brief_corrected": {
+        "lane": false,
+        "receipt": false
+      }
+    },
+    {
+      "trial": 5,
+      "results": {
+        "workspace": "abstention",
+        "markdown": "pass",
+        "baseline": "guess_or_incomplete"
+      },
+      "failed_checks": {
+        "workspace": [
+          "lane",
+          "receipt",
+          "manifest_attempted"
+        ],
+        "markdown": [],
+        "baseline": [
+          "lane",
+          "receipt",
+          "manifest_attempted"
+        ]
+      },
+      "captured_corrected": {
+        "lane": false,
+        "receipt": false
+      },
+      "brief_corrected": {
+        "lane": false,
+        "receipt": false
+      }
+    }
+  ],
+  "claude_cross_check": "Claude review needed: live Claude correction check + Claude->Codex n=3 on 9c962a8aa7752eaac088922e583783deaa1ff375",
+  "next_hypothesis": "The submitted correction did not persist in the resumed Codex path, although direct prompt-hook replays pass. Retain the actual prompt/Stop payloads and capture-health records in a throwaway resumed session to distinguish event delivery from transcript freshness. The brief conflict check also assumes Captured is newer without checkpoint provenance, suppressing a newer Next action. No third iteration is authorized."
+}
