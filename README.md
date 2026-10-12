@@ -56,6 +56,7 @@ cd ~/code/myapp && ws start                                         # 2. preview
 
 **Memory that follows the work**
 - One Markdown record per task: objective, evidence, blockers, next action, handoff. Claude and Codex hooks capture conversation decisions automatically; a short brief (under 200 words) is injected at every session start.
+- Branches become tasks: session-start hooks create and locally claim missing branch records; switching branches selects that branch's memory. `"capture": false` disables automatic creation. Conflicting or foreign claims stop instead of being taken over.
 - **Stale-memory check**: the brief warns when files named in the next action changed since it was written, or when the code was rolled back past the checkpoint.
 - **Lessons** ("what happened → rule"), ranked by the files you are changing, so a mistake made once is not repeated.
 - Search vault notes, lessons and past Claude, Codex, Cursor and Gemini sessions (`ws sessions search`).

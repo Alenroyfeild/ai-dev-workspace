@@ -748,6 +748,7 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     if objective:
         text = set_section(text, 'Objective', redact(objective))
     with lock(root):
+        if path.exists(): raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
         atomic_write(path, text)
     return {'task': task_id, 'path': path.relative_to(root).as_posix()}
 
@@ -1192,6 +1193,46 @@ def _task_git(root, task_id, *args):
         return ''
 
 
+def _on_current_branch(root, task):
+    if not task['branch']: return True
+    current = _task_git(root, task['id'], 'symbolic-ref', '--quiet', '--short', 'HEAD').strip()
+    return current == task['branch'] if current else not _task_git(root, task['id'], 'rev-parse', '--is-inside-work-tree').strip()
+
+
+def session_task(root, cwd=None):
+    """Create/claim local branch memory only; never start assistant work."""
+    if not (root / 'workspace.json').is_file() or config(root).get('capture') is False: return None
+    if cwd is not None and (not isinstance(cwd, str) or not Path(cwd).is_absolute()):
+        raise WsError('Hook cwd must be an absolute directory path.')
+    repos = config(root).get('repos', [])
+    location = repos[0] if (not cwd or Path(cwd).resolve() == root.resolve()) and isinstance(repos, list) and len(repos) == 1 else cwd or root
+    location = inside(root / Path(location), read_roots(root))
+    try:
+        result = subprocess.run(['git', '-C', str(location), 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.SubprocessError): return None
+    if result.returncode: return None
+    repo = inside(Path(result.stdout.strip()), read_roots(root))
+    from .setup import branch
+    current = branch(repo)
+    if not current: return None
+    matches = [t for t in task_list(root) if t['branch'] == current and
+               (root / task_read(root, t['id'], ['Next action'])['meta'].get('repo', '')).resolve() == repo]
+    if len(matches) > 1: raise WsError('Multiple tasks match this branch; choose one explicitly before continuing.')
+    created = not matches
+    task = matches[0]['id'] if matches else 'BR-' + digest_text(str(repo) + '\0' + current)[:10]
+    if created:
+        try: task_new(root, task, current, branch=current, repo=str(repo))
+        except WsError:
+            if not task_path(root, task).is_file(): raise
+            meta = task_read(root, task, ['Next action'])['meta']
+            if meta.get('branch') != current or meta.get('repo') != str(repo): raise
+            created = False  # A concurrent local SessionStart created the same branch task.
+    if task_read(root, task, ['Next action'])['meta'].get('status') == 'done': return task
+    claim(root, task, 'local')
+    if created: checkpoint(root, task, 'in_progress', 'Follow the current request; save the next action before stopping.')
+    return task
+
+
 def relevant_lessons(root, task):
     title = set(re.findall(r'\w{3,}', task['title'].lower()))
     changed = []
@@ -1286,28 +1327,37 @@ def _bounded_brief(fields, truncated=False):
     return '\n'.join(bounded)
 
 
-def brief(root):
-    guard = repeat_guard(root)
+def current_task(root):
     tasks = task_list(root)
-    active = [t for t in tasks if t['status'] == 'in_progress']
+    active = [t for t in tasks if t['status'] == 'in_progress' and _on_current_branch(root, t)]
     # Team workspace: my local claims first, then the task on this repo's current branch, never a teammate's by default.
     own = [t for t in tasks if t['status'] not in ('done', 'conflicted') and
            _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
     own_ids = {t['id'] for t in own}
     others = [t for t in tasks if t['claimed_by'] and t['status'] != 'done' and t['id'] not in own_ids]
-    def others_line(task_id=''):
-        shown = [f"{t['id']} ({redact(t['claimed_by'])})" for t in others if t['id'] != task_id][:3]
-        return ['Others working: ' + ', '.join(shown)] if shown else []
+    own = [t for t in own if _on_current_branch(root, t)]
     mine = [t for t in active if t['id'] in own_ids]
     if mine or own:
-        task = (mine or own)[0]
+        task = next((t for t in own if t['branch'] and t['branch'] == _task_git(root, t['id'], 'symbolic-ref', '--quiet', '--short', 'HEAD').strip()), (mine or own)[0])
     elif active:
         on_branch = [t for t in active if t['branch'] and t['branch'] == _task_git(root, t['id'], 'rev-parse', '--abbrev-ref', 'HEAD').strip()]
         candidates = on_branch or [t for t in active if not t['claimed_by']]
         if not candidates:
-            return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()])
+            return None, others
         task = candidates[0]
     else:
+        return None, others
+    return task, others
+
+
+def brief(root, task_id=None):
+    guard = repeat_guard(root)
+    task, others = current_task(root)
+    if task_id: task = next((t for t in task_list(root) if t['id'] == task_id), None)
+    def others_line(task_id=''):
+        shown = [f"{t['id']} ({redact(t['claimed_by'])})" for t in others if t['id'] != task_id][:3]
+        return ['Others working: ' + ', '.join(shown)] if shown else []
+    if not task:
         return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()])
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     next_action = record['sections']['Next action']
@@ -1436,12 +1486,16 @@ def _capture_decisions(root, transcript_path, client):
     block = marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
     owned = []
     for task in task_list(root):
+        if not _on_current_branch(root, task): continue
         worker, token = _claim_defaults(root, task['id'], None, None)
         path = task_path(root, task['id'])
         text = path.read_bytes().decode('utf-8')
         meta = parse_meta(text)
         if task['status'] != 'done' and token and worker == meta.get('claimed_by') and token == meta.get('claim_token'):
             owned.append((path, text))
+    on_branch = [(path, text) for path, text in owned if parse_meta(text).get('branch') and
+                 parse_meta(text)['branch'] == _task_git(root, path.stem, 'symbolic-ref', '--quiet', '--short', 'HEAD').strip()]
+    if on_branch: owned = on_branch
     if len(owned) != 1:
         return 'ambiguous_claims' if owned else 'no_local_claim'
     path, original = owned[0]

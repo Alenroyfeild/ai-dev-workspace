@@ -3,7 +3,7 @@
 This folder is the shared memory for AI-assisted work on the code checkouts listed in `workspace.json`. Read only what the current step needs; never ingest the whole vault or repo.
 
 ## Start of a session
-1. Find the task: `ws task find <ticket-or-branch>` (MCP: `find_task`). Read only that record's Next action, Blockers and Handoff first. No record: `ws task new <ID> "<title>"`.
+1. Session-start hooks create/claim a local branch task unless `capture:false`; switching branches changes the brief. Without hooks, find it: `ws task find <ticket-or-branch>` (MCP: `find_task`). Read only Next action, Blockers and Handoff. No record: `ws task new <ID> "<title>"`.
 2. Claim it before changing anything: `ws claim <ID>`. A claim made earlier in this workspace is resumed; a claim by another machine or person means stop and ask. One writer per checkout.
 3. Offer `ws notices` suggestions once; apply only after a yes. Nothing to report: say nothing.
    Suggest missing recommended tools once; install only after the user says yes.

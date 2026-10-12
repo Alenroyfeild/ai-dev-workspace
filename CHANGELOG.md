@@ -10,6 +10,7 @@
 Your saved decisions now survive long handoffs, the MCP server works with clients on the newest protocol, and Google ADK and LangGraph agents can share the same task memory.
 
 ### Improved
+- Session-start hooks create local tasks for new git branches and switch the brief with the branch. Existing decisions and claims are preserved; `capture:false` disables automatic task creation. [Branch memory](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/README.md#what-you-get).
 - Start inside your code repo with `ws start`: preview local files, confirm once, connect detected assistants and claim a task for the branch. Existing files are preserved; running it again only shows status. [Quick start](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/README.md#quick-start-2-minutes).
 - **Decisions come first in the session brief.** A long checkpoint (blockers plus a handoff) used to push saved decisions past the 200-word limit, so the next session never saw them. Each section now has its own budget, decisions and corrections are kept first, and the brief points to the task file when it has to cut.
 - **Works with new and old MCP clients.** Clients on the 2026-07-28 MCP spec (no handshake, version on every request) connect directly; clients on 2025-11-25 and 2025-06-18 work as before. Tested with the official Python MCP SDK in both modes.

@@ -66,8 +66,7 @@ def start(yes=False, dry_run=False):
     partial = bool(cfg['collisions'] or report.get('partial'))
     if partial: print('Review the reported conflicts and .ws-new proposals before trusting hooks/MCP.', file=sys.stderr)
     if report.get('partial'): print(report['note'], file=sys.stderr)
-    core.task_new(root, task, current, branch=current, repo=str(root))
-    core.claim(root, task, 'local'); core.checkpoint(root, task, 'in_progress', 'Follow the current request; save the next action before stopping.')
+    task = core.session_task(root, str(root))
     return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, partial=partial)
 
 
