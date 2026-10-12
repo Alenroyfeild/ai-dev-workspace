@@ -1584,10 +1584,11 @@ def capture_health(root):
 
 
 def sole_local_claim(root):
-    """The one unfinished task claimed from this workspace, or '' when none or several."""
-    tasks = [t['id'] for t in task_list(root) if t['status'] != 'done'
+    """The one unfinished local claim on this branch, or '' when ambiguous."""
+    tasks = [t for t in task_list(root) if t['status'] not in ('done', 'conflicted') and _on_current_branch(root, t)
              and _local_claim_matches(root, t['id'], task_read(root, t['id'], ['Next action'])['meta'])]
-    return tasks[0] if len(tasks) == 1 else ''
+    tasks = [t for t in tasks if t['branch']] or tasks
+    return tasks[0]['id'] if len(tasks) == 1 else ''
 
 
 def nudge(root):
