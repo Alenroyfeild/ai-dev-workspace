@@ -1170,6 +1170,14 @@ class ReleaseFeedbackTests(Base):
         self.assertTrue(res['update_available'])
         self.assertEqual(res['notes'], 'Beta 3 summary')
 
+    def test_update_check_uses_versions_beyond_first_release_page(self):
+        pages = [[{'tag_name': 'v0.1.0-beta.2'}] * 100,
+                 [{'tag_name': 'v0.2.0', 'body': 'Newest version'}]]
+        with mock.patch.object(core, '_get_json', side_effect=pages) as request:
+            result = core.check_update(force=True)
+        self.assertEqual(result['latest'], '0.2.0')
+        self.assertIn('page=2', request.call_args.args[0])
+
     def test_version_order_handles_prereleases(self):
         v = core._vtuple
         self.assertTrue(v('0.1.0-beta.2') > v('0.1.0-beta.1'))
