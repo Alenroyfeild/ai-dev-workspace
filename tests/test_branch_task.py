@@ -97,3 +97,18 @@ class BranchTaskTests(unittest.TestCase):
         self.assertNotIn('STALE_COMPLETED_ACTION', self.hook())
         self.assertEqual(before, core.task_path(self.root, task).read_bytes())
         self.assertEqual(len(core.task_list(self.root)), 1)
+
+    def test_remember_follows_branch_with_multiple_local_claims(self):
+        self.hook(); first = core.task_list(self.root)[0]['id']
+        core.remember(self.root, 'keep amber')
+        before = core.task_path(self.root, first).read_bytes()
+        core.task_new(self.root, 'LEGACY', 'Generic legacy task'); core.claim(self.root, 'LEGACY', 'local')
+        self.git('switch', '-qc', 'feature/b'); self.hook()
+        saved = core.remember(self.root, 'keep violet')
+        self.assertNotEqual(saved['task'], first)
+        core.checkpoint(self.root, saved['task'], 'in_progress', 'Inspect violet', notes={'Handoff': 'Handoff rewritten.'})
+        self.assertIn('keep violet', core.brief(self.root))
+        self.assertNotIn('keep amber', core.brief(self.root))
+        self.assertEqual(before, core.task_path(self.root, first).read_bytes())
+        self.git('switch', '-q', 'feature/a')
+        self.assertIn('keep amber', core.brief(self.root))
