@@ -153,6 +153,15 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0)
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
 
+    def test_new_start_undo_recovers_interrupted_exclusion_write(self):
+        exclude = self.repo / '.git/info/exclude'; before = exclude.read_bytes(); write = core.atomic_write
+        def interrupted(target, data):
+            if Path(target).resolve() == exclude.resolve(): raise OSError('fixture interrupted first exclude write')
+            return write(target, data)
+        with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(exclude.read_bytes(), before)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
     def test_codex_existing_backup_and_tracked_config_refused_before_writes(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir(); config.write_text('model="fixture"\n')
         backup = config.with_name('config.toml.ws-backup'); backup.write_text('Earlier backup\n')
