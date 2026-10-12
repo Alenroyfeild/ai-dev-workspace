@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+tag=${1:?usage: publish-release TAG NOTES_FILE}
+notes=${2:?usage: publish-release TAG NOTES_FILE}
+
+if gh release view "$tag" >/dev/null 2>&1; then
+  echo "Release $tag already exists; skipping creation."
+  exit 0
+fi
+
+gh release create "$tag" --title "$tag" --notes-file "$notes"
