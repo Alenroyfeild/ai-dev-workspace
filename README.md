@@ -11,6 +11,7 @@ ws init ~/work/myapp-ws --repo ~/code/myapp
 cd ~/work/myapp-ws && ws connect claude
 ws task new APP-123 "Fix login crash" && ws claim APP-123
 ```
+Open the workspace in your assistant and add the code folder too.
 
 ## Example
 

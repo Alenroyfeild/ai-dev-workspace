@@ -26,6 +26,9 @@ class CliPolishTests(unittest.TestCase):
             self.assertIn('    ' + command, short.stdout)
         for command in ('init', 'route', 'tools', 'delegate', 'feedback', 'upgrade'):
             self.assertNotIn('    ' + command, short.stdout)
+        invalid = self.run_ws('not-a-command')
+        self.assertIn('COMMAND ...', invalid.stderr)
+        self.assertNotIn('{status,task,claim,checkpoint,search,lesson,doctor}', invalid.stderr)
 
         full = self.run_ws('help', 'all')
         self.assertEqual(full.returncode, 0, full.stderr)

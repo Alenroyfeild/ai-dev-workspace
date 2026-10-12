@@ -303,7 +303,8 @@ def main(argv=None):
         p.formatter_class = argparse.HelpFormatter
         p.print_help()
         return 0
-    p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
+    if args in (['--help'], ['-h']):
+        p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
     a = p.parse_args(argv)
     try:
         if a.cmd == 'setup' and a.detect:
