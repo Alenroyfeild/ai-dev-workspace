@@ -4,9 +4,29 @@ set -euo pipefail
 tag=${1:?usage: publish-release TAG NOTES_FILE}
 notes=${2:?usage: publish-release TAG NOTES_FILE}
 
-if gh release view "$tag" >/dev/null 2>&1; then
+if view_error=$(gh release view "$tag" 2>&1 >/dev/null); then
   echo "Release $tag already exists; skipping creation."
   exit 0
 fi
 
-gh release create "$tag" --title "$tag" --notes-file "$notes"
+case "$view_error" in
+  *"HTTP 404:"*|*"release not found"*) ;;
+  *) echo "Could not check release $tag; refusing to create: $view_error" >&2; exit 1 ;;
+esac
+
+set +e
+create_error=$(gh release create "$tag" --title "$tag" --notes-file "$notes" 2>&1)
+create_status=$?
+set -e
+if [ "$create_status" -eq 0 ]; then
+  [ -z "$create_error" ] || echo "$create_error"
+  exit 0
+fi
+
+if gh release view "$tag" >/dev/null 2>&1; then
+  echo "Release $tag appeared during creation; skipping duplicate."
+  exit 0
+fi
+
+echo "$create_error" >&2
+exit "$create_status"
