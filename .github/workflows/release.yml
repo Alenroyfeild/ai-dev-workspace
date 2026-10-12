@@ -19,5 +19,6 @@ jobs:
           v=${GITHUB_REF_NAME#v}
           awk -v v="$v" '$0 ~ "^## "v "([[:space:]]|$)" {f=1; next} /^## / && f {exit} f' CHANGELOG.md > notes.md
           [ -s notes.md ] || { echo "No CHANGELOG section for $v"; exit 1; }
-      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md
+      - name: Create release if absent
+        run: bin/publish-release "$GITHUB_REF_NAME" notes.md
         env: {GH_TOKEN: "${{ github.token }}"}
