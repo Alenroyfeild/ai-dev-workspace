@@ -1333,7 +1333,7 @@ def _is_decision_clause(clause):
 
 
 def _is_captured_decision_clause(clause):
-    return bool(re.search(r'\b(must|do not|decided|only|always|never)\b', clause, re.I))
+    return bool(re.match(r'\s*(?:decision|decided|correction)\s*:', clause, re.I))
 
 
 def _summary_line(task_id, count, next_action, saved_context=False):
