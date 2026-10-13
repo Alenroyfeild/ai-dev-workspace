@@ -350,6 +350,14 @@ class WorkerPrepareTests(Base):
         self.assertEqual(self.git('symbolic-ref', ref), target)
         self.assertEqual(self.git('for-each-ref', '--format=%(refname)', target), '')
 
+    def test_accept_uses_same_home_alias_resolution_as_preparation(self):
+        with mock.patch.dict(os.environ, {'HOME': str(self.root), 'USERPROFILE': str(self.root)}):
+            task = core.task_path(self.root, 'W-1')
+            task.write_text(task.read_text().replace(str(self.repo), '~/source'))
+            plan = self.collected_for_review(); workers.review(self.root, plan['id'], approve=True)
+            result = workers.accept(self.root, plan['id'], apply=True)
+            self.assertEqual(self.git('show', result['branch'] + ':calc.py'), 'answer = 2')
+
     def test_discard_only_owned_artifacts_preserves_sibling_and_source(self):
         plan = self.prepare(apply=True); sibling = self.prepare(apply=True)
         original = (self.repo / 'calc.py').read_bytes()
