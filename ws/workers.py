@@ -66,6 +66,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     try:
         git(directory, 'clone', '--bare', '--no-local', '--template=', '--', str(source), str(directory / 'source.git'))
         git(directory / 'source.git', 'remote', 'remove', 'origin')
+        git(directory / 'source.git', 'fetch', '--no-tags', '--', str(source), commit)
         git(directory / 'source.git', 'worktree', 'add', '--detach', str(directory / 'checkout'), commit)
         body = '# Implementation task (UNVERIFIED)\nEdit only allowed paths. Do not commit, push, merge or change task memory.\n'
         for section, limit in zip(('Objective', 'Next action', 'Blockers', 'Evidence'), (80, 60, 30, 100)):

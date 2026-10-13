@@ -101,3 +101,10 @@ class WorkerPrepareTests(Base):
             with self.assertRaisesRegex(core.WsError, 'symlink'): self.prepare(apply=True, confirm=redirected)
         finally: self.link.stop()
         self.assertFalse((self.root / '.ws/workers').exists())
+
+    def test_prepare_copies_a_local_commit_not_reachable_from_any_branch(self):
+        head = self.git('rev-parse', 'HEAD')
+        commit = self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit-tree', 'HEAD^{tree}', '-p', head, '-m', 'unreferenced fixture')
+        result = self.prepare(base=commit, apply=True)
+        self.assertEqual(subprocess.check_output(['git', '-C', result['checkout'], 'rev-parse', 'HEAD'], text=True).strip(), commit)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
