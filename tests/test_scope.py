@@ -96,3 +96,14 @@ class ScopeTests(unittest.TestCase):
         before = note.read_bytes()
         with self.assertRaises(core.WsError): scope.record(self.a, 'decision:P-1', 'team')
         self.assertEqual(before, note.read_bytes())
+
+    @unittest.skipIf(os.name == 'nt', 'symlink fixture may require Windows developer mode')
+    def test_symlinked_record_file_is_ineligible_for_read_and_change(self):
+        from ws import scope
+        target = core.vault(self.a) / 'Personal' / 'R-1.md'; target.parent.mkdir()
+        target.write_text('---\nid: R-1\nscope: private\n---\nPersonal text.\n')
+        path = core.vault(self.a) / 'Decisions' / 'R-1.md'; path.parent.mkdir(); path.symlink_to(target)
+        before = target.read_bytes()
+        for value in (None, 'team'):
+            with self.assertRaises(core.WsError): scope.record(self.a, 'decision:R-1', value)
+        self.assertEqual(before, target.read_bytes())
