@@ -52,6 +52,20 @@ class SharingTests(unittest.TestCase):
             with self.assertRaises(core.WsError): sharing.apply(self.root, plan)
         self.assertFalse((self.clone / plan['destination']).exists())
 
+    def test_crlf_standalone_projection_keeps_the_whole_body(self):
+        from ws import sharing
+        directory = core.vault(self.root) / 'Knowledge'; directory.mkdir()
+        (directory / 'K1.md').write_bytes(b'---\r\nid: K1\r\nscope: team\r\n---\r\n\r\nKeep the first word and every line.\r\n')
+        self.assertIn('Keep the first word and every line.', sharing.preview(self.root, 'knowledge:K1')['content'])
+
+    def test_unshare_missing_source_uses_only_owned_receipt(self):
+        from ws import sharing
+        plan = sharing.preview(self.root, 'task:T1'); sharing.apply(self.root, plan)
+        core.task_path(self.root, 'T1').unlink()
+        removal = sharing.preview(self.root, 'task:T1', unshare=True); sharing.apply(self.root, removal)
+        self.assertFalse((self.clone / plan['destination']).exists())
+        with self.assertRaises(core.WsError): sharing.preview(self.root, 'task:T1', unshare=True)
+
     def test_stale_source_destination_and_private_scope_refuse(self):
         from ws import sharing
         plan = sharing.preview(self.root, 'task:T1'); core.remember(self.root, 'New decision requires another preview.')
