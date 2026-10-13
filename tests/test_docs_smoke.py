@@ -22,6 +22,10 @@ def code_block(path, heading):
 
 @unittest.skipIf(os.name == 'nt', 'The documented quick-start shell blocks use POSIX syntax.')
 class DocsSmokeTests(unittest.TestCase):
+    def test_run_log_docs_list_supported_result_values(self):
+        docs = (KIT / 'docs/COMMANDS.md').read_text(encoding='utf-8')
+        self.assertIn('`--result ok|failed|rejected|accepted|skipped`', docs)
+
     def test_quick_start_blocks_run_in_throwaway_workspaces(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp); home = base / 'home'; fakebin = base / 'bin'
