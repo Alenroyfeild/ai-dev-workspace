@@ -144,6 +144,7 @@ class StartTests(unittest.TestCase):
     def test_codex_start_rejects_duplicate_server_in_parent_table(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
         for original in (b'[mcp_servers]\nai-dev-workspace = { command = "other" }\n',
+                         b'[mcp_servers] # parent table\nai-dev-workspace = { command = "other" }\n',
                          b'[mcp_servers]\nai-dev-workspace.command = "other"\n'):
             with self.subTest(original=original):
                 config.write_bytes(original)
@@ -204,6 +205,13 @@ class StartTests(unittest.TestCase):
             config.write_text(block.replace('"enabled" = true', '"enabled" = false'))
             self.assertFalse(core.client_connected(workspace, 'codex'))
 
+    def test_codex_connection_accepts_trailing_table_comment(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.repo / '.codex/config.toml'
+        config.write_text(core.codex_mcp_config(workspace).replace(']\nenabled', '] # server table\nenabled'))
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+
     def test_codex_connection_handles_indented_table_and_bounds_its_section(self):
         self.assertEqual(self.start('--yes')[0], 0)
         workspace = core.find_root(); config = self.repo / '.codex/config.toml'
@@ -262,6 +270,15 @@ class StartTests(unittest.TestCase):
         exclude = Path(state['exclude']); exclude.write_bytes(exclude.read_bytes().replace(old, block))
         state['exclude_block'] = base64.b64encode(block).decode(); link.write_text(json.dumps(state))
         return config, exclude
+
+    def test_codex_migration_refuses_tracked_start_record(self):
+        self.old_start()
+        link = self.repo / '.ws-start.json'
+        subprocess.run(['git', 'add', '-f', '.ws-start.json'], check=True)
+        before = link.read_bytes()
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(link.read_bytes(), before)
+        self.assertFalse((self.repo / '.codex/config.toml').exists())
 
     def test_existing_start_gets_codex_connection_after_one_confirm(self):
         config, _ = self.old_start()

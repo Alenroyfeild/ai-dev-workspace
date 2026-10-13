@@ -495,7 +495,7 @@ def client_connected(root, client, global_only=False):
             text = path.read_text(encoding='utf-8') if path.is_file() else ''
             mcp_key = r'(?:mcp_servers|"mcp_servers"|\'mcp_servers\')'
             server_key = r'(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')'
-            match = re.search(r'^[ \t]*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\][ \t]*$(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
+            match = re.search(r'^[ \t]*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\][ \t]*(?:#[^\r\n]*)?$(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
             if match: break
         else: return False
         if re.search(r'^[ \t]*(?:enabled|"enabled"|\'enabled\')\s*=\s*false\b', match[1], re.M): return False
