@@ -107,3 +107,20 @@ class WorkerPrepareTests(Base):
         result = self.prepare(base=commit, apply=True)
         self.assertEqual(subprocess.check_output(['git', '-C', result['checkout'], 'rev-parse', 'HEAD'], text=True).strip(), commit)
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+
+    def test_claim_released_or_replaced_during_clone_keeps_run_incomplete(self):
+        original = workers.git
+        for replacement in (False, True):
+            with self.subTest(replacement=replacement):
+                if not core.task_read(self.root, 'W-1', ['Objective'])['meta'].get('claimed_by'):
+                    core.claim(self.root, 'W-1', 'lead')
+                def changed(repo, *args):
+                    result = original(repo, *args)
+                    if args[0] == 'worktree':
+                        core.release(self.root, 'W-1')
+                        if replacement: core.claim(self.root, 'W-1', 'replacement')
+                    return result
+                with mock.patch('ws.workers.git', side_effect=changed), self.assertRaisesRegex(core.WsError, 'claim'):
+                    self.prepare(apply=True)
+        records = [json.loads(p.read_text()) for p in (self.root / '.ws/workers').glob('*/run.json')]
+        self.assertTrue(all(not r['complete'] and 'claim' in r['reason'] for r in records))

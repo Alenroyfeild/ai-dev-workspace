@@ -74,10 +74,14 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
         body += '\n## Allowed paths\n' + '\n'.join(scope) + '\n\nReport changed paths, checks actually run and blockers. Lead reviews before acceptance.\n'
         if len(body.split()) > 400: raise core.WsError('Worker brief exceeds 400 words; shorten the scope.')
         core.atomic_write(directory / 'brief.md', body)
-        state.update(complete=True, applied=True)
+        with core.lock(root):
+            current = core.task_read(root, task_id, ['Objective'])['meta']
+            if (current.get('claimed_by'), current.get('claim_token')) != (worker, token) or core._claim_defaults(root, task_id, None, None) != (worker, token) or current.get('status') == 'done':
+                raise core.WsError('Task claim changed during preparation; checkout retained for inspection.')
+            state.update(complete=True, applied=True)
+            core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     except core.WsError as error:
         state['reason'] = str(error)
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
         raise core.WsError(f'Preparation {run_id} incomplete; inspect {directory}: {error}')
-    core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     return dict(result, applied=True)
