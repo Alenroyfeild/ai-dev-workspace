@@ -131,19 +131,41 @@ def toml_top_level(text):
     return text
 
 
+def toml_mask_multiline_strings(text):
+    chars = list(text); quote = None; escaped = False; i = 0
+    while i < len(text):
+        char = text[i]
+        if quote:
+            if char != '\n': chars[i] = ' '
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif text.startswith(quote * 3, i):
+                for index in range(i, i + 3):
+                    if text[index] != '\n': chars[index] = ' '
+                quote = None; i += 2
+        elif char in '"\'' and text.startswith(char * 3, i):
+            quote = char
+            for index in range(i, i + 3):
+                if text[index] != '\n': chars[index] = ' '
+            i += 2
+        i += 1
+    return ''.join(chars)
+
+
 def codex_files(repo, root):
     target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
     text = original.decode('utf-8')
     text = re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', lambda m: chr(int(m.group(1) or m.group(2), 16)), text)
-    parent = re.search(r'^\s*\[\s*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)\s*\]\s*(.*?)(?=^\s*\[|\Z)', text, re.M | re.S)
+    scan_text = toml_mask_multiline_strings(text)
+    parent = re.search(r'^\s*\[\s*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)\s*\]\s*(.*?)(?=^\s*\[|\Z)', scan_text, re.M | re.S)
     parent_has_server = parent and re.search(r'^\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*(?:\.|=)', parent[1], re.M)
     mcp_key = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
     server_key = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
     toml_key = r'(?:"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|[A-Za-z0-9_-]+)'
     nested = r'(?:\s*\.\s*' + toml_key + r')*'
-    top_level = toml_top_level(text)
+    top_level = toml_top_level(scan_text)
     root_entry = re.search(r'^\s*' + mcp_key + r'\s*=|^\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*(?:\.|=)', top_level, re.M)
-    server_table = re.search(r'^\s*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + nested + r'\s*\]', text, re.M)
+    server_table = re.search(r'^\s*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + nested + r'\s*\]', scan_text, re.M)
     if parent_has_server or root_entry or server_table:
         raise core.WsError('Existing Codex workspace entry; review project config before ws start.')
     desired = {}

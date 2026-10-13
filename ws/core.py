@@ -499,7 +499,7 @@ def _toml_literal(text, key):
         char = text[index]
         if quote:
             if escaped: escaped = False
-            elif char == '\\': escaped = True
+            elif quote == '"' and char == '\\': escaped = True
             elif char == quote:
                 if quote == "'" and depth == 0: return text[start + 1:index]
                 quote = None
@@ -510,7 +510,10 @@ def _toml_literal(text, key):
             depth -= 1
             if depth == 0: return _toml_array_value(text[start:index + 1])
         elif depth == 0 and char in '\r\n#':
-            return ast.literal_eval(text[start:index].strip())
+            raw = text[start:index].strip()
+            if raw == 'true': return True
+            if raw == 'false': return False
+            return ast.literal_eval(raw)
     raise ValueError('incomplete TOML value')
 
 
@@ -545,7 +548,9 @@ def client_connected(root, client, global_only=False):
             if match: break
             if _toml_has_workspace_entry(text): return False
         else: return False
-        if re.search(r'^[ \t]*(?:enabled|"enabled"|\'enabled\')\s*=\s*false\b', match[1], re.M): return False
+        try: enabled = _toml_literal(match[1], 'enabled')
+        except (ValueError, SyntaxError): return False
+        if enabled is not None and (not isinstance(enabled, bool) or not enabled): return False
         fields = {}
         for key in ('command', 'args'):
             try:
