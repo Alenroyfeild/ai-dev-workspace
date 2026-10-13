@@ -28,7 +28,12 @@ def portable(root, text):
 
 def preview(root, item, unshare=False, author='local', entry=None, date=None):
     scope.policy(root)
-    kind, identifier, source, raw, header, end, meta = scope._read(root, item)
+    kind, _, identifier = item.partition(':')
+    if kind not in scope.DIRECTORIES or not core.ID_RE.fullmatch(identifier) or identifier.lower().endswith('.local'):
+        raise core.WsError('Use task|decision|lesson|knowledge:<ID>.')
+    source = _safe(root, core.vault(root) / scope.DIRECTORIES[kind] / (identifier + '.md'))
+    if unshare and not source.exists(): raw, end, meta = '', 0, {}
+    else: kind, identifier, source, raw, header, end, meta = scope._read(root, item)
     if not unshare and meta.get('scope', 'private') != 'team': raise core.WsError('Select team scope first with ws scope; it still requires this preview.')
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', author): raise core.WsError('Author must be a portable alias (letters, numbers, ._-).')
     cfg_path = _safe(root, root / 'workspace.json'); cfg_text = _text(cfg_path)
@@ -55,10 +60,10 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None):
     source_sha = core.digest_text(raw); date = date or receipt.get('date') or core.now()
     content = ''
     if not unshare:
-        text = raw.replace('\r\n', '\n')
+        text = raw[end:].replace('\r\n', '\n')
         text = re.sub(r'<!-- ws:captured:[^\n]* -->\n.*?<!-- /ws:captured -->', '', text, flags=re.S)
         if 'ws:captured:' in text or '/ws:captured' in text: raise core.WsError('Malformed capture block; repair it before sharing.')
-        body = '\n\n'.join('## ' + name + '\n' + core.section(text, name) for name in ('Objective', 'Next action', 'Blockers')) if kind == 'task' else text[end:]
+        body = '\n\n'.join('## ' + name + '\n' + core.section(text, name) for name in ('Objective', 'Next action', 'Blockers')) if kind == 'task' else text
         body = portable(root, body)
         content = (f'---\nid: {entry}\nteam: {link["id"]}\ncategory: {kind if kind != "knowledge" else "other"}\n'
                    f'author: {author}\nsource: {item}\nsource_sha: {source_sha}\ndate: {date}\n---\n'
