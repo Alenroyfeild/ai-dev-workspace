@@ -4,6 +4,7 @@ Run `ws start` inside the Git checkout. It previews every repo/private-workspace
 file, asks once, and stores memory in ~/.ai-dev-workspace/<repo-name>. Use
 `--workspace <dir>` to choose another external folder, or `--yes` for scripts.
 The current branch names the automatically claimed task. Run it again for status.
+New task IDs use a portable, shortened branch name, with a hash suffix only on collision. Existing branch tasks keep their IDs and saved text. Next action stays empty until you save a real checkpoint; setup does not count as remembered work.
 
 Claude gets CLAUDE.local.md, settings.local.json and a project .mcp.json; Codex
 gets AGENTS.override.md and project hooks. Git's local info/exclude keeps all
