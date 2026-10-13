@@ -1,7 +1,7 @@
 # Team workspace proposal (T0)
 
 **Status: design for review; the commands and formats below are not implemented.**
-Claude's verdict is required before T1. This extends the plain-file model in
+Claude approved this design on 2026-10-13; the decisions below guide T1 onward. This extends the plain-file model in
 [Architecture](ARCHITECTURE.md). The existing [shared workspace workflow](TEAM.md)
 continues to work; there is no automatic migration or change to its sharing rules.
 
@@ -9,7 +9,7 @@ continues to work; there is no automatic migration or change to its sharing rule
 
 Each developer keeps a private workspace outside the code repo, as created by
 `ws start`. A separate private Git repository holds deliberately shared team
-memory. Linking it creates a local clone under `.ws/team`; the private workspace
+memory. T9 adds an attested synced-folder host for non-developers. Linking it creates a local clone under `.ws/team`; the private workspace
 itself is never pushed by team commands. One team link per developer workspace is
 the initial limit. No database, new service or provider dependency is required.
 
@@ -21,7 +21,8 @@ shared records. A link is local configuration, not permission to publish memory.
 `ws team init` prepares a team repo; `ws team link <remote>` verifies and clones it;
 `ws team unlink` removes the link, preserving private records and any local shared
 changes for recovery. Each command previews affected paths and asks before writes
-or network access. Unlink must not silently delete an unpushed clone.
+or network access. Link asks once whether read-only automatic pulls at session
+start and daily are allowed; the default is no. This never authorizes publishing. Unlink must not silently delete an unpushed clone.
 
 ## Scope and portable records
 
@@ -54,9 +55,9 @@ secret-looking output, conflict markers and symlink/path escapes. Redaction is a
 heuristic, not a privacy guarantee: the user must inspect the projection. Publishing
 records must never copy executable hooks, rules, skills, plugin config or commands.
 
-Policy defaults to `share: ask`. Category auto rules, if approved later, need a
-separate explicit opt-in preview naming the category, destination and network
-behavior. A team scope flag or assistant instruction cannot enable those rules.
+Policy remains `share: ask`: every publication previews and confirms its exact
+projection. No category auto-publish rules are approved. A team scope flag, pull
+consent or assistant instruction cannot authorize a push.
 `ws unshare` previews deletion of the current projection and warns that Git history
 and teammates' copies retain it. It keeps the private original and never rewrites
 history automatically.
@@ -71,8 +72,10 @@ Private corrections and explicit decisions take precedence over conflicting team
 entries. Conflicts are labelled rather than shown as two current instructions.
 The brief keeps its 200-word cap: private decisions and next action first, relevant
 team facts only within the remaining budget. Larger team knowledge is fetched on
-demand through search or `ws know show`; generated indexes contain references, not
-all record bodies. Reading team context must not require a network connection.
+demand through search or `ws know show`. Each shared entry has a companion
+`<entry>.index.md`: summary, category, tags, outcome, author and date. Brief and
+search read those cards first; fetch full bodies only on demand. Cards undergo
+the same privacy preview as bodies and never include hidden private sections. Reading team context must not require a network connection.
 
 ## Sync, visibility and conflicts
 
@@ -81,12 +84,15 @@ projections. Preview the remote, direction and changed records before consent.
 Git access is repository-wide; this design does not promise per-record permissions.
 A successful clone or URL spelling cannot prove a repository is private.
 
-Proposed first implementation: verify visibility through an already installed
-host CLI, without reading credentials directly; GitHub is the first supported
-host. Unknown visibility, public visibility, offline verification or missing CLI
-stops publication with a clear reason. Never silently fall back to another remote
-or an unverified push. Recheck visibility before each push. Other hosts remain
-prepare-only until a verification policy is approved.
+Verify privacy through an already installed host CLI when available: GitHub `gh`
+or GitLab `glab`, without reading credentials directly. Explicit public visibility
+blocks the link and publishing. If privacy cannot be verified, allow one explicit
+attestation: “this remote is private to my team.” Store the attestation against the
+exact remote URL in workspace.json; a changed URL asks again. Unknown visibility
+without attestation stays blocked. `ws doctor` shows CLI-verified versus attested
+privacy; attestation is a user assertion, not an independent verification guarantee.
+No silent fallback to another remote. A later known-public result blocks publication
+even if an earlier attestation exists.
 
 Serialize local writes, use atomic replacement and source-revision checks, and
 restrict paths to the linked clone. Preserve unrelated edits. Diverged histories
@@ -95,11 +101,21 @@ clean, force push or AI conflict resolution. Conflicted records are excluded fro
 briefs with a visible warning. Offline reads work; pending approved changes remain
 local and are reported, never treated as remotely published.
 
-Quiet session-start/after-share sync, `--daily HH:MM`, and `--watch` are separate
-opt-ins, not defaults. Scheduling asks before installing a macOS launchd entry;
+At link, ask once: “keep team knowledge updated automatically (pull at session
+start and daily)?” Consent permits quiet read-only pulls without more prompts.
+No consent means explicit pulls only; pushes always use a reviewed share preview.
+Daily scheduling previews and confirms the scheduler entry; macOS uses launchd,
 other platforms initially get an inspectable cron/Task Scheduler suggestion.
-Neither path installs software. Watching polls only the team repo; it is not
-instant or guaranteed realtime and stops cleanly. A server is out of scope.
+Neither path installs software. `--watch` is a separate opt-in. Polling is not
+instant or guaranteed realtime and stops cleanly; a server remains out of scope.
+
+T9 links an existing shared synced folder (Drive/iCloud/Dropbox) using the same
+one-time privacy attestation, bound to the selected folder identity. There is no
+visibility API or cloud-service integration. The installed sync client transports
+one file per entry and its index card; it does not make sharing tamper-proof or
+atomic across people. Detect “conflict copy” files and quarantine them like Git
+conflicts. Read only complete validated records; preserve partial/conflicting
+files for manual recovery. Never install or configure a sync client automatically.
 
 Optional `publish_status` shares only a previewed author alias, task title and short
 working-on line. It is off by default, never publishes a hostname or claim token,
@@ -112,21 +128,28 @@ and displays timestamps so stale teammate status is not mistaken for availabilit
 | T1 | Init/link/unlink and private-remote verification | Two disposable homes; fake host CLI; failed visibility produces no publish |
 | T2 | Scope metadata and ask policy | Private by default; no automatic network/write from a scope flag |
 | T3 | Share/unshare and team save options | Exact preview; private text absent; stale source rejected; history warning |
-| T4 | Categorized knowledge and generated indexes | Both layers; safe paths; indexes do not expose private bodies |
+| T4 + T10 | Categorized knowledge and companion index cards | Both layers; safe paths; bounded card-first reads; no private body leakage |
 | T5 | Brief/search/MCP across layers | Private correction wins; bounded context; live owned-provider check |
 | T6 | Optional teammate status | Consent, minimal projection and stale-date label in two homes |
-| T7 | Sync and optional scheduling | Two clones/local bare fixture; conflict/offline recovery; opt-in only |
+| T7 | Sync and optional scheduling | Two clones/local bare fixture; conflict/offline recovery; link pull consent never permits pushes |
 | T8 | Optional polling | Bounded polling and clean stop; no realtime guarantee |
+| T9 | Attested synced-folder host after T7 | Two homes/folder fixture; conflict-copy and partial-write recovery |
+| T11 | Task-to-runbook projection after T3 | Finished task steps, dead ends, decisions with reasons and outcome; preview omits raw task/Captured blocks |
 
 Tests use fixture homes, local bare repositories and fake visibility responses;
 never a real workspace or real client config. Live Claude checks belong to Claude.
 No model call is needed to test sharing, visibility, path safety or sync effects.
 
-## Claude review decisions before T1
+## Approved phase order and limits
 
-1. Accept GitHub-first, fail-closed visibility checks, or define a safe policy for
-   unsupported private hosts. User attestation alone is not assumed sufficient.
-2. Accept ask-only publication initially, with category auto rules and quiet sync
-   deferred until their separate consent contract is approved.
-3. Confirm projection boundaries, private-over-team precedence and repository-wide
-   access limits. T1 starts only after the design verdict is recorded in the inbox.
+T1 → T2 → T3 → T11 → T4 with T10 → T5 → T6 → T7 → T9 → T8.
+Each phase stays a small independent PR with its own proof. T11 uses
+`ws share <task> --as runbook` to project a finished task through the same preview
+gate; never publish the raw task or its Captured blocks. No new hosting service,
+Runme/WebMCP dependency or cloud-storage API is adopted.
+
+Index cards and reusable run records are inspired by
+[OpenAI's Codex workflow post](https://learn.chatgpt.com/blog/automating-repetitive-work-at-openai-with-codex).
+The two-layer privacy and consent contracts above are this project's approved
+proposal, not capabilities claimed by that post. Implementation remains unproved
+until each phase's fixture and user checks pass.
