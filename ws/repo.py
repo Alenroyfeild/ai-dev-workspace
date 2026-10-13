@@ -123,7 +123,7 @@ def codex_files(repo, root):
 
 def upgrade_codex(repo, root, state, yes, dry_run):
     desired = codex_files(repo, root); exclude, block = exclusions(repo, state)
-    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', *desired], text=True).strip(): raise core.WsError('Start will not change tracked Codex config or backup files.')
+    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
     before = {n: path(repo, n).read_bytes() if path(repo, n).exists() else None for n in desired}
     print('Apply Codex MCP locally (backup first); no global config writes:', file=sys.stderr)
     for name in (LINK, *desired): print('  ' + str(repo / name), file=sys.stderr)
