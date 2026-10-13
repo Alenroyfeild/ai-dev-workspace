@@ -118,8 +118,10 @@ def validate_toml_structure(text):
                     raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
             elif '=' not in stripped:
                 raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
-            elif not source.split('=', 1)[1].strip() or source.split('=', 1)[1].lstrip().startswith('#'):
-                raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+            else:
+                raw = source.split('=', 1)[1].strip(); value = stripped.split('=', 1)[1].strip()
+                if (not raw and not value) or (not value and not raw.startswith(('"""', "'''"))) or (re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', value) and value not in ('true', 'false')):
+                    raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
         for char in line:
             if quote:
                 if escaped: escaped = False
@@ -141,7 +143,7 @@ def validate_toml_structure(text):
 def codex_files(repo, root):
     target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
     text = original.decode('utf-8')
-    text = re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', lambda m: chr(int(m.group(1) or m.group(2), 16)), text)
+    text = core.toml_normalize_keys(text)
     validate_toml_structure(text)
     scan_text = core.toml_mask_multiline_strings(text)
     parent = re.search(r'^\s*\[\s*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)\s*\]\s*(.*?)(?=^\s*\[|\Z)', scan_text, re.M | re.S)
