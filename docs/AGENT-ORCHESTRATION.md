@@ -1,6 +1,6 @@
 # O2: write-capable workers
 
-Status: proposed design for Claude review. No write worker is enabled by this document.
+Status: approved with Claude's 2026-10-13 decisions below. No write worker is enabled by this document.
 
 ## User result and scope
 
@@ -50,14 +50,13 @@ Reuse the existing run log for summaries rather than introduce another database.
    worker shell commands is disabled. Model authentication is handled by the
    trusted client, never copied into the checkout or passed in the brief.
 
-Git worktrees separate checkouts, not permissions. Native client sandbox flags
-are candidates for the execution boundary, not proof of it. Existing roadmap
-policy requires an outer isolated environment and a hostile self-test before
-write execution. Keep that gate: if an installed boundary cannot enforce it,
-print the prepared plan and refuse automatic write execution. No dependency
-installation, permission bypass or weaker provider fallback to make a run work.
-Which existing macOS boundary meets these requirements is a Claude decision and
-an implementation proof, not an assumption in this proposal.
+Git worktrees separate checkouts, not permissions. The approved macOS v1 boundary
+is the client's native OS sandbox: Codex `--sandbox workspace-write` (Seatbelt)
+or Claude Code's filesystem write allowlist, with shell network access disabled.
+No additional VM/container is required. The hostile self-test is still the gate:
+if it fails or cannot run for a client, that client stays preparation-only.
+No dependency installation, permission bypass or weaker provider fallback to
+make a run work. Codex comes first; Claude runs its own worker probe.
 
 ## Proposed flow
 
@@ -72,10 +71,9 @@ Acceptance is a separate action and is never implied by launch or a worker exit 
 |---|---|
 | prepared | Validated preview; launch after confirmation. |
 | running | Owned checkout and child process; cancel or collect. |
-| needs-review | Child stopped; diff and check output saved as unverified. |
-| reviewed | Lead checked the exact diff and checks; explicit acceptance allowed. |
-| accepted | Reviewed change integrated locally; record the resulting commit. |
-| blocked / cancelled | Reason and partial work retained; inspect or remove explicitly. |
+| needs-review | Child stopped; diff/check output unverified, with any blocking/cancellation reason. Lead review is bound to the exact snapshot here. |
+| accepted | Reviewed snapshot fetched as a new source-repo branch; record the commit. |
+| discarded | Lead explicitly discarded the owned run. |
 
 Collection checks the checkout against the pinned base, including deletions,
 binary files and untracked files. Report actual changed paths, any out-of-scope
@@ -85,23 +83,22 @@ the worker are evidence, never approval. Run validation again under the boundary
 because edited test/build scripts can execute code.
 
 Review binds to an immutable snapshot of changed bytes and the test results.
-Only the lead marks it reviewed; a reviewer assistant may provide findings but
-cannot accept. Edits after review invalidate that review. Claim changes block
+Only the lead records its review identity; a reviewer assistant may provide
+findings but cannot accept. Edits after review invalidate that review. Claim changes block
 task-memory updates; preserve collected output for inspection without stealing
 the claim. The worker's instructions and output cannot change this state machine.
 
 ## Acceptance, cancellation and recovery
 
-Explicit acceptance checks the reviewed snapshot and claim again, then applies
-it to a separate lead-owned integration checkout based on the current target
-commit. The user's active checkout stays untouched. Require checks on the
-integration result and show its commit/diff before publishing through the user's
-normal PR flow. No automatic push, PR merge, release, tag or branch switch.
+Explicit acceptance checks the reviewed snapshot and claim again, then fetches
+it into the source repository as a new branch `ws/worker/<run-id>`. Refuse an
+existing branch; never switch checkouts or alter the active branch/index/files.
+Show the new commit/diff; the user's normal PR flow handles integration and
+publishing. No automatic push, PR merge, release or tag.
 In this repository, Luna alone lands PRs.
 
-If the target advances, re-apply and test against the new target, then invalidate
-acceptance until the lead reviews the new result. Conflicts become blocked work;
-never reset a user checkout or silently choose a conflict side.
+Re-applying to an advanced target, conflict handling and separate integration
+checkouts belong to O3. v1 preserves the reviewed snapshot and its pinned base.
 
 Cancellation stops the child and its descendants, collects partial output and
 leaves the checkout inspectable. Timeout is not completion. Restart reports an
@@ -113,7 +110,7 @@ dirty work is retained by default. Never force-remove another run's worktree.
 
 - Fixture lifecycle: missing base/claim, dirty source, refused extra roots,
   launch failure, timeout/cancel descendants, interrupted launch/collection,
-  changed claim, stale review, target advance, conflicts and conservative cleanup.
+  changed claim, stale review, existing acceptance branch and conservative cleanup.
 - A hostile real-client probe with a positive control: worker edits an allowed
   fixture file and runs its test, while attempts to write the original repo,
   sibling run, workspace, HOME/config, Git metadata and symlink escapes fail;
@@ -126,9 +123,9 @@ dirty work is retained by default. Never force-remove another run's worktree.
   read-only delegation and manual preparation tests must remain green.
 
 For this design PR: review the code connections and official documentation,
-check links and whitespace, and obtain Claude's verdict. No execution proof,
-benchmark or installation is claimed. Do not start implementation until that
-verdict chooses the boundary and approves the acceptance flow.
+check links and whitespace. Claude's verdict approved the native boundary,
+private clone, five states and acceptance branch. No execution proof, benchmark
+or installation is claimed by this design document.
 
 ## Official references and decisions for Claude
 
@@ -142,6 +139,5 @@ verdict chooses the boundary and approves the acceptance flow.
 - [Claude permissions](https://code.claude.com/docs/en/permissions): bypass mode
   skips protections and is excluded from this proposed execution path.
 
-Claude review needed: approve or reject the private-clone cost, select an available
-macOS isolation boundary (or keep preparation-only), and decide whether separate
-local integration plus explicit publication meets the intended worker workflow.
+Claude review needed: the Claude-worker native-sandbox hostile probe after the
+launch and gate interface is implemented. Codex does not run that client.
