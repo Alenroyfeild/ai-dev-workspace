@@ -453,7 +453,7 @@ def mcp_command(root):
 
 def codex_mcp_config(root):
     server = mcp_command(root)
-    return '[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = ' + json.dumps(server['command']) + '\nargs = ' + json.dumps(server['args']) + '\n'
+    return '[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = ' + json.dumps(server['command'], ensure_ascii=False) + '\nargs = ' + json.dumps(server['args'], ensure_ascii=False) + '\n'
 
 
 def _toml_literal(text, key):

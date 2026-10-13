@@ -140,6 +140,13 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 2)
         self.assertEqual(config.read_bytes(), original)
 
+    def test_codex_start_rejects_duplicate_server_in_quoted_parent_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'["mcp_servers"]\n"ai-dev-workspace" = { command = "other" }\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
     def test_codex_write_installs_global_config_even_when_project_is_connected(self):
         self.assertEqual(self.start('--yes')[0], 0)
         project = self.repo / '.codex/config.toml'
@@ -156,6 +163,17 @@ class StartTests(unittest.TestCase):
         with mock.patch('ws.core.mcp_command', return_value=server):
             config = self.repo / '.codex/config.toml'
             config.write_text(core.codex_mcp_config(workspace))
+            with mock.patch.object(Path, 'cwd', return_value=self.repo):
+                self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_config_keeps_non_bmp_path_as_valid_unicode(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root()
+        server = dict(command='/tmp/🦄/python', args=['/tmp/🦄/server.py'])
+        with mock.patch('ws.core.mcp_command', return_value=server):
+            config = self.repo / '.codex/config.toml'
+            config.write_text(core.codex_mcp_config(workspace))
+            self.assertIn('🦄', config.read_text())
             with mock.patch.object(Path, 'cwd', return_value=self.repo):
                 self.assertTrue(core.client_connected(workspace, 'codex'))
 
