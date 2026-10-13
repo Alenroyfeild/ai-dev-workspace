@@ -28,6 +28,12 @@ class WorkerPrepareTests(Base):
         with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
             return workers.prepare(self.root, 'W-1', ['calc.py'], **kw)
 
+    def complete_worker(self, plan):
+        record = Path(plan['record']); state = json.loads(record.read_text())
+        state.update(started_at='fixture', finished_at='fixture', worker_exit=0,
+                     checks=[dict(command='python3 -m unittest', exit_code=0)])
+        record.write_text(json.dumps(state))
+
     def test_preview_writes_nothing_and_warns_about_dirty_source(self):
         (self.repo / 'calc.py').write_text('uncommitted\n'); (self.repo / 'ignored.txt').write_text('private fixture\n')
         before = core.task_read(self.root, 'W-1')['sha']; result = self.prepare()
@@ -149,3 +155,143 @@ class WorkerPrepareTests(Base):
         self.assertFalse((Path(result['checkout']) / 'private.txt').exists())
         check = subprocess.run(['git', '-C', str(Path(result['directory']) / 'source.git'), 'cat-file', '-e', unrelated], capture_output=True)
         self.assertNotEqual(check.returncode, 0)
+
+    def test_write_launch_gate_is_closed_without_writes(self):
+        plan = self.prepare(apply=True); before = Path(plan['record']).read_bytes()
+        with mock.patch('ws.workers.orchestration.worker_run', side_effect=AssertionError('launch')):
+            with self.assertRaisesRegex(core.WsError, 'O2d'): workers.launch(self.root, plan['id'])
+        with contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'launch', plan['id']]), 2)
+        self.assertIn('O2d', errors.getvalue())
+        self.assertEqual(Path(plan['record']).read_bytes(), before)
+
+    def test_internal_probe_launch_collects_snapshot_and_protects_source(self):
+        plan = self.prepare(apply=True); checkout = Path(plan['checkout']); source = self.git('status', '--porcelain')
+        binding = dict(provider='codex', model='fixture', effort='low', available=True, executable='codex', timeout_seconds=10)
+        def run(binding, repo, body, receipt=None):
+            self.assertNotIn('--sandbox', binding['headless']); self.assertNotIn('-s', binding['headless'])
+            self.assertIn('shell_environment_policy.inherit="none"', binding['headless'])
+            self.assertIn('--ignore-user-config', binding['headless']); self.assertIn('default_permissions="worker-private"', binding['headless'])
+            (checkout / 'calc.py').write_bytes(b'answer = 2\r\n')
+            receipt(json.dumps({'type':'item.completed','item':{'type':'command_execution','command':'python3 -m unittest','exit_code':0}}))
+            return 0, 'synthetic checked', 1, 2, True
+        with mock.patch('ws.orchestration.route', return_value=binding), mock.patch('ws.orchestration.worker_run', side_effect=run):
+            result = workers._launch(self.root, plan['id'])
+        self.assertEqual(result['state'], 'needs-review'); self.assertFalse(result['blocked'])
+        self.assertEqual(result['changed'], ['calc.py']); self.assertTrue(result['tree']); self.assertTrue(result['diff_sha'])
+        self.assertEqual(result['checks'][0]['exit_code'], 0)
+        self.assertEqual((self.repo / 'calc.py').read_text(), 'answer = 1\n'); self.assertEqual(self.git('status', '--porcelain'), source)
+        profile = (Path(plan['directory']) / 'worker.config.toml').read_text()
+        self.assertIn('":minimal" = "read"', profile); self.assertIn('"enabled" = false', profile)
+        self.assertNotIn(str(Path.home() / '.codex'), next(line for line in profile.splitlines() if line.startswith('permissions.')))
+
+    def test_collection_blocks_ignored_out_of_scope_secrets_binary_and_symlinks(self):
+        for name, data in (('ignored.txt', b'ignored change'), ('calc.py', b'api_key=' + b'x'*20), ('calc.py', b'\xffbinary')):
+            with self.subTest(name=name, data=data):
+                plan = self.prepare(apply=True); (Path(plan['checkout']) / name).write_bytes(data)
+                self.complete_worker(plan)
+                result = workers.collect(self.root, plan['id'])
+                self.assertTrue(result['blocked']); self.assertIn(name, result['changed'])
+                if data.startswith(b'\xff'): self.assertEqual(result['binary_files'], [name])
+                self.assertNotIn('x'*20, json.dumps(result))
+        plan = self.prepare(apply=True)
+        (Path(plan['checkout']) / 'escape').symlink_to(self.repo / 'calc.py')
+        self.complete_worker(plan)
+        self.assertTrue(workers.collect(self.root, plan['id'])['blocked'])
+
+    def test_collection_blocks_prepared_run_without_worker_evidence(self):
+        plan = self.prepare(apply=True)
+        (Path(plan['checkout']) / 'calc.py').write_text('answer = 2\n')
+        result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked'])
+        self.assertIn('completed worker', result['reason'])
+
+    def test_collection_preserves_leading_space_in_changed_filename(self):
+        plan = self.prepare(apply=True); (Path(plan['checkout']) / ' calc.py').write_text('api_key=' + 'x'*20)
+        self.complete_worker(plan)
+        result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertIn(' calc.py', result['changed'])
+
+    def test_collection_disables_rename_detection_for_scope_check(self):
+        (self.repo / 'outside.txt').write_text('answer = 1\n')
+        self.git('add', 'outside.txt'); self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'add out-of-scope file')
+        with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
+            plan = workers.prepare(self.root, 'W-1', ['allowed.py'], apply=True)
+        checkout = Path(plan['checkout']); (checkout / 'outside.txt').rename(checkout / 'allowed.py')
+        self.complete_worker(plan)
+        result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertIn('outside.txt', result['changed'])
+
+    def test_collection_refuses_changed_claim_and_launch_keeps_gate_closed(self):
+        plan = self.prepare(apply=True); (self.root / '.ws/claims/W-1.json').unlink()
+        result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertIn('claim', result['reason'].lower())
+
+    def test_launch_failure_or_missing_command_evidence_blocks_collection(self):
+        binding = dict(provider='codex', model='fixture', effort='low', available=True, executable='codex', timeout_seconds=10)
+        for code in (0, 1):
+            plan = self.prepare(apply=True)
+            with mock.patch('ws.orchestration.route', return_value=binding), mock.patch('ws.orchestration.worker_run', return_value=(code, 'fixture', 0, 0, False)):
+                result = workers._launch(self.root, plan['id'])
+            self.assertEqual(result['state'], 'needs-review'); self.assertTrue(result['blocked'])
+            self.assertFalse(result['usage']['known'])
+
+    def test_collection_rejects_fifo_before_staging(self):
+        if not hasattr(os, 'mkfifo'): self.skipTest('POSIX FIFO fixture')
+        plan = self.prepare(apply=True); os.mkfifo(Path(plan['checkout']) / 'fifo'); self.complete_worker(plan)
+        original = workers.git
+        def guarded(repo, *args, **kwargs):
+            if args[0] == 'add': raise AssertionError('special file reached staging')
+            return original(repo, *args, **kwargs)
+        with mock.patch('ws.workers.git', side_effect=guarded):
+            self.assertTrue(workers.collect(self.root, plan['id'])['blocked'])
+
+    def test_collection_records_invalid_utf8_git_output_as_blocked(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan); original = workers.git
+        def invalid(repo, *args, **kwargs):
+            if '--name-only' in args: raise UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'fixture')
+            return original(repo, *args, **kwargs)
+        with mock.patch('ws.workers.git', side_effect=invalid): result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertEqual(result['state'], 'needs-review')
+        self.assertTrue(json.loads(Path(plan['record']).read_text())['blocked'])
+
+    def test_secret_scan_uses_snapshot_even_if_checkout_changes_after_staging(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan); target = Path(plan['checkout']) / 'calc.py'
+        target.write_text('api_key=' + 'x'*20); original = workers.git
+        def changed(repo, *args, **kwargs):
+            result = original(repo, *args, **kwargs)
+            if args[0] == 'add': target.write_text('safe after staging\n')
+            return result
+        with mock.patch('ws.workers.git', side_effect=changed): result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertEqual(result['secret_files'], ['calc.py'])
+
+    def test_collection_blocks_any_configured_filter_before_staging(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan)
+        workers.git(Path(plan['checkout']), 'config', 'filter.fixture.clean', 'fixture-unused')
+        with mock.patch('ws.workers.git', wraps=workers.git) as calls: result = workers.collect(self.root, plan['id'])
+        self.assertFalse(any(c.args[1] == 'add' for c in calls.call_args_list))
+        self.assertTrue(result['blocked']); self.assertIn('filter driver configured', result['reason'])
+
+    def test_collection_blocks_oversized_regular_file_before_staging(self):
+        (self.repo / 'asset.txt').write_bytes(b'x' * (1024 * 1024 + 1))
+        self.git('add', 'asset.txt'); self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'large base asset')
+        allowed = self.prepare(apply=True); self.complete_worker(allowed)
+        (Path(allowed['checkout']) / 'calc.py').write_text('answer = 2\n')
+        self.assertFalse(workers.collect(self.root, allowed['id'])['blocked'])
+        plan = self.prepare(apply=True); self.complete_worker(plan)
+        (Path(plan['checkout']) / 'calc.py').write_bytes(b'x' * (1024 * 1024 + 1))
+        with mock.patch('ws.workers.git', wraps=workers.git) as calls: result = workers.collect(self.root, plan['id'])
+        self.assertFalse(any(c.args[1] == 'add' for c in calls.call_args_list))
+        self.assertTrue(result['blocked']); self.assertEqual(result['reason'], 'Changed file exceeds the 1 MiB scan limit.')
+        for field in ('tree', 'diff_sha', 'checks'): self.assertNotIn(field, result)
+
+    def test_failed_repeat_collection_clears_snapshot_and_check_fields(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan)
+        (Path(plan['checkout']) / 'calc.py').write_bytes(b'answer = 2\n')
+        first = workers.collect(self.root, plan['id']); self.assertFalse(first['blocked'])
+        self.assertTrue(first['tree']); self.assertTrue(first['diff_sha']); self.assertTrue(first['checks'])
+        (Path(plan['checkout']) / 'ignored.txt').write_bytes(b'outside scope')
+        failed = workers.collect(self.root, plan['id']); self.assertTrue(failed['blocked'])
+        record = json.loads(Path(plan['record']).read_text())
+        for field in ('tree', 'diff_sha', 'checks'):
+            self.assertNotIn(field, failed); self.assertNotIn(field, record)
