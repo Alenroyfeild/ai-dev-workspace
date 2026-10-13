@@ -133,6 +133,13 @@ class StartTests(unittest.TestCase):
         self.assertIn('[mcp_servers.ai-dev-workspace]', config.read_text())
         self.assertIn('other = { command = "other" }', config.read_text())
 
+    def test_codex_start_rejects_duplicate_server_in_parent_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'[mcp_servers]\nai-dev-workspace = { command = "other" }\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
     def test_codex_write_installs_global_config_even_when_project_is_connected(self):
         self.assertEqual(self.start('--yes')[0], 0)
         project = self.repo / '.codex/config.toml'
@@ -141,6 +148,16 @@ class StartTests(unittest.TestCase):
             result = core.connect(core.find_root(), 'codex', write=True)
             self.assertTrue(result['connected'])
             self.assertTrue((self.home / '.codex/config.toml').is_file())
+
+    def test_codex_connection_parses_bracket_in_quoted_args(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root()
+        server = dict(command='python3', args=['/tmp/a]b/server.py'])
+        with mock.patch('ws.core.mcp_command', return_value=server):
+            config = self.repo / '.codex/config.toml'
+            config.write_text(core.codex_mcp_config(workspace))
+            with mock.patch.object(Path, 'cwd', return_value=self.repo):
+                self.assertTrue(core.client_connected(workspace, 'codex'))
 
     def test_undo_keeps_backup_when_user_edits_codex_config(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()

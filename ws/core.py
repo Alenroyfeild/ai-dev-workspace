@@ -456,6 +456,28 @@ def codex_mcp_config(root):
     return '[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = ' + json.dumps(server['command']) + '\nargs = ' + json.dumps(server['args']) + '\n'
 
 
+def _toml_literal(text, key):
+    match = re.search(r'^' + re.escape(key) + r'\s*=\s*', text, re.M)
+    if not match: return None
+    start = match.end(); quote = None; escaped = False; depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if quote:
+            if escaped: escaped = False
+            elif char == '\\': escaped = True
+            elif char == quote:
+                quote = None
+                if depth == 0: return ast.literal_eval(text[start:index + 1])
+        elif char in ('"', "'"): quote = char
+        elif char == '[': depth += 1
+        elif char == ']':
+            depth -= 1
+            if depth == 0: return ast.literal_eval(text[start:index + 1])
+        elif depth == 0 and char in '\r\n#':
+            return ast.literal_eval(text[start:index].strip())
+    raise ValueError('incomplete TOML value')
+
+
 # Project MCP config per client: (file, key holding the server map).
 MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
                  'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
@@ -475,9 +497,8 @@ def client_connected(root, client, global_only=False):
         if re.search(r'^enabled\s*=\s*false\b', match[1], re.M): return False
         fields = {}
         for key in ('command', 'args'):
-            value = re.search(r'^' + key + r'\s*=\s*(\[.*?\]|"[^"\n]*"|\'[^\'\n]*\')', match[1], re.M | re.S)
             try:
-                fields[key] = ast.literal_eval(value[1]) if value else None
+                fields[key] = _toml_literal(match[1], key)
             except (ValueError, SyntaxError):
                 return False
         return fields == mcp_command(root)
