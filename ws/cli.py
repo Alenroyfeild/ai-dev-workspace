@@ -243,6 +243,7 @@ def main(argv=None):
     for command in ('share', 'unshare'):
         s = sub.add_parser(command, help='preview a local team copy or its removal')
         s.add_argument('item'); s.add_argument('--author', default='local')
+        s.add_argument('--as', dest='as_format', choices=('runbook',), default='')
         s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink')); s.add_argument('remote', nargs='?', default='')
@@ -412,7 +413,7 @@ def main(argv=None):
         root = core.find_root(a.workspace_root)
         def share_gate(item, remove=False):
             from . import sharing
-            plan = sharing.preview(root, item, remove, getattr(a, 'author', 'local')); out(plan)
+            plan = sharing.preview(root, item, remove, getattr(a, 'author', 'local'), as_format=getattr(a, 'as_format', '')); out(plan)
             if getattr(a, 'dry_run', False) or plan['unchanged']: return
             if not a.yes:
                 print('Apply this exact local team preview? [y/N]')
