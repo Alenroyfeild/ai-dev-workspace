@@ -1329,15 +1329,16 @@ def memory_summary(root):
 
 
 def _is_decision_clause(clause):
-    return bool(re.search(r'\b(decided|decisions?|correction|must|never|always|only|do not|return|keep|use|preserve|avoid|ruled out)\b', clause, re.I))
+    return bool(re.search(r'\b(decisions?|decided|correction|must|never|always|do not|preserve|avoid|ruled out)\b', clause, re.I))
 
 
 def _is_captured_decision_clause(clause):
     return bool(re.match(r'\s*(?:decision|decided|correction)\s*:', clause, re.I))
 
 
-def _summary_line(task_id, count, next_action, saved_context=False):
+def _summary_line(task_id, count, next_action, saved_context=False, unverified_count=0):
     lead, noun = 'Remembered: ', f"{count} decision{'s' * (count != 1)}" if count else ''
+    if unverified_count and noun: noun += f' ({unverified_count} unverified)'
     next_text = ' '.join(redact(next_action).split())
     if not noun and not next_text:
         return 'Remembered: saved context' if saved_context else f'No saved memory yet for {task_id} · next: ws remember "<decision>" or /handoff'
@@ -1394,7 +1395,7 @@ def _brief(root):
     for clause in _constraint_clauses(explicit):
         target = decisions if _is_decision_clause(clause) else prose
         target.append(clause)
-    truncated = False; captured_step = ''; plan_warning = ''; remembered = len([d for d in decisions if d.strip()])
+    truncated = False; captured_step = ''; plan_warning = ''; remembered = len([d for d in decisions if d.strip()]); unverified_count = 0
     if captured:
         memory = captured[-1]
         constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
@@ -1402,7 +1403,8 @@ def _brief(root):
         clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
         fields.append(('Captured last session (unverified): User constraints:', _constraint_budget(clauses, 70), 70))
         truncated |= len(' '.join(clauses).split()) > 70
-        remembered += sum(1 for clause in clauses if _is_captured_decision_clause(clause))
+        unverified_count = sum(1 for clause in clauses if _is_captured_decision_clause(clause))
+        remembered += unverified_count
         if separator:
             captured_step = step
             action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
@@ -1425,7 +1427,7 @@ def _brief(root):
     if len(lessons) > 3: fields.append(('Lessons:', f'{len(lessons) - 3} more (ws lesson search)', 8))
     blockers = record['sections']['Blockers'].strip()
     saved_context = bool(any(c.strip() for c in decisions + prose) or captured or (blockers and blockers != template_blockers))
-    return _bounded_brief(fields, truncated), _summary_line(task['id'], remembered, next_action if saved_next else '', saved_context)
+    return _bounded_brief(fields, truncated), _summary_line(task['id'], remembered, next_action if saved_next else '', saved_context, unverified_count)
 
 
 def capture_decisions(root, transcript_path, client='claude'):
