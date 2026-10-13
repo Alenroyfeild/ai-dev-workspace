@@ -273,6 +273,16 @@ class StartTests(unittest.TestCase):
                 core._connect_config(core.find_root(), 'codex', write=True)
         self.assertEqual(config.read_bytes(), before)
 
+    def test_global_codex_write_refuses_unicode_escaped_workspace_key(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        config.write_text('[mcp_servers."ai-dev-\\u0077orkspace"]\nenabled = false\ncommand = "old"\nargs = []\n')
+        before = config.read_bytes()
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(core.find_root(), 'codex', write=True)
+        self.assertEqual(config.read_bytes(), before)
+
     def test_undo_keeps_backup_when_user_edits_codex_config(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
         original = b'model = "fixture"\n'
@@ -300,6 +310,12 @@ class StartTests(unittest.TestCase):
             self.assertEqual(self.start()[0], 2)
         self.assertEqual(config.read_text(), 'model = "created during prompt"\n')
         self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_start_does_not_overwrite_record_created_during_confirmation(self):
+        record = self.repo / '.ws-start.json'
+        def create_record(): record.write_text('{"user": "keep"}\n'); return 'y'
+        with mock.patch('builtins.input', side_effect=create_record): self.assertEqual(self.start()[0], 2)
+        self.assertEqual(record.read_text(), '{"user": "keep"}\n')
 
     def old_start(self):
         self.assertEqual(self.start('--yes')[0], 0)
