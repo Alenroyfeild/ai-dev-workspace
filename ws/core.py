@@ -485,6 +485,17 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
                  'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
 
 
+def _toml_has_workspace_entry(text):
+    mcp = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
+    server = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
+    top = re.split(r'^[ \t]*\[', text, maxsplit=1, flags=re.M)[0]
+    if re.search(r'^[ \t]*' + mcp + r'[ \t]*\.[ \t]*' + server + r'[ \t]*(?:\.|=)', top, re.M): return True
+    if re.search(r'^[ \t]*' + mcp + r'[ \t]*=[^\n]*\{[^\n]*' + server + r'[ \t]*=', top, re.M): return True
+    parent = re.search(r'^[ \t]*\[[ \t]*' + mcp + r'[ \t]*\][ \t]*(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
+    if parent and re.search(r'^[ \t]*' + server + r'[ \t]*(?:\.|=)', parent[1], re.M): return True
+    return bool(re.search(r'^[ \t]*\[[ \t]*' + mcp + r'[ \t]*\.[ \t]*' + server + r'(?:[ \t]*\]|[ \t]*\.)', text, re.M))
+
+
 def client_connected(root, client, global_only=False):
     if client == 'copilot': client = 'vscode'
     if client == 'codex':
@@ -497,6 +508,7 @@ def client_connected(root, client, global_only=False):
             server_key = r'(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')'
             match = re.search(r'^[ \t]*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\][ \t]*(?:#[^\r\n]*)?$(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
             if match: break
+            if _toml_has_workspace_entry(text): return False
         else: return False
         if re.search(r'^[ \t]*(?:enabled|"enabled"|\'enabled\')\s*=\s*false\b', match[1], re.M): return False
         fields = {}
@@ -610,9 +622,7 @@ def _connect_config(root, client, write=False):
             return result
         path = Path.home() / '.codex/config.toml'
         original = path.read_text(encoding='utf-8') if path.exists() else ''
-        parent = re.search(r'^[ \t]*\[[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*\][ \t]*(.*?)(?=^[ \t]*\[|\Z)', original, re.M | re.S)
-        parent_entry = parent and re.search(r'^[ \t]*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)[ \t]*(?:\.|=)', parent[1], re.M)
-        if parent_entry or re.search(r'^[ \t]*(?:mcp_servers\s*=|mcp_servers\s*\.|\[[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*\.[ \t]*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:[ \t]*\]|[ \t]*\.))', original, re.M):
+        if re.search(r'^[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*=', original, re.M) or _toml_has_workspace_entry(original):
             raise WsError('Codex already has a different workspace entry; review the printed block manually.')
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
