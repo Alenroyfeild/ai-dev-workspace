@@ -432,7 +432,9 @@ def main(argv=None):
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client)
                 message = core.brief(root) if a.cmd == 'brief' else ''
+                summary = core.memory_summary(root) if message and a.client == 'codex' else ''
                 out({'additional_context': message} if a.client == 'cursor' and message else
+                    {'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if summary else
                     {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if message else {})
                 return 0
             if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop'):
@@ -448,7 +450,8 @@ def main(argv=None):
                 elif message:
                     out({'systemMessage': message})
             elif message:
-                out(message)
+                summary = core.memory_summary(root) if a.hook and a.cmd == 'brief' and a.client == 'claude' else ''
+                out({'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if a.client == 'claude' and summary else message)
         elif a.cmd == 'connect':
             result = core.connect(root, a.client, a.write, skills=a.skills, verify=True)
             if a.client in ('claude', 'codex'):
