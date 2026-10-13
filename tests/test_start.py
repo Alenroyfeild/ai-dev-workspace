@@ -1,4 +1,5 @@
 import contextlib
+import base64
 import io
 import json
 import os
@@ -107,6 +108,489 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0)
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
         self.assertEqual(self.start('--yes')[0], 0)
+
+    def test_codex_project_config_backed_up_and_legacy_connect_preserved(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n[mcp_servers.other]\ncommand = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual(config.with_name('config.toml.ws-backup').read_bytes(), original)
+        workspace = core.find_root(); self.assertTrue(core.client_connected(workspace, 'codex'))
+        self.assertIn('[mcp_servers.other]', config.read_text()); self.assertFalse((self.home / '.codex').exists())
+        with mock.patch('ws.core.Path.cwd', return_value=workspace): self.assertTrue(core.connect(workspace, 'codex', write=True)['connected'])
+        self.assertTrue((self.home / '.codex/config.toml').exists())
+        config.write_text('[mcp_servers.ai-dev-workspace]\ncommand="wrong"\nargs=[]\n')
+        self.assertFalse(core.client_connected(workspace, 'codex'))
+        config.write_bytes(original + ('\n' + core.codex_mcp_config(workspace)).encode())
+        self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(config.read_bytes(), original)
+        self.assertFalse(config.with_name('config.toml.ws-backup').exists())
+
+    def test_codex_start_allows_unrelated_servers_in_parent_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n[mcp_servers]\nother = { command = "other" }\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn('[mcp_servers.ai-dev-workspace]', config.read_text())
+        self.assertIn('other = { command = "other" }', config.read_text())
+
+    def test_codex_start_allows_mcp_servers_key_inside_unrelated_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = '[other]\nmcp_servers = { note = "unrelated" }\n'
+        config.write_text(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn(original, config.read_text())
+        self.assertIn('[mcp_servers.ai-dev-workspace]', config.read_text())
+
+    def test_codex_start_rejects_duplicate_server_in_parent_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        for original in (b'[mcp_servers]\nai-dev-workspace = { command = "other" }\n',
+                         b'[mcp_servers] # parent table\nai-dev-workspace = { command = "other" }\n',
+                         b'[mcp_servers]\nai-dev-workspace.command = "other"\n'):
+            with self.subTest(original=original):
+                config.write_bytes(original)
+                self.assertEqual(self.start('--yes')[0], 2)
+                self.assertEqual(config.read_bytes(), original)
+
+    def test_codex_start_rejects_duplicate_server_in_quoted_parent_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'["mcp_servers"]\n"ai-dev-workspace" = { command = "other" }\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_codex_start_rejects_nested_workspace_server_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'[mcp_servers.ai-dev-workspace.env]\nTOKEN = "fixture"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_codex_write_installs_global_config_even_when_project_is_connected(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        project = self.repo / '.codex/config.toml'
+        self.assertTrue(project.is_file())
+        with mock.patch.object(Path, 'home', return_value=self.home):
+            result = core.connect(core.find_root(), 'codex', write=True)
+            self.assertTrue(result['connected'])
+            self.assertTrue((self.home / '.codex/config.toml').is_file())
+
+    def test_codex_connection_parses_bracket_in_quoted_args(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root()
+        server = dict(command='python3', args=['/tmp/a]b/server.py'])
+        with mock.patch('ws.core.mcp_command', return_value=server):
+            config = self.repo / '.codex/config.toml'
+            config.write_text(core.codex_mcp_config(workspace))
+            config.write_text(config.read_text().replace('args = ["/tmp/a]b/server.py"]', 'args = [\n  # fixture comment\n  "/tmp/a]b/server.py", # trailing comment\n]'))
+            with mock.patch.object(Path, 'cwd', return_value=self.repo):
+                self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_connection_accepts_indented_values_and_honors_indented_disable(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.repo / '.codex/config.toml'
+        block = core.codex_mcp_config(workspace).replace('\nenabled', '\n  enabled').replace('\ncommand', '\n  command').replace('\nargs', '\n  args')
+        config.write_text(block)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+            config.write_text(block.replace('  enabled = true', '  enabled = false'))
+            self.assertFalse(core.client_connected(workspace, 'codex'))
+
+    def test_codex_connection_reads_quoted_field_names(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.repo / '.codex/config.toml'
+        block = core.codex_mcp_config(workspace).replace('enabled = true', '"enabled" = true').replace('command =', '"command" =').replace('args =', '"args" =')
+        config.write_text(block)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+            config.write_text(block.replace('"enabled" = true', '"enabled" = false'))
+            self.assertFalse(core.client_connected(workspace, 'codex'))
+
+    def test_codex_connection_accepts_trailing_table_comment(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.repo / '.codex/config.toml'
+        config.write_text(core.codex_mcp_config(workspace).replace(']\nenabled', '] # server table\nenabled'))
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_connection_handles_indented_table_and_bounds_its_section(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.repo / '.codex/config.toml'
+        block = core.codex_mcp_config(workspace).replace('[mcp_servers', '  [mcp_servers').replace('\nenabled', '\n  enabled').replace('\ncommand', '\n  command').replace('\nargs', '\n  args')
+        config.write_text(block)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+            server = core.mcp_command(workspace)
+            config.write_text('  [mcp_servers.ai-dev-workspace]\n  enabled = true\n  [mcp_servers.other]\n  command = ' + json.dumps(server['command']) + '\n  args = ' + json.dumps(server['args']) + '\n')
+            self.assertFalse(core.client_connected(workspace, 'codex'))
+
+    def test_codex_config_keeps_non_bmp_path_as_valid_unicode(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root()
+        server = dict(command='/tmp/🦄/python', args=['/tmp/🦄/server.py'])
+        with mock.patch('ws.core.mcp_command', return_value=server):
+            config = self.repo / '.codex/config.toml'
+            config.write_text(core.codex_mcp_config(workspace))
+            self.assertIn('🦄', config.read_text())
+            with mock.patch.object(Path, 'cwd', return_value=self.repo):
+                self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_global_codex_write_refuses_disabled_quoted_workspace_table(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        config.write_text('["mcp_servers" . "ai-dev-workspace"]\nenabled = false\ncommand = "old"\nargs = []\n')
+        before = config.read_bytes()
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(core.find_root(), 'codex', write=True)
+        self.assertEqual(config.read_bytes(), before)
+
+    def test_global_codex_write_refuses_workspace_entry_in_parent_table(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        config.write_text('[mcp_servers]\nai-dev-workspace = { enabled = false, command = "old", args = [] }\n')
+        before = config.read_bytes()
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(core.find_root(), 'codex', write=True)
+        self.assertEqual(config.read_bytes(), before)
+
+    def test_project_codex_parent_entry_blocks_global_connected_fallback(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); project = self.repo / '.codex/config.toml'; project.parent.mkdir(exist_ok=True)
+        project.write_text('[mcp_servers]\nai-dev-workspace = { enabled = false, command = "other", args = [] }\n')
+        global_config = self.home / '.codex/config.toml'; global_config.parent.mkdir()
+        global_config.write_text(core.codex_mcp_config(workspace))
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertFalse(core.client_connected(workspace, 'codex'))
+
+    def test_global_codex_write_refuses_quoted_root_server_table(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        config.write_text('"mcp_servers" = { "ai-dev-workspace" = { enabled = false } }\n')
+        before = config.read_bytes()
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(core.find_root(), 'codex', write=True)
+        self.assertEqual(config.read_bytes(), before)
+
+    def test_global_codex_write_refuses_unicode_escaped_workspace_key(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        config.write_text('[mcp_servers."ai-dev-\\u0077orkspace"]\nenabled = false\ncommand = "old"\nargs = []\n')
+        before = config.read_bytes()
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(core.find_root(), 'codex', write=True)
+        self.assertEqual(config.read_bytes(), before)
+
+    def test_start_refuses_root_entry_after_multiline_toml_string(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'note = """\n[\n"""\nmcp_servers.ai-dev-workspace.command = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_start_ignores_fake_server_table_in_multiline_toml_string(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'note = """\n[mcp_servers.ai-dev-workspace]\n"""\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertTrue((self.repo / '.ws-start.json').exists())
+        self.assertTrue(config.read_bytes().startswith(original))
+
+    def test_start_does_not_treat_triple_quote_in_comment_as_string(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'# """ comment does not open a string\n[mcp_servers.ai-dev-workspace]\ncommand = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_start_does_not_treat_triple_quote_inside_single_line_string_as_multiline(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b"note = '\"\"\"'\n[mcp_servers.ai-dev-workspace]\ncommand = \"other\"\n"
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_start_refuses_workspace_array_of_tables(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'[[mcp_servers.ai-dev-workspace]]\ncommand = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_start_finds_workspace_key_after_nested_array_value(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'values = [\n  [1, 2],\n]\nmcp_servers.ai-dev-workspace.command = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_start_refuses_malformed_codex_toml_without_modifying_it(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        for original in (b'[mcp_servers\ncommand = "unfinished header"\n', b'model =\n', b'model = nope\n'):
+            with self.subTest(original=original):
+                config.write_bytes(original)
+                self.assertEqual(self.start('--yes')[0], 2)
+                self.assertEqual(config.read_bytes(), original)
+                self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_start_does_not_decode_unicode_escapes_inside_toml_values(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'note = "\\u0022"\n[mcp_servers.ai-dev-workspace]\ncommand = "other"\n'; config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_global_codex_write_finds_workspace_key_after_nested_array_value(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        original = 'values = [\n  [1, 2],\n]\nmcp_servers.ai-dev-workspace.command = "other"\n'; config.write_text(original)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(workspace, 'codex', write=True)
+        self.assertEqual(config.read_text(), original)
+
+    def test_codex_connection_ignores_fake_table_in_multiline_string(self):
+        workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
+        project = self.repo / '.codex/config.toml'; project.parent.mkdir(exist_ok=True)
+        project.write_text('note = """\n[mcp_servers.ai-dev-workspace]\ncommand = "other"\nargs = []\n"""\n')
+        global_config = self.home / '.codex/config.toml'; global_config.parent.mkdir()
+        global_config.write_text(core.codex_mcp_config(workspace))
+        with mock.patch.object(Path, 'cwd', return_value=self.repo): self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_connection_preserves_hash_in_literal_command_path(self):
+        workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
+        server = {'command': 'tool#path', 'args': ['tool#path']}
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        config.write_text("[mcp_servers.ai-dev-workspace]\ncommand = 'tool#path'\nargs = ['tool#path']\n")
+        with mock.patch('ws.core.mcp_command', return_value=server), mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_client_connected_preserves_backslashes_in_toml_literal_strings(self):
+        workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
+        server = {'command': r'C:\tmp\tool', 'args': [r'C:\tmp\tool']}
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        config.write_text("[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = 'C:\\tmp\\tool'\nargs = ['C:\\tmp\\tool']\n")
+        with mock.patch('ws.core.mcp_command', return_value=server), mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_client_connected_parses_literal_string_ending_in_backslash(self):
+        workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
+        server = {'command': 'tool\\', 'args': ['tool\\']}
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        config.write_text("[mcp_servers.ai-dev-workspace]\ncommand = 'tool\\'\nargs = ['tool\\']\n")
+        with mock.patch('ws.core.mcp_command', return_value=server), mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_client_connected_rejects_invalid_enabled_value(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); server = core.mcp_command(workspace)
+        config = self.repo / '.codex/config.toml'
+        config.write_text(core.codex_mcp_config(workspace).replace('enabled = true', 'enabled = "false"'))
+        with mock.patch.object(Path, 'cwd', return_value=self.repo): self.assertFalse(core.client_connected(workspace, 'codex'))
+
+    def test_codex_client_connected_parses_final_enabled_scalar_without_newline(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); server = core.mcp_command(workspace)
+        config = self.repo / '.codex/config.toml'
+        config.write_text('[mcp_servers.ai-dev-workspace]\ncommand = ' + json.dumps(server['command']) + '\nargs = ' + json.dumps(server['args']) + '\nenabled = true')
+        with mock.patch.object(Path, 'cwd', return_value=self.repo): self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_global_codex_write_allows_server_key_inside_other_table(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        original = '[other]\nmcp_servers = {}\n'; config.write_text(original)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            result = core._connect_config(workspace, 'codex', write=True)
+        self.assertTrue(result['connected'])
+        self.assertIn('[mcp_servers.ai-dev-workspace]', config.read_text())
+        self.assertEqual(config.with_name('config.toml.ws-backup').read_text(), original)
+
+    def test_undo_keeps_backup_when_user_edits_codex_config(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        backup = config.with_name('config.toml.ws-backup')
+        config.write_text(config.read_text() + '# user edit\n')
+        self.assertEqual(self.start('--undo')[0], 2)
+        self.assertIn('# user edit', config.read_text())
+        self.assertEqual(backup.read_bytes(), original)
+        exclude = (self.repo / '.git/info/exclude').read_bytes()
+        self.assertIn(b'/.codex/config.toml\n', exclude)
+        self.assertIn(b'/.ws-start.json\n', exclude)
+
+    def test_undo_keeps_backup_when_generated_codex_config_was_deleted(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n'; config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        backup = config.with_name('config.toml.ws-backup'); config.unlink()
+        self.assertEqual(self.start('--undo')[0], 2)
+        self.assertEqual(backup.read_bytes(), original)
+
+    def test_start_does_not_overwrite_config_created_during_confirmation(self):
+        config = self.repo / '.codex/config.toml'
+        def create_config():
+            config.parent.mkdir(); config.write_text('model = "created during prompt"\n'); return 'y'
+        with mock.patch('builtins.input', side_effect=create_config):
+            self.assertEqual(self.start()[0], 2)
+        self.assertEqual(config.read_text(), 'model = "created during prompt"\n')
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_undo_recovers_when_setup_stops_after_codex_backup_write(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'model = "fixture"\n'; config.write_bytes(original); backup = config.with_name('config.toml.ws-backup')
+        write = core.atomic_write
+        def interrupted(target, data):
+            if Path(target).resolve() == config.resolve(): raise OSError('fixture interrupted after backup')
+            return write(target, data)
+        with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(backup.read_bytes(), original)
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(config.read_bytes(), original)
+        self.assertFalse(backup.exists())
+
+    def test_start_does_not_overwrite_record_created_during_confirmation(self):
+        record = self.repo / '.ws-start.json'
+        def create_record(): record.write_text('{"user": "keep"}\n'); return 'y'
+        with mock.patch('builtins.input', side_effect=create_record): self.assertEqual(self.start()[0], 2)
+        self.assertEqual(record.read_text(), '{"user": "keep"}\n')
+
+    def old_start(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.repo / '.codex/config.toml'; config.unlink(missing_ok=True)
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['files'].pop('.codex/config.toml', None)
+        old = base64.b64decode(state['exclude_block']); block = old.replace(b'/.codex/config.toml\n', b'')
+        exclude = Path(state['exclude']); exclude.write_bytes(exclude.read_bytes().replace(old, block))
+        state['exclude_block'] = base64.b64encode(block).decode(); link.write_text(json.dumps(state))
+        return config, exclude
+
+    def test_codex_migration_refuses_tracked_start_record(self):
+        self.old_start()
+        link = self.repo / '.ws-start.json'
+        subprocess.run(['git', 'add', '-f', '.ws-start.json'], check=True)
+        before = link.read_bytes()
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(link.read_bytes(), before)
+        self.assertFalse((self.repo / '.codex/config.toml').exists())
+
+    def test_codex_migration_preserves_record_edited_during_confirmation(self):
+        self.old_start()
+        link = self.repo / '.ws-start.json'
+        def edit_record():
+            state = json.loads(link.read_text()); state['concurrent_note'] = 'keep'; link.write_text(json.dumps(state)); return 'y'
+        with mock.patch('builtins.input', side_effect=edit_record):
+            self.assertEqual(self.start()[0], 2)
+        self.assertEqual(json.loads(link.read_text())['concurrent_note'], 'keep')
+        self.assertFalse((self.repo / '.codex/config.toml').exists())
+
+    def test_start_rechecks_tracked_targets_after_confirmation(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n'; config.write_bytes(original)
+        def track_config():
+            subprocess.run(['git', 'add', '.codex/config.toml'], check=True); return 'y'
+        with mock.patch('builtins.input', side_effect=track_config):
+            self.assertEqual(self.start()[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_existing_start_gets_codex_connection_after_one_confirm(self):
+        config, _ = self.old_start()
+        hooks = (self.repo / '.codex/hooks.json').read_bytes()
+        with mock.patch('builtins.input', return_value='n') as ask: self.assertEqual(self.start()[0], 0)
+        ask.assert_called_once(); self.assertFalse(config.exists())
+        with mock.patch('builtins.input', return_value='y') as ask: self.assertEqual(self.start()[0], 0)
+        ask.assert_called_once(); self.assertTrue(core.client_connected(core.find_root(), 'codex'))
+        self.assertEqual((self.repo / '.codex/hooks.json').read_bytes(), hooks)
+        self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_codex_migration_undo_recovers_interrupted_exclusion_write(self):
+        _, exclude = self.old_start(); write = core.atomic_write
+        def interrupted(target, data):
+            if Path(target).resolve() == exclude.resolve(): raise OSError('fixture interrupted exclude write')
+            return write(target, data)
+        with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_new_start_undo_recovers_interrupted_exclusion_write(self):
+        exclude = self.repo / '.git/info/exclude'; before = exclude.read_bytes(); write = core.atomic_write
+        def interrupted(target, data):
+            if Path(target).resolve() == exclude.resolve(): raise OSError('fixture interrupted first exclude write')
+            return write(target, data)
+        with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(exclude.read_bytes(), before)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_new_start_undo_recovers_when_partial_exclude_line_preexisted(self):
+        exclude = self.repo / '.git/info/exclude'; before = b'/.ws-start.json\n'
+        exclude.write_bytes(before); write = core.atomic_write
+        def interrupted(target, data):
+            if Path(target).resolve() == exclude.resolve():
+                exclude.write_bytes(data[:data.find(b'/CLAUDE.local.md')])
+                raise OSError('fixture interrupted first exclude write')
+            return write(target, data)
+        with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(exclude.read_bytes(), before)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_codex_existing_backup_and_tracked_config_refused_before_writes(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(); config.write_text('model="fixture"\n')
+        backup = config.with_name('config.toml.ws-backup'); backup.write_text('Earlier backup\n')
+        self.assertEqual(self.start('--yes')[0], 2); self.assertEqual(backup.read_text(), 'Earlier backup\n')
+        backup.unlink(); subprocess.run(['git', 'add', '.codex/config.toml'], check=True)
+        self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / '.ws-start.json').exists())
+        self.assertEqual(config.read_text(), 'model="fixture"\n'); self.assertFalse((self.home / '.ai-dev-workspace').exists())
+
+    def test_codex_start_rejects_backup_even_without_config(self):
+        backup = self.repo / '.codex/config.toml.ws-backup'; backup.parent.mkdir()
+        backup.write_text('Saved user config\n')
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(backup.read_text(), 'Saved user config\n')
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_codex_start_rechecks_backup_created_during_confirmation(self):
+        backup = self.repo / '.codex/config.toml.ws-backup'
+        def create_backup():
+            backup.parent.mkdir(); backup.write_text('Concurrent backup\n'); return 'y'
+        with mock.patch('builtins.input', side_effect=create_backup):
+            self.assertEqual(self.start()[0], 2)
+        self.assertEqual(backup.read_text(), 'Concurrent backup\n')
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_codex_start_refuses_project_config_symlink(self):
+        target = self.repo / '.codex/config.toml'; target.parent.mkdir()
+        outside = self.home / 'config.toml'; outside.write_text('model = "fixture"\n')
+        target.symlink_to(outside)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertTrue(target.is_symlink())
+        self.assertEqual(outside.read_text(), 'model = "fixture"\n')
+
+    def test_migration_refuses_a_link_to_another_workspace(self):
+        config, _ = self.old_start(); other = self.home / 'other'; core.init(other, 'other', clients=[])
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['workspace'] = str(other); link.write_text(json.dumps(state))
+        self.assertEqual(self.start('--yes')[0], 2); self.assertFalse(config.exists()); self.assertEqual(core.task_list(other), [])
+
+    def test_start_refuses_existing_spaced_toml_workspace_keys(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n', '["mcp_servers"."ai-dev-workspace"]\ncommand="fixture"\n', '"mcp_servers"."ai-dev-workspace".command="fixture"\n', '"mcp_servers" = { other = { command = "other" } }\n', '[mcp_servers."ai-dev-\\u0077orkspace"]\ncommand="fixture"\n'):
+            with self.subTest(text=text):
+                config.write_text(text)
+                self.assertEqual(self.start('--yes')[0], 2)
+                self.assertEqual(config.read_text(), text)
+                self.assertFalse((self.repo / '.ws-start.json').exists())
+                self.assertFalse((config.parent / 'config.toml.ws-backup').exists())
+
+    def test_migration_keeps_a_config_created_after_confirmation(self):
+        config, exclude = self.old_start(); write = core.atomic_write
+        def edited(target, data):
+            result = write(target, data)
+            if Path(target).resolve() == exclude.resolve(): config.write_text('User edit\n')
+            return result
+        with mock.patch('ws.repo.core.atomic_write', side_effect=edited): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_text(), 'User edit\n')
 
     def test_detected_secondary_clients_share_confirmation_and_private_undo(self):
         detected = [dict(assistant=c, cli_available=True, apps=[]) for c in ('cursor', 'copilot', 'gemini')]
