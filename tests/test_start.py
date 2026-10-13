@@ -386,6 +386,9 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 2)
         self.assertIn('# user edit', config.read_text())
         self.assertEqual(backup.read_bytes(), original)
+        exclude = (self.repo / '.git/info/exclude').read_bytes()
+        self.assertIn(b'/.codex/config.toml\n', exclude)
+        self.assertIn(b'/.ws-start.json\n', exclude)
 
     def test_undo_keeps_backup_when_generated_codex_config_was_deleted(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
