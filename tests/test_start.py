@@ -135,10 +135,12 @@ class StartTests(unittest.TestCase):
 
     def test_codex_start_rejects_duplicate_server_in_parent_table(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
-        original = b'[mcp_servers]\nai-dev-workspace = { command = "other" }\n'
-        config.write_bytes(original)
-        self.assertEqual(self.start('--yes')[0], 2)
-        self.assertEqual(config.read_bytes(), original)
+        for original in (b'[mcp_servers]\nai-dev-workspace = { command = "other" }\n',
+                         b'[mcp_servers]\nai-dev-workspace.command = "other"\n'):
+            with self.subTest(original=original):
+                config.write_bytes(original)
+                self.assertEqual(self.start('--yes')[0], 2)
+                self.assertEqual(config.read_bytes(), original)
 
     def test_codex_start_rejects_duplicate_server_in_quoted_parent_table(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
@@ -267,6 +269,23 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 2)
         self.assertEqual(backup.read_text(), 'Saved user config\n')
         self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_codex_start_rechecks_backup_created_during_confirmation(self):
+        backup = self.repo / '.codex/config.toml.ws-backup'
+        def create_backup():
+            backup.parent.mkdir(); backup.write_text('Concurrent backup\n'); return 'y'
+        with mock.patch('builtins.input', side_effect=create_backup):
+            self.assertEqual(self.start()[0], 2)
+        self.assertEqual(backup.read_text(), 'Concurrent backup\n')
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_codex_start_refuses_project_config_symlink(self):
+        target = self.repo / '.codex/config.toml'; target.parent.mkdir()
+        outside = self.home / 'config.toml'; outside.write_text('model = "fixture"\n')
+        target.symlink_to(outside)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertTrue(target.is_symlink())
+        self.assertEqual(outside.read_text(), 'model = "fixture"\n')
 
     def test_migration_refuses_a_link_to_another_workspace(self):
         config, _ = self.old_start(); other = self.home / 'other'; core.init(other, 'other', clients=[])
