@@ -526,3 +526,18 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0)
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
         with mock.patch('ws.setup.detect', return_value=detected): self.assertEqual(self.start('--yes', '--undo', '--dry-run')[0], 2)
+
+    def test_global_codex_connection_skips_manual_paste_and_project_creation(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(); original = b'not TOML: \xff'; config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0); root = core.find_root()
+        global_config = self.home / '.codex/config.toml'; global_config.parent.mkdir()
+        global_config.write_text(core.codex_mcp_config(root)); global_before = global_config.read_bytes()
+        code, output, preview = self.start('--yes')
+        self.assertEqual(code, 0); self.assertIn('connected via global config', output)
+        self.assertNotIn('manual step pending', output + preview); self.assertNotIn('[mcp_servers', preview)
+        report = core.doctor(root); self.assertTrue(report['configured_clients']['codex'])
+        self.assertEqual(report['codex_manual_pending'], []); self.assertNotIn('manual step pending', cli.text_doctor(report))
+        self.assertEqual(config.read_bytes(), original); self.assertEqual(self.start('--undo')[0], 0)
+        config.unlink(); code, output, preview = self.start('--yes')
+        self.assertEqual(code, 0); self.assertIn('connected via global config', output); self.assertFalse(config.exists())
+        self.assertEqual(global_config.read_bytes(), global_before); self.assertEqual(self.start('--undo')[0], 0)

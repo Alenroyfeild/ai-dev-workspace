@@ -601,8 +601,8 @@ def client_connected(root, client, global_only=False):
     if client == 'codex':
         from . import repo
         cwd = Path.cwd().resolve()
-        project = next((p.resolve() for p in read_roots(root)[1:] if p.resolve() == cwd or p.resolve() in cwd.parents), root)
-        if not global_only and str(project / '.codex/config.toml') in repo.codex_pending(root): return False
+        project = root if global_only else next((p.resolve() for p in read_roots(root)[1:] if p.resolve() == cwd or p.resolve() in cwd.parents), root)
+        if not global_only and str(project / '.codex/config.toml') in repo.codex_pending(root, check_global=False): return client_connected(root, client, global_only=True)
         paths = (Path.home() / '.codex/config.toml',) if global_only else (project / '.codex/config.toml', Path.home() / '.codex/config.toml')
         for path in paths:
             text = path.read_text(encoding='utf-8') if path.is_file() else ''
