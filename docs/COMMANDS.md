@@ -135,3 +135,19 @@ details are labelled, never inferred. Raw Handoff prose and captures are exclude
 The private task is never changed. Runbooks and ordinary task copies have separate
 receipts; `ws unshare <task-ID> --as runbook` removes only the runbook projection.
 Command examples remain inert text; sharing never executes them.
+
+## Worker review and acceptance
+
+`ws worker review <id>` refreshes an eligible run's collection and shows its diff,
+checks and blocking reason. `--approve` asks once to record the current local lead's
+review of those exact bytes and checks; `--yes` confirms that displayed review.
+`ws worker accept <id> [--dry-run]` previews a new `ws/worker/<id>` branch, then asks
+once (`--yes` confirms). It revalidates the claim, source and reviewed snapshot;
+edits invalidate approval. Acceptance keeps the source checkout, index and active
+branch as they are. `ws worker discard <id> [--dry-run]` similarly confirms removal
+of only that run's artifacts, retaining its record and every sibling run. Running
+and accepted runs cannot be discarded. No automatic push or PR is created.
+Public launch remains disabled until O2d; completed-run evidence in current tests
+is synthetic. Acceptance uses [commit-tree](https://git-scm.com/docs/git-commit-tree),
+[fetch without FETCH_HEAD](https://git-scm.com/docs/git-fetch) and
+[update-ref with an absent-ref check](https://git-scm.com/docs/git-update-ref).

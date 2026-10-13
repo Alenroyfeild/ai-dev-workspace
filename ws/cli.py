@@ -225,6 +225,10 @@ def main(argv=None):
     s = w.add_parser('prepare'); s.add_argument('task'); s.add_argument('--scope', action='append', required=True)
     s.add_argument('--base', default='HEAD'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s = w.add_parser('launch', help='gated until the real-client hostile probe passes'); s.add_argument('id')
+    s = w.add_parser('review', help='show diff/checks or record the current lead review'); s.add_argument('id')
+    s.add_argument('--approve', action='store_true'); s.add_argument('--yes', action='store_true')
+    for action in ('accept', 'discard'):
+        s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
@@ -453,10 +457,14 @@ def main(argv=None):
             if a.action == 'launch': out(workers.launch(root, a.id)); return 0
             def confirm(plan):
                 print(json.dumps(plan, indent=2), file=sys.stderr)
-                print('Create this private clone and checkout? [y/N] ', end='', file=sys.stderr)
+                print('Apply this worker ' + a.action + ' action? [y/N] ', end='', file=sys.stderr)
                 try: return input().strip().lower() in ('y', 'yes')
                 except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
-            out(workers.prepare(root, a.task, a.scope, a.base, apply=not a.dry_run, confirm=None if a.yes else confirm)); return 0
+            approval = None if a.yes else confirm
+            if a.action == 'review': out(workers.review(root, a.id, a.approve, approval))
+            elif a.action in ('accept', 'discard'): out(getattr(workers, a.action)(root, a.id, apply=not a.dry_run, confirm=approval))
+            else: out(workers.prepare(root, a.task, a.scope, a.base, apply=not a.dry_run, confirm=approval))
+            return 0
         if a.cmd == 'delegate':
             if a.selftest:
                 if a.task or a.role or a.diff: raise core.WsError('Selftest takes no task, role or diff; run ws delegate --help.')

@@ -295,3 +295,89 @@ class WorkerPrepareTests(Base):
         record = json.loads(Path(plan['record']).read_text())
         for field in ('tree', 'diff_sha', 'checks'):
             self.assertNotIn(field, failed); self.assertNotIn(field, record)
+
+    def collected_for_review(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan)
+        (Path(plan['checkout']) / 'calc.py').write_text('answer = 2\n')
+        self.assertFalse(workers.collect(self.root, plan['id'])['blocked'])
+        return plan
+
+    def test_review_and_accept_preserve_dirty_source_and_import_exact_snapshot(self):
+        plan = self.collected_for_review(); branch = 'ws/worker/' + plan['id']
+        (self.repo / 'calc.py').write_text('user edit\n'); (self.repo / 'ignored.txt').write_text('private\n')
+        before = (self.git('status', '--porcelain'), self.git('rev-parse', 'HEAD'), (self.repo / '.git/index').read_bytes())
+        with self.assertRaisesRegex(core.WsError, 'review'): workers.accept(self.root, plan['id'], apply=True)
+        shown = workers.review(self.root, plan['id']); self.assertIn('answer = 2', shown['diff'])
+        approved = workers.review(self.root, plan['id'], approve=True)
+        self.assertEqual(approved['review']['reviewer'], 'lead')
+        self.assertFalse(workers.accept(self.root, plan['id'])['applied'])
+        self.assertFalse(workers.accept(self.root, plan['id'], apply=True, confirm=lambda _: False)['applied'])
+        result = workers.accept(self.root, plan['id'], apply=True)
+        self.assertEqual(result['branch'], branch); self.assertEqual(result['state'], 'accepted')
+        self.assertEqual(self.git('show', branch + ':calc.py'), 'answer = 2')
+        self.assertEqual(self.git('rev-parse', branch + '^'), plan['base'])
+        self.assertEqual(before, (self.git('status', '--porcelain'), self.git('rev-parse', 'HEAD'), (self.repo / '.git/index').read_bytes()))
+        self.assertFalse((self.repo / '.git/FETCH_HEAD').exists())
+        with self.assertRaises(core.WsError): workers.collect(self.root, plan['id'])
+        with self.assertRaises(core.WsError): workers.discard(self.root, plan['id'], apply=True)
+
+    def test_accept_revalidates_content_checks_filters_claim_and_source(self):
+        for mutation in ('content', 'checks', 'filter', 'claim', 'source'):
+            with self.subTest(mutation=mutation):
+                plan = self.collected_for_review(); workers.review(self.root, plan['id'], approve=True)
+                record = Path(plan['record']); state = json.loads(record.read_text())
+                local = self.root / '.ws/claims/W-1.json'; receipt = local.read_bytes()
+                if mutation == 'content': (Path(plan['checkout']) / 'calc.py').write_text('answer = 3\n')
+                elif mutation == 'checks':
+                    state['checks'][0]['command'] = 'different check'; record.write_text(json.dumps(state))
+                elif mutation == 'filter': workers.git(Path(plan['checkout']), 'config', 'filter.fixture.clean', 'unused')
+                elif mutation == 'claim': local.unlink()
+                else: state['source'] = str(self.root); record.write_text(json.dumps(state))
+                with self.assertRaises(core.WsError): workers.accept(self.root, plan['id'], apply=True)
+                self.assertEqual(self.git('for-each-ref', '--format=%(refname)', 'refs/heads/ws/worker/'), '')
+                if mutation in ('content', 'checks', 'filter'): self.assertNotIn('review', workers.review(self.root, plan['id']))
+                if mutation == 'claim': local.write_bytes(receipt)
+
+    def test_accept_refuses_existing_branch_without_overwriting_it(self):
+        plan = self.collected_for_review(); workers.review(self.root, plan['id'], approve=True)
+        branch = 'ws/worker/' + plan['id']; self.git('branch', branch)
+        with self.assertRaisesRegex(core.WsError, 'exists'): workers.accept(self.root, plan['id'], apply=True)
+        self.assertEqual(self.git('rev-parse', branch), self.git('rev-parse', 'HEAD'))
+        plan = self.collected_for_review(); workers.review(self.root, plan['id'], approve=True)
+        ref = 'refs/heads/ws/worker/' + plan['id']; target = 'refs/heads/missing-fixture'
+        self.git('symbolic-ref', ref, target)
+        with self.assertRaisesRegex(core.WsError, 'exists'): workers.accept(self.root, plan['id'], apply=True)
+        self.assertEqual(self.git('symbolic-ref', ref), target)
+        self.assertEqual(self.git('for-each-ref', '--format=%(refname)', target), '')
+
+    def test_discard_only_owned_artifacts_preserves_sibling_and_source(self):
+        plan = self.prepare(apply=True); sibling = self.prepare(apply=True)
+        original = (self.repo / 'calc.py').read_bytes()
+        try: (Path(plan['checkout']) / 'link').symlink_to(self.repo, target_is_directory=True)
+        except OSError: pass
+        self.assertFalse(workers.discard(self.root, plan['id'])['applied'])
+        self.assertFalse(workers.discard(self.root, plan['id'], apply=True, confirm=lambda _: False)['applied'])
+        result = workers.discard(self.root, plan['id'], apply=True)
+        self.assertEqual(result['state'], 'discarded')
+        self.assertEqual([p.name for p in Path(plan['directory']).iterdir()], ['run.json'])
+        self.assertTrue(Path(sibling['checkout']).is_dir()); self.assertEqual((self.repo / 'calc.py').read_bytes(), original)
+        self.assertFalse(workers.discard(self.root, plan['id'], apply=True)['applied'])
+        self.assertEqual(workers.review(self.root, plan['id'])['state'], 'discarded')
+
+    def test_review_refuses_ineligible_run_and_discard_refuses_escaped_owner(self):
+        plan = self.prepare(apply=True)
+        with self.assertRaises(core.WsError): workers.review(self.root, plan['id'], approve=True)
+        record = Path(plan['record']); state = json.loads(record.read_text()); state['directory'] = str(self.repo)
+        record.write_text(json.dumps(state))
+        with self.assertRaises(core.WsError): workers.discard(self.root, plan['id'], apply=True)
+        self.assertTrue(Path(plan['checkout']).exists()); self.assertTrue((self.repo / 'calc.py').exists())
+
+    def test_worker_review_accept_and_discard_cli_actions(self):
+        plan = self.collected_for_review()
+        for action, flags in (('review', ['--approve', '--yes']), ('accept', ['--yes'])):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', action, plan['id'], *flags]), 0)
+            self.assertEqual(json.loads(output.getvalue())['id'], plan['id'])
+        plan = self.prepare(apply=True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'discard', plan['id'], '--yes']), 0)
