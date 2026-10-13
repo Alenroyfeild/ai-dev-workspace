@@ -9,6 +9,7 @@ AI Dev Workspace keeps task notes in Markdown your assistant can read next time.
 pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace
 cd ~/code/myapp && ws start
 ```
+Without pipx: `python3 -m venv ~/.local/share/ai-dev-workspace && ~/.local/share/ai-dev-workspace/bin/pip install git+https://github.com/Alenroyfeild/ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`.
 ## Example
 
 ```text
