@@ -179,6 +179,13 @@ class StartTests(unittest.TestCase):
         self.assertIn('manual step pending', self.start('--yes')[1])
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(config.read_bytes(), original)
 
+    def test_old_setup_manual_status_requires_confirmation(self):
+        config, _ = self.old_start(); config.write_bytes(b'not TOML')
+        record = self.repo / '.ws-start.json'; before = record.read_bytes()
+        with mock.patch('builtins.input', return_value='n') as ask: self.start()
+        ask.assert_called_once(); self.assertEqual(record.read_bytes(), before)
+        self.start('--dry-run'); self.assertEqual(record.read_bytes(), before)
+
     def test_new_codex_config_is_owned_and_undo_removes_it(self):
         self.assertEqual(self.start('--yes')[0], 0)
         config = self.repo / '.codex/config.toml'; workspace = core.find_root()
