@@ -29,11 +29,11 @@ class VisibleMemoryTests(Base):
         self.capture()
         self.assertEqual(core.memory_summary(self.root), 'Remembered: 4 decisions · next: Write the migration')
 
-    def test_captured_request_does_not_count_as_a_decision(self):
+    def test_captured_requests_with_decision_verbs_do_not_count_as_decisions(self):
         core.claim(self.root, 'T-1', 'synthetic')
         core.checkpoint(self.root, 'T-1', 'in_progress', 'Test pagination')
         path = core.task_path(self.root, 'T-1')
-        handoff = '<!-- ws:captured:fixture -->\n### Captured 2026-10-12 (unverified transcript)\nUser constraints:\n- Please add pagination to the invoice list.\nLast assistant summary / next step: I will test pagination.\n<!-- /ws:captured -->'
+        handoff = '<!-- ws:captured:fixture -->\n### Captured 2026-10-12 (unverified transcript)\nUser constraints:\n- Please return the invoice list.\n- Please use a table.\nLast assistant summary / next step: I will test pagination.\n<!-- /ws:captured -->'
         path.write_text(core.set_section(path.read_text(), 'Handoff', handoff))
         self.assertEqual(core.memory_summary(self.root), 'Remembered: next: Test pagination')
 

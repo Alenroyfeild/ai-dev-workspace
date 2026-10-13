@@ -1332,6 +1332,10 @@ def _is_decision_clause(clause):
     return bool(re.search(r'\b(decided|decisions?|correction|must|never|always|only|do not|return|keep|use|preserve|avoid|ruled out)\b', clause, re.I))
 
 
+def _is_captured_decision_clause(clause):
+    return bool(re.search(r'\b(must|do not|decided|only|always|never)\b', clause, re.I))
+
+
 def _summary_line(task_id, count, next_action, saved_context=False):
     lead, noun = 'Remembered: ', f"{count} decision{'s' * (count != 1)}" if count else ''
     next_text = ' '.join(redact(next_action).split())
@@ -1398,7 +1402,7 @@ def _brief(root):
         clauses = [line.removeprefix('- ') for line in constraints.splitlines()] if constraints.startswith('- ') else _constraint_clauses(constraints)
         fields.append(('Captured last session (unverified): User constraints:', _constraint_budget(clauses, 70), 70))
         truncated |= len(' '.join(clauses).split()) > 70
-        remembered += sum(1 for clause in clauses if _is_decision_clause(clause))
+        remembered += sum(1 for clause in clauses if _is_captured_decision_clause(clause))
         if separator:
             captured_step = step
             action = re.search(r'\bnext (?:step|action)\s*[*_`]*(?::|\bis\b|\bwill be\b|,)\s*[*_`]*(.+)', _captured_step(step), re.I)
