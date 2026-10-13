@@ -610,7 +610,7 @@ def _connect_config(root, client, write=False):
             return result
         path = Path.home() / '.codex/config.toml'
         original = path.read_text(encoding='utf-8') if path.exists() else ''
-        if re.search(r'^(?:mcp_servers\s*=|mcp_servers\.|\[mcp_servers\.(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:\]|\.))', original, re.M):
+        if re.search(r'^[ \t]*(?:mcp_servers\s*=|mcp_servers\s*\.|\[[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*\.[ \t]*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:[ \t]*\]|[ \t]*\.))', original, re.M):
             raise WsError('Codex already has a different workspace entry; review the printed block manually.')
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():

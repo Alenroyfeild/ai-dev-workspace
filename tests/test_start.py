@@ -234,6 +234,16 @@ class StartTests(unittest.TestCase):
             with mock.patch.object(Path, 'cwd', return_value=self.repo):
                 self.assertTrue(core.client_connected(workspace, 'codex'))
 
+    def test_global_codex_write_refuses_disabled_quoted_workspace_table(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        config.write_text('["mcp_servers" . "ai-dev-workspace"]\nenabled = false\ncommand = "old"\nargs = []\n')
+        before = config.read_bytes()
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(core.find_root(), 'codex', write=True)
+        self.assertEqual(config.read_bytes(), before)
+
     def test_undo_keeps_backup_when_user_edits_codex_config(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
         original = b'model = "fixture"\n'
@@ -326,6 +336,19 @@ class StartTests(unittest.TestCase):
             return write(target, data)
         with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(exclude.read_bytes(), before)
+        self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_new_start_undo_recovers_when_partial_exclude_line_preexisted(self):
+        exclude = self.repo / '.git/info/exclude'; before = b'/.ws-start.json\n'
+        exclude.write_bytes(before); write = core.atomic_write
+        def interrupted(target, data):
+            if Path(target).resolve() == exclude.resolve():
+                exclude.write_bytes(data[:data.find(b'/CLAUDE.local.md')])
+                raise OSError('fixture interrupted first exclude write')
+            return write(target, data)
+        with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(exclude.read_bytes(), before)
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
 
     def test_codex_existing_backup_and_tracked_config_refused_before_writes(self):
