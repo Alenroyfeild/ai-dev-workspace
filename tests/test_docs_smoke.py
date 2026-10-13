@@ -22,6 +22,12 @@ def code_block(path, heading):
 
 @unittest.skipIf(os.name == 'nt', 'The documented quick-start shell blocks use POSIX syntax.')
 class DocsSmokeTests(unittest.TestCase):
+    def test_pack_docs_explain_private_pack_removal(self):
+        docs = (KIT / 'docs/COMMANDS.md').read_text(encoding='utf-8')
+        self.assertIn('`ws pack remove <name>`', docs)
+        self.assertIn('private pack', docs.lower())
+        self.assertIn('edited files are kept', docs.lower())
+
     def test_run_log_docs_list_supported_result_values(self):
         docs = (KIT / 'docs/COMMANDS.md').read_text(encoding='utf-8')
         self.assertIn('`--result ok|failed|rejected|accepted|skipped`', docs)
