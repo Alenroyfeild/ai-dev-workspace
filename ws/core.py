@@ -599,8 +599,10 @@ def _toml_has_workspace_entry(text):
 def client_connected(root, client, global_only=False):
     if client == 'copilot': client = 'vscode'
     if client == 'codex':
+        from . import repo
         cwd = Path.cwd().resolve()
-        project = next((p.resolve() for p in read_roots(root)[1:] if p.resolve() == cwd or p.resolve() in cwd.parents), root)
+        project = root if global_only else next((p.resolve() for p in read_roots(root)[1:] if p.resolve() == cwd or p.resolve() in cwd.parents), root)
+        if not global_only and str(project / '.codex/config.toml') in repo.codex_pending(root, check_global=False): return client_connected(root, client, global_only=True)
         paths = (Path.home() / '.codex/config.toml',) if global_only else (project / '.codex/config.toml', Path.home() / '.codex/config.toml')
         for path in paths:
             text = path.read_text(encoding='utf-8') if path.is_file() else ''
@@ -2443,6 +2445,9 @@ def doctor(root=None, mcp=False):
         report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
         team = _team_checks(root)
         if team is not None: report['team'] = team
+        from . import repo
+        report['codex_manual_pending'] = repo.codex_pending(root)
+        if report['codex_manual_pending']: report['codex_status'] = 'manual step pending'
         report['configured_clients'] = {client: client_connected(root, client)
                                         for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
         report['protocol_checks'], report['protocol_check_date'] = _protocol_health(
