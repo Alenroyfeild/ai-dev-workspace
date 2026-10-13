@@ -11,6 +11,7 @@ This folder is the shared memory for AI-assisted work on the code checkouts list
 
 ## While working
 - Before changing code, think before act: is it needed, what working flows could break (gate them with a flag or version check), can existing code be reused, a numbered plan with a check per step, and proof instead of claims. Claude: `/thinkbeforeact`.
+- The user states a decision or correction that must hold in later sessions: call `remember` (CLI: `ws remember "<decision>"`).
 - Big logs or JSON: `ws digest <file>` and read the summary, not the file.
 - Delegate cheap work to cheaper workers when it saves tokens; the lead assistant decides and reviews. Log each delegated step: `ws run log <ID> <step> --provider <name> ...`.
 - Never commit or push unless the user asks in that turn. Never discard the user's edits.

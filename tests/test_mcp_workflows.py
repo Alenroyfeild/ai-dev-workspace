@@ -71,6 +71,32 @@ class WorkflowTests(unittest.TestCase):
         complete = self.rpc('tools/call', name='read_task', arguments={'id': 'T-1', 'sections': []})
         self.assertEqual(json.loads(complete['result']['content'][0]['text'])['text'], full)
 
+    def call(self, name, **arguments):
+        result = self.rpc('tools/call', name=name, arguments=arguments)['result']
+        return result['isError'], result['content'][0]['text']
+
+    def test_remember_saves_a_decision_the_brief_lists(self):
+        core.task_new(self.root, 'T-1', 'Remember proof')
+        core.claim(self.root, 'T-1', 'synthetic')
+        failed, text = self.call('remember', text='use Postgres, not SQLite')
+        self.assertFalse(failed)
+        self.assertEqual(json.loads(text), {'task': 'T-1', 'remembered': 'use Postgres, not SQLite'})
+        self.assertIn('use Postgres, not SQLite', json.loads(self.call('brief')[1]))
+        core.task_new(self.root, 'T-2', 'Other')
+        self.assertFalse(self.call('remember', text='ship on Monday', task='T-2')[0])
+        self.assertIn('Decision: ship on Monday', core.task_read(self.root, 'T-2', ['Handoff'])['sections']['Handoff'])
+
+    def test_remember_errors_use_the_mcp_error_shape(self):
+        core.task_new(self.root, 'T-1', 'Remember proof')
+        failed, text = self.call('remember', text='use Postgres')  # nothing claimed
+        self.assertTrue(failed)
+        self.assertIn('WsError: No single claimed task', text)
+        core.claim(self.root, 'T-1', 'synthetic')
+        failed, text = self.call('remember', text='never ship Friday #private')
+        self.assertTrue(failed)
+        self.assertIn('marked private', text)
+        self.assertEqual(self.rpc('tools/call', name='remember', arguments={})['error']['code'], -32602)
+
     def test_stdio_protocol_recovers_after_bad_workflow_requests(self):
         messages = [('initialize', {}), ('prompts/list', {}), ('prompts/get', {'name': 'handoff'}),
                     ('resources/list', {}), ('resources/read', {'uri': 'workspace://brief'}),
