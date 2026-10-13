@@ -149,6 +149,13 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 2)
         self.assertEqual(config.read_bytes(), original)
 
+    def test_codex_start_rejects_nested_workspace_server_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'[mcp_servers.ai-dev-workspace.env]\nTOKEN = "fixture"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
     def test_codex_write_installs_global_config_even_when_project_is_connected(self):
         self.assertEqual(self.start('--yes')[0], 0)
         project = self.repo / '.codex/config.toml'
@@ -177,6 +184,17 @@ class StartTests(unittest.TestCase):
         with mock.patch.object(Path, 'cwd', return_value=self.repo):
             self.assertTrue(core.client_connected(workspace, 'codex'))
             config.write_text(block.replace('  enabled = true', '  enabled = false'))
+            self.assertFalse(core.client_connected(workspace, 'codex'))
+
+    def test_codex_connection_handles_indented_table_and_bounds_its_section(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.repo / '.codex/config.toml'
+        block = core.codex_mcp_config(workspace).replace('[mcp_servers', '  [mcp_servers').replace('\nenabled', '\n  enabled').replace('\ncommand', '\n  command').replace('\nargs', '\n  args')
+        config.write_text(block)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+            server = core.mcp_command(workspace)
+            config.write_text('  [mcp_servers.ai-dev-workspace]\n  enabled = true\n  [mcp_servers.other]\n  command = ' + json.dumps(server['command']) + '\n  args = ' + json.dumps(server['args']) + '\n')
             self.assertFalse(core.client_connected(workspace, 'codex'))
 
     def test_codex_config_keeps_non_bmp_path_as_valid_unicode(self):
