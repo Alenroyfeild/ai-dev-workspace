@@ -141,6 +141,11 @@ def collect(root, run_id):
     reasons = []; changed = []; secrets = []; binary = []
     try:
         _claim(root, state)
+        checks = state.get('checks')
+        if (not state.get('started_at') or not state.get('finished_at') or state.get('worker_exit') != 0
+                or not isinstance(checks, list) or not checks
+                or any(not isinstance(check, dict) or check.get('exit_code') != 0 for check in checks)):
+            raise core.WsError('Collection requires a completed worker run and successful command evidence.')
         if git(checkout, 'rev-parse', 'HEAD') != state['base']: raise core.WsError('Worker changed its pinned Git base.')
         for p in checkout.rglob('*'):
             if p.is_symlink(): raise core.WsError('Worker introduced a symlink; collection blocked.')

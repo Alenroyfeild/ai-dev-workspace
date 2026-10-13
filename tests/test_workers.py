@@ -28,6 +28,12 @@ class WorkerPrepareTests(Base):
         with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
             return workers.prepare(self.root, 'W-1', ['calc.py'], **kw)
 
+    def complete_worker(self, plan):
+        record = Path(plan['record']); state = json.loads(record.read_text())
+        state.update(started_at='fixture', finished_at='fixture', worker_exit=0,
+                     checks=[dict(command='python3 -m unittest', exit_code=0)])
+        record.write_text(json.dumps(state))
+
     def test_preview_writes_nothing_and_warns_about_dirty_source(self):
         (self.repo / 'calc.py').write_text('uncommitted\n'); (self.repo / 'ignored.txt').write_text('private fixture\n')
         before = core.task_read(self.root, 'W-1')['sha']; result = self.prepare()
@@ -183,16 +189,26 @@ class WorkerPrepareTests(Base):
         for name, data in (('ignored.txt', b'ignored change'), ('calc.py', b'api_key=' + b'x'*20), ('calc.py', b'\xffbinary')):
             with self.subTest(name=name, data=data):
                 plan = self.prepare(apply=True); (Path(plan['checkout']) / name).write_bytes(data)
+                self.complete_worker(plan)
                 result = workers.collect(self.root, plan['id'])
                 self.assertTrue(result['blocked']); self.assertIn(name, result['changed'])
                 if data.startswith(b'\xff'): self.assertEqual(result['binary_files'], [name])
                 self.assertNotIn('x'*20, json.dumps(result))
         plan = self.prepare(apply=True)
         (Path(plan['checkout']) / 'escape').symlink_to(self.repo / 'calc.py')
+        self.complete_worker(plan)
         self.assertTrue(workers.collect(self.root, plan['id'])['blocked'])
+
+    def test_collection_blocks_prepared_run_without_worker_evidence(self):
+        plan = self.prepare(apply=True)
+        (Path(plan['checkout']) / 'calc.py').write_text('answer = 2\n')
+        result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked'])
+        self.assertIn('completed worker', result['reason'])
 
     def test_collection_preserves_leading_space_in_changed_filename(self):
         plan = self.prepare(apply=True); (Path(plan['checkout']) / ' calc.py').write_text('api_key=' + 'x'*20)
+        self.complete_worker(plan)
         result = workers.collect(self.root, plan['id'])
         self.assertTrue(result['blocked']); self.assertIn(' calc.py', result['changed'])
 
@@ -202,6 +218,7 @@ class WorkerPrepareTests(Base):
         with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
             plan = workers.prepare(self.root, 'W-1', ['allowed.py'], apply=True)
         checkout = Path(plan['checkout']); (checkout / 'outside.txt').rename(checkout / 'allowed.py')
+        self.complete_worker(plan)
         result = workers.collect(self.root, plan['id'])
         self.assertTrue(result['blocked']); self.assertIn('outside.txt', result['changed'])
 
@@ -221,7 +238,7 @@ class WorkerPrepareTests(Base):
 
     def test_collection_rejects_fifo_before_staging(self):
         if not hasattr(os, 'mkfifo'): self.skipTest('POSIX FIFO fixture')
-        plan = self.prepare(apply=True); os.mkfifo(Path(plan['checkout']) / 'fifo')
+        plan = self.prepare(apply=True); os.mkfifo(Path(plan['checkout']) / 'fifo'); self.complete_worker(plan)
         original = workers.git
         def guarded(repo, *args, **kwargs):
             if args[0] == 'add': raise AssertionError('special file reached staging')
@@ -230,7 +247,7 @@ class WorkerPrepareTests(Base):
             self.assertTrue(workers.collect(self.root, plan['id'])['blocked'])
 
     def test_collection_records_invalid_utf8_git_output_as_blocked(self):
-        plan = self.prepare(apply=True); original = workers.git
+        plan = self.prepare(apply=True); self.complete_worker(plan); original = workers.git
         def invalid(repo, *args, **kwargs):
             if '--name-only' in args: raise UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'fixture')
             return original(repo, *args, **kwargs)
@@ -239,7 +256,7 @@ class WorkerPrepareTests(Base):
         self.assertTrue(json.loads(Path(plan['record']).read_text())['blocked'])
 
     def test_secret_scan_uses_snapshot_even_if_checkout_changes_after_staging(self):
-        plan = self.prepare(apply=True); target = Path(plan['checkout']) / 'calc.py'
+        plan = self.prepare(apply=True); self.complete_worker(plan); target = Path(plan['checkout']) / 'calc.py'
         target.write_text('api_key=' + 'x'*20); original = workers.git
         def changed(repo, *args, **kwargs):
             result = original(repo, *args, **kwargs)
