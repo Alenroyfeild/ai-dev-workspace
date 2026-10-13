@@ -53,7 +53,9 @@ Initial MCP support may read shared memory; publishing through MCP is deferred.
 Existing redaction and private markers remain mandatory. Reject malformed records,
 secret-looking output, conflict markers and symlink/path escapes. Redaction is a
 heuristic, not a privacy guarantee: the user must inspect the projection. Publishing
-records must never copy executable hooks, rules, skills, plugin config or commands.
+records must never copy executable hooks, rules, skills or plugin config. A runbook
+may include reviewed, redacted command examples as inert text; reading or sharing
+a runbook never executes them or authorizes an assistant to execute them.
 
 Policy remains `share: ask`: every publication previews and confirms its exact
 projection. No category auto-publish rules are approved. A team scope flag, pull
@@ -80,7 +82,12 @@ the same privacy preview as bodies and never include hidden private sections. Re
 ## Sync, visibility and conflicts
 
 `ws sync` explicitly pulls the linked clone and pushes only approved shared
-projections. Preview the remote, direction and changed records before consent.
+projections. Before pushing, inspect the complete outgoing commit range and all
+changed paths: an unrelated or unapproved commit/path blocks the push. A publish
+commit must be built solely from preview-approved projections against the known
+remote head; do not stage arbitrary clone edits or silently replay local commits.
+If the remote advances, require a fresh preview. Preview the remote, direction,
+commit range and changed records before consent.
 Git access is repository-wide; this design does not promise per-record permissions.
 A successful clone or URL spelling cannot prove a repository is private.
 
