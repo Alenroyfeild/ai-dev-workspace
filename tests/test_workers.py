@@ -161,6 +161,7 @@ class WorkerPrepareTests(Base):
         binding = dict(provider='codex', model='fixture', effort='low', available=True, executable='codex', timeout_seconds=10)
         def run(binding, repo, body, receipt=None):
             self.assertNotIn('--sandbox', binding['headless']); self.assertNotIn('-s', binding['headless'])
+            self.assertIn('shell_environment_policy.inherit="none"', binding['headless'])
             self.assertIn('--ignore-user-config', binding['headless']); self.assertIn('default_permissions="worker-private"', binding['headless'])
             (checkout / 'calc.py').write_text('answer = 2\n')
             receipt(json.dumps({'type':'item.completed','item':{'type':'command_execution','command':'python3 -m unittest','exit_code':0}}))
@@ -173,7 +174,7 @@ class WorkerPrepareTests(Base):
         self.assertEqual((self.repo / 'calc.py').read_text(), 'answer = 1\n'); self.assertEqual(self.git('status', '--porcelain'), source)
         profile = (Path(plan['directory']) / 'worker.config.toml').read_text()
         self.assertIn('":minimal" = "read"', profile); self.assertIn('"enabled" = false', profile)
-        self.assertNotIn(str(Path.home() / '.codex'), profile)
+        self.assertNotIn(str(Path.home() / '.codex'), next(line for line in profile.splitlines() if line.startswith('permissions.')))
 
     def test_collection_blocks_ignored_out_of_scope_secrets_binary_and_symlinks(self):
         for name, data in (('ignored.txt', b'ignored change'), ('calc.py', b'api_key=' + b'x'*20), ('calc.py', b'\xffbinary')):

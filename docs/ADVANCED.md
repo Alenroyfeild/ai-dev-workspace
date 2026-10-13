@@ -60,7 +60,9 @@ The run owns `worker.config.toml` and scratch, selects `worker-private` via CLI
 config overrides, ignores user/project configuration and rules, disables hooks,
 apps/plugins and approvals, and uses no legacy sandbox flag. Native tool access is
 limited to runtime/checkout/private Git reads and checkout/scratch writes; network
-is off. Authentication stays with the trusted client, outside worker tool roots.
+is off. Authentication stays with the trusted client, outside worker tool roots. Tool
+environments inherit no parent variables; only PATH, scratch HOME/temp and Git/Python
+controls are passed. The real-client gate must verify this policy too.
 Collection includes ignored/untracked files and deletions in a private Git index,
 records an immutable tree/diff digest and completed command evidence, and blocks
 scope, metadata, symlink, secret, binary-scan, diff-check or claim failures. Output

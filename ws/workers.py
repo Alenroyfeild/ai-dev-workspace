@@ -126,7 +126,9 @@ def _profile(directory):
         if isinstance(v, dict): return '{' + ', '.join(json.dumps(k, ensure_ascii=False) + ' = ' + value(x) for k, x in v.items()) + '}'
         return 'false' if v is False else json.dumps(v, ensure_ascii=False)
     profile = value({'filesystem': rules, 'network': {'enabled': False}})
-    settings = ['default_permissions="worker-private"', 'permissions.worker-private=' + profile,
+    shell = {'PATH': os.environ.get('PATH', ''), 'HOME': str(scratch), 'TMPDIR': str(scratch),
+             'TMP': str(scratch), 'TEMP': str(scratch), 'GIT_OPTIONAL_LOCKS': '0', 'PYTHONNOUSERSITE': '1'}
+    settings = ['shell_environment_policy.inherit="none"', 'shell_environment_policy.set=' + value(shell), 'default_permissions="worker-private"', 'permissions.worker-private=' + profile,
                 'approval_policy="never"', 'web_search="disabled"', 'projects.' + json.dumps(str(checkout), ensure_ascii=False) + '.trust_level="untrusted"']
     core.atomic_write(directory / 'worker.config.toml', '\n'.join(settings) + '\n')
     return [arg for setting in settings for arg in ('-c', setting)]
