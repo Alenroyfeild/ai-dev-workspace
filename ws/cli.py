@@ -441,8 +441,8 @@ def main(argv=None):
                 elif message:
                     out({'systemMessage': message})
             elif message:
-                summary = core.memory_summary(root) if a.hook and a.cmd == 'brief' else ''
-                out({'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if summary else message)
+                summary = core.memory_summary(root) if a.hook and a.cmd == 'brief' and a.client == 'claude' else ''
+                out({'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if a.client == 'claude' and summary else message)
         elif a.cmd == 'connect':
             result = core.connect(root, a.client, a.write, skills=True, verify=True)
             if 'skills' in result:
