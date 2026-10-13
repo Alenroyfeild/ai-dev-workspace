@@ -115,6 +115,7 @@ def text_doctor(report):
         lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls not active yet')
     if report.get('setup'):
         lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
+    for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
@@ -341,7 +342,7 @@ def main(argv=None):
                 print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
                 return 2 if result.get('partial') else 0
             if result:
-                print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected'))
+                print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected') + ('; Codex: manual step pending' if result.get('codex_status') == 'manual step pending' else ''))
                 print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
                 print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
             return 2 if result and result.get('partial') else 0
