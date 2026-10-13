@@ -59,7 +59,16 @@ def exclusions(repo, state):
 def undo(repo, state):
     exclude, block = exclusions(repo, state)
     kept = []
+    config = state['files'].get('.codex/config.toml')
+    backup = '.codex/config.toml.ws-backup'
+    if config and backup in state['files']:
+        target = path(repo, '.codex/config.toml')
+        old = base64.b64decode(config['before']) if config['before'] is not None else None
+        current = target.read_bytes() if target.exists() else None
+        if current is not None and current != old and hashlib.sha256(current).hexdigest() != config['sha']:
+            kept.append(backup)
     for name, entry in list(state['files'].items()):
+        if name in kept: continue
         target = path(repo, name)
         old = base64.b64decode(entry['before']) if entry['before'] is not None else None
         current = target.read_bytes() if target.exists() else None
@@ -90,7 +99,7 @@ def confirm(yes, dry_run):
 
 def codex_files(repo, root):
     target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
-    if re.search(r'^\s*(?:["\']?mcp_servers["\']?\s*[=.]|\[\s*["\']?mcp_servers["\']?\s*(?:\]|\.\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*[\].]))', original.decode('utf-8'), re.M):
+    if re.search(r'^\s*(?:mcp_servers\s*=|mcp_servers\s*\.\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*(?:\.|=)|\[\s*mcp_servers\s*\.\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*\])', original.decode('utf-8'), re.M):
         raise core.WsError('Existing Codex workspace entry; review project config before ws start.')
     desired = {}
     if target.exists():

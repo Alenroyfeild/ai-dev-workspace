@@ -125,6 +125,34 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(config.read_bytes(), original)
         self.assertFalse(config.with_name('config.toml.ws-backup').exists())
 
+    def test_codex_start_allows_unrelated_servers_in_parent_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n[mcp_servers]\nother = { command = "other" }\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn('[mcp_servers.ai-dev-workspace]', config.read_text())
+        self.assertIn('other = { command = "other" }', config.read_text())
+
+    def test_codex_write_installs_global_config_even_when_project_is_connected(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        project = self.repo / '.codex/config.toml'
+        self.assertTrue(project.is_file())
+        with mock.patch.object(Path, 'home', return_value=self.home):
+            result = core.connect(core.find_root(), 'codex', write=True)
+            self.assertTrue(result['connected'])
+            self.assertTrue((self.home / '.codex/config.toml').is_file())
+
+    def test_undo_keeps_backup_when_user_edits_codex_config(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        backup = config.with_name('config.toml.ws-backup')
+        config.write_text(config.read_text() + '# user edit\n')
+        self.assertEqual(self.start('--undo')[0], 2)
+        self.assertIn('# user edit', config.read_text())
+        self.assertEqual(backup.read_bytes(), original)
+
     def old_start(self):
         self.assertEqual(self.start('--yes')[0], 0)
         config = self.repo / '.codex/config.toml'; config.unlink(missing_ok=True)

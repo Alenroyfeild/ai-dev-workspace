@@ -461,12 +461,13 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
                  'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
 
 
-def client_connected(root, client):
+def client_connected(root, client, global_only=False):
     if client == 'copilot': client = 'vscode'
     if client == 'codex':
         cwd = Path.cwd().resolve()
         project = next((p.resolve() for p in read_roots(root)[1:] if p.resolve() == cwd or p.resolve() in cwd.parents), root)
-        for path in (project / '.codex/config.toml', Path.home() / '.codex/config.toml'):
+        paths = (Path.home() / '.codex/config.toml',) if global_only else (project / '.codex/config.toml', Path.home() / '.codex/config.toml')
+        for path in paths:
             text = path.read_text(encoding='utf-8') if path.is_file() else ''
             match = re.search(r'^\[mcp_servers\.(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
             if match: break
@@ -579,7 +580,7 @@ def _connect_config(root, client, write=False):
     server = mcp_command(root)
     if client == 'codex':
         block = codex_mcp_config(root)
-        result = {'client': client, 'connected': client_connected(root, client), 'config': block}
+        result = {'client': client, 'connected': client_connected(root, client, global_only=write), 'config': block}
         if not write or result['connected']:
             return result
         path = Path.home() / '.codex/config.toml'
