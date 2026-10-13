@@ -1329,7 +1329,12 @@ def memory_summary(root):
 
 
 def _is_decision_clause(clause):
-    return bool(re.search(r'\b(decisions?|decided|correction|must|never|always|do not|preserve|avoid|ruled out)\b', clause, re.I))
+    return bool(re.search(r'\b(decided|decisions?|correction|must|never|always|only|do not|return|keep|use|preserve|avoid|ruled out)\b', clause, re.I))
+
+
+def _is_counted_decision_clause(clause):
+    return bool(re.match(r'\s*(?:decision|decided|correction)\s*:', clause, re.I) or
+                re.search(r'\b(decisions?|decided|correction|must|never|always|do not|preserve|avoid|ruled out)\b', clause, re.I))
 
 
 def _is_captured_decision_clause(clause):
@@ -1395,7 +1400,7 @@ def _brief(root):
     for clause in _constraint_clauses(explicit):
         target = decisions if _is_decision_clause(clause) else prose
         target.append(clause)
-    truncated = False; captured_step = ''; plan_warning = ''; remembered = len([d for d in decisions if d.strip()]); unverified_count = 0
+    truncated = False; captured_step = ''; plan_warning = ''; remembered = sum(1 for d in decisions if _is_counted_decision_clause(d)); unverified_count = 0
     if captured:
         memory = captured[-1]
         constraints, separator, step = memory.partition('\nLast assistant summary / next step: ')
