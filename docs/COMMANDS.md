@@ -125,3 +125,13 @@ conflicted copies, stale previews and symlink paths are refused. These commands
 never commit, push or sync: copies remain local pending explicit Git publication.
 The saved privacy consent must still match the linked team; remote visibility is
 not re-queried by these local commands. Redaction is heuristic: inspect the preview.
+
+`ws share <task-ID> --as runbook` requires `status: done` and `scope: team`. It uses
+the same preview gate, redaction and source checks. Steps come from an optional
+Steps section, otherwise saved Evidence and Checks; dead ends from Failures and
+Do not redo; decisions/reasons from explicit Handoff `Decision:` / `Reason:` lines;
+outcome from an optional Outcome section or Handoff `Outcome:` lines. Missing
+details are labelled, never inferred. Raw Handoff prose and captures are excluded.
+The private task is never changed. Runbooks and ordinary task copies have separate
+receipts; `ws unshare <task-ID> --as runbook` removes only the runbook projection.
+Command examples remain inert text; sharing never executes them.
