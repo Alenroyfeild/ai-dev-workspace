@@ -148,11 +148,18 @@ def collect(root, run_id):
                 or any(not isinstance(check, dict) or check.get('exit_code') != 0 for check in checks)):
             raise core.WsError('Collection requires a completed worker run and successful command evidence.')
         if git(checkout, 'rev-parse', 'HEAD') != state['base']: raise core.WsError('Worker changed its pinned Git base.')
+        base_blobs = {}
+        for entry in git(checkout, 'ls-tree', '-r', '-z', state['base']).split('\0'):
+            if entry:
+                spec, name = entry.split('\t', 1); base_blobs[name] = spec.split()[2]
         for p in checkout.rglob('*'):
             if p.is_symlink(): raise core.WsError('Worker introduced a symlink; collection blocked.')
             info = p.stat()
             if not (stat.S_ISREG(info.st_mode) or p.is_dir()): raise core.WsError('Worker introduced a special file; collection blocked before staging.')
-            if stat.S_ISREG(info.st_mode) and info.st_size > 1024 * 1024: raise core.WsError('Changed file exceeds the 1 MiB scan limit.')
+            if stat.S_ISREG(info.st_mode) and info.st_size > 1024 * 1024:
+                name = p.relative_to(checkout).as_posix()
+                if name not in base_blobs or git(checkout, 'hash-object', '--no-filters', '--', name) != base_blobs[name]:
+                    raise core.WsError('Changed file exceeds the 1 MiB scan limit.')
         if any(key.lower().startswith('filter.') for key in git(checkout, 'config', '--includes', '--name-only', '--list').splitlines()):
             raise core.WsError('filter driver configured')
         index = directory / 'collection.index'; index.unlink(missing_ok=True)
