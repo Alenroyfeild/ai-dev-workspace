@@ -144,7 +144,7 @@ def codex_files(repo, root):
     nested = r'(?:\s*\.\s*' + toml_key + r')*'
     top_level = toml_top_level(scan_text)
     root_entry = re.search(r'^\s*' + mcp_key + r'\s*=|^\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*(?:\.|=)', top_level, re.M)
-    server_table = re.search(r'^\s*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + nested + r'\s*\]', scan_text, re.M)
+    server_table = re.search(r'^\s*\[{1,2}\s*' + mcp_key + r'\s*\.\s*' + server_key + nested + r'\s*\]{1,2}', scan_text, re.M)
     if parent_has_server or root_entry or server_table:
         raise core.WsError('Existing Codex workspace entry; review project config before ws start.')
     desired = {}

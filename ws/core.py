@@ -518,26 +518,31 @@ def _toml_literal(text, key):
 
 
 def toml_mask_multiline_strings(text):
-    chars = list(text); quote = None; escaped = False; comment = False; i = 0
+    chars = list(text); quote = None; triple = False; escaped = False; comment = False; i = 0
     while i < len(text):
         char = text[i]
         if comment:
             if char == '\n': comment = False
             else: chars[i] = ' '
         elif quote:
-            if char != '\n': chars[i] = ' '
-            if escaped: escaped = False
+            if triple:
+                if char != '\n': chars[i] = ' '
+                if escaped: escaped = False
+                elif quote == '"' and char == '\\': escaped = True
+                elif text.startswith(quote * 3, i):
+                    for index in range(i, i + 3):
+                        if text[index] != '\n': chars[index] = ' '
+                    quote = None; triple = False; i += 2
+            elif escaped: escaped = False
             elif quote == '"' and char == '\\': escaped = True
-            elif text.startswith(quote * 3, i):
+            elif char == quote: quote = None
+        elif char == '#': comment = True; chars[i] = ' '
+        elif char in '"\'':
+            quote = char; triple = text.startswith(char * 3, i)
+            if triple:
                 for index in range(i, i + 3):
                     if text[index] != '\n': chars[index] = ' '
-                quote = None; i += 2
-        elif char == '#': comment = True; chars[i] = ' '
-        elif char in '"\'' and text.startswith(char * 3, i):
-            quote = char
-            for index in range(i, i + 3):
-                if text[index] != '\n': chars[index] = ' '
-            i += 2
+                i += 2
         i += 1
     return ''.join(chars)
 
@@ -557,7 +562,7 @@ def _toml_has_workspace_entry(text):
     if re.search(r'^[ \t]*' + mcp + r'[ \t]*=[^\n]*\{[^\n]*' + server + r'[ \t]*=', top, re.M): return True
     parent = re.search(r'^[ \t]*\[[ \t]*' + mcp + r'[ \t]*\][ \t]*(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
     if parent and re.search(r'^[ \t]*' + server + r'[ \t]*(?:\.|=)', parent[1], re.M): return True
-    return bool(re.search(r'^[ \t]*\[[ \t]*' + mcp + r'[ \t]*\.[ \t]*' + server + r'(?:[ \t]*\]|[ \t]*\.)', text, re.M))
+    return bool(re.search(r'^[ \t]*\[{1,2}[ \t]*' + mcp + r'[ \t]*\.[ \t]*' + server + r'(?:[ \t]*\]{1,2}|[ \t]*\.)', text, re.M))
 
 
 def client_connected(root, client, global_only=False):
