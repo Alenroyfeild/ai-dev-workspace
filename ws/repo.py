@@ -100,6 +100,7 @@ def confirm(yes, dry_run):
 def codex_files(repo, root):
     target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
     text = original.decode('utf-8')
+    text = re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', lambda m: chr(int(m.group(1) or m.group(2), 16)), text)
     parent = re.search(r'^\s*\[\s*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)\s*\]\s*(.*?)(?=^\s*\[|\Z)', text, re.M | re.S)
     parent_has_server = parent and re.search(r'^\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*(?:\.|=)', parent[1], re.M)
     mcp_key = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
