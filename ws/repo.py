@@ -90,7 +90,7 @@ def confirm(yes, dry_run):
 
 def codex_files(repo, root):
     target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
-    if re.search(r'^(?:mcp_servers\s*=|mcp_servers\.|\[mcp_servers\s*\]|\[mcp_servers\.(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:\]|\.))', original.decode('utf-8'), re.M):
+    if re.search(r'^\s*(?:["\']?mcp_servers["\']?\s*[=.]|\[\s*["\']?mcp_servers["\']?\s*(?:\]|\.\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*[\].]))', original.decode('utf-8'), re.M):
         raise core.WsError('Existing Codex workspace entry; review project config before ws start.')
     desired = {}
     if target.exists():
