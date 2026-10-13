@@ -166,6 +166,16 @@ class StartTests(unittest.TestCase):
             with mock.patch.object(Path, 'cwd', return_value=self.repo):
                 self.assertTrue(core.client_connected(workspace, 'codex'))
 
+    def test_codex_connection_accepts_indented_values_and_honors_indented_disable(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.repo / '.codex/config.toml'
+        block = core.codex_mcp_config(workspace).replace('\nenabled', '\n  enabled').replace('\ncommand', '\n  command').replace('\nargs', '\n  args')
+        config.write_text(block)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+            config.write_text(block.replace('  enabled = true', '  enabled = false'))
+            self.assertFalse(core.client_connected(workspace, 'codex'))
+
     def test_codex_config_keeps_non_bmp_path_as_valid_unicode(self):
         self.assertEqual(self.start('--yes')[0], 0)
         workspace = core.find_root()
@@ -257,7 +267,7 @@ class StartTests(unittest.TestCase):
 
     def test_start_refuses_existing_spaced_toml_workspace_keys(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
-        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n', '["mcp_servers"."ai-dev-workspace"]\ncommand="fixture"\n'):
+        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n', '["mcp_servers"."ai-dev-workspace"]\ncommand="fixture"\n', '"mcp_servers"."ai-dev-workspace".command="fixture"\n'):
             with self.subTest(text=text):
                 config.write_text(text)
                 self.assertEqual(self.start('--yes')[0], 2)
