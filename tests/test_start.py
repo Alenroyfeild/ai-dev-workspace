@@ -175,6 +175,16 @@ class StartTests(unittest.TestCase):
         link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['workspace'] = str(other); link.write_text(json.dumps(state))
         self.assertEqual(self.start('--yes')[0], 2); self.assertFalse(config.exists()); self.assertEqual(core.task_list(other), [])
 
+    def test_start_refuses_existing_spaced_toml_workspace_keys(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n'):
+            with self.subTest(text=text):
+                config.write_text(text)
+                self.assertEqual(self.start('--yes')[0], 2)
+                self.assertEqual(config.read_text(), text)
+                self.assertFalse((self.repo / '.ws-start.json').exists())
+                self.assertFalse((config.parent / 'config.toml.ws-backup').exists())
+
     def test_migration_keeps_a_config_created_after_confirmation(self):
         config, exclude = self.old_start(); write = core.atomic_write
         def edited(target, data):
