@@ -47,3 +47,12 @@ class RunbookTests(unittest.TestCase):
         plan = sharing.preview(self.root, 'task:T1', as_format='runbook')
         for wanted in ('Read queue', 'Bounded retries pass.', 'Avoid infinite loops.', 'Reason: Termination', 'Stable receipts pass.'):
             self.assertIn(wanted, plan['content'])
+
+    def test_runbook_helper_omits_captured_decision_reason_and_outcome(self):
+        text = ('## Handoff\nDecision: Use the bounded queue.\nReason: Terminate retries.\nOutcome: Stable receipts.\n'
+                '<!-- ws:captured:session -->\n### Captured today\nDecision: Use an infinite queue.\n'
+                'Reason: Never stop retrying.\nOutcome: Hidden capture outcome.\n<!-- /ws:captured -->\n')
+        body = sharing._runbook(text, {'status': 'done'})
+        for excluded in ('infinite queue', 'Never stop retrying', 'Hidden capture outcome'):
+            self.assertNotIn(excluded, body)
+        self.assertIn('Use the bounded queue', body); self.assertIn('Stable receipts', body)
