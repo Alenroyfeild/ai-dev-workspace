@@ -238,6 +238,10 @@ def main(argv=None):
     s = sub.add_parser('scope', help='read or change local record sharing eligibility; never publishes')
     s.add_argument('item'); s.add_argument('value', nargs='?', choices=('private', 'team'))
     s.add_argument('--expected-sha', help='refuse if the record changed since inspection')
+    for command in ('share', 'unshare'):
+        s = sub.add_parser(command, help='preview a local team copy or its removal')
+        s.add_argument('item'); s.add_argument('--author', default='local')
+        s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink')); s.add_argument('remote', nargs='?', default='')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
@@ -277,6 +281,9 @@ def main(argv=None):
 
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
     s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
+    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    s = sub.add_parser('know', help='save standalone knowledge').add_subparsers(dest='action', required=True).add_parser('add')
+    s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
 
     s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
@@ -286,6 +293,7 @@ def main(argv=None):
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
     s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
+    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
     s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
@@ -396,6 +404,16 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        def share_gate(item, remove=False):
+            from . import sharing
+            plan = sharing.preview(root, item, remove, getattr(a, 'author', 'local')); out(plan)
+            if getattr(a, 'dry_run', False) or plan['unchanged']: return
+            if not a.yes:
+                print('Apply this exact local team preview? [y/N]')
+                if input().strip().lower() not in ('y', 'yes'): return
+            out(sharing.apply(root, plan))
+        if a.cmd in ('share', 'unshare'):
+            share_gate(a.item, a.cmd == 'unshare'); return 0
         if a.cmd == 'scope':
             from . import scope
             out(scope.record(root, a.item, a.value, a.expected_sha)); return 0
@@ -556,10 +574,20 @@ def main(argv=None):
         elif a.cmd == 'remember':
             result = core.remember(root, a.text, a.task)
             out(f"Remembered in {result['task']}: {result['remembered']}" if human() else result)
+            if a.team:
+                from . import sharing
+                share_gate(sharing.standalone(root, 'decision', a.text))
+        elif a.cmd == 'know':
+            from . import sharing
+            item = sharing.standalone(root, 'knowledge', a.text, a.team); out({'saved': item})
+            if a.team: share_gate(item)
         elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query))
         elif a.cmd == 'lesson':
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
+            if a.action == 'add' and a.team:
+                from . import sharing
+                share_gate(sharing.standalone(root, 'lesson', a.text))
         elif a.cmd == 'feedback':
             if a.action == 'add': out(core.feedback_add(root, a.text, a.kind, a.source))
             elif a.action == 'submit': out(core.feedback_submit(root, a.n, a.yes))
