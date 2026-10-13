@@ -125,6 +125,7 @@ def upgrade_codex(repo, root, state, yes, dry_run):
         record_before = path(repo, LINK).read_bytes()
         if not confirm(yes, dry_run): return False
         if path(repo, LINK).read_bytes() != record_before: raise core.WsError('Setup record changed during confirmation; review it before retrying ws start.')
+        if not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
         state['codex_status'] = 'manual step pending'
         if not dry_run:
             if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK], text=True).strip(): raise core.WsError('Start will not change its tracked setup record.')
@@ -244,6 +245,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     if not root.exists(): outside |= {p.relative_to(core.KIT / 'template').as_posix() for p in (core.KIT / 'template').rglob('*') if p.is_file()} - {'routing-presets.json'} | set(upgrade.skills()) | set(upgrade.pointer_files()) | {'workspace.json', 'routing.json', 'vault/Project/Codebase map.md'}
     for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
     if not confirm(yes, dry_run): return None
+    if '.codex/config.toml' not in desired and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
     tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
