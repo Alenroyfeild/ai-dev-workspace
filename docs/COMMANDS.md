@@ -107,3 +107,21 @@ workspace policy and the only supported policy; category auto-publish rules are
 not approved. Team scope is eligibility, never consent to copy, commit or push.
 No Git operation or remote access occurs here; share/unshare arrives separately.
 `ws start` creates `.codex/config.toml` only when absent, with the existing local undo record. If global Codex configuration already connects this workspace, start/doctor report connected and skip project config/manual paste. Otherwise existing project config is never parsed or edited: it prints the exact MCP block and destination, and start/doctor show **manual step pending**. Review and paste the block yourself; this status is conservative and remains pending. Legacy `ws connect codex --write` still explicitly edits global config with a backup. [Codex project config docs](https://learn.chatgpt.com/docs/config-file/config-basic).
+
+## Selected team copies
+
+`ws share task|decision|lesson|knowledge:<ID> [--dry-run] [--author alias]` previews the
+redacted content, omissions, destination and diff, then asks once (`--yes` confirms
+that preview). Select `scope: team` first with `ws scope`; scope alone never copies.
+Task copies include Objective, Next action and Blockers; inline Handoff decisions
+and automatic captures stay private. `ws remember --team`, `ws lesson add --team`
+and `ws know add --team` create standalone records from only the selected text and
+use the same gate. Declining retains the private save and standalone source.
+`ws know add "text"` without `--team` saves private standalone knowledge.
+
+`ws unshare <item>` previews removal of the local approved copy, keeps the private
+original and warns that Git history and teammates' copies retain it. Changed or
+conflicted copies, stale previews and symlink paths are refused. These commands
+never commit, push or sync: copies remain local pending explicit Git publication.
+The saved privacy consent must still match the linked team; remote visibility is
+not re-queried by these local commands. Redaction is heuristic: inspect the preview.
