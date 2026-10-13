@@ -58,7 +58,10 @@ def observe(root, payload):
             current = core.sole_local_claim(root)
             if current:
                 bindings = data.setdefault('session_tasks', {}); sid = core.digest_text(str(payload['session_id']))
-                bindings[sid] = current if bindings.get(sid, current) == current else ''
+                previous = bindings.pop(sid, current)
+                bindings[sid] = current if previous == current else ''
+                while len(bindings) > 200:
+                    del bindings[next(iter(bindings))]
             for task in core.task_list(root):
                 if task['id'] != current:
                     continue

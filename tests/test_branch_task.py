@@ -147,3 +147,24 @@ class BranchTaskTests(unittest.TestCase):
         with mock.patch('sys.stdin', io.StringIO(json.dumps(stop))), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(['--workspace-root', str(self.root), 'nudge', '--hook', '--client', 'codex']), 0)
         self.assertEqual(before, core.task_path(self.root, second).read_bytes())
+
+    def test_session_bindings_keep_recent_200_and_fail_closed_after_eviction(self):
+        from ws import assist
+        self.hook()
+        task = core.sole_local_claim(self.root)
+        def start(session):
+            assist.observe(self.root, {'hook_event_name': 'SessionStart', 'session_id': session})
+        for i in range(200):
+            start(str(i))
+        start('0')  # Refresh an existing binding before the next insertion.
+        start('200')
+        self.assertEqual(len(assist.state(self.root)['session_tasks']), 200)
+        self.assertEqual(assist.session_task(self.root, '0'), task)
+        self.assertEqual(assist.session_task(self.root, '1'), '')
+        self.assertEqual(assist.session_task(self.root, '200'), task)
+        data = assist.state(self.root)
+        data['session_tasks'][core.digest_text('0')] = ''
+        assist.save(self.root, data)
+        start('0')
+        self.assertEqual(assist.session_task(self.root, '0'), '')
+        self.assertEqual(len(assist.state(self.root)['session_tasks']), 200)
