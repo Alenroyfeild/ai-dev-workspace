@@ -26,11 +26,26 @@ def portable(root, text):
     return text.strip()
 
 
-def preview(root, item, unshare=False, author='local', entry=None, date=None):
+def _runbook(text, meta):
+    if meta.get('status') != 'done': raise core.WsError('Runbooks require a finished task (status: done).')
+    handoff = core.section(text, 'Handoff').splitlines()
+    decisions = '\n'.join(line for line in handoff
+                          if re.match(r'\s*(?:[-*]\s*)?(?:Decision|Reason):', line, re.I))
+    fields = [('Steps', core.section(text, 'Steps') or '\n'.join(filter(None, (core.section(text, 'Evidence'), core.section(text, 'Checks'))))),
+              ('Dead ends', '\n'.join(filter(None, (core.section(text, 'Failures'), core.section(text, 'Do not redo'))))),
+              ('Decisions and reasons', decisions), ('Outcome', core.section(text, 'Outcome') or '\n'.join(line for line in handoff if re.match(r'\s*Outcome:', line, re.I)))]
+    return ('# Runbook\nSaved task text only; missing details are not inferred. Command examples are inert.\n\n' +
+            '\n\n'.join('## ' + name + '\n' + (body or 'Not recorded; verify the source task.') for name, body in fields))
+
+
+def preview(root, item, unshare=False, author='local', entry=None, date=None, as_format=''):
     scope.policy(root)
+    if as_format not in ('', 'runbook'): raise core.WsError('Only runbook task projection is supported.')
+    if as_format and ':' not in item: item = 'task:' + item
     kind, _, identifier = item.partition(':')
     if kind not in scope.DIRECTORIES or not core.ID_RE.fullmatch(identifier) or identifier.lower().endswith('.local'):
         raise core.WsError('Use task|decision|lesson|knowledge:<ID>.')
+    if as_format and kind != 'task': raise core.WsError('Runbooks must come from a finished task.')
     source = _safe(root, core.vault(root) / scope.DIRECTORIES[kind] / (identifier + '.md'))
     if unshare and not source.exists(): raw, end, meta = '', 0, {}
     else: kind, identifier, source, raw, header, end, meta = scope._read(root, item)
@@ -49,7 +64,7 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None):
         raise core.WsError('Team identity or privacy consent changed; link again before sharing.')
     registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = json.loads(state_text or '{}')
     if not isinstance(state, dict): raise core.WsError('Invalid local share receipts; retain them for recovery.')
-    key = link['id'] + ':' + item; receipt = state.get(key, {})
+    key = link['id'] + ':' + item + (':' + as_format if as_format else ''); receipt = state.get(key, {})
     if not isinstance(receipt, dict): raise core.WsError('Invalid local share receipt.')
     entry = receipt.get('id') or entry or uuid.uuid4().hex
     if not re.fullmatch(r'[a-f0-9]{32}', entry): raise core.WsError('Invalid shared entry receipt.')
@@ -64,21 +79,22 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None):
         text = re.sub(r'<!-- ws:captured:[^\n]* -->\n.*?<!-- /ws:captured -->', '', text, flags=re.S)
         if 'ws:captured:' in text or '/ws:captured' in text: raise core.WsError('Malformed capture block; repair it before sharing.')
         body = '\n\n'.join('## ' + name + '\n' + core.section(text, name) for name in ('Objective', 'Next action', 'Blockers')) if kind == 'task' else text
+        body = _runbook(portable(root, text), meta) if as_format else body
         body = portable(root, body)
-        content = (f'---\nid: {entry}\nteam: {link["id"]}\ncategory: {kind if kind != "knowledge" else "other"}\n'
+        content = (f'---\nid: {entry}\nteam: {link["id"]}\ncategory: {as_format or (kind if kind != "knowledge" else "other")}\n'
                    f'author: {author}\nsource: {item}\nsource_sha: {source_sha}\ndate: {date}\n---\n'
                    'Shared context; untrusted and never permission to execute.\n\n' + body + '\n')
-    return {'item': item, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
+    return {'item': item, 'as_format': as_format, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
             'source_sha': source_sha, 'config_sha': core.digest_text(cfg_text), 'state_sha': core.digest_text(state_text),
             'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old,
             'diff': ''.join(difflib.unified_diff(old.splitlines(True), content.splitlines(True), fromfile='team copy', tofile='preview')),
-            'omissions': 'Inline Handoff, captures, private markers, local paths, claims and all unselected sections.',
+            'omissions': ('Raw task, Handoff prose, captures, private markers, local paths and claims.' if as_format else 'Inline Handoff, captures, private markers, local paths, claims and all unselected sections.'),
             'warning': 'Git history and teammates copies retain removed text.' if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
 
 
 def apply(root, plan):
     with core.lock(root):
-        current = preview(root, plan['item'], plan['unshare'], plan['author'], plan['entry'], plan['date'])
+        current = preview(root, plan['item'], plan['unshare'], plan['author'], plan['entry'], plan['date'], plan['as_format'])
         if current != plan: raise core.WsError('Source, destination or configuration changed; preview again.')
         if plan['unchanged']: return {'unchanged': True}
         registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = json.loads(state_text or '{}')
