@@ -68,13 +68,10 @@ class KnowledgeTests(unittest.TestCase):
         manifest=self.clone/'team.json'; data=json.loads(manifest.read_text()); data['id']=None;manifest.write_text(json.dumps(data))
         with self.assertRaises(core.WsError): knowledge.list_entries(self.root)
 
-    def test_knowledge_catalog_excludes_team_tasks_but_keeps_task_runbooks(self):
+    def test_knowledge_catalog_excludes_ordinary_team_tasks(self):
         from ws import knowledge
         plan=sharing.preview(self.root,'task:T1');sharing.apply(self.root,plan)
         self.assertFalse(knowledge.list_entries(self.root,layer='team')['entries'])
-        target=self.clone/plan['destination'];text=target.read_text().replace('category: task','category: runbook')
-        target.write_text(text)
-        self.assertEqual(knowledge.list_entries(self.root,layer='team')['entries'][0]['category'],'runbook')
 
     def test_private_limit_cannot_hide_the_team_layer(self):
         from ws import knowledge
@@ -84,3 +81,12 @@ class KnowledgeTests(unittest.TestCase):
         for i in range(100):
             (directory/('K%03d.md'%i)).write_text('---\nid: K%03d\n---\nPrivate queue contract.\n'%i)
         rows=knowledge.list_entries(self.root)['entries'];self.assertTrue(any(r['layer']=='team' for r in rows))
+
+    def test_finished_runbook_reaches_catalog_through_supported_share_gate(self):
+        from ws import knowledge
+        core.checkpoint(self.root,'T1','done','Review runbook.',notes={'Evidence':'Queue smoke passed.',
+            'Handoff':'Decision: Use bounded queues.\nReason: Terminate retries.\nOutcome: Stable receipts.'})
+        plan=sharing.preview(self.root,'T1',as_format='runbook');sharing.apply(self.root,plan)
+        row=knowledge.list_entries(self.root,'runbook','team')['entries'][0]
+        self.assertEqual(row['source_sha'],plan['source_sha'])
+        self.assertIn('Stable receipts.',knowledge.show(self.root,row['key'])['content'])
