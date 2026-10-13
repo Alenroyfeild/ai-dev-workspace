@@ -254,6 +254,25 @@ class StartTests(unittest.TestCase):
                 core._connect_config(core.find_root(), 'codex', write=True)
         self.assertEqual(config.read_bytes(), before)
 
+    def test_project_codex_parent_entry_blocks_global_connected_fallback(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); project = self.repo / '.codex/config.toml'; project.parent.mkdir(exist_ok=True)
+        project.write_text('[mcp_servers]\nai-dev-workspace = { enabled = false, command = "other", args = [] }\n')
+        global_config = self.home / '.codex/config.toml'; global_config.parent.mkdir()
+        global_config.write_text(core.codex_mcp_config(workspace))
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertFalse(core.client_connected(workspace, 'codex'))
+
+    def test_global_codex_write_refuses_quoted_root_server_table(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        config.write_text('"mcp_servers" = { "ai-dev-workspace" = { enabled = false } }\n')
+        before = config.read_bytes()
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(core.find_root(), 'codex', write=True)
+        self.assertEqual(config.read_bytes(), before)
+
     def test_undo_keeps_backup_when_user_edits_codex_config(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
         original = b'model = "fixture"\n'
