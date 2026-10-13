@@ -199,3 +199,22 @@ class WorkerPrepareTests(Base):
                 result = workers._launch(self.root, plan['id'])
             self.assertEqual(result['state'], 'needs-review'); self.assertTrue(result['blocked'])
             self.assertFalse(result['usage']['known'])
+
+    def test_collection_rejects_fifo_before_staging(self):
+        if not hasattr(os, 'mkfifo'): self.skipTest('POSIX FIFO fixture')
+        plan = self.prepare(apply=True); os.mkfifo(Path(plan['checkout']) / 'fifo')
+        original = workers.git
+        def guarded(repo, *args, **kwargs):
+            if args[0] == 'add': raise AssertionError('special file reached staging')
+            return original(repo, *args, **kwargs)
+        with mock.patch('ws.workers.git', side_effect=guarded):
+            self.assertTrue(workers.collect(self.root, plan['id'])['blocked'])
+
+    def test_collection_records_invalid_utf8_git_output_as_blocked(self):
+        plan = self.prepare(apply=True); original = workers.git
+        def invalid(repo, *args, **kwargs):
+            if '--name-only' in args: raise UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'fixture')
+            return original(repo, *args, **kwargs)
+        with mock.patch('ws.workers.git', side_effect=invalid): result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertEqual(result['state'], 'needs-review')
+        self.assertTrue(json.loads(Path(plan['record']).read_text())['blocked'])

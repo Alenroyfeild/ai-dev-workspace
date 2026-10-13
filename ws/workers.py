@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import stat
 import subprocess
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from . import core, orchestration
@@ -140,6 +141,7 @@ def collect(root, run_id):
         if git(checkout, 'rev-parse', 'HEAD') != state['base']: raise core.WsError('Worker changed its pinned Git base.')
         for p in checkout.rglob('*'):
             if p.is_symlink(): raise core.WsError('Worker introduced a symlink; collection blocked.')
+            if not (stat.S_ISREG(p.stat().st_mode) or p.is_dir()): raise core.WsError('Worker introduced a special file; collection blocked before staging.')
         index = directory / 'collection.index'; index.unlink(missing_ok=True)
         extra = {'GIT_INDEX_FILE': str(index)}
         git(checkout, 'read-tree', state['base'], env_extra=extra)
