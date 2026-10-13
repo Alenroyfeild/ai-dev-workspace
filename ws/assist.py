@@ -55,8 +55,12 @@ def observe(root, payload):
         data = state(root)
         if payload.get('hook_event_name') in ('SessionStart', 'sessionStart') and payload.get('session_id'):
             data.pop('long_session_bytes', None)
+            current = core.sole_local_claim(root)
+            if current:
+                bindings = data.setdefault('session_tasks', {}); sid = core.digest_text(str(payload['session_id']))
+                bindings[sid] = current if bindings.get(sid, current) == current else ''
             for task in core.task_list(root):
-                if not task['claimed_by']:
+                if task['id'] != current:
                     continue
                 meta = core.task_read(root, task['id'], ['Next action'])['meta']
                 count = meta.get('checkpoint_count', '0')
@@ -72,6 +76,14 @@ def observe(root, payload):
         except OSError:
             pass
         save(root, data)
+
+
+def session_task(root, session_id):
+    if not session_id: return None  # Legacy hooks without a session ID retain claim selection.
+    try:
+        sid = core.digest_text(str(session_id))
+        return state(root).get('session_tasks', {}).get(sid, '')
+    except (OSError, ValueError, AttributeError): return ''  # Unknown bindings cannot authorize capture.
 
 
 def feature_suggestions(root, add):

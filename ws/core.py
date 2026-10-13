@@ -1460,10 +1460,10 @@ def brief(root, task_id=None):
     return _bounded_brief(fields, truncated)
 
 
-def capture_decisions(root, transcript_path, client='claude'):
+def capture_decisions(root, transcript_path, client='claude', task_id=None):
     """Capture bounded, unverified transcript memory to a locally owned task."""
     with lock(root):
-        reason = _capture_decisions(root, transcript_path, client)
+        reason = _capture_decisions(root, transcript_path, client, task_id)
         outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
         health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
                   'outcome': outcome, 'reason': reason}
@@ -1474,7 +1474,7 @@ def capture_decisions(root, transcript_path, client='claude'):
     return reason == 'captured'
 
 
-def _capture_decisions(root, transcript_path, client):
+def _capture_decisions(root, transcript_path, client, task_id=None):
     if not isinstance(transcript_path, str) or not transcript_path:
         return 'missing_transcript_path'
     try:
@@ -1535,7 +1535,9 @@ def _capture_decisions(root, transcript_path, client):
     block = marker + '\n### Captured ' + now()[:10] + ' (unverified transcript)\n' + body + '\n<!-- /ws:captured -->\n'
     owned = []
     for task in task_list(root):
-        if not _on_current_branch(root, task): continue
+        if task_id is not None:
+            if task['id'] != task_id: continue
+        elif not _on_current_branch(root, task): continue
         worker, token = _claim_defaults(root, task['id'], None, None)
         path = task_path(root, task['id'])
         text = path.read_bytes().decode('utf-8')
