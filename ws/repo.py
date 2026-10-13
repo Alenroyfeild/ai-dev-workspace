@@ -121,6 +121,10 @@ def codex_pending(root):
 def upgrade_codex(repo, root, state, yes, dry_run):
     desired = codex_files(repo, root)
     if not desired:
+        if state.get('codex_status') == 'manual step pending': return True
+        record_before = path(repo, LINK).read_bytes()
+        if not confirm(yes, dry_run): return False
+        if path(repo, LINK).read_bytes() != record_before: raise core.WsError('Setup record changed during confirmation; review it before retrying ws start.')
         state['codex_status'] = 'manual step pending'
         if not dry_run:
             if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK], text=True).strip(): raise core.WsError('Start will not change its tracked setup record.')
