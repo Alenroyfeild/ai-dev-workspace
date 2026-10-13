@@ -486,6 +486,7 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
 
 
 def _toml_has_workspace_entry(text):
+    text = re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', lambda m: chr(int(m.group(1) or m.group(2), 16)), text)
     mcp = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
     server = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
     top = re.split(r'^[ \t]*\[', text, maxsplit=1, flags=re.M)[0]
