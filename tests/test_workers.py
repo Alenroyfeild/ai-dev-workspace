@@ -264,3 +264,21 @@ class WorkerPrepareTests(Base):
             return result
         with mock.patch('ws.workers.git', side_effect=changed): result = workers.collect(self.root, plan['id'])
         self.assertTrue(result['blocked']); self.assertEqual(result['secret_files'], ['calc.py'])
+
+    def test_collection_blocks_any_configured_filter_before_staging(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan)
+        workers.git(Path(plan['checkout']), 'config', 'filter.fixture.clean', 'fixture-unused')
+        with mock.patch('ws.workers.git', wraps=workers.git) as calls: result = workers.collect(self.root, plan['id'])
+        self.assertFalse(any(c.args[1] == 'add' for c in calls.call_args_list))
+        self.assertTrue(result['blocked']); self.assertIn('filter driver configured', result['reason'])
+
+    def test_failed_repeat_collection_clears_snapshot_and_check_fields(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan)
+        (Path(plan['checkout']) / 'calc.py').write_bytes(b'answer = 2\n')
+        first = workers.collect(self.root, plan['id']); self.assertFalse(first['blocked'])
+        self.assertTrue(first['tree']); self.assertTrue(first['diff_sha']); self.assertTrue(first['checks'])
+        (Path(plan['checkout']) / 'ignored.txt').write_bytes(b'outside scope')
+        failed = workers.collect(self.root, plan['id']); self.assertTrue(failed['blocked'])
+        record = json.loads(Path(plan['record']).read_text())
+        for field in ('tree', 'diff_sha', 'checks'):
+            self.assertNotIn(field, failed); self.assertNotIn(field, record)

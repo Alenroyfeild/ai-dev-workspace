@@ -138,10 +138,11 @@ def _profile(directory):
 def collect(root, run_id):
     """Lead-side snapshot; no approval or source-repo changes."""
     directory, state = _record(root, run_id); checkout = directory / 'checkout'
-    reasons = []; changed = []; secrets = []; binary = []
+    reasons = []; changed = []; secrets = []; binary = []; snapshot = {}
+    checks = state.pop('checks', None)
+    for field in ('tree', 'diff_sha'): state.pop(field, None)
     try:
         _claim(root, state)
-        checks = state.get('checks')
         if (not state.get('started_at') or not state.get('finished_at') or state.get('worker_exit') != 0
                 or not isinstance(checks, list) or not checks
                 or any(not isinstance(check, dict) or check.get('exit_code') != 0 for check in checks)):
@@ -150,6 +151,8 @@ def collect(root, run_id):
         for p in checkout.rglob('*'):
             if p.is_symlink(): raise core.WsError('Worker introduced a symlink; collection blocked.')
             if not (stat.S_ISREG(p.stat().st_mode) or p.is_dir()): raise core.WsError('Worker introduced a special file; collection blocked before staging.')
+        if any(key.lower().startswith('filter.') for key in git(checkout, 'config', '--includes', '--name-only', '--list').splitlines()):
+            raise core.WsError('filter driver configured')
         index = directory / 'collection.index'; index.unlink(missing_ok=True)
         extra = {'GIT_INDEX_FILE': str(index)}
         git(checkout, 'read-tree', state['base'], env_extra=extra)
@@ -174,11 +177,11 @@ def collect(root, run_id):
                 if core.redact(text) != text: secrets.append(name)
         if secrets: reasons.append('Secret scan flagged changed files.')
         if binary: reasons.append('Binary changed files cannot be secret-scanned in v1.')
-        state.update(tree=tree, changed=changed, secret_files=secrets, binary_files=binary)
+        state.update(changed=changed, secret_files=secrets, binary_files=binary)
         diff = git(checkout, 'diff', '--cached', '--binary', '--no-ext-diff', '--no-textconv', state['base'], '--', env_extra=extra, binary=True)
         if len(diff) > 2 * 1024 * 1024: raise core.WsError('Worker diff exceeds the 2 MiB review limit.')
         core.atomic_write(directory / 'diff.patch', core.redact(diff.decode('utf-8', errors='replace')).encode('utf-8'))
-        state['diff_sha'] = hashlib.sha256(diff).hexdigest()
+        snapshot = dict(tree=tree, diff_sha=hashlib.sha256(diff).hexdigest(), checks=checks)
         try: git(checkout, 'diff', '--cached', '--check', state['base'], '--', env_extra=extra)
         except core.WsError: raise core.WsError('Worker diff whitespace check failed.')
     except (core.WsError, OSError, UnicodeError) as error: reasons.append(core.redact(str(error)))
@@ -186,6 +189,7 @@ def collect(root, run_id):
     with core.lock(root):
         try: _claim(root, state)
         except core.WsError as error: state.update(blocked=True, reason=str(error))
+        if not state['blocked']: state.update(snapshot)
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     return {k: v for k, v in state.items() if k not in ('claim_token', 'claimed_by')}
 
