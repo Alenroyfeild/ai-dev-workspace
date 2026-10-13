@@ -329,10 +329,12 @@ class StartTests(unittest.TestCase):
 
     def test_start_refuses_malformed_codex_toml_without_modifying_it(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
-        original = b'[mcp_servers\ncommand = "unfinished header"\n'; config.write_bytes(original)
-        self.assertEqual(self.start('--yes')[0], 2)
-        self.assertEqual(config.read_bytes(), original)
-        self.assertFalse((self.repo / '.ws-start.json').exists())
+        for original in (b'[mcp_servers\ncommand = "unfinished header"\n', b'model =\n'):
+            with self.subTest(original=original):
+                config.write_bytes(original)
+                self.assertEqual(self.start('--yes')[0], 2)
+                self.assertEqual(config.read_bytes(), original)
+                self.assertFalse((self.repo / '.ws-start.json').exists())
 
     def test_global_codex_write_finds_workspace_key_after_nested_array_value(self):
         self.assertEqual(self.start('--yes')[0], 0)
@@ -429,6 +431,19 @@ class StartTests(unittest.TestCase):
             self.assertEqual(self.start()[0], 2)
         self.assertEqual(config.read_text(), 'model = "created during prompt"\n')
         self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_undo_recovers_when_setup_stops_after_codex_backup_write(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'model = "fixture"\n'; config.write_bytes(original); backup = config.with_name('config.toml.ws-backup')
+        write = core.atomic_write
+        def interrupted(target, data):
+            if Path(target).resolve() == config.resolve(): raise OSError('fixture interrupted after backup')
+            return write(target, data)
+        with mock.patch('ws.repo.core.atomic_write', side_effect=interrupted): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(backup.read_bytes(), original)
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(config.read_bytes(), original)
+        self.assertFalse(backup.exists())
 
     def test_start_does_not_overwrite_record_created_during_confirmation(self):
         record = self.repo / '.ws-start.json'

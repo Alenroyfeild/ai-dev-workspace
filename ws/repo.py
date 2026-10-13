@@ -110,13 +110,15 @@ def toml_top_level(text):
 
 def validate_toml_structure(text):
     masked = core.toml_mask_multiline_strings(text); arrays = 0; tables = 0; quote = None; escaped = False
-    for line in masked.splitlines():
+    for line, source in zip(masked.splitlines(), text.splitlines()):
         stripped = line.strip()
         if arrays == 0 and tables == 0 and stripped:
             if stripped.startswith('['):
                 if not re.match(r'^\[{1,2}\s*[^\[\]]+\s*\]{1,2}\s*(?:#.*)?$', stripped):
                     raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
             elif '=' not in stripped:
+                raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+            elif not source.split('=', 1)[1].strip() or source.split('=', 1)[1].lstrip().startswith('#'):
                 raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
         for char in line:
             if quote:
