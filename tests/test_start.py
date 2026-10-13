@@ -163,6 +163,7 @@ class StartTests(unittest.TestCase):
         with mock.patch('ws.core.mcp_command', return_value=server):
             config = self.repo / '.codex/config.toml'
             config.write_text(core.codex_mcp_config(workspace))
+            config.write_text(config.read_text().replace('args = ["/tmp/a]b/server.py"]', 'args = [\n  # fixture comment\n  "/tmp/a]b/server.py", # trailing comment\n]'))
             with mock.patch.object(Path, 'cwd', return_value=self.repo):
                 self.assertTrue(core.client_connected(workspace, 'codex'))
 
@@ -260,6 +261,13 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / '.ws-start.json').exists())
         self.assertEqual(config.read_text(), 'model="fixture"\n'); self.assertFalse((self.home / '.ai-dev-workspace').exists())
 
+    def test_codex_start_rejects_backup_even_without_config(self):
+        backup = self.repo / '.codex/config.toml.ws-backup'; backup.parent.mkdir()
+        backup.write_text('Saved user config\n')
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(backup.read_text(), 'Saved user config\n')
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
     def test_migration_refuses_a_link_to_another_workspace(self):
         config, _ = self.old_start(); other = self.home / 'other'; core.init(other, 'other', clients=[])
         link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['workspace'] = str(other); link.write_text(json.dumps(state))
@@ -267,7 +275,7 @@ class StartTests(unittest.TestCase):
 
     def test_start_refuses_existing_spaced_toml_workspace_keys(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
-        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n', '["mcp_servers"."ai-dev-workspace"]\ncommand="fixture"\n', '"mcp_servers"."ai-dev-workspace".command="fixture"\n'):
+        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n', '["mcp_servers"."ai-dev-workspace"]\ncommand="fixture"\n', '"mcp_servers"."ai-dev-workspace".command="fixture"\n', '"mcp_servers" = { other = { command = "other" } }\n'):
             with self.subTest(text=text):
                 config.write_text(text)
                 self.assertEqual(self.start('--yes')[0], 2)
