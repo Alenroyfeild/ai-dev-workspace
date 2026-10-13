@@ -1,6 +1,7 @@
 ---
 id: {{id}}
 status: ready
+scope: private
 created: {{date}}
 updated: {{date}}
 branch:
