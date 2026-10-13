@@ -235,6 +235,9 @@ def main(argv=None):
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
     s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep private memory')
+    s = sub.add_parser('scope', help='read or change local record sharing eligibility; never publishes')
+    s.add_argument('item'); s.add_argument('value', nargs='?', choices=('private', 'team'))
+    s.add_argument('--expected-sha', help='refuse if the record changed since inspection')
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink')); s.add_argument('remote', nargs='?', default='')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
@@ -393,6 +396,9 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        if a.cmd == 'scope':
+            from . import scope
+            out(scope.record(root, a.item, a.value, a.expected_sha)); return 0
         if a.cmd == 'team':
             from . import team
             plan = team.manage(root, a.action, a.remote, attest=a.attest_private,

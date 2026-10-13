@@ -173,7 +173,7 @@ def read_roots(root):
 MAX_READ_BYTES = 50 * 1024 * 1024
 
 
-def read_text(path, roots=None, errors='replace'):
+def read_text(path, roots=None, errors='replace', preserve_newlines=False):
     try:
         path = (inside(path, roots) if roots is not None else Path(path).expanduser()).resolve()
         info = path.stat()
@@ -183,7 +183,8 @@ def read_text(path, roots=None, errors='replace'):
             if not stat.S_ISREG(os.fstat(source.fileno()).st_mode): raise WsError('Non-regular file refused; run ws doctor.')
             data = source.read(MAX_READ_BYTES + 1)
         if len(data) > MAX_READ_BYTES: raise WsError('Read exceeds 50 MB; run ws digest on a smaller file.')
-        return data.decode('utf-8', errors=errors).replace('\r\n', '\n')  # CRLF from Windows editors must not hide frontmatter
+        text = data.decode('utf-8', errors=errors)
+        return text if preserve_newlines else text.replace('\r\n', '\n')  # Default reads recognize Windows frontmatter.
     except (OSError, RuntimeError):
         raise WsError('File cannot be read safely; check the path, then run ws doctor.')
 
@@ -294,7 +295,7 @@ def init(target, name, packs=(), repos=(), clients=None):
         rules = pack_rules(rules, pack)
     write_preserving(target / 'AGENTS.md', rules.encode(), collisions)
     cfg = {'schema_version': 2, 'kit_version': kit_meta()['version'], 'content_version': upgrade.fingerprint(target), 'upgrade_pending': [], 'name': name, 'vault': 'vault', 'packs': list(packs),
-           'repos': [str(Path(r).expanduser().resolve()) for r in repos], 'created': now()}
+           'repos': [str(Path(r).expanduser().resolve()) for r in repos], 'created': now(), 'share': 'ask'}
     # Claude Code reads the project .mcp.json; other detected clients are connected or previewed.
     connections = [connect(target, client) for client in (['claude'] if clients is None else clients)]
     for connection in connections:
@@ -906,7 +907,7 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
         raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
     template = (vault(root) / 'Templates' / 'Task.md').read_text(encoding='utf-8')
     text = template.replace('{{id}}', task_id).replace('{{title}}', title).replace('{{date}}', now()[:10])
-    text = set_meta(text, {'branch': branch, 'repo': repo})
+    text = set_meta(text, {'branch': branch, 'repo': repo, 'scope': 'private'})
     if objective:
         text = set_section(text, 'Objective', redact(objective))
     with lock(root):

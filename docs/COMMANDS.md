@@ -91,3 +91,18 @@ the pull preference noninteractively. Automatic pulls/scheduling are not active 
 T1; publishing is never authorized by pull consent. Doctor labels verified versus
 attested privacy. `ws team unlink` preserves `.ws/team` and all private records;
 move the retained clone yourself before a new link. No installs or assistant runs.
+
+### Local sharing scope (T2)
+
+`ws scope task:<ID>` reads scope; `ws scope task:<ID> team` (or `private`) changes
+only that record's frontmatter. `decision:`, `lesson:` and `knowledge:` select
+standalone files in vault/Decisions, vault/Lessons and vault/Knowledge. Their flat
+frontmatter must include `id: <ID>`; missing scope means private. Inline Handoff
+decisions and legacy Learnings.md lines stay private; this command does not convert
+them. New tasks explicitly start private. Notes, `.local.md` files and symlinked
+records/directories are ineligible. Claimed tasks require the matching local claim.
+`--expected-sha <sha>` protects changes after inspection. Record text outside the
+frontmatter stays intact, including line endings. `share: ask` is the default
+workspace policy and the only supported policy; category auto-publish rules are
+not approved. Team scope is eligibility, never consent to copy, commit or push.
+No Git operation or remote access occurs here; share/unshare arrives separately.
