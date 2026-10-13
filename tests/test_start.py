@@ -291,6 +291,14 @@ class StartTests(unittest.TestCase):
         self.assertEqual(config.read_bytes(), original)
         self.assertFalse((self.repo / '.ws-start.json').exists())
 
+    def test_start_ignores_fake_server_table_in_multiline_toml_string(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'note = """\n[mcp_servers.ai-dev-workspace]\n"""\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertTrue((self.repo / '.ws-start.json').exists())
+        self.assertTrue(config.read_bytes().startswith(original))
+
     def test_codex_client_connected_preserves_backslashes_in_toml_literal_strings(self):
         workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
         server = {'command': r'C:\tmp\tool', 'args': [r'C:\tmp\tool']}
@@ -298,6 +306,21 @@ class StartTests(unittest.TestCase):
         config.write_text("[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = 'C:\\tmp\\tool'\nargs = ['C:\\tmp\\tool']\n")
         with mock.patch('ws.core.mcp_command', return_value=server), mock.patch.object(Path, 'cwd', return_value=self.repo):
             self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_client_connected_parses_literal_string_ending_in_backslash(self):
+        workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
+        server = {'command': 'tool\\', 'args': ['tool\\']}
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        config.write_text("[mcp_servers.ai-dev-workspace]\ncommand = 'tool\\'\nargs = ['tool\\']\n")
+        with mock.patch('ws.core.mcp_command', return_value=server), mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_client_connected_rejects_invalid_enabled_value(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); server = core.mcp_command(workspace)
+        config = self.repo / '.codex/config.toml'
+        config.write_text(core.codex_mcp_config(workspace).replace('enabled = true', 'enabled = "false"'))
+        with mock.patch.object(Path, 'cwd', return_value=self.repo): self.assertFalse(core.client_connected(workspace, 'codex'))
 
     def test_undo_keeps_backup_when_user_edits_codex_config(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
