@@ -111,6 +111,8 @@ def text_doctor(report):
     lines = [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
+    if report.get('team_workspace'):
+        lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls not active yet')
     if report.get('setup'):
         lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
     clients = report.get('configured_clients', {})
@@ -230,6 +232,14 @@ def main(argv=None):
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
     s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep private memory')
+    s = sub.add_parser('team', help='preview or link a private team Git repository')
+    s.add_argument('action', choices=('init', 'link', 'unlink')); s.add_argument('remote', nargs='?', default='')
+    s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
+    s.add_argument('--attest-private', action='store_true', help='I confirm this exact remote is private to my team')
+    s.add_argument('--verify-with', choices=('gh', 'glab'), default='')
+    pulls = s.add_mutually_exclusive_group()
+    pulls.add_argument('--auto-pull', dest='auto_pull', action='store_true', default=None)
+    pulls.add_argument('--no-auto-pull', dest='auto_pull', action='store_false')
     s = sub.add_parser('setup', help='choose assistants and configure project connections')
     s.add_argument('--assistants', help='comma-separated assistants; no client is launched')
     s.add_argument('--preset', help='routing preset name')
@@ -380,6 +390,20 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        if a.cmd == 'team':
+            from . import team
+            plan = team.manage(root, a.action, a.remote, attest=a.attest_private,
+                               auto_pull=bool(a.auto_pull), verifier=a.verify_with); out(plan)
+            if a.dry_run or plan.get('already'): return 0
+            if not a.yes:
+                print('Apply this team preview? [y/N]')
+                if input().strip().lower() not in ('y', 'yes'): return 0
+            pulls = a.auto_pull
+            if pulls is None and not a.yes and a.action != 'unlink':
+                print('Keep team knowledge updated automatically (pull at session start and daily)? [y/N]')
+                pulls = input().strip().lower() in ('y', 'yes')
+            out(team.manage(root, a.action, a.remote, True, a.attest_private, bool(pulls), a.verify_with, plan['sha']))
+            return 0
         if a.cmd == 'setup':
             from . import setup
             if a.assistants is not None: selected = [name.strip().lower() for name in a.assistants.split(',')]

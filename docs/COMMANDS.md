@@ -75,3 +75,19 @@ Toolbox levels: recommended tools are suggested for most workspaces, optional to
 After `ws init`, run `ws setup` to choose assistants interactively, or `ws setup --assistants codex` / `ws setup --assistants claude,codex` / `ws setup --preset cursor-only`. `ws setup --detect` only checks CLI names on PATH and macOS app paths; it never launches clients or checks login. Other platforms have CLI detection and manual app selection.
 
 Setup previews by default (`--dry-run` also works), reporting routing changes, configuration paths and trust steps. Review that output, then repeat with `--apply`. Apply backs up routing/workspace metadata in `.ws/backups/`, preserves user text and compatible overrides, and connects project configuration for each assistant. An override referring to an unselected provider stops before changes. `copilot` and `vscode` select the `copilot-only` provider preset and the VS Code Local connector; Copilot CLI lifecycle support is not implied. Codex global MCP stays a preview: `ws connect codex --write` is a separate explicit choice. Setup never links user-level skills. Restart/trust the project and approve MCP/hooks in each client; doctor shows the chosen preset, not verified login or model access.
+
+### Link a private team repo (T1)
+
+`ws team init <private-remote> --dry-run` previews a local team clone and metadata;
+repeat without `--dry-run` to confirm. Create the empty private remote yourself;
+init prepares an uncommitted `team.json` in `.ws/team`, never a push. Inspect it,
+then use your normal Git commit/push flow to bootstrap that team repo.
+Teammates use `ws team link <private-remote>`; repeat is status-only.
+Privacy uses an installed `gh`/`glab`, or explicit `--attest-private` for that exact
+remote when verification is unavailable. Known public/internal visibility blocks
+linking. `--verify-with gh|glab` selects a verifier for a self-hosted remote.
+`--yes` confirms the printed preview; use `--auto-pull` or `--no-auto-pull` to record
+the pull preference noninteractively. Automatic pulls/scheduling are not active in
+T1; publishing is never authorized by pull consent. Doctor labels verified versus
+attested privacy. `ws team unlink` preserves `.ws/team` and all private records;
+move the retained clone yourself before a new link. No installs or assistant runs.

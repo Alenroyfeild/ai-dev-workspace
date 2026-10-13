@@ -2428,6 +2428,11 @@ def doctor(root=None, mcp=False):
         preset, assistants = cfg.get('routing_preset', 'not selected'), cfg.get('assistants', [])
         report['setup'] = {'preset': preset if isinstance(preset, str) else 'unknown',
                            'assistants': assistants if isinstance(assistants, list) and all(isinstance(name, str) for name in assistants) else []}
+        if isinstance(cfg.get('team_workspace'), dict):
+            privacy = cfg['team_workspace'].get('privacy')
+            method = privacy.get('method') if isinstance(privacy, dict) else None
+            report['team_workspace'] = {'privacy': method if method in ('gh', 'glab', 'attested') else 'unknown',
+                                        'auto_pull': bool(cfg['team_workspace'].get('auto_pull')), 'pulls_active': False}
         report['capture_health'] = capture_health(root)
         from . import native
         report['codex_goals'] = native.codex_goals(root)
