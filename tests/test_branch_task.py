@@ -189,3 +189,14 @@ class BranchTaskTests(unittest.TestCase):
             for binding in (None, task):
                 self.assertFalse(core.capture_decisions(self.root, str(transcript), task_id=binding))
                 self.assertEqual(before, core.task_path(self.root, task).read_bytes())
+
+    def test_session_start_without_eligible_claim_invalidates_old_binding(self):
+        from ws import assist
+        self.hook()
+        task = core.sole_local_claim(self.root)
+        payload = {'hook_event_name': 'SessionStart', 'session_id': 'same-session'}
+        assist.observe(self.root, payload)
+        self.assertEqual(assist.session_task(self.root, 'same-session'), task)
+        with mock.patch('ws.core.sole_local_claim', return_value=''):
+            assist.observe(self.root, payload)
+        self.assertEqual(assist.session_task(self.root, 'same-session'), '')

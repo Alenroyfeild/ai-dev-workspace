@@ -56,12 +56,11 @@ def observe(root, payload):
         if payload.get('hook_event_name') in ('SessionStart', 'sessionStart') and payload.get('session_id'):
             data.pop('long_session_bytes', None)
             current = core.sole_local_claim(root)
-            if current:
-                bindings = data.setdefault('session_tasks', {}); sid = core.digest_text(str(payload['session_id']))
-                previous = bindings.pop(sid, current)
-                bindings[sid] = current if previous == current else ''
-                while len(bindings) > 200:
-                    del bindings[next(iter(bindings))]
+            bindings = data.setdefault('session_tasks', {}); sid = core.digest_text(str(payload['session_id']))
+            previous = bindings.pop(sid, current)
+            bindings[sid] = current if previous == current else ''
+            while len(bindings) > 200:
+                del bindings[next(iter(bindings))]
             for task in core.task_list(root):
                 if task['id'] != current:
                     continue
