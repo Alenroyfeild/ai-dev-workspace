@@ -108,10 +108,39 @@ def toml_top_level(text):
     return core.toml_top_level_text(text)
 
 
+def validate_toml_structure(text):
+    masked = core.toml_mask_multiline_strings(text); arrays = 0; tables = 0; quote = None; escaped = False
+    for line in masked.splitlines():
+        stripped = line.strip()
+        if arrays == 0 and tables == 0 and stripped:
+            if stripped.startswith('['):
+                if not re.match(r'^\[{1,2}\s*[^\[\]]+\s*\]{1,2}\s*(?:#.*)?$', stripped):
+                    raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+            elif '=' not in stripped:
+                raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+        for char in line:
+            if quote:
+                if escaped: escaped = False
+                elif quote == '"' and char == '\\': escaped = True
+                elif char == quote: quote = None
+            elif char in '"\'': quote = char
+            elif char == '[': arrays += 1
+            elif char == ']':
+                arrays -= 1
+                if arrays < 0: raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+            elif char == '{': tables += 1
+            elif char == '}':
+                tables -= 1
+                if tables < 0: raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+        if quote: raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+    if arrays or tables: raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+
+
 def codex_files(repo, root):
     target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
     text = original.decode('utf-8')
     text = re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', lambda m: chr(int(m.group(1) or m.group(2), 16)), text)
+    validate_toml_structure(text)
     scan_text = core.toml_mask_multiline_strings(text)
     parent = re.search(r'^\s*\[\s*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)\s*\]\s*(.*?)(?=^\s*\[|\Z)', scan_text, re.M | re.S)
     parent_has_server = parent and re.search(r'^\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*(?:\.|=)', parent[1], re.M)
