@@ -170,7 +170,7 @@ class StartTests(unittest.TestCase):
         original = b'not TOML: \xff'; config.write_bytes(original)
         code, output, preview = self.start('--yes')
         self.assertEqual(code, 0); self.assertIn('manual step pending', output)
-        self.assertIn(config.as_posix(), preview); self.assertIn('[mcp_servers.ai-dev-workspace]', preview)
+        self.assertIn(config.resolve().as_posix(), preview); self.assertIn('[mcp_servers.ai-dev-workspace]', preview)
         self.assertEqual(config.read_bytes(), original)
         state = json.loads((self.repo / '.ws-start.json').read_text())
         self.assertEqual(state['codex_status'], 'manual step pending')
