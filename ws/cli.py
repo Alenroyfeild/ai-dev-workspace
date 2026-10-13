@@ -284,10 +284,14 @@ def main(argv=None):
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
     s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
     s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
-    s = sub.add_parser('know', help='save standalone knowledge').add_subparsers(dest='action', required=True).add_parser('add')
+    k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
+    s = k.add_parser('add')
     s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    s.add_argument('--category', default='other')
+    s = k.add_parser('list'); s.add_argument('--category', default=''); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
+    s = k.add_parser('show'); s.add_argument('id')
 
-    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query')
+    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query'); s.add_argument('--category', default='')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
@@ -581,11 +585,14 @@ def main(argv=None):
                 from . import sharing
                 share_gate(sharing.standalone(root, 'decision', a.text))
         elif a.cmd == 'know':
-            from . import sharing
-            item = sharing.standalone(root, 'knowledge', a.text, a.team); out({'saved': item})
-            if a.team: share_gate(item)
+            from . import knowledge
+            if a.action == 'add':
+                item = knowledge.add(root, a.text, a.category, a.team); out({'saved': item})
+                if a.team: share_gate(item)
+            elif a.action == 'list': out(knowledge.list_entries(root, a.category, a.layer))
+            else: out(knowledge.show(root, a.id))
         elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
-        elif a.cmd == 'search': out(core.search(root, a.query))
+        elif a.cmd == 'search': out(core.search(root, a.query, category=a.category))
         elif a.cmd == 'lesson':
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
             if a.action == 'add' and a.team:
