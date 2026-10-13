@@ -105,6 +105,7 @@ def confirm(yes, dry_run):
 
 
 def codex_files(repo, root):
+    if core.client_connected(root, 'codex', global_only=True): return {}
     target = path(repo, '.codex/config.toml')
     block = core.codex_mcp_config(root)
     if target.exists():
@@ -113,14 +114,17 @@ def codex_files(repo, root):
     return {'.codex/config.toml': block.encode()}
 
 
-def codex_pending(root):
+def codex_pending(root, check_global=True):
+    if check_global and core.client_connected(root, 'codex', global_only=True): return []
     return [str(p / '.codex/config.toml') for p in core.read_roots(root)[1:]
-            if (p / LINK).is_file() and load(p).get('codex_status') == 'manual step pending']
+            if (p / LINK).is_file() and load(p).get('codex_status') in ('manual step pending', 'connected via global config')]
 
 
 def upgrade_codex(repo, root, state, yes, dry_run):
     desired = codex_files(repo, root)
     if not desired:
+        if core.client_connected(root, 'codex', global_only=True):
+            state['codex_status'] = 'connected via global config'; return True
         if state.get('codex_status') == 'manual step pending': return True
         record_before = path(repo, LINK).read_bytes()
         if not confirm(yes, dry_run): return False
@@ -245,7 +249,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     if not root.exists(): outside |= {p.relative_to(core.KIT / 'template').as_posix() for p in (core.KIT / 'template').rglob('*') if p.is_file()} - {'routing-presets.json'} | set(upgrade.skills()) | set(upgrade.pointer_files()) | {'workspace.json', 'routing.json', 'vault/Project/Codebase map.md'}
     for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
     if not confirm(yes, dry_run): return None
-    if '.codex/config.toml' not in desired and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
+    if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
     tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
@@ -254,7 +258,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
     previous_exclude = exclude.read_bytes() if exclude.exists() else b''
-    state = dict(codex_status='connected' if '.codex/config.toml' in desired else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    state = dict(codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
