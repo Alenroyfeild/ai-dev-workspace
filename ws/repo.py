@@ -101,7 +101,7 @@ def codex_files(repo, root):
     target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
     text = original.decode('utf-8')
     parent = re.search(r'^\s*\[\s*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)\s*\]\s*(.*?)(?=^\s*\[|\Z)', text, re.M | re.S)
-    parent_has_server = parent and re.search(r'^\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*=', parent[1], re.M)
+    parent_has_server = parent and re.search(r'^\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*(?:\.|=)', parent[1], re.M)
     mcp_key = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
     server_key = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
     if parent_has_server or re.search(r'^\s*(?:' + mcp_key + r'\s*=|' + mcp_key + r'\s*\.\s*' + server_key + r'\s*(?:\.|=)|\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\])', text, re.M):
@@ -123,6 +123,7 @@ def upgrade_codex(repo, root, state, yes, dry_run):
     for name in (LINK, *desired): print('  ' + str(repo / name), file=sys.stderr)
     print('  ' + str(exclude) + ' (local exclusions)', file=sys.stderr)
     if not confirm(yes, dry_run): return False
+    if path(repo, '.codex/config.toml.ws-backup').exists(): raise core.WsError('Codex backup appeared during confirmation; keep it safe and review it before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
     exclude, block = exclusions(repo, state)
     updated = block.replace(b'# /ws:start', ('\n'.join('/' + n for n in desired) + '\n# /ws:start').encode())
@@ -208,6 +209,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     if not root.exists(): outside |= {p.relative_to(core.KIT / 'template').as_posix() for p in (core.KIT / 'template').rglob('*') if p.is_file()} - {'routing-presets.json'} | set(upgrade.skills()) | set(upgrade.pointer_files()) | {'workspace.json', 'routing.json', 'vault/Project/Codebase map.md'}
     for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
     if not confirm(yes, dry_run): return None
+    if path(repo, '.codex/config.toml.ws-backup').exists(): raise core.WsError('Codex backup appeared during confirmation; keep it safe and review it before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
