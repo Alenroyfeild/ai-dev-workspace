@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import core, assist, orchestration, native
+from . import core, assist, orchestration, native, workers
 
 
 def _read_limited_stdin():
@@ -218,6 +218,9 @@ def main(argv=None):
     s = sub.add_parser('delegate', help='prepare bounded work or test the read-only worker'); s.add_argument('task', nargs='?'); s.add_argument('--role'); s.add_argument('--run', action='store_true')
     s.add_argument('--selftest', action='store_true'); s.add_argument('--provider', choices=('codex', 'claude'))
     s.add_argument('--diff', help='reviewer-only Git range, e.g. HEAD~1..HEAD')
+    w = sub.add_parser('worker', help='prepare an isolated implementation checkout; no worker launch').add_subparsers(dest='action', required=True)
+    s = w.add_parser('prepare'); s.add_argument('task'); s.add_argument('--scope', action='append', required=True)
+    s.add_argument('--base', default='HEAD'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
@@ -395,6 +398,13 @@ def main(argv=None):
         if a.cmd == 'route':
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2
+        if a.cmd == 'worker':
+            def confirm(plan):
+                print(json.dumps(plan, indent=2), file=sys.stderr)
+                print('Create this private clone and checkout? [y/N] ', end='', file=sys.stderr)
+                try: return input().strip().lower() in ('y', 'yes')
+                except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
+            out(workers.prepare(root, a.task, a.scope, a.base, apply=not a.dry_run, confirm=None if a.yes else confirm)); return 0
         if a.cmd == 'delegate':
             if a.selftest:
                 if a.task or a.role or a.diff: raise core.WsError('Selftest takes no task, role or diff; run ws delegate --help.')
