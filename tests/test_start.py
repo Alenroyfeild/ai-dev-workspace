@@ -170,6 +170,20 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 2); self.assertFalse((self.repo / '.ws-start.json').exists())
         self.assertEqual(config.read_text(), 'model="fixture"\n'); self.assertFalse((self.home / '.ai-dev-workspace').exists())
 
+    def test_migration_refuses_a_link_to_another_workspace(self):
+        config, _ = self.old_start(); other = self.home / 'other'; core.init(other, 'other', clients=[])
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['workspace'] = str(other); link.write_text(json.dumps(state))
+        self.assertEqual(self.start('--yes')[0], 2); self.assertFalse(config.exists()); self.assertEqual(core.task_list(other), [])
+
+    def test_migration_keeps_a_config_created_after_confirmation(self):
+        config, exclude = self.old_start(); write = core.atomic_write
+        def edited(target, data):
+            result = write(target, data)
+            if Path(target).resolve() == exclude.resolve(): config.write_text('User edit\n')
+            return result
+        with mock.patch('ws.repo.core.atomic_write', side_effect=edited): self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_text(), 'User edit\n')
+
     def test_detected_secondary_clients_share_confirmation_and_private_undo(self):
         detected = [dict(assistant=c, cli_available=True, apps=[]) for c in ('cursor', 'copilot', 'gemini')]
         with mock.patch('ws.setup.detect', return_value=detected), mock.patch('builtins.input', return_value='y') as ask:
