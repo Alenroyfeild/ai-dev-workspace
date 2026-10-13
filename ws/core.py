@@ -553,7 +553,22 @@ def toml_mask_multiline_strings(text):
 
 def toml_top_level_text(text):
     text = toml_mask_multiline_strings(text)
-    return re.split(r'^[ \t]*\[', text, maxsplit=1, flags=re.M)[0]
+    depth = 0; quote = None; escaped = False; line_start = True
+    for index, char in enumerate(text):
+        if quote:
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif char == quote: quote = None
+        else:
+            if line_start and char in ' \t': pass
+            elif line_start and char == '[' and depth == 0: return text[:index]
+            else:
+                line_start = False
+                if char in '"\'': quote = char
+                elif char == '[': depth += 1
+                elif char == ']': depth = max(0, depth - 1)
+        if char == '\n': line_start = True
+    return text
 
 
 # Project MCP config per client: (file, key holding the server map).
@@ -566,7 +581,7 @@ def _toml_has_workspace_entry(text):
     text = toml_mask_multiline_strings(text)
     mcp = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
     server = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
-    top = re.split(r'^[ \t]*\[', text, maxsplit=1, flags=re.M)[0]
+    top = toml_top_level_text(text)
     if re.search(r'^[ \t]*' + mcp + r'[ \t]*\.[ \t]*' + server + r'[ \t]*(?:\.|=)', top, re.M): return True
     if re.search(r'^[ \t]*' + mcp + r'[ \t]*=[^\n]*\{[^\n]*' + server + r'[ \t]*=', top, re.M): return True
     parent = re.search(r'^[ \t]*\[[ \t]*' + mcp + r'[ \t]*\][ \t]*(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)

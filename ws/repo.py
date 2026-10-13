@@ -105,30 +105,7 @@ def confirm(yes, dry_run):
 
 
 def toml_top_level(text):
-    quote = None; triple = False; escaped = False; line_start = True; i = 0
-    while i < len(text):
-        char = text[i]
-        if quote:
-            if escaped: escaped = False
-            elif quote == '"' and char == '\\': escaped = True
-            elif triple and text.startswith(quote * 3, i): quote = None; triple = False; i += 2
-            elif not triple and char == quote: quote = None
-            if char == '\n': line_start = True
-        else:
-            if char == '#' and line_start is False:
-                end = text.find('\n', i)
-                if end < 0: break
-                i = end - 1; line_start = True
-            elif line_start and char in ' \t': pass
-            elif line_start and char == '[': return text[:i]
-            elif char in '"\'':
-                triple = text.startswith(char * 3, i); quote = char
-                if triple: i += 2
-                line_start = False
-            elif char == '\n': line_start = True
-            else: line_start = False
-        i += 1
-    return text
+    return core.toml_top_level_text(text)
 
 
 def codex_files(repo, root):
