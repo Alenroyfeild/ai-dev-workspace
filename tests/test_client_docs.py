@@ -29,17 +29,18 @@ class ClientDocShapeTests(unittest.TestCase):
                             self.assertEqual(hook['timeout'], 10000 if client == 'gemini' else 10)
 
     def test_session_start_context_output(self):
-        for client in ('codex', 'cursor', 'vscode', 'gemini'):
+        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
             output = io.StringIO()
             with mock.patch.object(core, 'find_root', return_value=ROOT), \
                     mock.patch.object(core, 'brief', return_value='Saved next action.'), \
-                    mock.patch.object(core, 'memory_summary', return_value=''), \
+                    mock.patch.object(core, 'memory_summary', return_value='Remembered: 1 decision'), \
                     mock.patch.object(cli.assist, 'observe'), \
                     mock.patch('sys.stdin', io.StringIO('{"hook_event_name":"SessionStart"}')), \
                     mock.patch('sys.stdout', output):
                 self.assertEqual(cli.main(['brief', '--hook', '--client', client]), 0)
-            expected = ({'additional_context': 'Saved next action.'} if client == 'cursor' else
-                        {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': 'Saved next action.'}})
+            expected_output = {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': 'Saved next action.'}}
+            if client in ('claude', 'codex'): expected_output['systemMessage'] = 'Remembered: 1 decision'
+            expected = {'additional_context': 'Saved next action.'} if client == 'cursor' else expected_output
             self.assertEqual(json.loads(output.getvalue()), expected)
 
     def test_entry_nesting(self):
