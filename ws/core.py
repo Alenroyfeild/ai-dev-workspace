@@ -551,6 +551,12 @@ def toml_mask_multiline_strings(text):
     return ''.join(chars)
 
 
+def toml_normalize_keys(text):
+    pattern = re.compile(r'"(?:\\.|[^"\\])*"(?=\s*(?:\.|=|\]))')
+    return pattern.sub(lambda m: re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))',
+                                       lambda e: chr(int(e.group(1) or e.group(2), 16)), m.group()), text)
+
+
 def toml_top_level_text(text):
     text = toml_mask_multiline_strings(text)
     depth = 0; quote = None; escaped = False; line_start = True
@@ -577,7 +583,7 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
 
 
 def _toml_has_workspace_entry(text):
-    text = re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', lambda m: chr(int(m.group(1) or m.group(2), 16)), text)
+    text = toml_normalize_keys(text)
     text = toml_mask_multiline_strings(text)
     mcp = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
     server = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'

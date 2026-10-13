@@ -329,12 +329,18 @@ class StartTests(unittest.TestCase):
 
     def test_start_refuses_malformed_codex_toml_without_modifying_it(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
-        for original in (b'[mcp_servers\ncommand = "unfinished header"\n', b'model =\n'):
+        for original in (b'[mcp_servers\ncommand = "unfinished header"\n', b'model =\n', b'model = nope\n'):
             with self.subTest(original=original):
                 config.write_bytes(original)
                 self.assertEqual(self.start('--yes')[0], 2)
                 self.assertEqual(config.read_bytes(), original)
                 self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_start_does_not_decode_unicode_escapes_inside_toml_values(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'note = "\\u0022"\n[mcp_servers.ai-dev-workspace]\ncommand = "other"\n'; config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
 
     def test_global_codex_write_finds_workspace_key_after_nested_array_value(self):
         self.assertEqual(self.start('--yes')[0], 0)
