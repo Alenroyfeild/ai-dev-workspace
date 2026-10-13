@@ -26,6 +26,7 @@ class KnowledgeTests(unittest.TestCase):
         result = knowledge.show(self.root, 'team:'+plan['entry']); self.assertNotIn('private sentence', result['content'])
         self.assertTrue(result['untrusted']); self.assertIn('source_sha', result)
         self.assertEqual(result['team'], core.config(self.root)['team_workspace']['id']); self.assertIn('date', result)
+        self.assertEqual(result['source_sha'], plan['source_sha']); self.assertNotEqual(result['revision'], result['source_sha'])
         matches = core.search(self.root, 'bounded', category='domain'); self.assertTrue(matches)
         self.assertTrue(all(m['category']=='domain' for m in matches))
 
