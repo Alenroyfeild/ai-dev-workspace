@@ -6,6 +6,7 @@
 - `ws remember "use Postgres, not SQLite"` saves one decision in your current task, and the next session's brief shows it ahead of automatically captured notes. Assistants can save one too through the new MCP `remember` tool, so a decision you state in chat holds in later sessions.
 
 ### Fixed
+- `ws start` gives new tasks readable branch IDs and leaves Next action unsaved until you supply it. Existing tasks and decisions are preserved. [Repo setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/REPO-START.md).
 - Codex session-start memory survives a missing transcript and read-only usage metadata. Plain brief and MCP memory reads need no write access. [Setup and hook trust](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/SETUP.md).
 - `ws connect claude` and `ws connect codex` no longer add skills to your global `~/.claude` or `~/.agents` folders without asking. Project skills work as before; add `--skills` to link the extra ones globally. Skills you already linked are left alone.
 - `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.
