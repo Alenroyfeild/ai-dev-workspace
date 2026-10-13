@@ -359,6 +359,23 @@ class StartTests(unittest.TestCase):
         config.write_text(core.codex_mcp_config(workspace).replace('enabled = true', 'enabled = "false"'))
         with mock.patch.object(Path, 'cwd', return_value=self.repo): self.assertFalse(core.client_connected(workspace, 'codex'))
 
+    def test_codex_client_connected_parses_final_enabled_scalar_without_newline(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); server = core.mcp_command(workspace)
+        config = self.repo / '.codex/config.toml'
+        config.write_text('[mcp_servers.ai-dev-workspace]\ncommand = ' + json.dumps(server['command']) + '\nargs = ' + json.dumps(server['args']) + '\nenabled = true')
+        with mock.patch.object(Path, 'cwd', return_value=self.repo): self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_global_codex_write_allows_server_key_inside_other_table(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        original = '[other]\nmcp_servers = {}\n'; config.write_text(original)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            result = core._connect_config(workspace, 'codex', write=True)
+        self.assertTrue(result['connected'])
+        self.assertIn('[mcp_servers.ai-dev-workspace]', config.read_text())
+        self.assertEqual(config.with_name('config.toml.ws-backup').read_text(), original)
+
     def test_undo_keeps_backup_when_user_edits_codex_config(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
         original = b'model = "fixture"\n'

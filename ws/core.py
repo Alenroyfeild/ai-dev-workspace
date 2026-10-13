@@ -514,6 +514,10 @@ def _toml_literal(text, key):
             if raw == 'true': return True
             if raw == 'false': return False
             return ast.literal_eval(raw)
+    raw = text[start:].strip()
+    if raw == 'true': return True
+    if raw == 'false': return False
+    if raw: return ast.literal_eval(raw)
     raise ValueError('incomplete TOML value')
 
 
@@ -545,6 +549,11 @@ def toml_mask_multiline_strings(text):
                 i += 2
         i += 1
     return ''.join(chars)
+
+
+def toml_top_level_text(text):
+    text = toml_mask_multiline_strings(text)
+    return re.split(r'^[ \t]*\[', text, maxsplit=1, flags=re.M)[0]
 
 
 # Project MCP config per client: (file, key holding the server map).
@@ -694,7 +703,9 @@ def _connect_config(root, client, write=False):
             return result
         path = Path.home() / '.codex/config.toml'
         original = path.read_text(encoding='utf-8') if path.exists() else ''
-        if re.search(r'^[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*=', original, re.M) or _toml_has_workspace_entry(original):
+        top_level = toml_top_level_text(original)
+        root_map = re.search(r'^[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*=', top_level, re.M)
+        if root_map or _toml_has_workspace_entry(original):
             raise WsError('Codex already has a different workspace entry; review the printed block manually.')
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
