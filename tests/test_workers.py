@@ -272,6 +272,14 @@ class WorkerPrepareTests(Base):
         self.assertFalse(any(c.args[1] == 'add' for c in calls.call_args_list))
         self.assertTrue(result['blocked']); self.assertIn('filter driver configured', result['reason'])
 
+    def test_collection_blocks_oversized_regular_file_before_staging(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan)
+        (Path(plan['checkout']) / 'calc.py').write_bytes(b'x' * (1024 * 1024 + 1))
+        with mock.patch('ws.workers.git', wraps=workers.git) as calls: result = workers.collect(self.root, plan['id'])
+        self.assertFalse(any(c.args[1] == 'add' for c in calls.call_args_list))
+        self.assertTrue(result['blocked']); self.assertEqual(result['reason'], 'Changed file exceeds the 1 MiB scan limit.')
+        for field in ('tree', 'diff_sha', 'checks'): self.assertNotIn(field, result)
+
     def test_failed_repeat_collection_clears_snapshot_and_check_fields(self):
         plan = self.prepare(apply=True); self.complete_worker(plan)
         (Path(plan['checkout']) / 'calc.py').write_bytes(b'answer = 2\n')
