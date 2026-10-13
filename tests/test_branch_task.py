@@ -168,3 +168,24 @@ class BranchTaskTests(unittest.TestCase):
         start('0')
         self.assertEqual(assist.session_task(self.root, '0'), '')
         self.assertEqual(len(assist.state(self.root)['session_tasks']), 200)
+
+    def test_git_lookup_failure_keeps_saved_memory_readable(self):
+        self.hook()
+        task = core.sole_local_claim(self.root)
+        core.remember(self.root, 'keep amber for the guard', task_id=task)
+        with mock.patch('ws.core._task_git', return_value=''):
+            self.assertIn('keep amber for the guard', core.brief(self.root))
+
+    def test_git_lookup_failure_refuses_automatic_capture(self):
+        self.hook()
+        task = core.sole_local_claim(self.root)
+        before = core.task_path(self.root, task).read_bytes()
+        transcript = self.root / 'unavailable-git.jsonl'
+        transcript.write_text('\n'.join(map(json.dumps, [
+            {'type': 'user', 'message': {'content': 'Decided: keep violet for the guard.'}},
+            {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Read'},
+                {'type': 'text', 'text': 'Next step: inspect violet.'}]}}])))
+        with mock.patch('ws.core._task_git', return_value=''):
+            for binding in (None, task):
+                self.assertFalse(core.capture_decisions(self.root, str(transcript), task_id=binding))
+                self.assertEqual(before, core.task_path(self.root, task).read_bytes())
