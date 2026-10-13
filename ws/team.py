@@ -15,14 +15,15 @@ def remote_parts(remote):
     if not isinstance(remote, str) or not remote or not remote.isprintable() or remote.startswith('-'):
         raise core.WsError('Use a local absolute repository path or an SSH/HTTPS remote without credentials.')
     if Path(remote).is_absolute(): return '', ''
-    scp = re.fullmatch(r'git@([\w.-]+):([\w./-]+)', remote)
+    scp = re.fullmatch(r'[\w.-]+@([\w.-]+):([\w./-]+)', remote)
     if scp and '..' not in scp[2].split('/'): return scp[1].lower(), scp[2].removesuffix('.git')
     try:
         parsed = urlsplit(remote); port = parsed.port
     except ValueError:
         raise core.WsError('Remote URL or port is invalid; use an SSH/HTTPS repository URL.')
     if (parsed.scheme not in ('https', 'ssh') or not parsed.hostname or parsed.password or
-            parsed.query or parsed.fragment or (parsed.username and not (parsed.scheme == 'ssh' and parsed.username == 'git'))):
+            parsed.query or parsed.fragment or (parsed.username and
+                (parsed.scheme != 'ssh' or not re.fullmatch(r'[\w][\w.-]*', parsed.username)))):
         raise core.WsError('Remote must use SSH/HTTPS without embedded credentials, queries or fragments.')
     slug = parsed.path.strip('/').removesuffix('.git')
     if not slug or '..' in slug.split('/'): raise core.WsError('Remote repository path is invalid.')
@@ -92,7 +93,7 @@ def manage(root, action, remote='', apply=False, attest=False, auto_pull=False, 
                 _git(root, 'clone', '--no-hardlinks', '--', remote, str(clone))
                 manifest = core.inside(clone / 'team.json', [clone])
                 if action == 'init':
-                    if _git(clone, 'ls-files').strip() or manifest.exists(): raise core.WsError('Init needs an empty remote; use link for an existing team.')
+                    if _git(clone, 'ls-remote', 'origin').strip() or manifest.exists(): raise core.WsError('Init needs an empty remote; use link for an existing team.')
                     record = {'kind': 'ai-dev-workspace-team', 'schema_version': 1, 'id': uuid.uuid4().hex}
                     core.atomic_write(manifest, json.dumps(record, indent=2) + '\n')
                 else:
@@ -104,9 +105,16 @@ def manage(root, action, remote='', apply=False, attest=False, auto_pull=False, 
                 if metadata.read_text(encoding='utf-8') != original: raise core.WsError('Workspace changed; preview again.')
                 core.inside(target, [root])
                 if target.exists() or target.is_symlink(): raise core.WsError('Team destination changed; preview again.')
-                os.replace(clone, target)
-            cfg['team_workspace'] = {'id': record['id'], 'path': '.ws/team', 'remote': remote,
-                                     'privacy': verified, 'auto_pull': bool(auto_pull)}
-        core.atomic_write(metadata, json.dumps(cfg, indent=2) + '\n')
+                cfg['team_workspace'] = {'id': record['id'], 'path': '.ws/team', 'remote': remote,
+                                         'privacy': verified, 'auto_pull': bool(auto_pull)}
+                updated = json.dumps(cfg, indent=2) + '\n'
+                try:
+                    core.atomic_write(metadata, updated); os.replace(clone, target)
+                except OSError:
+                    if metadata.read_text(encoding='utf-8') == updated: core.atomic_write(metadata, original)
+                    raise core.WsError('Team link write failed; configuration preserved. Preview before retrying.')
+        if action == 'unlink':
+            try: core.atomic_write(metadata, json.dumps(cfg, indent=2) + '\n')
+            except OSError: raise core.WsError('Unlink write failed; team clone retained. Preview before retrying.')
     return {**plan, 'applied': True, 'privacy': cfg.get('team_workspace', {}).get('privacy', {}).get('method', ''),
             'bootstrap_pending': action == 'init', 'pulls_active': False}

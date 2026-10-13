@@ -66,7 +66,7 @@ class TeamLinkTests(unittest.TestCase):
                  mock.patch('ws.team.subprocess.run', return_value=subprocess.CompletedProcess([], 0, json.dumps({'visibility': visibility}), '')):
                 with self.assertRaises(core.WsError): team.privacy('https://github.com/synthetic/team', True)
         for remote in ('https://user:secret@host.invalid/team', 'ext::unsafe', '-bad', 'https://host.invalid/team?token=secret',
-                       'https://host.invalid:bad/team', 'https://host.invalid:70000/team', 'https://[broken/team'):
+                       'ssh://-option@host.invalid/group/team', 'https://host.invalid:bad/team', 'https://host.invalid:70000/team', 'https://[broken/team'):
             with self.assertRaises(core.WsError): team.remote_parts(remote)
         with mock.patch.dict(os.environ, WS_OFFLINE='0'), mock.patch('ws.team.shutil.which', return_value='fake'), \
              mock.patch('ws.team.subprocess.run', return_value=subprocess.CompletedProcess([], 0, '{"visibility":"private"}', '')) as run:
@@ -128,3 +128,31 @@ class TeamLinkTests(unittest.TestCase):
         state.symlink_to(self.home, target_is_directory=True)
         with self.assertRaises(core.WsError): team.manage(self.a, 'init', str(self.remote), apply=True, attest=True)
         self.assertFalse((self.home / 'team').exists())
+
+    def test_init_refuses_remote_with_a_nondefault_branch(self):
+        seed = self.base / 'seed'; seed.mkdir(); self.git(seed, 'init', '-q', '-b', 'other')
+        self.git(seed, '-c', 'user.name=Synthetic', '-c', 'user.email=synthetic@example.invalid', 'commit', '--allow-empty', '-qm', 'fixture')
+        self.git(seed, 'push', '-q', str(self.remote), 'HEAD:other')
+        self.assertEqual(self.command(self.a, 'init', str(self.remote), '--yes', '--attest-private')[0], 2)
+        self.assertFalse((self.a / '.ws/team').exists())
+
+    def test_metadata_write_failure_keeps_link_retryable(self):
+        from ws import team
+        before = (self.a / 'workspace.json').read_bytes(); write = core.atomic_write
+        def fail(path, text):
+            if path == self.a / 'workspace.json': raise OSError('fixture write failure')
+            return write(path, text)
+        with mock.patch('ws.core.atomic_write', side_effect=fail):
+            with self.assertRaises(core.WsError): team.manage(self.a, 'init', str(self.remote), apply=True, attest=True)
+        self.assertEqual(before, (self.a / 'workspace.json').read_bytes())
+        self.assertFalse((self.a / '.ws/team').exists())
+        team.manage(self.a, 'init', str(self.remote), apply=True, attest=True)
+        linked = (self.a / 'workspace.json').read_bytes()
+        with mock.patch('ws.core.atomic_write', side_effect=fail):
+            with self.assertRaises(core.WsError): team.manage(self.a, 'unlink', apply=True)
+        self.assertEqual(linked, (self.a / 'workspace.json').read_bytes())
+
+    def test_ssh_usernames_are_not_treated_as_passwords(self):
+        from ws import team
+        for remote in ('synthetic@host.invalid:group/team.git', 'ssh://synthetic@host.invalid/group/team.git'):
+            self.assertEqual(team.remote_parts(remote), ('host.invalid', 'group/team'))
