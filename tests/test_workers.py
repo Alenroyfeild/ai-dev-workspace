@@ -191,6 +191,20 @@ class WorkerPrepareTests(Base):
         (Path(plan['checkout']) / 'escape').symlink_to(self.repo / 'calc.py')
         self.assertTrue(workers.collect(self.root, plan['id'])['blocked'])
 
+    def test_collection_preserves_leading_space_in_changed_filename(self):
+        plan = self.prepare(apply=True); (Path(plan['checkout']) / ' calc.py').write_text('api_key=' + 'x'*20)
+        result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertIn(' calc.py', result['changed'])
+
+    def test_collection_disables_rename_detection_for_scope_check(self):
+        (self.repo / 'outside.txt').write_text('answer = 1\n')
+        self.git('add', 'outside.txt'); self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'add out-of-scope file')
+        with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
+            plan = workers.prepare(self.root, 'W-1', ['allowed.py'], apply=True)
+        checkout = Path(plan['checkout']); (checkout / 'outside.txt').rename(checkout / 'allowed.py')
+        result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertIn('outside.txt', result['changed'])
+
     def test_collection_refuses_changed_claim_and_launch_keeps_gate_closed(self):
         plan = self.prepare(apply=True); (self.root / '.ws/claims/W-1.json').unlink()
         result = workers.collect(self.root, plan['id'])

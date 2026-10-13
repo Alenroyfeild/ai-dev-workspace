@@ -149,7 +149,7 @@ def collect(root, run_id):
         extra = {'GIT_INDEX_FILE': str(index)}
         git(checkout, 'read-tree', state['base'], env_extra=extra)
         git(checkout, 'add', '-A', '-f', '--', '.', env_extra=extra)
-        changed = git(checkout, 'diff', '--cached', '--name-only', '-z', state['base'], '--', env_extra=extra).split('\0')
+        changed = git(checkout, 'diff', '--cached', '--name-only', '--no-renames', '-z', state['base'], '--', env_extra=extra, binary=True).decode('utf-8').split('\0')
         changed = [n for n in changed if n]
         tree = git(checkout, 'write-tree', env_extra=extra); blobs = {}
         for entry in git(checkout, 'ls-tree', '-r', '-z', tree).split('\0'):
