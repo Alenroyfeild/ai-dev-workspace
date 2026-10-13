@@ -9,8 +9,9 @@ AI Dev Workspace keeps task notes in Markdown your assistant can read next time.
 pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace
 cd ~/code/myapp && ws start
 ```
-## Example
+Without pipx: `python3 -m venv ~/.local/share/ai-dev-workspace && ~/.local/share/ai-dev-workspace/bin/pip install git+https://github.com/Alenroyfeild/ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`.
 
+## Example
 ```text
 Session 1 — You: “Empty email returns missing_email; leave signup unchanged.”
 Assistant: “I’ll trace login and keep the decision with this task.”
@@ -20,7 +21,6 @@ Assistant: “The saved note says return missing_email and leave signup unchange
 You: “Yes, continue.”
 ```
 ## Results (small synthetic samples, not general productivity)
-
 | Session 1 → session 2 | Without workspace | With workspace |
 |---|---:|---:|
 | Claude Code → Claude Code | 0/5 | **5/5** |
