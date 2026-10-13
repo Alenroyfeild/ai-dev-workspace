@@ -123,14 +123,17 @@ def codex_files(repo, root):
 
 def upgrade_codex(repo, root, state, yes, dry_run):
     desired = codex_files(repo, root); exclude, block = exclusions(repo, state)
+    record = path(repo, LINK); record_before = record.read_bytes()
     if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
     before = {n: path(repo, n).read_bytes() if path(repo, n).exists() else None for n in desired}
     print('Apply Codex MCP locally (backup first); no global config writes:', file=sys.stderr)
     for name in (LINK, *desired): print('  ' + str(repo / name), file=sys.stderr)
     print('  ' + str(exclude) + ' (local exclusions)', file=sys.stderr)
     if not confirm(yes, dry_run): return False
+    if not record.is_file() or record.read_bytes() != record_before: raise core.WsError('Setup record changed during confirmation; review it before retrying ws start.')
     if path(repo, '.codex/config.toml.ws-backup').exists(): raise core.WsError('Codex backup appeared during confirmation; keep it safe and review it before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
+    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
     exclude, block = exclusions(repo, state)
     updated = block.replace(b'# /ws:start', ('\n'.join('/' + n for n in desired) + '\n# /ws:start').encode())
     state['files'].update({n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()})
@@ -217,6 +220,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     if not confirm(yes, dry_run): return None
     if path(repo, '.codex/config.toml.ws-backup').exists(): raise core.WsError('Codex backup appeared during confirmation; keep it safe and review it before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
+    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
+    if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
