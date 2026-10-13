@@ -50,6 +50,7 @@ class WorkerPrepareTests(Base):
         self.assertEqual((self.repo / 'calc.py').read_text(), 'user edit\n'); self.assertEqual(self.git('status', '--porcelain'), before)
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
         state = json.loads(Path(result['record']).read_text()); self.assertEqual(state['state'], 'prepared'); self.assertTrue(state['complete'])
+        self.assertEqual(state['task_sha'], core.task_read(self.root, 'W-1')['sha'])
 
     def test_invalid_scope_base_repository_and_claim_refused_without_clone(self):
         for scope in ([], ['../outside'], ['/tmp/outside'], ['.git/config'], ['.codex/config.toml'], ['C:\\outside']):
@@ -124,3 +125,14 @@ class WorkerPrepareTests(Base):
                     self.prepare(apply=True)
         records = [json.loads(p.read_text()) for p in (self.root / '.ws/workers').glob('*/run.json')]
         self.assertTrue(all(not r['complete'] and 'claim' in r['reason'] for r in records))
+
+    def test_task_edited_during_clone_keeps_stale_brief_incomplete(self):
+        original = workers.git
+        def changed(repo, *args):
+            result = original(repo, *args)
+            if args[0] == 'worktree': core.checkpoint(self.root, 'W-1', 'in_progress', 'Use the revised objective')
+            return result
+        with mock.patch('ws.workers.git', side_effect=changed), self.assertRaisesRegex(core.WsError, 'Task changed'):
+            self.prepare(apply=True)
+        state = json.loads(next((self.root / '.ws/workers').glob('*/run.json')).read_text())
+        self.assertFalse(state['complete'])
