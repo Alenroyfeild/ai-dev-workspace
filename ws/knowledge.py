@@ -50,9 +50,11 @@ def _read(root, path, layer, team_id):
     body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', raw[end:], flags=re.S)
     if 'ws:captured:' in body or '/ws:captured' in body: raise core.WsError('Malformed capture block.')
     body = sharing.portable(root, body)
+    source_sha = meta.get('source_sha', '') if layer == 'team' else core.digest_text(raw)
+    if source_sha and not re.fullmatch(r'[a-f0-9]{64}', source_sha): raise core.WsError('Invalid source revision metadata.')
     row = {'key': layer + ':' + path.stem, 'id': path.stem, 'layer': layer, 'category': value,
            'summary': ' '.join(body.split()[:30]), 'author': sharing.portable(root, meta.get('author', 'local'))[:40],
-           'source_sha': core.digest_text(raw), 'team': team_id, 'date': sharing.portable(root, meta.get('date', meta.get('created', '')))[:40],
+           'source_sha': source_sha, 'revision': core.digest_text(raw), 'team': team_id, 'date': sharing.portable(root, meta.get('date', meta.get('created', '')))[:40],
            'source': sharing.portable(root, meta.get('source', 'knowledge:' + path.stem))[:100], 'untrusted': layer == 'team', 'path': path.relative_to(root).as_posix()}
     return row, body
 
