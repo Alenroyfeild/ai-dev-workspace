@@ -1537,7 +1537,10 @@ def _capture_decisions(root, transcript_path, client, task_id=None):
     for task in task_list(root):
         if task_id is not None:
             if task['id'] != task_id: continue
-        elif not _on_current_branch(root, task): continue
+        if task['branch']:
+            current = _task_git(root, task['id'], 'symbolic-ref', '--quiet', '--short', 'HEAD').strip()
+            # Bound sessions may finish after a branch switch, but Git must still be verifiable.
+            if not current or (task_id is None and current != task['branch']): continue
         worker, token = _claim_defaults(root, task['id'], None, None)
         path = task_path(root, task['id'])
         text = path.read_bytes().decode('utf-8')
