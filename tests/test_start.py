@@ -186,6 +186,12 @@ class StartTests(unittest.TestCase):
         ask.assert_called_once(); self.assertEqual(record.read_bytes(), before)
         self.start('--dry-run'); self.assertEqual(record.read_bytes(), before)
 
+    def test_existing_config_deleted_during_confirmation_stops_setup(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(); config.write_text('user config')
+        def deleted(): config.unlink(); return 'y'
+        with mock.patch('builtins.input', side_effect=deleted): self.assertEqual(self.start()[0], 2)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
     def test_new_codex_config_is_owned_and_undo_removes_it(self):
         self.assertEqual(self.start('--yes')[0], 0)
         config = self.repo / '.codex/config.toml'; workspace = core.find_root()
