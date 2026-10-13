@@ -64,9 +64,8 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
         state = dict(result, complete=False, claim_token=token, claimed_by=worker, task_sha=task['sha'], effort=binding['effort'])
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     try:
-        git(directory, 'clone', '--bare', '--no-local', '--template=', '--', str(source), str(directory / 'source.git'))
-        git(directory / 'source.git', 'remote', 'remove', 'origin')
-        git(directory / 'source.git', 'fetch', '--no-tags', '--', str(source), commit)
+        git(directory, 'init', '--bare', '--template=', str(directory / 'source.git'))
+        git(directory / 'source.git', 'fetch', '--depth=1', '--no-tags', '--', str(source), commit)
         git(directory / 'source.git', 'worktree', 'add', '--detach', str(directory / 'checkout'), commit)
         body = '# Implementation task (UNVERIFIED)\nEdit only allowed paths. Do not commit, push, merge or change task memory.\n'
         for section, limit in zip(('Objective', 'Next action', 'Blockers', 'Evidence'), (80, 60, 30, 100)):

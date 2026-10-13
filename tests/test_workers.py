@@ -70,7 +70,7 @@ class WorkerPrepareTests(Base):
         with self.assertRaisesRegex(core.WsError, 'submodule'): self.prepare(apply=True)
         original = workers.git
         def interrupted(repo, *args):
-            if args[0] == 'clone': raise core.WsError('fixture clone failed')
+            if args[0] == 'fetch': raise core.WsError('fixture fetch failed')
             return original(repo, *args)
         with mock.patch('ws.workers.git', side_effect=interrupted):
             with self.assertRaises(core.WsError): self.prepare(base='HEAD~1', apply=True)
@@ -136,3 +136,14 @@ class WorkerPrepareTests(Base):
             self.prepare(apply=True)
         state = json.loads(next((self.root / '.ws/workers').glob('*/run.json')).read_text())
         self.assertFalse(state['complete'])
+
+    def test_private_copy_excludes_unrelated_branch_objects(self):
+        self.git('checkout', '-qb', 'private-fixture')
+        (self.repo / 'private.txt').write_text('unrelated synthetic private content\n')
+        self.git('add', 'private.txt')
+        self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'private fixture')
+        unrelated = self.git('rev-parse', 'HEAD'); self.git('checkout', '-q', 'feature/fixture')
+        result = self.prepare(apply=True)
+        self.assertFalse((Path(result['checkout']) / 'private.txt').exists())
+        check = subprocess.run(['git', '-C', str(Path(result['directory']) / 'source.git'), 'cat-file', '-e', unrelated], capture_output=True)
+        self.assertNotEqual(check.returncode, 0)
