@@ -433,13 +433,15 @@ def main(argv=None):
                 except OSError: pass  # Optional usage metadata must not block read-only memory.
             if a.hook and a.client != 'claude':
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
-                    core.capture_decisions(root, payload.get('transcript_path'), a.client)
+                    core.capture_decisions(root, payload.get('transcript_path'), a.client,
+                                           assist.session_task(root, payload.get('session_id')))
                 message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else ''
                 out({'additional_context': message} if a.client == 'cursor' and message else
                     {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if message else {})
                 return 0
             if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop'):
-                core.capture_decisions(root, payload.get('transcript_path'))
+                core.capture_decisions(root, payload.get('transcript_path'), 'claude',
+                                       assist.session_task(root, payload.get('session_id')))
             if a.cmd == 'brief' and a.refresh: core.refresh_native(root)
             message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else core.nudge(root)
             if a.hook and a.cmd == 'nudge':

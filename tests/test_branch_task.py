@@ -112,3 +112,38 @@ class BranchTaskTests(unittest.TestCase):
         self.assertEqual(before, core.task_path(self.root, first).read_bytes())
         self.git('switch', '-q', 'feature/a')
         self.assertIn('keep amber', core.brief(self.root))
+
+    def test_stop_keeps_the_session_task_after_git_branch_switch(self):
+        start = {'hook_event_name': 'SessionStart', 'session_id': 'session-a', 'cwd': str(self.root)}
+        with mock.patch('sys.stdin', io.StringIO(json.dumps(start))), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'brief', '--hook', '--client', 'codex']), 0)
+        first = core.task_list(self.root)[0]['id']
+        start['session_id'] = 'overlapping-session'
+        with mock.patch('sys.stdin', io.StringIO(json.dumps(start))), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'brief', '--hook', '--client', 'codex']), 0)
+        self.git('switch', '-qc', 'feature/b'); self.hook()
+        second = next(t['id'] for t in core.task_list(self.root) if t['branch'] == 'feature/b')
+        before = core.task_path(self.root, second).read_bytes()
+        transcript = self.root / 'session-a.jsonl'
+        transcript.write_text('\n'.join(map(json.dumps, [
+            {'type': 'user', 'message': {'content': 'Decided: only amber.'}},
+            {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text': 'Next step: inspect amber.'}]}}])))
+        stop = {'hook_event_name': 'Stop', 'session_id': 'session-a', 'transcript_path': str(transcript)}
+        with mock.patch('sys.stdin', io.StringIO(json.dumps(stop))), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'nudge', '--hook', '--client', 'codex']), 0)
+        self.assertIn('only amber', core.task_read(self.root, first, ['Handoff'])['sections']['Handoff'])
+        self.assertEqual(before, core.task_path(self.root, second).read_bytes())
+        first_after = core.task_path(self.root, first).read_bytes()
+        start['session_id'] = 'session-a'  # Same session now spans tasks: capture must fail closed.
+        with mock.patch('sys.stdin', io.StringIO(json.dumps(start))), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'brief', '--hook', '--client', 'codex']), 0)
+        before = core.task_path(self.root, second).read_bytes()
+        stop['session_id'] = 'session-a'
+        with mock.patch('sys.stdin', io.StringIO(json.dumps(stop))), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'nudge', '--hook', '--client', 'codex']), 0)
+        self.assertEqual(first_after, core.task_path(self.root, first).read_bytes())
+        self.assertEqual(before, core.task_path(self.root, second).read_bytes())
+        stop['session_id'] = 'unknown-session'
+        with mock.patch('sys.stdin', io.StringIO(json.dumps(stop))), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'nudge', '--hook', '--client', 'codex']), 0)
+        self.assertEqual(before, core.task_path(self.root, second).read_bytes())
