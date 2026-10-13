@@ -79,6 +79,62 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 0); local.unlink()
         self.assertEqual(self.start('--undo')[0], 2); self.assertFalse(local.exists())
 
+    def test_readable_branch_id_has_no_saved_placeholder_next(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        root = core.find_root(); task = core.task_list(root)[0]
+        self.assertEqual(task['id'], 'feature-synthetic')
+        record = core.task_read(root, task['id'], ['Next action'])
+        self.assertEqual(record['sections']['Next action'], '')
+        self.assertEqual(int(record['meta'].get('checkpoint_count', 0)), 0)
+        self.assertIn('Next action: Not saved yet', core.brief(root))
+        core.remember(root, 'keep amber')
+        self.assertIn('keep amber', core.brief(root))
+
+    def test_readable_id_collision_keeps_existing_record(self):
+        root = self.home / '.ai-dev-workspace/repo'
+        core.init(root, 'synthetic', repos=[str(self.repo.resolve())], clients=[])
+        core.task_new(root, 'feature-synthetic', 'User record', branch='feature/other', repo=str(self.repo.resolve()))
+        before = core.task_path(root, 'feature-synthetic').read_bytes()
+        self.assertEqual(self.start('--yes')[0], 0)
+        tasks = core.task_list(root); self.assertEqual(len(tasks), 2)
+        current = next(t for t in tasks if t['branch'] == 'feature/synthetic')
+        self.assertRegex(current['id'], r'^feature-synthetic-[0-9a-f]{8}$')
+        self.assertEqual(before, core.task_path(root, 'feature-synthetic').read_bytes())
+
+    def test_old_hashed_branch_task_keeps_its_id_and_saved_next(self):
+        root = self.home / '.ai-dev-workspace/repo'
+        core.init(root, 'synthetic', repos=[str(self.repo.resolve())], clients=[])
+        core.task_new(root, 'BR-legacy', 'Legacy branch', branch='feature/synthetic', repo=str(self.repo.resolve()))
+        core.claim(root, 'BR-legacy', 'local')
+        core.checkpoint(root, 'BR-legacy', 'in_progress', 'Preserve this saved step')
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual([t['id'] for t in core.task_list(root)], ['BR-legacy'])
+        self.assertIn('Preserve this saved step', core.brief(root))
+
+    def test_repeat_status_uses_this_repo_and_portable_names_are_bounded(self):
+        from ws import repo
+        self.assertEqual(self.start('--yes')[0], 0)
+        root = core.find_root(); task = core.task_list(root)[0]['id']
+        core.task_new(root, 'AAA', 'Other repo task', branch='feature/synthetic', repo=str(self.home / 'other-repo'))
+        self.assertIn('Next: task ' + task, self.start('--yes')[1])
+        self.assertEqual(repo.branch_task(root, self.repo.resolve(), 'CON'), 'branch-CON')
+        self.assertEqual(repo.branch_task(root, self.repo.resolve(), '测试'), 'branch')
+        self.assertLessEqual(len(repo.branch_task(root, self.repo.resolve(), 'feature/' + 'a' * 100)), 80)
+        self.assertFalse(repo.branch_task(root, self.repo.resolve(), 'a' * 79 + '.tail').endswith('.'))
+
+    def test_concurrent_checkpoint_is_not_cleared_during_setup(self):
+        original = core.claim
+        template = core.section((core.KIT / 'template/vault/Templates/Task.md').read_text(), 'Next action')
+        def claim_then_checkpoint(root, task, worker):
+            result = original(root, task, worker)
+            core.checkpoint(root, task, 'ready', template)
+            return result
+        with mock.patch.object(core, 'claim', side_effect=claim_then_checkpoint):
+            self.assertEqual(self.start('--yes')[0], 0)
+        record = core.task_read(core.find_root(), 'feature-synthetic', ['Next action'])
+        self.assertEqual(record['sections']['Next action'], template)
+        self.assertEqual(record['meta']['checkpoint_count'], '1')
+
     def test_detached_tracked_targets_and_workspace_collision_fail_before_writes(self):
         with mock.patch('ws.repo.subprocess.run', side_effect=subprocess.TimeoutExpired('git', 10)):
             self.assertEqual(self.start('--yes')[0], 2)

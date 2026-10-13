@@ -191,6 +191,24 @@ def upgrade_codex(repo, root, state, yes, dry_run):
     return True
 
 
+def branch_task(root, repo, branch):
+    matches = []
+    for task in core.task_list(root) if root.exists() else []:
+        if task['branch'] != branch: continue
+        value = core.task_read(root, task['id'], ['Next action'])['meta'].get('repo', '')
+        location = Path(value)
+        if not location.is_absolute(): location = root / location
+        if location.resolve() == repo: matches.append(task['id'])
+    if len(matches) > 1: raise core.WsError('Several tasks match this repo and branch; resolve them before ws start.')
+    if matches: return matches[0]
+    name = (re.sub(r'[^A-Za-z0-9._-]+', '-', branch).strip('._-') or 'branch')[:80].rstrip('._-')
+    if re.fullmatch(r'(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?', name): name = 'branch-' + name[:73]
+    if root.exists() and core.task_path(root, name).exists():
+        name = name[:71] + '-' + core.digest_text(str(repo) + '\0' + branch)[:8]
+        if core.task_path(root, name).exists(): raise core.WsError('Branch task name collision; resolve existing records before ws start.')
+    return name
+
+
 def start(yes=False, dry_run=False, workspace=None, remove=False):
     if remove and dry_run: raise core.WsError('Use --undo or --dry-run separately.')
     try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=10)
@@ -203,7 +221,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         if remove: return undo(repo, state)
         root = Path(state['workspace'])
         if str(repo) not in core.config(root).get('repos', []): raise core.WsError('Linked workspace belongs elsewhere; review .ws-start.json or undo this repo setup.')
-        task = next((t['id'] for t in core.task_list(root) if t['branch'] == current), '')
+        task = branch_task(root, repo, current)
+        if not core.task_path(root, task).exists(): task = ''
         partial = state.get('complete') is False or any(not path(repo, n).is_file() or hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha'] for n, e in state['files'].items())
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
         if not partial and '.codex/config.toml' not in state['files']:
@@ -214,7 +233,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     if root == repo or repo in root.parents: raise core.WsError('Choose a workspace outside the repo with ws start --workspace <dir>.')
     if root.exists() and (not (root / 'workspace.json').is_file() or str(repo) not in core.config(root).get('repos', [])):
         raise core.WsError('Workspace belongs elsewhere or is not a workspace; choose ws start --workspace <dir>.')
-    task = 'BR-' + core.digest_text(str(repo) + '\0' + current)[:10]
+    task = branch_task(root, repo, current)
     command = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'), '--workspace-root', str(root)])
     instructions = f'Private task memory: {root}\nAt session start, run `{command} brief` unless saved task memory is already in context. Follow the current request. Save verified decisions and next actions with `{command} checkpoint`.\n'
     desired = {}
@@ -278,9 +297,16 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
     state.pop('exclude_previous'); state.pop('exclude_before'); core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     for name, data in desired.items(): record_file(repo, state, name, data)
-    new_task = not core.task_find(root, task)
+    new_task = not core.task_path(root, task).exists()
     if new_task: core.task_new(root, task, current, branch=current, repo=str(repo))
     core.claim(root, task, 'local')
-    if new_task: core.checkpoint(root, task, 'in_progress', 'Follow the current request; save the next action before stopping.')
+    if new_task:
+        with core.lock(root):
+            target = core.task_path(root, task); text = target.read_text(encoding='utf-8')
+            meta = core.parse_meta(text)
+            template = core.section((core.KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Next action')
+            if (core._local_claim_matches(root, task, meta) and meta.get('status') == 'ready'
+                    and not meta.get('checkpoint_at') and core.section(text, 'Next action') == template):
+                core.atomic_write(target, core.set_meta(core.set_section(text, 'Next action', ''), {'status': 'in_progress'}))
     state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return dict(root=str(root), already=False, assistants=clients, task=task, branch=current)
