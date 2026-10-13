@@ -104,6 +104,33 @@ def confirm(yes, dry_run):
     except EOFError: raise core.WsError('No confirmation; use ws start --yes or --dry-run.')
 
 
+def toml_top_level(text):
+    quote = None; triple = False; escaped = False; line_start = True; i = 0
+    while i < len(text):
+        char = text[i]
+        if quote:
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif triple and text.startswith(quote * 3, i): quote = None; triple = False; i += 2
+            elif not triple and char == quote: quote = None
+            if char == '\n': line_start = True
+        else:
+            if char == '#' and line_start is False:
+                end = text.find('\n', i)
+                if end < 0: break
+                i = end - 1; line_start = True
+            elif line_start and char in ' \t': pass
+            elif line_start and char == '[': return text[:i]
+            elif char in '"\'':
+                triple = text.startswith(char * 3, i); quote = char
+                if triple: i += 2
+                line_start = False
+            elif char == '\n': line_start = True
+            else: line_start = False
+        i += 1
+    return text
+
+
 def codex_files(repo, root):
     target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
     text = original.decode('utf-8')
@@ -114,7 +141,7 @@ def codex_files(repo, root):
     server_key = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
     toml_key = r'(?:"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|[A-Za-z0-9_-]+)'
     nested = r'(?:\s*\.\s*' + toml_key + r')*'
-    top_level = re.split(r'^[ \t]*\[', text, maxsplit=1, flags=re.M)[0]
+    top_level = toml_top_level(text)
     root_entry = re.search(r'^\s*' + mcp_key + r'\s*=|^\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*(?:\.|=)', top_level, re.M)
     server_table = re.search(r'^\s*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + nested + r'\s*\]', text, re.M)
     if parent_has_server or root_entry or server_table:
