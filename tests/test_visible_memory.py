@@ -46,6 +46,7 @@ class VisibleMemoryTests(Base):
         path = core.task_path(self.root, 'T-1')
         path.write_text(core.set_section(path.read_text(), 'Handoff', 'Waiting for the return label.'))
         self.assertEqual(core.memory_summary(self.root), 'Remembered: saved context')
+        self.assertIn('Explicit Handoff (saved task record): Waiting for the return label.', core.brief(self.root))
 
     def test_saved_blocker_is_not_empty_memory(self):
         core.claim(self.root, 'T-1', 'synthetic')
