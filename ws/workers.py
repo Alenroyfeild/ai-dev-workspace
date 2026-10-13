@@ -150,7 +150,9 @@ def collect(root, run_id):
         if git(checkout, 'rev-parse', 'HEAD') != state['base']: raise core.WsError('Worker changed its pinned Git base.')
         for p in checkout.rglob('*'):
             if p.is_symlink(): raise core.WsError('Worker introduced a symlink; collection blocked.')
-            if not (stat.S_ISREG(p.stat().st_mode) or p.is_dir()): raise core.WsError('Worker introduced a special file; collection blocked before staging.')
+            info = p.stat()
+            if not (stat.S_ISREG(info.st_mode) or p.is_dir()): raise core.WsError('Worker introduced a special file; collection blocked before staging.')
+            if stat.S_ISREG(info.st_mode) and info.st_size > 1024 * 1024: raise core.WsError('Changed file exceeds the 1 MiB scan limit.')
         if any(key.lower().startswith('filter.') for key in git(checkout, 'config', '--includes', '--name-only', '--list').splitlines()):
             raise core.WsError('filter driver configured')
         index = directory / 'collection.index'; index.unlink(missing_ok=True)
