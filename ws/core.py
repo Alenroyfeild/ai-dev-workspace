@@ -610,7 +610,9 @@ def _connect_config(root, client, write=False):
             return result
         path = Path.home() / '.codex/config.toml'
         original = path.read_text(encoding='utf-8') if path.exists() else ''
-        if re.search(r'^[ \t]*(?:mcp_servers\s*=|mcp_servers\s*\.|\[[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*\.[ \t]*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:[ \t]*\]|[ \t]*\.))', original, re.M):
+        parent = re.search(r'^[ \t]*\[[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*\][ \t]*(.*?)(?=^[ \t]*\[|\Z)', original, re.M | re.S)
+        parent_entry = parent and re.search(r'^[ \t]*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)[ \t]*(?:\.|=)', parent[1], re.M)
+        if parent_entry or re.search(r'^[ \t]*(?:mcp_servers\s*=|mcp_servers\s*\.|\[[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*\.[ \t]*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:[ \t]*\]|[ \t]*\.))', original, re.M):
             raise WsError('Codex already has a different workspace entry; review the printed block manually.')
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():

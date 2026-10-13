@@ -244,6 +244,16 @@ class StartTests(unittest.TestCase):
                 core._connect_config(core.find_root(), 'codex', write=True)
         self.assertEqual(config.read_bytes(), before)
 
+    def test_global_codex_write_refuses_workspace_entry_in_parent_table(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        config.write_text('[mcp_servers]\nai-dev-workspace = { enabled = false, command = "old", args = [] }\n')
+        before = config.read_bytes()
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(core.find_root(), 'codex', write=True)
+        self.assertEqual(config.read_bytes(), before)
+
     def test_undo_keeps_backup_when_user_edits_codex_config(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
         original = b'model = "fixture"\n'
