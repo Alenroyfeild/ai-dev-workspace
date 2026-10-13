@@ -154,6 +154,9 @@ class WorkerPrepareTests(Base):
         plan = self.prepare(apply=True); before = Path(plan['record']).read_bytes()
         with mock.patch('ws.workers.orchestration.worker_run', side_effect=AssertionError('launch')):
             with self.assertRaisesRegex(core.WsError, 'O2d'): workers.launch(self.root, plan['id'])
+        with contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'launch', plan['id']]), 2)
+        self.assertIn('O2d', errors.getvalue())
         self.assertEqual(Path(plan['record']).read_bytes(), before)
 
     def test_internal_probe_launch_collects_snapshot_and_protects_source(self):
@@ -163,7 +166,7 @@ class WorkerPrepareTests(Base):
             self.assertNotIn('--sandbox', binding['headless']); self.assertNotIn('-s', binding['headless'])
             self.assertIn('shell_environment_policy.inherit="none"', binding['headless'])
             self.assertIn('--ignore-user-config', binding['headless']); self.assertIn('default_permissions="worker-private"', binding['headless'])
-            (checkout / 'calc.py').write_text('answer = 2\n')
+            (checkout / 'calc.py').write_bytes(b'answer = 2\r\n')
             receipt(json.dumps({'type':'item.completed','item':{'type':'command_execution','command':'python3 -m unittest','exit_code':0}}))
             return 0, 'synthetic checked', 1, 2, True
         with mock.patch('ws.orchestration.route', return_value=binding), mock.patch('ws.orchestration.worker_run', side_effect=run):
@@ -182,6 +185,7 @@ class WorkerPrepareTests(Base):
                 plan = self.prepare(apply=True); (Path(plan['checkout']) / name).write_bytes(data)
                 result = workers.collect(self.root, plan['id'])
                 self.assertTrue(result['blocked']); self.assertIn(name, result['changed'])
+                if data.startswith(b'\xff'): self.assertEqual(result['binary_files'], [name])
                 self.assertNotIn('x'*20, json.dumps(result))
         plan = self.prepare(apply=True)
         (Path(plan['checkout']) / 'escape').symlink_to(self.repo / 'calc.py')
@@ -219,3 +223,13 @@ class WorkerPrepareTests(Base):
         with mock.patch('ws.workers.git', side_effect=invalid): result = workers.collect(self.root, plan['id'])
         self.assertTrue(result['blocked']); self.assertEqual(result['state'], 'needs-review')
         self.assertTrue(json.loads(Path(plan['record']).read_text())['blocked'])
+
+    def test_secret_scan_uses_snapshot_even_if_checkout_changes_after_staging(self):
+        plan = self.prepare(apply=True); target = Path(plan['checkout']) / 'calc.py'
+        target.write_text('api_key=' + 'x'*20); original = workers.git
+        def changed(repo, *args, **kwargs):
+            result = original(repo, *args, **kwargs)
+            if args[0] == 'add': target.write_text('safe after staging\n')
+            return result
+        with mock.patch('ws.workers.git', side_effect=changed): result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertEqual(result['secret_files'], ['calc.py'])
