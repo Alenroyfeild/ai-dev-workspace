@@ -66,3 +66,20 @@ class KnowledgeTests(unittest.TestCase):
         core.atomic_write(self.root/'workspace.json',json.dumps(cfg))
         manifest=self.clone/'team.json'; data=json.loads(manifest.read_text()); data['id']=None;manifest.write_text(json.dumps(data))
         with self.assertRaises(core.WsError): knowledge.list_entries(self.root)
+
+    def test_knowledge_catalog_excludes_team_tasks_but_keeps_task_runbooks(self):
+        from ws import knowledge
+        plan=sharing.preview(self.root,'task:T1');sharing.apply(self.root,plan)
+        self.assertFalse(knowledge.list_entries(self.root,layer='team')['entries'])
+        target=self.clone/plan['destination'];text=target.read_text().replace('category: task','category: runbook')
+        target.write_text(text)
+        self.assertEqual(knowledge.list_entries(self.root,layer='team')['entries'][0]['category'],'runbook')
+
+    def test_private_limit_cannot_hide_the_team_layer(self):
+        from ws import knowledge
+        item=knowledge.add(self.root,'Team queue contract.','domain',True)
+        sharing.apply(self.root,sharing.preview(self.root,item))
+        directory=core.vault(self.root)/'Knowledge'
+        for i in range(100):
+            (directory/('K%03d.md'%i)).write_text('---\nid: K%03d\n---\nPrivate queue contract.\n'%i)
+        rows=knowledge.list_entries(self.root)['entries'];self.assertTrue(any(r['layer']=='team' for r in rows))
