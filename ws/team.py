@@ -17,14 +17,17 @@ def remote_parts(remote):
     if Path(remote).is_absolute(): return '', ''
     scp = re.fullmatch(r'git@([\w.-]+):([\w./-]+)', remote)
     if scp and '..' not in scp[2].split('/'): return scp[1].lower(), scp[2].removesuffix('.git')
-    parsed = urlsplit(remote)
+    try:
+        parsed = urlsplit(remote); port = parsed.port
+    except ValueError:
+        raise core.WsError('Remote URL or port is invalid; use an SSH/HTTPS repository URL.')
     if (parsed.scheme not in ('https', 'ssh') or not parsed.hostname or parsed.password or
             parsed.query or parsed.fragment or (parsed.username and not (parsed.scheme == 'ssh' and parsed.username == 'git'))):
         raise core.WsError('Remote must use SSH/HTTPS without embedded credentials, queries or fragments.')
     slug = parsed.path.strip('/').removesuffix('.git')
     if not slug or '..' in slug.split('/'): raise core.WsError('Remote repository path is invalid.')
     host = parsed.hostname.lower()
-    if parsed.port and parsed.port != (443 if parsed.scheme == 'https' else 22): host += ':' + str(parsed.port)
+    if port and port != (443 if parsed.scheme == 'https' else 22): host += ':' + str(port)
     return host, slug
 
 
