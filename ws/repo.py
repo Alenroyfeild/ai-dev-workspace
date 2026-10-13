@@ -115,9 +115,10 @@ def codex_files(repo, root):
 
 
 def codex_pending(root, check_global=True):
-    if check_global and core.client_connected(root, 'codex', global_only=True): return []
+    global_connected = core.client_connected(root, 'codex', global_only=True)
+    if check_global and global_connected: return []
     return [str(p / '.codex/config.toml') for p in core.read_roots(root)[1:]
-            if (p / LINK).is_file() and load(p).get('codex_status') in ('manual step pending', 'connected via global config')]
+            if (p / LINK).is_file() and load(p).get('codex_status') in (('manual step pending', 'connected via global config') if global_connected else ('manual step pending',))]
 
 
 def upgrade_codex(repo, root, state, yes, dry_run):

@@ -540,4 +540,7 @@ class StartTests(unittest.TestCase):
         self.assertEqual(config.read_bytes(), original); self.assertEqual(self.start('--undo')[0], 0)
         config.unlink(); code, output, preview = self.start('--yes')
         self.assertEqual(code, 0); self.assertIn('connected via global config', output); self.assertFalse(config.exists())
-        self.assertEqual(global_config.read_bytes(), global_before); self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(global_config.read_bytes(), global_before)
+        global_config.unlink(); config.write_text(core.codex_mcp_config(root))
+        self.assertTrue(core.client_connected(root, 'codex'))
+        config.unlink(); self.assertEqual(self.start('--undo')[0], 0)
