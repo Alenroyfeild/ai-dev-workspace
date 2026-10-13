@@ -1,5 +1,6 @@
 """Owned private checkouts for explicitly requested implementation work."""
 import json
+import hashlib
 import os
 import re
 import stat
@@ -8,16 +9,16 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from . import core, orchestration
 
 
-def git(repo, *args, env_extra=None):
+def git(repo, *args, env_extra=None, binary=False):
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT='0', GIT_LFS_SKIP_SMUDGE='1')
     if env_extra: env.update(env_extra)
     try:
-        result = subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-c', 'core.fsmonitor=false', '-C', str(repo), *args],
-                                env=env, capture_output=True, text=True, timeout=120)
+        result = subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-c', 'core.fsmonitor=false', '-c', 'core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol', '-C', str(repo), *args],
+                                env=env, capture_output=True, timeout=120)
     except (OSError, subprocess.TimeoutExpired): raise core.WsError('Worker Git operation could not complete; no provider was launched.')
-    if result.returncode: raise core.WsError('Worker Git operation failed: ' + core.redact(result.stderr[-1000:]))
-    return result.stdout.strip()
+    if result.returncode: raise core.WsError('Worker Git operation failed: ' + core.redact(result.stderr[-1000:].decode('utf-8', errors='replace')))
+    return result.stdout if binary else result.stdout.decode('utf-8').strip()
 
 
 def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
@@ -150,24 +151,29 @@ def collect(root, run_id):
         git(checkout, 'add', '-A', '-f', '--', '.', env_extra=extra)
         changed = git(checkout, 'diff', '--cached', '--name-only', '-z', state['base'], '--', env_extra=extra).split('\0')
         changed = [n for n in changed if n]
+        tree = git(checkout, 'write-tree', env_extra=extra); blobs = {}
+        for entry in git(checkout, 'ls-tree', '-r', '-z', tree).split('\0'):
+            if entry:
+                spec, name = entry.split('\t', 1); mode, _, oid = spec.split(); blobs[name] = (mode, oid)
         for name in changed:
             if not any(name == p or name.startswith(p.rstrip('/') + '/') for p in state['scope']): reasons.append('Outside scope: ' + name)
             if any(p.lower() in ('.git', '.ws', '.codex', '.claude') for p in PurePosixPath(name).parts): reasons.append('Protected metadata: ' + name)
-            path = checkout / name; core.inside(path, [checkout])
-            if path.exists():
-                if path.stat().st_size > 1024 * 1024: raise core.WsError('Changed file exceeds the 1 MiB scan limit.')
-                data = path.read_bytes()
+            if name in blobs:
+                mode, oid = blobs[name]
+                if mode not in ('100644', '100755'): raise core.WsError('Snapshot contains a linked or special file; collection blocked.')
+                if int(git(checkout, 'cat-file', '-s', oid)) > 1024 * 1024: raise core.WsError('Changed file exceeds the 1 MiB scan limit.')
+                data = git(checkout, 'cat-file', 'blob', oid, binary=True)
                 try: text = data.decode('utf-8')
                 except UnicodeError: binary.append(name); continue
                 if '\0' in text: binary.append(name)
                 if core.redact(text) != text: secrets.append(name)
         if secrets: reasons.append('Secret scan flagged changed files.')
         if binary: reasons.append('Binary changed files cannot be secret-scanned in v1.')
-        diff = git(checkout, 'diff', '--cached', '--binary', '--no-ext-diff', '--no-textconv', state['base'], '--', env_extra=extra)
-        if len(diff.encode()) > 2 * 1024 * 1024: raise core.WsError('Worker diff exceeds the 2 MiB review limit.')
-        core.atomic_write(directory / 'diff.patch', core.redact(diff))
-        tree = git(checkout, 'write-tree', env_extra=extra)
-        state.update(tree=tree, diff_sha=core.digest_text(diff), changed=changed, secret_files=secrets, binary_files=binary)
+        state.update(tree=tree, changed=changed, secret_files=secrets, binary_files=binary)
+        diff = git(checkout, 'diff', '--cached', '--binary', '--no-ext-diff', '--no-textconv', state['base'], '--', env_extra=extra, binary=True)
+        if len(diff) > 2 * 1024 * 1024: raise core.WsError('Worker diff exceeds the 2 MiB review limit.')
+        core.atomic_write(directory / 'diff.patch', core.redact(diff.decode('utf-8', errors='replace')).encode('utf-8'))
+        state['diff_sha'] = hashlib.sha256(diff).hexdigest()
         try: git(checkout, 'diff', '--cached', '--check', state['base'], '--', env_extra=extra)
         except core.WsError: raise core.WsError('Worker diff whitespace check failed.')
     except (core.WsError, OSError, UnicodeError) as error: reasons.append(core.redact(str(error)))

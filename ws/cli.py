@@ -223,6 +223,7 @@ def main(argv=None):
     w = sub.add_parser('worker', help='prepare an isolated implementation checkout; no worker launch').add_subparsers(dest='action', required=True)
     s = w.add_parser('prepare'); s.add_argument('task'); s.add_argument('--scope', action='append', required=True)
     s.add_argument('--base', default='HEAD'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
+    s = w.add_parser('launch', help='gated until the real-client hostile probe passes'); s.add_argument('id')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
@@ -429,6 +430,7 @@ def main(argv=None):
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2
         if a.cmd == 'worker':
+            if a.action == 'launch': out(workers.launch(root, a.id)); return 0
             def confirm(plan):
                 print(json.dumps(plan, indent=2), file=sys.stderr)
                 print('Create this private clone and checkout? [y/N] ', end='', file=sys.stderr)

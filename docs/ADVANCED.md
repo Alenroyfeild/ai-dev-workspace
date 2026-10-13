@@ -54,8 +54,8 @@ The generated `routing.json` records `preset`, `assistants` and `delegation_mode
 
 Existing ADK or LangGraph users can opt into the [stub-model-tested MCP examples](examples/frameworks/README.md). They use four native-adapter tools and disposable memory, add no core dependencies, and distinguish saved task memory from framework execution state. Hosted models are untested.
 
-O2b adds internal Codex launch/collection for the O2d probe. Public `workers.launch`
-stays preparation-only; no launch CLI or passing real-client gate is claimed.
+O2b adds internal Codex launch/collection for the O2d probe. Public `workers.launch` and `ws worker launch <run-id>`
+refuse execution with the O2d gate reason; no passing real-client gate is claimed.
 The run owns `worker.config.toml` and scratch, selects `worker-private` via CLI
 config overrides, ignores user/project configuration and rules, disables hooks,
 apps/plugins and approvals, and uses no legacy sandbox flag. Native tool access is
