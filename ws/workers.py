@@ -25,7 +25,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     if task.get('conflicted') or meta.get('status') == 'done' or not token or meta.get('claimed_by') != worker or meta.get('claim_token') != token:
         raise core.WsError('Worker preparation needs a current local task claim; claim the task first.')
     source = Path(meta.get('repo') or '').expanduser().resolve()
-    if source not in [Path(p).expanduser().resolve() for p in core.config(root).get('repos', [])]:
+    if source not in [p.resolve() for p in core.read_roots(root)[1:]]:
         raise core.WsError('Worker repository must be one declared workspace repo.')
     if Path(git(source, 'rev-parse', '--show-toplevel')).resolve() != source:
         raise core.WsError('Worker repository must be the Git checkout root.')

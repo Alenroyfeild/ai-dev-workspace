@@ -57,8 +57,10 @@ class WorkerPrepareTests(Base):
             with self.subTest(scope=scope), self.assertRaises(core.WsError): workers.prepare(self.root, 'W-1', scope)
         for base in ('--help', 'missing-commit'):
             with self.subTest(base=base), self.assertRaises(core.WsError): self.prepare(base=base, apply=True)
-        cfg = core.config(self.root); cfg['repos'] = []; (self.root / 'workspace.json').write_text(json.dumps(cfg))
-        with self.assertRaises(core.WsError): self.prepare(apply=True)
+        cfg = core.config(self.root)
+        for repos in ([], None, [None], ['']):
+            cfg['repos'] = repos; (self.root / 'workspace.json').write_text(json.dumps(cfg))
+            with self.subTest(repos=repos), self.assertRaises(core.WsError): self.prepare(apply=True)
         cfg['repos'] = [str(self.repo)]; (self.root / 'workspace.json').write_text(json.dumps(cfg))
         (self.root / '.ws/claims/W-1.json').unlink()
         with self.assertRaises(core.WsError): self.prepare(apply=True)
