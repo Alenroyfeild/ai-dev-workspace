@@ -312,7 +312,7 @@ class StartTests(unittest.TestCase):
 
     def test_start_refuses_existing_spaced_toml_workspace_keys(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
-        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n', '["mcp_servers"."ai-dev-workspace"]\ncommand="fixture"\n', '"mcp_servers"."ai-dev-workspace".command="fixture"\n', '"mcp_servers" = { other = { command = "other" } }\n'):
+        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n', '["mcp_servers"."ai-dev-workspace"]\ncommand="fixture"\n', '"mcp_servers"."ai-dev-workspace".command="fixture"\n', '"mcp_servers" = { other = { command = "other" } }\n', '[mcp_servers."ai-dev-\\u0077orkspace"]\ncommand="fixture"\n'):
             with self.subTest(text=text):
                 config.write_text(text)
                 self.assertEqual(self.start('--yes')[0], 2)
