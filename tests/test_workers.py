@@ -77,13 +77,12 @@ class WorkerPrepareTests(Base):
         self.assertFalse(state['complete']); self.assertIn('failed', state['reason'])
 
     def test_cli_decline_and_yes_use_one_confirmation(self):
-        before = Path.cwd(); os.chdir(self.root)
-        self.addCleanup(os.chdir, before)
+        prefix = ['--workspace-root', str(self.root)]
         with mock.patch('builtins.input', return_value='n') as ask, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(cli.main(['worker', 'prepare', 'W-1', '--scope', 'calc.py']), 0)
+            self.assertEqual(cli.main(prefix + ['worker', 'prepare', 'W-1', '--scope', 'calc.py']), 0)
         ask.assert_called_once(); self.assertFalse((self.root / '.ws/workers').exists())
         with mock.patch('builtins.input', side_effect=AssertionError('yes must not prompt')), contextlib.redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(cli.main(['worker', 'prepare', 'W-1', '--scope', 'calc.py', '--yes']), 0)
+            self.assertEqual(cli.main(prefix + ['worker', 'prepare', 'W-1', '--scope', 'calc.py', '--yes']), 0)
         self.assertTrue(json.loads(output.getvalue())['applied'])
 
     def test_confirmation_rechecks_claim_and_storage_before_writing(self):
