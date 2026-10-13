@@ -27,7 +27,7 @@ class VisibleMemoryTests(Base):
         core.remember(self.root, 'never ship on Friday')
         self.assertEqual(core.memory_summary(self.root), 'Remembered: 2 decisions · next: Write the migration')
         self.capture()
-        self.assertEqual(core.memory_summary(self.root), 'Remembered: 4 decisions · next: Write the migration')
+        self.assertEqual(core.memory_summary(self.root), 'Remembered: 4 decisions (2 unverified) · next: Write the migration')
 
     def test_captured_requests_with_decision_verbs_do_not_count_as_decisions(self):
         core.claim(self.root, 'T-1', 'synthetic')
@@ -44,7 +44,7 @@ class VisibleMemoryTests(Base):
     def test_saved_handoff_prose_is_not_empty_memory(self):
         core.claim(self.root, 'T-1', 'synthetic')
         path = core.task_path(self.root, 'T-1')
-        path.write_text(core.set_section(path.read_text(), 'Handoff', 'Waiting for the product answer.'))
+        path.write_text(core.set_section(path.read_text(), 'Handoff', 'Waiting for the return label.'))
         self.assertEqual(core.memory_summary(self.root), 'Remembered: saved context')
 
     def test_saved_blocker_is_not_empty_memory(self):
