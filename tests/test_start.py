@@ -280,6 +280,26 @@ class StartTests(unittest.TestCase):
         self.assertEqual(link.read_bytes(), before)
         self.assertFalse((self.repo / '.codex/config.toml').exists())
 
+    def test_codex_migration_preserves_record_edited_during_confirmation(self):
+        self.old_start()
+        link = self.repo / '.ws-start.json'
+        def edit_record():
+            state = json.loads(link.read_text()); state['concurrent_note'] = 'keep'; link.write_text(json.dumps(state)); return 'y'
+        with mock.patch('builtins.input', side_effect=edit_record):
+            self.assertEqual(self.start()[0], 2)
+        self.assertEqual(json.loads(link.read_text())['concurrent_note'], 'keep')
+        self.assertFalse((self.repo / '.codex/config.toml').exists())
+
+    def test_start_rechecks_tracked_targets_after_confirmation(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n'; config.write_bytes(original)
+        def track_config():
+            subprocess.run(['git', 'add', '.codex/config.toml'], check=True); return 'y'
+        with mock.patch('builtins.input', side_effect=track_config):
+            self.assertEqual(self.start()[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
     def test_existing_start_gets_codex_connection_after_one_confirm(self):
         config, _ = self.old_start()
         hooks = (self.repo / '.codex/hooks.json').read_bytes()
