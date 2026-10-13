@@ -320,6 +320,22 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 2)
         self.assertEqual(config.read_bytes(), original)
 
+    def test_start_finds_workspace_key_after_nested_array_value(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'values = [\n  [1, 2],\n]\nmcp_servers.ai-dev-workspace.command = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_global_codex_write_finds_workspace_key_after_nested_array_value(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.home / '.codex/config.toml'; config.parent.mkdir()
+        original = 'values = [\n  [1, 2],\n]\nmcp_servers.ai-dev-workspace.command = "other"\n'; config.write_text(original)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            with self.assertRaisesRegex(core.WsError, 'already has a different workspace entry'):
+                core._connect_config(workspace, 'codex', write=True)
+        self.assertEqual(config.read_text(), original)
+
     def test_codex_connection_ignores_fake_table_in_multiline_string(self):
         workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
         project = self.repo / '.codex/config.toml'; project.parent.mkdir(exist_ok=True)
