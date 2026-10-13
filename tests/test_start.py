@@ -299,6 +299,21 @@ class StartTests(unittest.TestCase):
         self.assertTrue((self.repo / '.ws-start.json').exists())
         self.assertTrue(config.read_bytes().startswith(original))
 
+    def test_start_does_not_treat_triple_quote_in_comment_as_string(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'# """ comment does not open a string\n[mcp_servers.ai-dev-workspace]\ncommand = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_codex_connection_ignores_fake_table_in_multiline_string(self):
+        workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
+        project = self.repo / '.codex/config.toml'; project.parent.mkdir(exist_ok=True)
+        project.write_text('note = """\n[mcp_servers.ai-dev-workspace]\ncommand = "other"\nargs = []\n"""\n')
+        global_config = self.home / '.codex/config.toml'; global_config.parent.mkdir()
+        global_config.write_text(core.codex_mcp_config(workspace))
+        with mock.patch.object(Path, 'cwd', return_value=self.repo): self.assertTrue(core.client_connected(workspace, 'codex'))
+
     def test_codex_client_connected_preserves_backslashes_in_toml_literal_strings(self):
         workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
         server = {'command': r'C:\tmp\tool', 'args': [r'C:\tmp\tool']}

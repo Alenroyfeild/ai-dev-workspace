@@ -517,6 +517,31 @@ def _toml_literal(text, key):
     raise ValueError('incomplete TOML value')
 
 
+def toml_mask_multiline_strings(text):
+    chars = list(text); quote = None; escaped = False; comment = False; i = 0
+    while i < len(text):
+        char = text[i]
+        if comment:
+            if char == '\n': comment = False
+            else: chars[i] = ' '
+        elif quote:
+            if char != '\n': chars[i] = ' '
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif text.startswith(quote * 3, i):
+                for index in range(i, i + 3):
+                    if text[index] != '\n': chars[index] = ' '
+                quote = None; i += 2
+        elif char == '#': comment = True; chars[i] = ' '
+        elif char in '"\'' and text.startswith(char * 3, i):
+            quote = char
+            for index in range(i, i + 3):
+                if text[index] != '\n': chars[index] = ' '
+            i += 2
+        i += 1
+    return ''.join(chars)
+
+
 # Project MCP config per client: (file, key holding the server map).
 MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
                  'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
@@ -524,6 +549,7 @@ MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.
 
 def _toml_has_workspace_entry(text):
     text = re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))', lambda m: chr(int(m.group(1) or m.group(2), 16)), text)
+    text = toml_mask_multiline_strings(text)
     mcp = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
     server = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
     top = re.split(r'^[ \t]*\[', text, maxsplit=1, flags=re.M)[0]
@@ -542,9 +568,10 @@ def client_connected(root, client, global_only=False):
         paths = (Path.home() / '.codex/config.toml',) if global_only else (project / '.codex/config.toml', Path.home() / '.codex/config.toml')
         for path in paths:
             text = path.read_text(encoding='utf-8') if path.is_file() else ''
+            scan_text = toml_mask_multiline_strings(text)
             mcp_key = r'(?:mcp_servers|"mcp_servers"|\'mcp_servers\')'
             server_key = r'(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')'
-            match = re.search(r'^[ \t]*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\][ \t]*(?:#[^\r\n]*)?$(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
+            match = re.search(r'^[ \t]*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\][ \t]*(?:#[^\r\n]*)?$(.*?)(?=^[ \t]*\[|\Z)', scan_text, re.M | re.S)
             if match: break
             if _toml_has_workspace_entry(text): return False
         else: return False
