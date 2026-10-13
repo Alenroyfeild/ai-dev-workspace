@@ -36,7 +36,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     if not scope: raise core.WsError('Worker needs at least one relative --scope path.')
     for name in scope:
         parts = PurePosixPath(name.replace('\\', '/')).parts
-        if not parts or PureWindowsPath(name).drive or name.startswith('/') or '..' in parts or any(p in ('.git', '.ws', '.codex', '.claude') for p in parts) or '\x00' in name:
+        if not parts or not name.isprintable() or PureWindowsPath(name).drive or name.startswith('/') or '..' in parts or any(p in ('.git', '.ws', '.codex', '.claude') for p in parts):
             raise core.WsError('Worker scope must stay inside checkout files, away from metadata and client config.')
     scope = [str(PurePosixPath(n.replace('\\', '/'))) for n in scope]
     tree = git(source, 'ls-tree', '-r', commit)
