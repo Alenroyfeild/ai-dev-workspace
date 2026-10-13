@@ -119,6 +119,7 @@ class StartTests(unittest.TestCase):
         self.assertEqual(repo.branch_task(root, self.repo.resolve(), 'CON'), 'branch-CON')
         self.assertEqual(repo.branch_task(root, self.repo.resolve(), '测试'), 'branch')
         self.assertLessEqual(len(repo.branch_task(root, self.repo.resolve(), 'feature/' + 'a' * 100)), 80)
+        self.assertFalse(repo.branch_task(root, self.repo.resolve(), 'a' * 79 + '.tail').endswith('.'))
 
     def test_concurrent_checkpoint_is_not_cleared_during_setup(self):
         original = core.claim
