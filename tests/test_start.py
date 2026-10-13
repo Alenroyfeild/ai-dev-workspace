@@ -133,6 +133,14 @@ class StartTests(unittest.TestCase):
         self.assertIn('[mcp_servers.ai-dev-workspace]', config.read_text())
         self.assertIn('other = { command = "other" }', config.read_text())
 
+    def test_codex_start_allows_mcp_servers_key_inside_unrelated_table(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = '[other]\nmcp_servers = { note = "unrelated" }\n'
+        config.write_text(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn(original, config.read_text())
+        self.assertIn('[mcp_servers.ai-dev-workspace]', config.read_text())
+
     def test_codex_start_rejects_duplicate_server_in_parent_table(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
         for original in (b'[mcp_servers]\nai-dev-workspace = { command = "other" }\n',
@@ -184,6 +192,16 @@ class StartTests(unittest.TestCase):
         with mock.patch.object(Path, 'cwd', return_value=self.repo):
             self.assertTrue(core.client_connected(workspace, 'codex'))
             config.write_text(block.replace('  enabled = true', '  enabled = false'))
+            self.assertFalse(core.client_connected(workspace, 'codex'))
+
+    def test_codex_connection_reads_quoted_field_names(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        workspace = core.find_root(); config = self.repo / '.codex/config.toml'
+        block = core.codex_mcp_config(workspace).replace('enabled = true', '"enabled" = true').replace('command =', '"command" =').replace('args =', '"args" =')
+        config.write_text(block)
+        with mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+            config.write_text(block.replace('"enabled" = true', '"enabled" = false'))
             self.assertFalse(core.client_connected(workspace, 'codex'))
 
     def test_codex_connection_handles_indented_table_and_bounds_its_section(self):

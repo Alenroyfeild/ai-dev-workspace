@@ -457,7 +457,9 @@ def codex_mcp_config(root):
 
 
 def _toml_literal(text, key):
-    match = re.search(r'^[ \t]*' + re.escape(key) + r'\s*=\s*', text, re.M)
+    name = re.escape(key)
+    key_name = r'(?:' + name + r'|"' + name + r'"|\'' + name + r'\')'
+    match = re.search(r'^[ \t]*' + key_name + r'\s*=\s*', text, re.M)
     if not match: return None
     start = match.end(); quote = None; escaped = False; depth = 0
     for index in range(start, len(text)):
@@ -496,7 +498,7 @@ def client_connected(root, client, global_only=False):
             match = re.search(r'^[ \t]*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\][ \t]*$(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
             if match: break
         else: return False
-        if re.search(r'^[ \t]*enabled\s*=\s*false\b', match[1], re.M): return False
+        if re.search(r'^[ \t]*(?:enabled|"enabled"|\'enabled\')\s*=\s*false\b', match[1], re.M): return False
         fields = {}
         for key in ('command', 'args'):
             try:
