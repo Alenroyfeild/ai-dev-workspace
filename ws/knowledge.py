@@ -44,7 +44,8 @@ def _read(root, path, layer, team_id):
         meta = core.parse_meta(match.group() + '\n'); end = match.end()
         if meta.get('id') != path.stem or meta.get('team') != team_id: raise core.WsError('Team entry identity does not match.')
     value = meta.get('category', 'other')
-    if layer == 'team' and value in ('task', 'decision', 'lesson'): value = 'other'
+    if layer == 'team' and not (meta.get('source', '').startswith('knowledge:') or
+                                 (value == 'runbook' and meta.get('source', '').startswith('task:'))): return None, ''
     category(value)
     body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', raw[end:], flags=re.S)
     if 'ws:captured:' in body or '/ws:captured' in body: raise core.WsError('Malformed capture block.')
@@ -58,17 +59,18 @@ def _read(root, path, layer, team_id):
 
 def list_entries(root, value='', layer='all'):
     if value: category(value)
-    rows, warnings, scanned = [], [], 0
+    rows, warnings = [], []
     for name, base, team_id in _bases(root, layer):
+        scanned = 0
         for path in sorted(base.glob('*.md')):
             if path.name == 'INDEX.md' or path.name.endswith('.index.md') or path.stem.endswith('.local'): continue
             if not core.ID_RE.fullmatch(path.stem): continue
-            if scanned >= 100: warnings.append('Catalog examines at most 100 entries; select a layer or use ws know show for omitted IDs.'); break
+            if scanned >= 100: warnings.append('Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'); break
             scanned += 1
             try: row, _ = _read(root, path, name, team_id)
             except (core.WsError, OSError, ValueError):
                 warnings.append(f'{name}:{path.stem}: entry unreadable, unsafe or conflicted; excluded.'); continue
-            if not value or row['category'] == value: rows.append(row)
+            if row is not None and (not value or row['category'] == value): rows.append(row)
     return {'entries': rows, 'warnings': warnings}
 
 
@@ -80,7 +82,9 @@ def show(root, key):
     for name, base, team_id in _bases(root, layer):
         path = base / (identifier + '.md')
         if path.exists():
-            row, body = _read(root, path, name, team_id); return {**row, 'content': body}
+            row, body = _read(root, path, name, team_id)
+            if row is None: raise core.WsError('This team entry is not knowledge or a task runbook.')
+            return {**row, 'content': body}
     raise core.WsError('No safe knowledge entry with that layer and ID; run ws know list.')
 
 
