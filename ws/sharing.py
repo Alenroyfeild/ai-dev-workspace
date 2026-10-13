@@ -27,6 +27,7 @@ def portable(root, text):
 
 
 def _runbook(text, meta):
+    text = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', text, flags=re.S)
     if meta.get('status') != 'done': raise core.WsError('Runbooks require a finished task (status: done).')
     handoff = core.section(text, 'Handoff').splitlines()
     decisions = '\n'.join(line for line in handoff
