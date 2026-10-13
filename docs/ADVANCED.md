@@ -8,6 +8,24 @@ Most workspaces need only `ws tools`, `ws assist` and the defaults. These settin
 
 `ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#measure-and-maintain).
 
+### Prepare a private implementation checkout
+
+```sh
+ws worker prepare TASK --scope src --scope tests --dry-run
+ws worker prepare TASK --scope src --scope tests
+```
+
+The task needs a local claim and one declared Git repository. Preview shows the
+pinned commit, allowed paths, provider and new private paths. One confirmation
+creates a private clone and its detached worktree; `--yes` confirms for scripts.
+`--base COMMIT_OR_BRANCH` selects the committed source; the default is HEAD.
+Ignored files and uncommitted edits stay in the user's checkout. Tracked files
+are copied, so preparation does not imply they were checked for secrets.
+This version refuses submodules, tracked symlinks, unsafe scope paths and changed
+claims. Metadata stays under the workspace's local `.ws/workers/`; interrupted
+preparation keeps an incomplete record for inspection. It starts no client and
+enables no write worker. Scope is a review contract, not a filesystem sandbox.
+
 ## Tool profiles and assist
 
 `ws tools` is the explicit catalog for recommended, optional and caution tools. It reports availability and never installs anything. Set `tool_profile` in `workspace.json` to `lean` (core only), `standard` (recommended) or `full`; `tool_overrides` maps tool names to `on`, `off` or `ask`. These settings guide `ws doctor` and assist suggestions and never remove software. `ws tools --cost` estimates MCP schema bytes, skill/plugin metadata size and cached CodeBurn use.
