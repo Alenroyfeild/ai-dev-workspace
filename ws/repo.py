@@ -81,7 +81,7 @@ def branch_task(root, repo, branch):
         if location.resolve() == repo: matches.append(task['id'])
     if len(matches) > 1: raise core.WsError('Several tasks match this repo and branch; resolve them before ws start.')
     if matches: return matches[0]
-    name = (re.sub(r'[^A-Za-z0-9._-]+', '-', branch).strip('._-') or 'branch')[:80]
+    name = (re.sub(r'[^A-Za-z0-9._-]+', '-', branch).strip('._-') or 'branch')[:80].rstrip('._-')
     if re.fullmatch(r'(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?', name): name = 'branch-' + name[:73]
     if root.exists() and core.task_path(root, name).exists():
         name = name[:71] + '-' + core.digest_text(str(repo) + '\0' + branch)[:8]
