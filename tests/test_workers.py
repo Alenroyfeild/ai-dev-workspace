@@ -149,3 +149,53 @@ class WorkerPrepareTests(Base):
         self.assertFalse((Path(result['checkout']) / 'private.txt').exists())
         check = subprocess.run(['git', '-C', str(Path(result['directory']) / 'source.git'), 'cat-file', '-e', unrelated], capture_output=True)
         self.assertNotEqual(check.returncode, 0)
+
+    def test_write_launch_gate_is_closed_without_writes(self):
+        plan = self.prepare(apply=True); before = Path(plan['record']).read_bytes()
+        with mock.patch('ws.workers.orchestration.worker_run', side_effect=AssertionError('launch')):
+            with self.assertRaisesRegex(core.WsError, 'O2d'): workers.launch(self.root, plan['id'])
+        self.assertEqual(Path(plan['record']).read_bytes(), before)
+
+    def test_internal_probe_launch_collects_snapshot_and_protects_source(self):
+        plan = self.prepare(apply=True); checkout = Path(plan['checkout']); source = self.git('status', '--porcelain')
+        binding = dict(provider='codex', model='fixture', effort='low', available=True, executable='codex', timeout_seconds=10)
+        def run(binding, repo, body, receipt=None):
+            self.assertNotIn('--sandbox', binding['headless']); self.assertNotIn('-s', binding['headless'])
+            self.assertIn('--ignore-user-config', binding['headless']); self.assertIn('default_permissions="worker-private"', binding['headless'])
+            (checkout / 'calc.py').write_text('answer = 2\n')
+            receipt(json.dumps({'type':'item.completed','item':{'type':'command_execution','command':'python3 -m unittest','exit_code':0}}))
+            return 0, 'synthetic checked', 1, 2, True
+        with mock.patch('ws.orchestration.route', return_value=binding), mock.patch('ws.orchestration.worker_run', side_effect=run):
+            result = workers._launch(self.root, plan['id'])
+        self.assertEqual(result['state'], 'needs-review'); self.assertFalse(result['blocked'])
+        self.assertEqual(result['changed'], ['calc.py']); self.assertTrue(result['tree']); self.assertTrue(result['diff_sha'])
+        self.assertEqual(result['checks'][0]['exit_code'], 0)
+        self.assertEqual((self.repo / 'calc.py').read_text(), 'answer = 1\n'); self.assertEqual(self.git('status', '--porcelain'), source)
+        profile = (Path(plan['directory']) / 'worker.config.toml').read_text()
+        self.assertIn('":minimal" = "read"', profile); self.assertIn('"enabled" = false', profile)
+        self.assertNotIn(str(Path.home() / '.codex'), profile)
+
+    def test_collection_blocks_ignored_out_of_scope_secrets_binary_and_symlinks(self):
+        for name, data in (('ignored.txt', b'ignored change'), ('calc.py', b'api_key=' + b'x'*20), ('calc.py', b'\xffbinary')):
+            with self.subTest(name=name, data=data):
+                plan = self.prepare(apply=True); (Path(plan['checkout']) / name).write_bytes(data)
+                result = workers.collect(self.root, plan['id'])
+                self.assertTrue(result['blocked']); self.assertIn(name, result['changed'])
+                self.assertNotIn('x'*20, json.dumps(result))
+        plan = self.prepare(apply=True)
+        (Path(plan['checkout']) / 'escape').symlink_to(self.repo / 'calc.py')
+        self.assertTrue(workers.collect(self.root, plan['id'])['blocked'])
+
+    def test_collection_refuses_changed_claim_and_launch_keeps_gate_closed(self):
+        plan = self.prepare(apply=True); (self.root / '.ws/claims/W-1.json').unlink()
+        result = workers.collect(self.root, plan['id'])
+        self.assertTrue(result['blocked']); self.assertIn('claim', result['reason'].lower())
+
+    def test_launch_failure_or_missing_command_evidence_blocks_collection(self):
+        binding = dict(provider='codex', model='fixture', effort='low', available=True, executable='codex', timeout_seconds=10)
+        for code in (0, 1):
+            plan = self.prepare(apply=True)
+            with mock.patch('ws.orchestration.route', return_value=binding), mock.patch('ws.orchestration.worker_run', return_value=(code, 'fixture', 0, 0, False)):
+                result = workers._launch(self.root, plan['id'])
+            self.assertEqual(result['state'], 'needs-review'); self.assertTrue(result['blocked'])
+            self.assertFalse(result['usage']['known'])
