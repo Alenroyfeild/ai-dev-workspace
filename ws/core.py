@@ -451,24 +451,172 @@ def mcp_command(root):
     return {'command': python_command(), 'args': [str(KIT / 'mcp/server.py'), '--root', str(Path(root).resolve())]}
 
 
+def codex_mcp_config(root):
+    server = mcp_command(root)
+    return '[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = ' + json.dumps(server['command'], ensure_ascii=False) + '\nargs = ' + json.dumps(server['args'], ensure_ascii=False) + '\n'
+
+
+def _toml_array_value(raw):
+    cleaned = []; quote = None; escaped = False; i = 0
+    while i < len(raw):
+        char = raw[i]
+        if quote:
+            cleaned.append(char)
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif char == quote: quote = None
+        elif char in '"\'': quote = char; cleaned.append(char)
+        elif char == '#':
+            end = raw.find('\n', i)
+            if end < 0: break
+            cleaned.append('\n'); i = end
+        else: cleaned.append(char)
+        i += 1
+    raw = ''.join(cleaned)
+    parts = []; start = 1; quote = None; escaped = False; depth = 0
+    for index, char in enumerate(raw[1:-1], 1):
+        if quote:
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif char == quote: quote = None
+        elif char in '"\'': quote = char
+        elif char == '[': depth += 1
+        elif char == ']': depth -= 1
+        elif char == ',' and depth == 0:
+            if raw[start:index].strip(): parts.append(raw[start:index].strip())
+            start = index + 1
+    if raw[start:-1].strip(): parts.append(raw[start:-1].strip())
+    return [_toml_literal('value = ' + part, 'value') for part in parts]
+
+
+def _toml_literal(text, key):
+    name = re.escape(key)
+    key_name = r'(?:' + name + r'|"' + name + r'"|\'' + name + r'\')'
+    match = re.search(r'^[ \t]*' + key_name + r'\s*=\s*', text, re.M)
+    if not match: return None
+    start = match.end(); quote = None; escaped = False; depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if quote:
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif char == quote:
+                if quote == "'" and depth == 0: return text[start + 1:index]
+                quote = None
+                if depth == 0: return ast.literal_eval(text[start:index + 1])
+        elif char in ('"', "'"): quote = char
+        elif char == '[': depth += 1
+        elif char == ']':
+            depth -= 1
+            if depth == 0: return _toml_array_value(text[start:index + 1])
+        elif depth == 0 and char in '\r\n#':
+            raw = text[start:index].strip()
+            if raw == 'true': return True
+            if raw == 'false': return False
+            return ast.literal_eval(raw)
+    raw = text[start:].strip()
+    if raw == 'true': return True
+    if raw == 'false': return False
+    if raw: return ast.literal_eval(raw)
+    raise ValueError('incomplete TOML value')
+
+
+def toml_mask_multiline_strings(text):
+    chars = list(text); quote = None; triple = False; escaped = False; comment = False; i = 0
+    while i < len(text):
+        char = text[i]
+        if comment:
+            if char == '\n': comment = False
+            else: chars[i] = ' '
+        elif quote:
+            if triple:
+                if char != '\n': chars[i] = ' '
+                if escaped: escaped = False
+                elif quote == '"' and char == '\\': escaped = True
+                elif text.startswith(quote * 3, i):
+                    for index in range(i, i + 3):
+                        if text[index] != '\n': chars[index] = ' '
+                    quote = None; triple = False; i += 2
+            elif escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif char == quote: quote = None
+        elif char == '#': comment = True; chars[i] = ' '
+        elif char in '"\'':
+            quote = char; triple = text.startswith(char * 3, i)
+            if triple:
+                for index in range(i, i + 3):
+                    if text[index] != '\n': chars[index] = ' '
+                i += 2
+        i += 1
+    return ''.join(chars)
+
+
+def toml_normalize_keys(text):
+    pattern = re.compile(r'"(?:\\.|[^"\\])*"(?=\s*(?:\.|=|\]))')
+    return pattern.sub(lambda m: re.sub(r'\\(?:u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8}))',
+                                       lambda e: chr(int(e.group(1) or e.group(2), 16)), m.group()), text)
+
+
+def toml_top_level_text(text):
+    text = toml_mask_multiline_strings(text)
+    depth = 0; quote = None; escaped = False; line_start = True
+    for index, char in enumerate(text):
+        if quote:
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif char == quote: quote = None
+        else:
+            if line_start and char in ' \t': pass
+            elif line_start and char == '[' and depth == 0: return text[:index]
+            else:
+                line_start = False
+                if char in '"\'': quote = char
+                elif char == '[': depth += 1
+                elif char == ']': depth = max(0, depth - 1)
+        if char == '\n': line_start = True
+    return text
+
+
 # Project MCP config per client: (file, key holding the server map).
 MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
                  'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
 
 
-def client_connected(root, client):
+def _toml_has_workspace_entry(text):
+    text = toml_normalize_keys(text)
+    text = toml_mask_multiline_strings(text)
+    mcp = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
+    server = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
+    top = toml_top_level_text(text)
+    if re.search(r'^[ \t]*' + mcp + r'[ \t]*\.[ \t]*' + server + r'[ \t]*(?:\.|=)', top, re.M): return True
+    if re.search(r'^[ \t]*' + mcp + r'[ \t]*=[^\n]*\{[^\n]*' + server + r'[ \t]*=', top, re.M): return True
+    parent = re.search(r'^[ \t]*\[[ \t]*' + mcp + r'[ \t]*\][ \t]*(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
+    if parent and re.search(r'^[ \t]*' + server + r'[ \t]*(?:\.|=)', parent[1], re.M): return True
+    return bool(re.search(r'^[ \t]*\[{1,2}[ \t]*' + mcp + r'[ \t]*\.[ \t]*' + server + r'(?:[ \t]*\]{1,2}|[ \t]*\.)', text, re.M))
+
+
+def client_connected(root, client, global_only=False):
     if client == 'copilot': client = 'vscode'
     if client == 'codex':
-        path = Path.home() / '.codex/config.toml'
-        text = path.read_text(encoding='utf-8') if path.is_file() else ''
-        match = re.search(r'^\[mcp_servers\.(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
-        if not match:
-            return False
+        cwd = Path.cwd().resolve()
+        project = next((p.resolve() for p in read_roots(root)[1:] if p.resolve() == cwd or p.resolve() in cwd.parents), root)
+        paths = (Path.home() / '.codex/config.toml',) if global_only else (project / '.codex/config.toml', Path.home() / '.codex/config.toml')
+        for path in paths:
+            text = path.read_text(encoding='utf-8') if path.is_file() else ''
+            scan_text = toml_mask_multiline_strings(text)
+            mcp_key = r'(?:mcp_servers|"mcp_servers"|\'mcp_servers\')'
+            server_key = r'(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')'
+            match = re.search(r'^[ \t]*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\][ \t]*(?:#[^\r\n]*)?$(.*?)(?=^[ \t]*\[|\Z)', scan_text, re.M | re.S)
+            if match: break
+            if _toml_has_workspace_entry(text): return False
+        else: return False
+        try: enabled = _toml_literal(match[1], 'enabled')
+        except (ValueError, SyntaxError): return False
+        if enabled is not None and (not isinstance(enabled, bool) or not enabled): return False
         fields = {}
         for key in ('command', 'args'):
-            value = re.search(r'^' + key + r'\s*=\s*(\[.*?\]|"[^"\n]*"|\'[^\'\n]*\')', match[1], re.M | re.S)
             try:
-                fields[key] = ast.literal_eval(value[1]) if value else None
+                fields[key] = _toml_literal(match[1], key)
             except (ValueError, SyntaxError):
                 return False
         return fields == mcp_command(root)
@@ -570,13 +718,15 @@ def _connect_config(root, client, write=False):
         raise WsError('--write applies only to the Codex global configuration.')
     server = mcp_command(root)
     if client == 'codex':
-        block = '[mcp_servers.ai-dev-workspace]\ncommand = ' + json.dumps(server['command']) + '\nargs = ' + json.dumps(server['args']) + '\n'
-        result = {'client': client, 'connected': client_connected(root, client), 'config': block}
+        block = codex_mcp_config(root)
+        result = {'client': client, 'connected': client_connected(root, client, global_only=write), 'config': block}
         if not write or result['connected']:
             return result
         path = Path.home() / '.codex/config.toml'
         original = path.read_text(encoding='utf-8') if path.exists() else ''
-        if re.search(r'^(?:mcp_servers\s*=|mcp_servers\.|\[mcp_servers\.(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)(?:\]|\.))', original, re.M):
+        top_level = toml_top_level_text(original)
+        root_map = re.search(r'^[ \t]*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)[ \t]*=', top_level, re.M)
+        if root_map or _toml_has_workspace_entry(original):
             raise WsError('Codex already has a different workspace entry; review the printed block manually.')
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():

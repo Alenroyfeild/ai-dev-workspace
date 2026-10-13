@@ -2,13 +2,14 @@
 import base64
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 from . import core, setup, upgrade
 
 LINK = '.ws-start.json'
-FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md')
+FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.codex/config.toml.ws-backup', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md')
 
 
 def path(repo, name):
@@ -40,16 +41,41 @@ def record_file(repo, state, name, data):
     core.atomic_write(target, data)
 
 
-def undo(repo, state):
+def exclusions(repo, state):
     exclude = Path(state['exclude'])
     expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], text=True).strip())
     if not expected.is_absolute(): expected = repo / expected
     if exclude.resolve() != expected.resolve(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
     if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
     block = base64.b64decode(state['exclude_block'])
+    if state.get('complete') is False and 'exclude_before' in state:
+        current = exclude.read_bytes() if exclude.is_file() else b''
+        before = base64.b64decode(state['exclude_before'])
+        intended = before + block
+        if current != intended and intended.startswith(current) and current.startswith(before):
+            core.atomic_write(exclude, before)
+            return exclude, b''
+    if state.get('complete') is False and 'exclude_previous' in state and (not exclude.is_file() or exclude.read_bytes().count(block) != 1):
+        previous = base64.b64decode(state['exclude_previous'])
+        if not previous and (not exclude.exists() or block.splitlines()[1] not in exclude.read_bytes()): return exclude, b''
+        block = previous
     if not exclude.is_file() or exclude.read_bytes().count(block) != 1: raise core.WsError('Git exclude block changed; restore the recorded block before ws start --undo.')
+    return exclude, block
+
+
+def undo(repo, state):
+    exclude, block = exclusions(repo, state)
     kept = []
+    config = state['files'].get('.codex/config.toml')
+    backup = '.codex/config.toml.ws-backup'
+    if config and backup in state['files']:
+        target = path(repo, '.codex/config.toml')
+        old = base64.b64decode(config['before']) if config['before'] is not None else None
+        current = target.read_bytes() if target.exists() else None
+        if current is None or (current != old and hashlib.sha256(current).hexdigest() != config['sha']):
+            kept.append(backup)
     for name, entry in list(state['files'].items()):
+        if name in kept: continue
         target = path(repo, name)
         old = base64.b64decode(entry['before']) if entry['before'] is not None else None
         current = target.read_bytes() if target.exists() else None
@@ -70,6 +96,101 @@ def undo(repo, state):
     return dict(root=state['workspace'], already=True, assistants=[], task='', branch=setup.branch(repo), partial=bool(kept), undone=True)
 
 
+def confirm(yes, dry_run):
+    if dry_run: return False
+    if yes: return True
+    print('Apply these local files? [y/N] ', end='', file=sys.stderr)
+    try: return input().strip().lower() in ('y', 'yes')
+    except EOFError: raise core.WsError('No confirmation; use ws start --yes or --dry-run.')
+
+
+def toml_top_level(text):
+    return core.toml_top_level_text(text)
+
+
+def validate_toml_structure(text):
+    masked = core.toml_mask_multiline_strings(text); arrays = 0; tables = 0; quote = None; escaped = False
+    for line, source in zip(masked.splitlines(), text.splitlines()):
+        stripped = line.strip()
+        if arrays == 0 and tables == 0 and stripped:
+            if stripped.startswith('['):
+                if not re.match(r'^\[{1,2}\s*[^\[\]]+\s*\]{1,2}\s*(?:#.*)?$', stripped):
+                    raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+            elif '=' not in stripped:
+                raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+            else:
+                raw = source.split('=', 1)[1].strip(); value = stripped.split('=', 1)[1].strip()
+                if (not raw and not value) or (not value and not raw.startswith(('"""', "'''"))) or (re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', value) and value not in ('true', 'false')):
+                    raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+        for char in line:
+            if quote:
+                if escaped: escaped = False
+                elif quote == '"' and char == '\\': escaped = True
+                elif char == quote: quote = None
+            elif char in '"\'': quote = char
+            elif char == '[': arrays += 1
+            elif char == ']':
+                arrays -= 1
+                if arrays < 0: raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+            elif char == '{': tables += 1
+            elif char == '}':
+                tables -= 1
+                if tables < 0: raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+        if quote: raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+    if arrays or tables: raise core.WsError('Existing Codex TOML is malformed; fix it before ws start.')
+
+
+def codex_files(repo, root):
+    target = path(repo, '.codex/config.toml'); original = target.read_bytes() if target.exists() else b''
+    text = original.decode('utf-8')
+    text = core.toml_normalize_keys(text)
+    validate_toml_structure(text)
+    scan_text = core.toml_mask_multiline_strings(text)
+    parent = re.search(r'^\s*\[\s*(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)\s*\]\s*(.*?)(?=^\s*\[|\Z)', scan_text, re.M | re.S)
+    parent_has_server = parent and re.search(r'^\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*(?:\.|=)', parent[1], re.M)
+    mcp_key = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
+    server_key = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
+    toml_key = r'(?:"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|[A-Za-z0-9_-]+)'
+    nested = r'(?:\s*\.\s*' + toml_key + r')*'
+    top_level = toml_top_level(scan_text)
+    root_entry = re.search(r'^\s*' + mcp_key + r'\s*=|^\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*(?:\.|=)', top_level, re.M)
+    server_table = re.search(r'^\s*\[{1,2}\s*' + mcp_key + r'\s*\.\s*' + server_key + nested + r'\s*\]{1,2}', scan_text, re.M)
+    if parent_has_server or root_entry or server_table:
+        raise core.WsError('Existing Codex workspace entry; review project config before ws start.')
+    desired = {}
+    backup = '.codex/config.toml.ws-backup'
+    if path(repo, backup).exists(): raise core.WsError('Codex backup already exists; keep it safe and review it before ws start.')
+    if target.exists():
+        desired[backup] = original
+    desired['.codex/config.toml'] = original + ('\n' + core.codex_mcp_config(root)).encode()
+    return desired
+
+
+def upgrade_codex(repo, root, state, yes, dry_run):
+    desired = codex_files(repo, root); exclude, block = exclusions(repo, state)
+    record = path(repo, LINK); record_before = record.read_bytes()
+    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
+    before = {n: path(repo, n).read_bytes() if path(repo, n).exists() else None for n in desired}
+    print('Apply Codex MCP locally (backup first); no global config writes:', file=sys.stderr)
+    for name in (LINK, *desired): print('  ' + str(repo / name), file=sys.stderr)
+    print('  ' + str(exclude) + ' (local exclusions)', file=sys.stderr)
+    if not confirm(yes, dry_run): return False
+    if not record.is_file() or record.read_bytes() != record_before: raise core.WsError('Setup record changed during confirmation; review it before retrying ws start.')
+    if path(repo, '.codex/config.toml.ws-backup').exists(): raise core.WsError('Codex backup appeared during confirmation; keep it safe and review it before ws start.')
+    if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
+    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
+    exclude, block = exclusions(repo, state)
+    updated = block.replace(b'# /ws:start', ('\n'.join('/' + n for n in desired) + '\n# /ws:start').encode())
+    state['files'].update({n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()})
+    state.update(complete=False, exclude_previous=state['exclude_block'], exclude_block=base64.b64encode(updated).decode())
+    core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+    core.atomic_write(exclude, exclude.read_bytes().replace(block, updated, 1))
+    for name, data in desired.items(): record_file(repo, state, name, data)
+    state['complete'] = True; state.pop('exclude_previous', None)
+    core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+    return True
+
+
 def start(yes=False, dry_run=False, workspace=None, remove=False):
     if remove and dry_run: raise core.WsError('Use --undo or --dry-run separately.')
     try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=10)
@@ -81,9 +202,12 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         state = load(repo)
         if remove: return undo(repo, state)
         root = Path(state['workspace'])
+        if str(repo) not in core.config(root).get('repos', []): raise core.WsError('Linked workspace belongs elsewhere; review .ws-start.json or undo this repo setup.')
         task = next((t['id'] for t in core.task_list(root) if t['branch'] == current), '')
         partial = state.get('complete') is False or any(not path(repo, n).is_file() or hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha'] for n, e in state['files'].items())
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
+        if not partial and '.codex/config.toml' not in state['files']:
+            if not upgrade_codex(repo, root, state, yes, dry_run): return None
         return dict(root=str(root), already=True, partial=partial, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current)
     if remove: raise core.WsError('No repo setup to undo; run ws start first.')
     root = Path(workspace).expanduser().resolve() if workspace else (Path.home() / '.ai-dev-workspace' / repo.name).resolve()
@@ -124,6 +248,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         servers = data.setdefault(key, {})
         if 'ai-dev-workspace' in servers: raise core.WsError('Existing workspace MCP entry; review it before ws start.')
         servers['ai-dev-workspace'] = core.mcp_command(root); desired[name] = (json.dumps(data, indent=2) + '\n').encode()
+    desired.update(codex_files(repo, root))
     tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
     exclude = Path(subprocess.check_output(['git', 'rev-parse', '--git-path', 'info/exclude'], text=True).strip()).absolute()
@@ -137,18 +262,21 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     outside = {'.ws/lock', '.ws/claims/' + task + '.json', 'vault/Tasks/' + task + '.md'}
     if not root.exists(): outside |= {p.relative_to(core.KIT / 'template').as_posix() for p in (core.KIT / 'template').rglob('*') if p.is_file()} - {'routing-presets.json'} | set(upgrade.skills()) | set(upgrade.pointer_files()) | {'workspace.json', 'routing.json', 'vault/Project/Codebase map.md'}
     for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
-    if dry_run: return None
-    if not yes:
-        print('Apply these local files? [y/N] ', end='', file=sys.stderr)
-        try: answer = input().strip().lower()
-        except EOFError: raise core.WsError('No confirmation; use ws start --yes or --dry-run.')
-        if answer not in ('y', 'yes'): return None
+    if not confirm(yes, dry_run): return None
+    if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
+    if path(repo, '.codex/config.toml.ws-backup').exists(): raise core.WsError('Codex backup appeared during confirmation; keep it safe and review it before ws start.')
+    if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
+    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
+    if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
-    state = dict(workspace=str(root), files=owned, complete=False, assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    previous_exclude = exclude.read_bytes() if exclude.exists() else b''
+    state = dict(workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
+    state.pop('exclude_previous'); state.pop('exclude_before'); core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     for name, data in desired.items(): record_file(repo, state, name, data)
     new_task = not core.task_find(root, task)
     if new_task: core.task_new(root, task, current, branch=current, repo=str(repo))
