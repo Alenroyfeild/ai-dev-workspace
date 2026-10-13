@@ -327,6 +327,13 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 2)
         self.assertEqual(config.read_bytes(), original)
 
+    def test_start_refuses_malformed_codex_toml_without_modifying_it(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'[mcp_servers\ncommand = "unfinished header"\n'; config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
     def test_global_codex_write_finds_workspace_key_after_nested_array_value(self):
         self.assertEqual(self.start('--yes')[0], 0)
         workspace = core.find_root(); config = self.home / '.codex/config.toml'; config.parent.mkdir()
