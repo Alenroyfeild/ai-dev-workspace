@@ -104,7 +104,9 @@ def codex_files(repo, root):
     parent_has_server = parent and re.search(r'^\s*(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)\s*(?:\.|=)', parent[1], re.M)
     mcp_key = r'(?:"mcp_servers"|\'mcp_servers\'|mcp_servers)'
     server_key = r'(?:"ai-dev-workspace"|\'ai-dev-workspace\'|ai-dev-workspace)'
-    if parent_has_server or re.search(r'^\s*(?:' + mcp_key + r'\s*=|' + mcp_key + r'\s*\.\s*' + server_key + r'\s*(?:\.|=)|\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\])', text, re.M):
+    toml_key = r'(?:"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'|[A-Za-z0-9_-]+)'
+    nested = r'(?:\s*\.\s*' + toml_key + r')*'
+    if parent_has_server or re.search(r'^\s*(?:' + mcp_key + r'\s*=|' + mcp_key + r'\s*\.\s*' + server_key + r'\s*(?:\.|=)|\[\s*' + mcp_key + r'\s*\.\s*' + server_key + nested + r'\s*\])', text, re.M):
         raise core.WsError('Existing Codex workspace entry; review project config before ws start.')
     desired = {}
     backup = '.codex/config.toml.ws-backup'

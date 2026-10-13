@@ -491,7 +491,9 @@ def client_connected(root, client, global_only=False):
         paths = (Path.home() / '.codex/config.toml',) if global_only else (project / '.codex/config.toml', Path.home() / '.codex/config.toml')
         for path in paths:
             text = path.read_text(encoding='utf-8') if path.is_file() else ''
-            match = re.search(r'^\[mcp_servers\.(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
+            mcp_key = r'(?:mcp_servers|"mcp_servers"|\'mcp_servers\')'
+            server_key = r'(?:ai-dev-workspace|"ai-dev-workspace"|\'ai-dev-workspace\')'
+            match = re.search(r'^[ \t]*\[\s*' + mcp_key + r'\s*\.\s*' + server_key + r'\s*\][ \t]*$(.*?)(?=^[ \t]*\[|\Z)', text, re.M | re.S)
             if match: break
         else: return False
         if re.search(r'^[ \t]*enabled\s*=\s*false\b', match[1], re.M): return False
