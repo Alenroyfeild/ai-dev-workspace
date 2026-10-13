@@ -61,7 +61,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
         if core.task_read(root, task_id)['sha'] != task['sha']:
             raise core.WsError('Task changed during preview; review it before preparing again.')
         directory.mkdir(parents=True, mode=0o700)
-        state = dict(result, complete=False, claim_token=token, claimed_by=worker, effort=binding['effort'])
+        state = dict(result, complete=False, claim_token=token, claimed_by=worker, task_sha=task['sha'], effort=binding['effort'])
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     try:
         git(directory, 'clone', '--bare', '--no-local', '--template=', '--', str(source), str(directory / 'source.git'))
@@ -75,9 +75,10 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
         if len(body.split()) > 400: raise core.WsError('Worker brief exceeds 400 words; shorten the scope.')
         core.atomic_write(directory / 'brief.md', body)
         with core.lock(root):
-            current = core.task_read(root, task_id, ['Objective'])['meta']
+            latest = core.task_read(root, task_id, ['Objective']); current = latest['meta']
             if (current.get('claimed_by'), current.get('claim_token')) != (worker, token) or core._claim_defaults(root, task_id, None, None) != (worker, token) or current.get('status') == 'done':
                 raise core.WsError('Task claim changed during preparation; checkout retained for inspection.')
+            if latest['sha'] != task['sha']: raise core.WsError('Task changed during preparation; stale brief retained for inspection.')
             state.update(complete=True, applied=True)
             core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     except core.WsError as error:
