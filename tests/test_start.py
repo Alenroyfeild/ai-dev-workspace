@@ -306,6 +306,20 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 2)
         self.assertEqual(config.read_bytes(), original)
 
+    def test_start_does_not_treat_triple_quote_inside_single_line_string_as_multiline(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b"note = '\"\"\"'\n[mcp_servers.ai-dev-workspace]\ncommand = \"other\"\n"
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
+    def test_start_refuses_workspace_array_of_tables(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'[[mcp_servers.ai-dev-workspace]]\ncommand = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+
     def test_codex_connection_ignores_fake_table_in_multiline_string(self):
         workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
         project = self.repo / '.codex/config.toml'; project.parent.mkdir(exist_ok=True)
@@ -313,6 +327,14 @@ class StartTests(unittest.TestCase):
         global_config = self.home / '.codex/config.toml'; global_config.parent.mkdir()
         global_config.write_text(core.codex_mcp_config(workspace))
         with mock.patch.object(Path, 'cwd', return_value=self.repo): self.assertTrue(core.client_connected(workspace, 'codex'))
+
+    def test_codex_connection_preserves_hash_in_literal_command_path(self):
+        workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
+        server = {'command': 'tool#path', 'args': ['tool#path']}
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        config.write_text("[mcp_servers.ai-dev-workspace]\ncommand = 'tool#path'\nargs = ['tool#path']\n")
+        with mock.patch('ws.core.mcp_command', return_value=server), mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
 
     def test_codex_client_connected_preserves_backslashes_in_toml_literal_strings(self):
         workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
