@@ -65,7 +65,8 @@ class TeamLinkTests(unittest.TestCase):
             with mock.patch.dict(os.environ, WS_OFFLINE='0'), mock.patch('ws.team.shutil.which', return_value='fake'), \
                  mock.patch('ws.team.subprocess.run', return_value=subprocess.CompletedProcess([], 0, json.dumps({'visibility': visibility}), '')):
                 with self.assertRaises(core.WsError): team.privacy('https://github.com/synthetic/team', True)
-        for remote in ('https://user:secret@host.invalid/team', 'ext::unsafe', '-bad', 'https://host.invalid/team?token=secret'):
+        for remote in ('https://user:secret@host.invalid/team', 'ext::unsafe', '-bad', 'https://host.invalid/team?token=secret',
+                       'https://host.invalid:bad/team', 'https://host.invalid:70000/team', 'https://[broken/team'):
             with self.assertRaises(core.WsError): team.remote_parts(remote)
         with mock.patch.dict(os.environ, WS_OFFLINE='0'), mock.patch('ws.team.shutil.which', return_value='fake'), \
              mock.patch('ws.team.subprocess.run', return_value=subprocess.CompletedProcess([], 0, '{"visibility":"private"}', '')) as run:
