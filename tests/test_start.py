@@ -170,6 +170,23 @@ class StartTests(unittest.TestCase):
         self.assertIn('# user edit', config.read_text())
         self.assertEqual(backup.read_bytes(), original)
 
+    def test_undo_keeps_backup_when_generated_codex_config_was_deleted(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir()
+        original = b'model = "fixture"\n'; config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        backup = config.with_name('config.toml.ws-backup'); config.unlink()
+        self.assertEqual(self.start('--undo')[0], 2)
+        self.assertEqual(backup.read_bytes(), original)
+
+    def test_start_does_not_overwrite_config_created_during_confirmation(self):
+        config = self.repo / '.codex/config.toml'
+        def create_config():
+            config.parent.mkdir(); config.write_text('model = "created during prompt"\n'); return 'y'
+        with mock.patch('builtins.input', side_effect=create_config):
+            self.assertEqual(self.start()[0], 2)
+        self.assertEqual(config.read_text(), 'model = "created during prompt"\n')
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
     def old_start(self):
         self.assertEqual(self.start('--yes')[0], 0)
         config = self.repo / '.codex/config.toml'; config.unlink(missing_ok=True)
@@ -222,7 +239,7 @@ class StartTests(unittest.TestCase):
 
     def test_start_refuses_existing_spaced_toml_workspace_keys(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
-        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n'):
+        for text in ('[mcp_servers . ai-dev-workspace]\ncommand="fixture"\n', 'mcp_servers . "ai-dev-workspace" . command="fixture"\n', '["mcp_servers"."ai-dev-workspace"]\ncommand="fixture"\n'):
             with self.subTest(text=text):
                 config.write_text(text)
                 self.assertEqual(self.start('--yes')[0], 2)
