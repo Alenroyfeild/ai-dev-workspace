@@ -273,6 +273,11 @@ class WorkerPrepareTests(Base):
         self.assertTrue(result['blocked']); self.assertIn('filter driver configured', result['reason'])
 
     def test_collection_blocks_oversized_regular_file_before_staging(self):
+        (self.repo / 'asset.txt').write_bytes(b'x' * (1024 * 1024 + 1))
+        self.git('add', 'asset.txt'); self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'large base asset')
+        allowed = self.prepare(apply=True); self.complete_worker(allowed)
+        (Path(allowed['checkout']) / 'calc.py').write_text('answer = 2\n')
+        self.assertFalse(workers.collect(self.root, allowed['id'])['blocked'])
         plan = self.prepare(apply=True); self.complete_worker(plan)
         (Path(plan['checkout']) / 'calc.py').write_bytes(b'x' * (1024 * 1024 + 1))
         with mock.patch('ws.workers.git', wraps=workers.git) as calls: result = workers.collect(self.root, plan['id'])
