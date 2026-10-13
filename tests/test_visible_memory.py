@@ -13,7 +13,7 @@ class VisibleMemoryTests(Base):
         self.assertEqual(run.returncode, 0, run.stderr)
         return json.loads(run.stdout)
 
-    def capture(self, text='Decided: use violet. Never log tokens.'):
+    def capture(self, text='Decided: use violet. Correction: never log tokens.'):
         path = self.root / 'chat.jsonl'
         path.write_text(json.dumps({'type': 'user', 'message': {'content': text}}) + '\n' + json.dumps(
             {'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Read'}, {'type': 'text', 'text': 'Next step: test it.'}]}}))
@@ -33,7 +33,7 @@ class VisibleMemoryTests(Base):
         core.claim(self.root, 'T-1', 'synthetic')
         core.checkpoint(self.root, 'T-1', 'in_progress', 'Test pagination')
         path = core.task_path(self.root, 'T-1')
-        handoff = '<!-- ws:captured:fixture -->\n### Captured 2026-10-12 (unverified transcript)\nUser constraints:\n- Please return the invoice list.\n- Please use a table.\nLast assistant summary / next step: I will test pagination.\n<!-- /ws:captured -->'
+        handoff = '<!-- ws:captured:fixture -->\n### Captured 2026-10-12 (unverified transcript)\nUser constraints:\n- Please return the invoice list.\n- Please use a table.\n- Please only show open invoices.\nLast assistant summary / next step: I will test pagination.\n<!-- /ws:captured -->'
         path.write_text(core.set_section(path.read_text(), 'Handoff', handoff))
         self.assertEqual(core.memory_summary(self.root), 'Remembered: next: Test pagination')
 
