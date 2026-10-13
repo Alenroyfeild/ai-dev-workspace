@@ -456,6 +456,39 @@ def codex_mcp_config(root):
     return '[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = ' + json.dumps(server['command'], ensure_ascii=False) + '\nargs = ' + json.dumps(server['args'], ensure_ascii=False) + '\n'
 
 
+def _toml_array_value(raw):
+    cleaned = []; quote = None; escaped = False; i = 0
+    while i < len(raw):
+        char = raw[i]
+        if quote:
+            cleaned.append(char)
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif char == quote: quote = None
+        elif char in '"\'': quote = char; cleaned.append(char)
+        elif char == '#':
+            end = raw.find('\n', i)
+            if end < 0: break
+            cleaned.append('\n'); i = end
+        else: cleaned.append(char)
+        i += 1
+    raw = ''.join(cleaned)
+    parts = []; start = 1; quote = None; escaped = False; depth = 0
+    for index, char in enumerate(raw[1:-1], 1):
+        if quote:
+            if escaped: escaped = False
+            elif quote == '"' and char == '\\': escaped = True
+            elif char == quote: quote = None
+        elif char in '"\'': quote = char
+        elif char == '[': depth += 1
+        elif char == ']': depth -= 1
+        elif char == ',' and depth == 0:
+            if raw[start:index].strip(): parts.append(raw[start:index].strip())
+            start = index + 1
+    if raw[start:-1].strip(): parts.append(raw[start:-1].strip())
+    return [_toml_literal('value = ' + part, 'value') for part in parts]
+
+
 def _toml_literal(text, key):
     name = re.escape(key)
     key_name = r'(?:' + name + r'|"' + name + r'"|\'' + name + r'\')'
@@ -468,13 +501,14 @@ def _toml_literal(text, key):
             if escaped: escaped = False
             elif char == '\\': escaped = True
             elif char == quote:
+                if quote == "'" and depth == 0: return text[start + 1:index]
                 quote = None
                 if depth == 0: return ast.literal_eval(text[start:index + 1])
         elif char in ('"', "'"): quote = char
         elif char == '[': depth += 1
         elif char == ']':
             depth -= 1
-            if depth == 0: return ast.literal_eval(text[start:index + 1])
+            if depth == 0: return _toml_array_value(text[start:index + 1])
         elif depth == 0 and char in '\r\n#':
             return ast.literal_eval(text[start:index].strip())
     raise ValueError('incomplete TOML value')

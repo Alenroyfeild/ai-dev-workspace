@@ -283,6 +283,22 @@ class StartTests(unittest.TestCase):
                 core._connect_config(core.find_root(), 'codex', write=True)
         self.assertEqual(config.read_bytes(), before)
 
+    def test_start_refuses_root_entry_after_multiline_toml_string(self):
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        original = b'note = """\n[\n"""\nmcp_servers.ai-dev-workspace.command = "other"\n'
+        config.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 2)
+        self.assertEqual(config.read_bytes(), original)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+
+    def test_codex_client_connected_preserves_backslashes_in_toml_literal_strings(self):
+        workspace = self.home / 'ws'; core.init(workspace, 'fixture', repos=[str(self.repo)], clients=[])
+        server = {'command': r'C:\tmp\tool', 'args': [r'C:\tmp\tool']}
+        config = self.repo / '.codex/config.toml'; config.parent.mkdir(exist_ok=True)
+        config.write_text("[mcp_servers.ai-dev-workspace]\nenabled = true\ncommand = 'C:\\tmp\\tool'\nargs = ['C:\\tmp\\tool']\n")
+        with mock.patch('ws.core.mcp_command', return_value=server), mock.patch.object(Path, 'cwd', return_value=self.repo):
+            self.assertTrue(core.client_connected(workspace, 'codex'))
+
     def test_undo_keeps_backup_when_user_edits_codex_config(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir()
         original = b'model = "fixture"\n'
