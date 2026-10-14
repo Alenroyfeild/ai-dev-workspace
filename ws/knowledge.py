@@ -134,7 +134,7 @@ def brief_fields(root, query, private):
         terms = words(summary + ' ' + row['tags'])
         overlap = len(words(query) & terms)
         if not overlap: continue
-        if words(private) & terms:
+        if len(words(private) & terms) * 2 > len(terms):
             omitted += 1; continue
         prefix = f'Team (untrusted) {row["key"]} by {row["author"]} team={row["team"]} source={row["source_sha"][:8]} date={row["date"]}:'
         relevant.append((overlap, prefix, summary))

@@ -59,7 +59,8 @@ class TeamContextTests(unittest.TestCase):
         for name, args in [('brief', {}), ('search_vault', {'query':'receipt'})]:
             reply = server.handle(self.root, {'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':name,'arguments':args}})
             self.assertFalse(reply['result']['isError'])
-            self.assertIn('private memory wins' if name == 'brief' else 'untrusted', reply['result']['content'][0]['text'])
+            self.assertIn('untrusted', reply['result']['content'][0]['text'])
+            if name == 'brief': self.assertIn('checksum', reply['result']['content'][0]['text'])
 
     def test_long_private_checkpoint_keeps_correction_and_budget(self):
         for i in range(3): self.shared('The receipt checksum needs validation. ' * 15)
@@ -75,3 +76,12 @@ class TeamContextTests(unittest.TestCase):
         plan = sharing.preview(self.root, 'task:T1'); sharing.apply(self.root, plan)
         hits = core.search(self.root, 'quokkaretry')
         self.assertTrue(any(h.get('layer') == 'team' for h in hits))
+
+    def test_related_partial_overlap_card_follows_private_decision(self):
+        self.shared('The receipt verifier needs a checksum.')
+        core.checkpoint(self.root,'T1','in_progress','Inspect the receipt verifier.')
+        core.remember(self.root,'Use the local receipt verifier.')
+        text=core.brief(self.root)
+        self.assertIn('checksum',text);self.assertIn('untrusted',text)
+        self.assertLess(text.index('Decision: Use the local receipt verifier.'),text.index('checksum'))
+        self.assertLess(len(text.split()),200)
