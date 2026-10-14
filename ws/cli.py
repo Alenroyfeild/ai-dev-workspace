@@ -247,7 +247,11 @@ def main(argv=None):
         s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s = sub.add_parser('sync', help='pull team updates and preview an approved-only push')
     s.add_argument('--dry-run', action='store_true', help='pull and preview; never commit or push')
-    s.add_argument('--yes', action='store_true', help='approve the exact printed push preview')
+    s.add_argument('--yes', action='store_true', help='approve the exact printed preview')
+    mode = s.add_mutually_exclusive_group()
+    mode.add_argument('--pull-only', action='store_true', help='read-only Git pull; never publish')
+    mode.add_argument('--daily', metavar='HH:MM', help='preview a daily read-only scheduler')
+    s.add_argument('--automatic', action='store_true', help=argparse.SUPPRESS)
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink')); s.add_argument('remote', nargs='?', default='')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
@@ -428,7 +432,15 @@ def main(argv=None):
             from . import scope
             out(scope.record(root, a.item, a.value, a.expected_sha)); return 0
         if a.cmd == 'sync':
-            from . import team_sync
+            from . import team_sync, team_auto
+            if a.automatic and not a.pull_only: raise core.WsError('--automatic requires --pull-only.')
+            if a.pull_only:
+                out(team_auto.pull(root, a.automatic)); return 0
+            if a.daily:
+                plan = team_auto.schedule(root, a.daily); out(plan)
+                if not a.dry_run and plan['supported'] and (a.yes or input('Activate this exact daily read-only job? [y/N] ').strip().lower() in ('y', 'yes')):
+                    out(team_auto.schedule(root, a.daily, True, plan))
+                return 0
             plan = team_sync.preview(root); out(plan)
             if a.dry_run or not plan['files']: return 0
             if a.yes or input('Publish this exact team sync preview? [y/N] ').strip().lower() in ('y', 'yes'):
@@ -503,6 +515,9 @@ def main(argv=None):
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
             if a.hook and a.cmd == 'brief' and payload.get('hook_event_name') in ('SessionStart', 'sessionStart'):
+                from . import team_auto
+                update = team_auto.maybe_pull(root)
+                if update and update.get('warning'): print(update['warning'], file=sys.stderr)
                 branch_task = core.session_task(root, payload.get('cwd'))
             if a.hook:
                 try: assist.observe(root, payload)
