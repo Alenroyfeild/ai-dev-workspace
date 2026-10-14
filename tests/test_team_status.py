@@ -71,3 +71,11 @@ class TeamStatusTests(unittest.TestCase):
         listing=team_status.list_entries(self.root)
         self.assertEqual([r['author'] for r in listing['entries']],['zztester'])
         self.assertTrue(listing['warnings'])
+
+    def test_empty_foreign_status_before_or_after_preview_is_preserved(self):
+        from ws import team_status
+        plan=team_status.preview(self.root,'Checking receipts','tester',enable=True)
+        path=self.clone/'status/tester.json';path.parent.mkdir();path.touch()
+        with self.assertRaises(core.WsError):team_status.preview(self.root,'Checking receipts','tester',enable=True)
+        with self.assertRaises(core.WsError):team_status.apply(self.root,plan)
+        self.assertEqual(path.read_bytes(),b'');self.assertFalse(core.config(self.root).get('publish_status',False))

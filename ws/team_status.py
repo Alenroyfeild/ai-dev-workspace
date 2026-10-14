@@ -27,11 +27,11 @@ def preview(root, line='', author='local', enable=False, disable=False, date=Non
     state=json.loads(raw or '{}')
     if not isinstance(state,dict): raise core.WsError('Invalid share receipts.')
     approved=state.get('_artifacts:'+link['id'],{})
-    if not isinstance(approved,dict) or (old and approved.get('status/'+author+'.json')!=core.digest_text(old)):
+    if not isinstance(approved,dict) or (path.exists() and approved.get('status/'+author+'.json')!=core.digest_text(old)):
         raise core.WsError('Status changed or belongs to another publisher; use another alias, retain the file.')
     date=date or core.now();content=None if disable else json.dumps({'author':author,'task':task,'line':line,'date':date},ensure_ascii=False,indent=2)+'\n'
     return {'line':line,'author':author,'enable':enable,'disable':disable,'date':date,'source':source,
-            'config_sha':core.digest_text(original),'receipts_sha':core.digest_text(raw),'old_sha':core.digest_text(old),
+            'config_sha':core.digest_text(original),'receipts_sha':core.digest_text(raw),'old_sha':core.digest_text(old),'destination_exists':path.exists(),
             'destination':'status/'+author+'.json','content':content,'publish_status':not disable,
             'warning':'Local snapshot only; Git history and teammates copies retain removed status. No push.'}
 
