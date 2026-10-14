@@ -90,7 +90,10 @@ bound to their original snapshots. Create a fresh private integration clone from
 that target, fetch only selected commit objects, and merge them in the shown order
 with `--no-commit --no-ff`, hooks disabled (`core.hooksPath = os.devnull`),
 isolated config and no shared
-object store. Never run merge drivers inherited from the source user's config.
+object store. After each clean merge, create a private merge commit before the next
+merge; intermediate commits remain in the owned clone until final approval. Supply
+the tool-owned commit identity per command, never by changing user Git config.
+Never run merge drivers inherited from the source user's config.
 
 Conflicts stop before the next merge. Keep the integration clone and conflict list;
 no worker or scheduler silently resolves them. The lead may propose a resolution,
