@@ -31,7 +31,15 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | `ws lesson add "<what happened → rule>"` / `ws lesson search "<words>"` | Lessons learned. |
 | `ws search "<words>"` | Ranked snippets from the vault notes. |
 | `ws sessions search "<words>"` | Search local Claude Code, Codex, Cursor and Gemini transcripts with read-only, redacted snippets. |
-| `ws import native [--client claude\|codex\|gemini\|all] [--task ID] [--yes]` | Preview (max 20 redacted lines) memories the assistants saved natively. Claude: `~/.claude/projects/<folder>/memory/*.md` for the workspace and each configured repo folder. Codex: `stage1_outputs` rollout summaries in `$CODEX_HOME/memories_1.sqlite` whose slug or raw memory names the workspace or repo folder. Gemini CLI: the `## Save a correction
+| `ws import native [--client claude\|codex\|gemini\|all] [--task ID] [--yes]` | Preview (max 20 redacted lines) memories the assistants saved natively. Claude: `~/.claude/projects/<folder>/memory/*.md` for the workspace and each configured repo folder. Codex: `stage1_outputs` rollout summaries in `$CODEX_HOME/memories_1.sqlite` whose slug or raw memory names the workspace or repo folder. Gemini CLI: the `## Gemini Added Memories` lines of `~/.gemini/GEMINI.md` (written by older `save_memory`/`/memory add`; current Gemini CLI docs say the agent edits memory Markdown files directly, including a private per-project folder whose format is undocumented, so newer entries are not imported). `--yes` appends one `### Imported <date> (unverified, from <client>)` block per client to the task Handoff (`--task`, else the single in-progress task): redacted, at most 150 words per client, skipped when already there. Native stores are only read. |
+| `ws paste` | Save clipboard text (or piped stdin) redacted in `.ws/inbox/`, then print only its digest. |
+| `ws digest <file> [--focus <regex>] [--local-summary]` | Show bounded context around matching lines first (bounded regex, scans the first 4096 characters per line), then the deterministic digest. `--local-summary` requires the `local-llm` pack. |
+
+`ws connect` installs a prompt-size guard for Claude Code (`UserPromptSubmit`), Codex (`UserPromptSubmit`), Cursor (`beforeSubmitPrompt`) and Gemini CLI (`BeforeAgent`). Prompts over 150 lines or 12 KB are saved redacted in `.ws/inbox/` and blocked; send a short question with the relevant excerpt, or put `!raw` alone on the first line to bypass. These clients document blocking prompt hooks: [Claude Code](https://code.claude.com/docs/en/hooks), [Codex](https://learn.chatgpt.com/docs/hooks), [Cursor](https://cursor.com/docs/hooks), and [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md).
+
+Toolbox levels: recommended tools are suggested for most workspaces, optional tools add specific capabilities, and caution tools can change routing or configuration. Nothing is installed automatically.
+
+## Save a correction
 
 After `ws start` has created and claimed your branch task, save a correction before
 closing the session:
@@ -50,14 +58,6 @@ the correction replaces, and review the task's Handoff if old notes conflict.
 The saved decision survives a checkpoint, so use your usual `/handoff` or
 `ws checkpoint` to record the next action too. With multiple claimed tasks, pass
 `--task <ID>` to select the task you own.
-
-## Gemini Added Memories` lines of `~/.gemini/GEMINI.md` (written by older `save_memory`/`/memory add`; current Gemini CLI docs say the agent edits memory Markdown files directly, including a private per-project folder whose format is undocumented, so newer entries are not imported). `--yes` appends one `### Imported <date> (unverified, from <client>)` block per client to the task Handoff (`--task`, else the single in-progress task): redacted, at most 150 words per client, skipped when already there. Native stores are only read. |
-| `ws paste` | Save clipboard text (or piped stdin) redacted in `.ws/inbox/`, then print only its digest. |
-| `ws digest <file> [--focus <regex>] [--local-summary]` | Show bounded context around matching lines first (bounded regex, scans the first 4096 characters per line), then the deterministic digest. `--local-summary` requires the `local-llm` pack. |
-
-`ws connect` installs a prompt-size guard for Claude Code (`UserPromptSubmit`), Codex (`UserPromptSubmit`), Cursor (`beforeSubmitPrompt`) and Gemini CLI (`BeforeAgent`). Prompts over 150 lines or 12 KB are saved redacted in `.ws/inbox/` and blocked; send a short question with the relevant excerpt, or put `!raw` alone on the first line to bypass. These clients document blocking prompt hooks: [Claude Code](https://code.claude.com/docs/en/hooks), [Codex](https://learn.chatgpt.com/docs/hooks), [Cursor](https://cursor.com/docs/hooks), and [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md).
-
-Toolbox levels: recommended tools are suggested for most workspaces, optional tools add specific capabilities, and caution tools can change routing or configuration. Nothing is installed automatically.
 
 ## Measure and maintain
 
