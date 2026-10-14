@@ -99,3 +99,22 @@ class TeamAutoTests(unittest.TestCase):
             with mock.patch('ws.team_sync.subprocess.run',side_effect=AssertionError('expired command must not spawn')):
                 with self.assertRaises(core.WsError):team_sync._git(self.clone,'status')
         finally:team_sync.AUTO_DEADLINE.reset(token)
+
+    def test_invalid_calendar_is_preserved_and_reschedule_exposes_old_time(self):
+        from ws import team_auto
+        self.consent()
+        with mock.patch('ws.team_auto.sys.platform','darwin'):
+            plan=team_auto.schedule(self.root,'09:15');path=self.base/'Library/LaunchAgents'/(plan['label']+'.plist');core.atomic_write(path,plan['content'])
+            data=plistlib.loads(path.read_bytes());data['StartCalendarInterval']={'Hour':99,'Minute':15};path.write_bytes(plistlib.dumps(data));before=path.read_bytes()
+            with self.assertRaises(core.WsError):team_auto.schedule(self.root,'10:30')
+            self.assertEqual(before,path.read_bytes())
+            core.atomic_write(path,plan['content']);new=team_auto.schedule(self.root,'10:30')
+            self.assertEqual(new['previous_time'],'09:15')
+            self.assertEqual(new['time'],'10:30')
+
+    def test_contended_automatic_pull_returns_without_git(self):
+        from ws import team_auto
+        self.consent()
+        with core.lock(self.root),mock.patch('ws.team_sync._git',side_effect=AssertionError('must not reach Git')):
+            result=team_auto.maybe_pull(self.root)
+        self.assertIn('warning',result);self.assertFalse(result['pushed'])
