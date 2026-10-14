@@ -358,6 +358,50 @@ class WorkerPrepareTests(Base):
             result = workers.accept(self.root, plan['id'], apply=True)
             self.assertEqual(self.git('show', result['branch'] + ':calc.py'), 'answer = 2')
 
+    def test_accept_pending_receipt_recovers_without_rewriting_refs(self):
+        for failure in ('accepted', 'update-ref'):
+            plan = self.collected_for_review(); workers.review(self.root, plan['id'], approve=True)
+            write, git = core.atomic_write, workers.git
+            def interrupted_write(path, content):
+                if Path(path) == Path(plan['record']) and json.loads(content)['state'] == failure: raise OSError('fixture write failed')
+                return write(path, content)
+            def interrupted_git(repo, *args, **kw):
+                if args[0] == failure: raise OSError('fixture ref failed')
+                return git(repo, *args, **kw)
+            with mock.patch.object(core, 'atomic_write', side_effect=interrupted_write), mock.patch.object(workers, 'git', side_effect=interrupted_git):
+                with self.assertRaises(OSError): workers.accept(self.root, plan['id'], apply=True)
+            pending = json.loads(Path(plan['record']).read_text()); self.assertEqual(pending['state'], 'accepting')
+            with self.assertRaises(core.WsError): workers.discard(self.root, plan['id'], apply=True)
+            with self.assertRaises(core.WsError): workers.collect(self.root, plan['id'])
+            if failure == 'update-ref':
+                self.git('branch', pending['branch'])
+                with self.assertRaises(core.WsError): workers.accept(self.root, plan['id'], apply=True)
+                self.assertEqual(self.git('rev-parse', pending['branch']), plan['base'])
+                self.git('branch', '-D', pending['branch'])  # Remove only the test-created collision.
+            with mock.patch.object(workers, 'git', wraps=git) as calls:
+                result = workers.accept(self.root, plan['id'], apply=True)
+            self.assertEqual(result['commit'], pending['commit']); self.assertEqual(result['state'], 'accepted')
+            self.assertEqual(sum(c.args[1] == 'update-ref' for c in calls.call_args_list), int(failure == 'update-ref'))
+
+    def test_discard_readonly_retry_is_limited_to_owned_regular_paths(self):
+        plan = self.prepare(apply=True); directory = Path(plan['directory']); owned = directory / 'source.git/config'
+        original = workers.shutil.rmtree
+        def readonly(path, onerror=None):
+            if path == directory / 'source.git':
+                error = PermissionError('fixture readonly')
+                if onerror is None: raise error
+                with mock.patch.object(workers.os, 'chmod') as chmod:
+                    retry = mock.Mock(); onerror(retry, str(owned), (PermissionError, error, None))
+                    chmod.assert_called_once(); retry.assert_called_once_with(str(owned)); chmod.reset_mock()
+                    with mock.patch.object(Path, 'is_symlink', return_value=True), self.assertRaises(PermissionError):
+                        onerror(retry, str(owned), (PermissionError, error, None))
+                    for outside in (self.repo / 'calc.py', directory.parent / 'other-run/file'):
+                        with self.assertRaises(PermissionError): onerror(retry, str(outside), (PermissionError, error, None))
+                    chmod.assert_not_called()
+            return original(path, onerror=onerror)
+        with mock.patch.object(workers.shutil, 'rmtree', side_effect=readonly):
+            self.assertEqual(workers.discard(self.root, plan['id'], apply=True)['state'], 'discarded')
+
     def test_discard_only_owned_artifacts_preserves_sibling_and_source(self):
         plan = self.prepare(apply=True); sibling = self.prepare(apply=True)
         original = (self.repo / 'calc.py').read_bytes()
