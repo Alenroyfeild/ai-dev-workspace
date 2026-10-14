@@ -184,7 +184,8 @@ and fast-forwards; it never checks publishing receipts or pushes. Explicit
 read-only attempts at session start and after share/checkpoint (4-second budget); failures retain
 local memory and report a manual-resolution hint. Ordinary brief/search never pull.
 `ws sync --daily HH:MM` previews one managed macOS launchd job before activation;
-`--dry-run` previews only. Existing unmanaged/changed jobs refuse replacement.
+`--dry-run` previews only, including any existing managed time. Unmanaged jobs,
+invalid intervals, and changes after preview refuse replacement.
 Scheduled jobs check consent every run; setting auto_pull=false disables future
 automatic pulls. Times are local. Other platforms print an inspectable cron/Task
 Scheduler suggestion and change nothing. No automatic publishing or installs.
