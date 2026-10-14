@@ -245,6 +245,9 @@ def main(argv=None):
         s.add_argument('item'); s.add_argument('--author', default='local')
         s.add_argument('--as', dest='as_format', choices=('runbook',), default='')
         s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
+    s = sub.add_parser('sync', help='pull team updates and preview an approved-only push')
+    s.add_argument('--dry-run', action='store_true', help='pull and preview; never commit or push')
+    s.add_argument('--yes', action='store_true', help='approve the exact printed push preview')
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink')); s.add_argument('remote', nargs='?', default='')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
@@ -424,6 +427,13 @@ def main(argv=None):
         if a.cmd == 'scope':
             from . import scope
             out(scope.record(root, a.item, a.value, a.expected_sha)); return 0
+        if a.cmd == 'sync':
+            from . import team_sync
+            plan = team_sync.preview(root); out(plan)
+            if a.dry_run or not plan['files']: return 0
+            if a.yes or input('Publish this exact team sync preview? [y/N] ').strip().lower() in ('y', 'yes'):
+                out(team_sync.apply(root, plan))
+            return 0
         if a.cmd == 'team':
             from . import team
             plan = team.manage(root, a.action, a.remote, attest=a.attest_private,
