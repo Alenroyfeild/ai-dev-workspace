@@ -265,6 +265,7 @@ def _profile(directory):
 def collect(root, run_id):
     """Lead-side snapshot; no approval or source-repo changes."""
     directory, state = _record(root, run_id); checkout = directory / 'checkout'
+    if state.get('blocked'): raise core.WsError('Blocked: start a new run with ws worker prepare')
     if state['state'] in ('accepting', 'accepted', 'discarded'): raise core.WsError('Accepting or terminal worker runs cannot be collected again.')
     reasons = []; changed = []; secrets = []; binary = []; snapshot = {}
     checks = state.pop('checks', None)
