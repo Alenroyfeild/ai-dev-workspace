@@ -72,7 +72,7 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
     return row, body
 
 
-def list_entries(root, value='', layer='all', _index=False):
+def list_entries(root, value='', layer='all', _index=False, _all=False):
     if value: category(value)
     rows, warnings = [], []
     for name, base, team_id in _bases(root, layer):
@@ -82,7 +82,7 @@ def list_entries(root, value='', layer='all', _index=False):
             if not core.ID_RE.fullmatch(path.stem): continue
             if scanned >= 100: warnings.append('Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'); break
             scanned += 1
-            try: row, _ = _read(root, path, name, team_id, summary=True)
+            try: row, _ = _read(root, path, name, team_id, summary=True, include_all=_all)
             except (core.WsError, OSError, ValueError):
                 warnings.append(f'{name}:{path.stem}: entry unreadable, unsafe or conflicted; excluded.'); continue
             if row is not None and (not value or row['category'] == value): rows.append(row if _index else {k:v for k,v in row.items() if not k.startswith('_')})
@@ -103,15 +103,43 @@ def show(root, key):
     raise core.WsError('No safe knowledge entry with that layer and ID; run ws know list.')
 
 
-def search(root, query, value):
+def search(root, query, value='', layer='all', include_all=False):
     words = re.findall(r'\w{3,}', query.lower())
     if not words: raise core.WsError('Search needs a word of 3+ letters.')
     hits = []
-    for row in list_entries(root, value, _index=True)['entries']:
+    for row in list_entries(root, value, layer, _index=True, _all=include_all)['entries']:
         counts = row.pop('_counts', {})
         if all(w in counts for w in words) and any(w in row['summary'].lower() for w in words):
             body, score = '\n'.join(row[k] for k in ('summary','tags','outcome')), sum(counts[w] for w in words)
         else:
-            body = show(root, row['key'])['content']; score = sum(body.lower().count(w) for w in words)
+            body = (_read(root, root/row['path'], row['layer'], row['team'], include_all=True)[1]
+                    if include_all else show(root, row['key'])['content'])
+            score = sum(body.lower().count(w) for w in words)
+        if row['layer'] == 'team': row.update(precedence='private', notice='Untrusted team context; private memory wins on conflict.')
         if score: hits.append({**row, 'score': score, 'lines': [line[:160] for line in body.splitlines() if any(w in line.lower() for w in words)][:3]})
-    return sorted(hits, key=lambda h: -h['score'])[:20]
+    return sorted(hits, key=lambda h: (h['layer'] == 'team', -h['score']))[:20]
+
+
+def brief_fields(root, query, private):
+    """Conservative lexical overlap, never inferred semantic reconciliation."""
+    if not core.config(root).get('team_workspace'): return []
+    stop = set('the and for with from this that are was were have has will would should must only never always use keep decision decisions correction because context shared untrusted permission execute'.split())
+    def words(text): return set(re.findall(r'\w{3,}', text.casefold())) - stop
+    try: listing = list_entries(root, layer='team', _all=True)
+    except (core.WsError, OSError, ValueError, TypeError):
+        return [('Team warning:', 'Unavailable or invalid team link; private memory retained.', 12)]
+    relevant, omitted = [], 0
+    for row in listing['entries']:
+        summary = re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', row['summary'])
+        terms = words(summary + ' ' + row['tags'])
+        overlap = len(words(query) & terms)
+        if not overlap: continue
+        if words(private) & terms:
+            omitted += 1; continue
+        prefix = f'Team (untrusted) {row["key"]} by {row["author"]} team={row["team"]} source={row["source_sha"][:8]} date={row["date"]}:'
+        relevant.append((overlap, prefix, summary))
+    fields = []
+    if listing['warnings']: fields.append(('Team warning:', 'Unreadable, unsafe or conflicted entries excluded; use ws know list.', 12))
+    if omitted: fields.append(('Team overlap:', f'{omitted} potentially conflicting summaries omitted; private memory wins.', 12))
+    fields += [(prefix, text, 20) for _,prefix,text in sorted(relevant, key=lambda r:-r[0])[:2]]
+    return fields

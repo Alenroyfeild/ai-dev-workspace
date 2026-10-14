@@ -1283,7 +1283,11 @@ def search(root, query, limit=20, category=''):
             best.sort(reverse=True)
             hits.append({'path': shown, 'score': score,
                          'lines': [f'{i}: {t}' for _, i, t in best[:3]]})
-    hits.sort(key=lambda h: -h['score'])
+    if config(root).get('team_workspace'):
+        from . import knowledge
+        try: hits += knowledge.search(root, query, layer='team', include_all=True)
+        except (WsError, OSError, ValueError, TypeError): pass  # Local search remains usable with a damaged team link.
+    hits.sort(key=lambda h: (h.get('layer') == 'team', -h['score']))
     return hits[:limit]
 
 
@@ -1649,6 +1653,8 @@ def _brief(root, task_id=None):
                ('Claim:', record['claim'], 12)]
     truncated |= len(' '.join(decisions).split()) > 25
     fields += [('', line, 18) for line in others_line(task['id'])]
+    from . import knowledge
+    fields += knowledge.brief_fields(root, task['title'] + ' ' + next_action, '\n'.join(decisions + ([constraints] if captured else [])))
     fields.append(('Explicit Handoff prose (saved task record):', ' '.join(prose), 18))
     lessons = relevant_lessons(root, task)
     fields += [('Lesson:', line, 25) for line in lessons[:3]]
