@@ -302,6 +302,28 @@ class WorkerPrepareTests(Base):
         self.assertFalse(workers.collect(self.root, plan['id'])['blocked'])
         return plan
 
+    def test_blocked_review_directs_new_run_even_after_checkout_repair(self):
+        plan = self.prepare(apply=True); self.complete_worker(plan)
+        extra = Path(plan['checkout']) / 'outside.txt'; extra.write_text('out of scope\n')
+        self.assertTrue(workers.collect(self.root, plan['id'])['blocked']); extra.unlink()
+        message = 'Blocked: start a new run with ws worker prepare'
+        self.assertEqual(workers.review(self.root, plan['id'])['message'], message)
+        with self.assertRaisesRegex(core.WsError, message): workers.review(self.root, plan['id'], approve=True)
+
+    def test_accept_warns_later_edits_are_excluded_from_reviewed_snapshot(self):
+        plan = self.collected_for_review(); workers.review(self.root, plan['id'], approve=True)
+        self.assertNotIn('later edits', workers.accept(self.root, plan['id']).get('warning', ''))
+        original = workers.collect
+        def later_edit(root, run_id):
+            result = original(root, run_id); (Path(plan['checkout']) / 'calc.py').write_text('answer = 99\n')
+            return result
+        with mock.patch.object(workers, 'collect', side_effect=later_edit), contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'accept', plan['id'], '--yes']), 0)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result['warning'], 'later edits in the worker checkout are not included')
+        self.assertEqual(self.git('show', result['branch'] + ':calc.py'), 'answer = 2')
+        self.assertEqual((Path(plan['checkout']) / 'calc.py').read_text(), 'answer = 99\n')
+
     def test_review_and_accept_preserve_dirty_source_and_import_exact_snapshot(self):
         plan = self.collected_for_review(); branch = 'ws/worker/' + plan['id']
         (self.repo / 'calc.py').write_text('user edit\n'); (self.repo / 'ignored.txt').write_text('private\n')
