@@ -164,6 +164,13 @@ Fresh clones may fall back when checkout timestamps differ. Team text remains
 untrusted. Generation is limited to 1000 records per layer. No brief integration
 is added here; cross-layer brief memory is T5.
 
+Team reading: `ws brief` uses relevant team cards within the remaining 200-word
+budget, after private decisions and next action, labelled untrusted with provenance.
+Team summaries with majority lexical overlap with private decisions are omitted and labelled; this
+conservative check does not infer semantic agreement. Default search also includes
+team entries, with private hits first. MCP uses these same brief/search paths.
+Unreadable/conflicted team entries warn in the brief; reads never pull or publish.
+
 `ws sync [--dry-run | --yes]` explicitly pulls the linked team branch (fast-forward
 only), then previews one commit built only from exact share-approved file bytes.
 Dry-run may pull; it never commits or pushes. Unapproved files, staged edits or
