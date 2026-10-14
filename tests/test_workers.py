@@ -183,7 +183,32 @@ class WorkerPrepareTests(Base):
         self.assertEqual((self.repo / 'calc.py').read_text(), 'answer = 1\n'); self.assertEqual(self.git('status', '--porcelain'), source)
         profile = (Path(plan['directory']) / 'worker.config.toml').read_text()
         self.assertIn('":minimal" = "read"', profile); self.assertIn('"enabled" = false', profile)
-        self.assertNotIn(str(Path.home() / '.codex'), next(line for line in profile.splitlines() if line.startswith('permissions.')))
+        self.assertNotIn(json.dumps(str(Path.home() / '.codex')) + ' = ', next(line for line in profile.splitlines() if line.startswith('permissions.')))
+
+    def test_profile_reads_only_resolved_codex_install(self):
+        plan = self.prepare(apply=True); directory = Path(plan['directory'])
+        home = self.root / 'synthetic-home'
+        package = home / '.codex/packages/standalone/releases/fixture'
+        executable = package / 'bin/codex'; executable.parent.mkdir(parents=True)
+        executable.write_text('fixture executable')
+        manifest = package / 'codex-package.json'
+        manifest.write_text(json.dumps(dict(layoutVersion=1, variant='codex', entrypoint='bin/codex')))
+        alias = home / '.local/bin/codex'; alias.parent.mkdir(parents=True)
+        alias.symlink_to(executable)
+        workers._profile(directory, alias)
+        profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+        self.assertIn(json.dumps(str(executable.resolve())) + ' = "read"', profile)
+        self.assertIn(json.dumps(str(package.resolve())) + ' = "read"', profile)
+        for path in (home, home / '.codex', alias.parent, home / '.codex/config.toml', home / '.codex/auth.json'):
+            self.assertNotIn(json.dumps(str(path)) + ' = ', profile)
+        for metadata in ([], dict(layoutVersion=1, variant='codex', entrypoint='../other')):
+            manifest.write_text(json.dumps(metadata)); workers._profile(directory, alias)
+            profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+            self.assertNotIn(json.dumps(str(package.resolve())) + ' = ', profile)
+        manifest.write_text(json.dumps(dict(layoutVersion=1, variant='codex', entrypoint='bin/codex')))
+        with mock.patch('ws.workers.Path.home', return_value=package): workers._profile(directory, alias)
+        profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+        self.assertNotIn(json.dumps(str(package.resolve())) + ' = ', profile)
 
     def test_collection_blocks_ignored_out_of_scope_secrets_binary_and_symlinks(self):
         for name, data in (('ignored.txt', b'ignored change'), ('calc.py', b'api_key=' + b'x'*20), ('calc.py', b'\xffbinary')):
