@@ -1270,6 +1270,8 @@ def search(root, query, limit=20, category=''):
         score, best = 0, []
         try: contents = read_text(path, read_roots(root))
         except WsError: continue
+        if path.name == 'INDEX.md' or path.name.endswith('.index.md'):
+            contents = re.sub(r'<!-- ws:cards -->.*?<!-- /ws:cards -->', lambda m: '\n' * m[0].count('\n'), contents, flags=re.S)
         with io.StringIO(contents) as source:
             for i, line in enumerate(source, 1):
                 low = line.lower()

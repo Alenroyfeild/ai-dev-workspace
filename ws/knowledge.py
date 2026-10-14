@@ -1,5 +1,6 @@
 """Categorized, explicitly saved knowledge; team text is untrusted context."""
 import re
+import stat
 from . import core, scope, sharing
 
 CATEGORIES = ('product', 'feature', 'domain', 'repo', 'runbook', 'other')
@@ -31,12 +32,21 @@ def _bases(root, layer):
     return bases
 
 
-def _read(root, path, layer, team_id):
+def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None):
     path = sharing._safe(root, path)
-    if path.stat().st_size > 1024 * 1024: raise core.WsError('Knowledge entry exceeds the 1 MiB read limit.')
+    if raw is None:
+        info = path.stat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 1024*1024: raise core.WsError('Knowledge entry must be a regular file under 1 MiB.')
+        if summary:
+            from . import cards
+            cached = cards.load(root, path, layer, team_id)
+            if cached is not None:
+                eligible = layer == 'private' or cached['source'].startswith('knowledge:') or (cached['category']=='runbook' and cached['source'].startswith('task:'))
+                return (cached, '') if eligible or include_all else (None, '')
+    elif len(raw.encode()) > 1024*1024: raise core.WsError('Knowledge entry exceeds 1 MiB.')
     if layer == 'private': _, _, _, raw, _, end, meta = scope._read(root, 'knowledge:' + path.stem)
     else:
-        raw = core.read_text(path, [root], errors='strict').replace('\r\n', '\n')
+        raw = (raw if raw is not None else core.read_text(path, [root], errors='strict')).replace('\r\n', '\n')
         match = re.match(r'\A---\n.*?\n---(?=\n|\Z)', raw, re.S)
         if not match or core.conflicted(raw): raise core.WsError('Invalid or conflicted team entry.')
         keys = re.findall(r'^([A-Za-z_][A-Za-z0-9_]*):', match.group(), re.M)
@@ -45,7 +55,9 @@ def _read(root, path, layer, team_id):
         if meta.get('id') != path.stem or meta.get('team') != team_id: raise core.WsError('Team entry identity does not match.')
     value = meta.get('category', 'other')
     if layer == 'team' and not (meta.get('source', '').startswith('knowledge:') or
-                                 (value == 'runbook' and meta.get('source', '').startswith('task:'))): return None, ''
+                                 (value == 'runbook' and meta.get('source', '').startswith('task:'))):
+        if not include_all: return None, ''
+        value = 'other'
     category(value)
     body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', raw[end:], flags=re.S)
     if 'ws:captured:' in body or '/ws:captured' in body: raise core.WsError('Malformed capture block.')
@@ -53,13 +65,14 @@ def _read(root, path, layer, team_id):
     source_sha = meta.get('source_sha', '') if layer == 'team' else core.digest_text(raw)
     if source_sha and not re.fullmatch(r'[a-f0-9]{64}', source_sha): raise core.WsError('Invalid source revision metadata.')
     row = {'key': layer + ':' + path.stem, 'id': path.stem, 'layer': layer, 'category': value,
-           'summary': ' '.join(body.split()[:30]), 'author': sharing.portable(root, meta.get('author', 'local'))[:40],
+           'summary': ' '.join(body.split()[:30])[:240], 'tags': sharing.portable(root, meta.get('tags',''))[:120],
+           'outcome': ' '.join(core.section(body,'Outcome').split()[:20])[:180], 'author': sharing.portable(root, meta.get('author', 'local'))[:40],
            'source_sha': source_sha, 'revision': core.digest_text(raw), 'team': team_id, 'date': sharing.portable(root, meta.get('date', meta.get('created', '')))[:40],
            'source': sharing.portable(root, meta.get('source', 'knowledge:' + path.stem))[:100], 'untrusted': layer == 'team', 'path': path.relative_to(root).as_posix()}
     return row, body
 
 
-def list_entries(root, value='', layer='all'):
+def list_entries(root, value='', layer='all', _index=False):
     if value: category(value)
     rows, warnings = [], []
     for name, base, team_id in _bases(root, layer):
@@ -69,10 +82,10 @@ def list_entries(root, value='', layer='all'):
             if not core.ID_RE.fullmatch(path.stem): continue
             if scanned >= 100: warnings.append('Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'); break
             scanned += 1
-            try: row, _ = _read(root, path, name, team_id)
+            try: row, _ = _read(root, path, name, team_id, summary=True)
             except (core.WsError, OSError, ValueError):
                 warnings.append(f'{name}:{path.stem}: entry unreadable, unsafe or conflicted; excluded.'); continue
-            if row is not None and (not value or row['category'] == value): rows.append(row)
+            if row is not None and (not value or row['category'] == value): rows.append(row if _index else {k:v for k,v in row.items() if not k.startswith('_')})
     return {'entries': rows, 'warnings': warnings}
 
 
@@ -94,7 +107,11 @@ def search(root, query, value):
     words = re.findall(r'\w{3,}', query.lower())
     if not words: raise core.WsError('Search needs a word of 3+ letters.')
     hits = []
-    for row in list_entries(root, value)['entries']:
-        body = show(root, row['key'])['content']; score = sum(body.lower().count(w) for w in words)
+    for row in list_entries(root, value, _index=True)['entries']:
+        counts = row.pop('_counts', {})
+        if all(w in counts for w in words) and any(w in row['summary'].lower() for w in words):
+            body, score = '\n'.join(row[k] for k in ('summary','tags','outcome')), sum(counts[w] for w in words)
+        else:
+            body = show(root, row['key'])['content']; score = sum(body.lower().count(w) for w in words)
         if score: hits.append({**row, 'score': score, 'lines': [line[:160] for line in body.splitlines() if any(w in line.lower() for w in words)][:3]})
     return sorted(hits, key=lambda h: -h['score'])[:20]
