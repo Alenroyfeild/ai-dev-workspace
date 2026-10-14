@@ -2,9 +2,13 @@
 
 ## 0.1.0-beta.4 (unreleased)
 
+Start memory from inside your own repo with one command, keep a decision with `ws remember`, and see at session start what was remembered. A private team workspace arrives as a preview.
+
 ### New
 - Link a personal workspace to a private team workspace. New notes stay private; preview what will be shared, then choose what to share or remove. `ws sync` shows incoming changes and publishes only the copies you approved.
 - Add categorized team knowledge, generated index cards, and turn a finished task into a shareable runbook. [Team workspace guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
+- Team knowledge in your brief: relevant shared cards appear after your own decisions and next action, labelled untrusted with author and date. A shared note that largely repeats one of your private decisions is left out, so your decision wins. Search lists your own results first.
+- Optional team status: `ws team status "Checking receipts" --author sam --publish-status` previews a short "working on" line (alias, task title, date) before saving it. Off by default; teammates see it marked as last reported, not live.
 - Install and start without `pipx`: the quick start includes a virtual-environment path.
 
 ### Improved
@@ -18,9 +22,13 @@
 - `ws connect claude` and `ws connect codex` no longer add skills to your global `~/.claude` or `~/.agents` folders without asking. Project skills work as before; add `--skills` to link the extra ones globally. Skills you already linked are left alone.
 - `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.
 
+### Measured
+- Release check on macOS at the release candidate, in a throwaway home and sample repo: `ws start`, `ws remember`, a checkpoint, then a new real session in Claude Code and in Codex CLI 0.155.1. Both answered the remembered decision and next action from startup memory; `ws start --undo` left `git status` empty.
+- CI passes on macOS, Linux and Windows at the release candidate; the release dry run passed in normal, offline and shallow-clone modes.
+
 ### Known limits
+- Team workspace is a preview: sharing and sync are tested with local bare repositories only. Automatic and scheduled pulls are not in this release.
 - Corrections spoken only in chat are not reliably saved yet. Use `ws remember` to keep a decision; see the beta.3 measured result for the current correction-capture limits.
-- Team sharing and sync are tested with local bare repositories, not a hosted multi-user team under concurrent writes.
 
 ## 0.1.0-beta.3 (2026-10-12)
 
