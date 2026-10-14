@@ -46,7 +46,13 @@ Reject duplicate unit names, empty/rooted/escaping/protected scopes and intersec
 scopes (including ancestor/descendant directories). All units read the same base;
 only their own checkout/scratch are writable. Source repo, parent workspace,
 siblings, HOME/config, credentials and Git metadata stay outside worker write access.
-No global configuration or skills links are added. No caller-supplied extra roots.
+Unit scopes are checked separately from checkout-wide sandbox write access:
+collection rejects out-of-scope snapshots before unit acceptance or integration.
+Worker tools cannot read private HOME/config or credentials outside the run; the
+profile grants reads only to runtime/toolchain, checkout, private Git metadata and
+scratch. Scratch contains no authentication secrets; authentication stays with
+the trusted client broker. No global configuration or skills links are added.
+No caller-supplied extra roots.
 
 ## Execution and collection
 
