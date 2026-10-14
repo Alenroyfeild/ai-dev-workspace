@@ -31,12 +31,12 @@ def snapshot(root, folder, local=False):
         not re.fullmatch(r'[a-f0-9]{32}',str(team))): raise core.WsError('Folder needs a valid team.json from its host.')
     for name,text in files.items():
         if name.startswith('entries/') and not name.endswith('.index.md'):
-            knowledge._read(root,root/'.ws/team'/name,'team',team,raw=text,include_all=True)
+            row,_=knowledge._read(root,root/'.ws/team'/name,'team',team,raw=text,include_all=True)
             card=files.get(name[:-3]+'.index.md','')
             if card.count(cards.HEAD)!=1 or card.count(cards.TAIL)!=1: raise core.WsError('Incomplete folder record/card. '+HINT)
             data=json.loads(card.split(cards.HEAD)[1].split(cards.TAIL)[0])
             if (not isinstance(data,dict) or data.get('schema')!=1 or data.get('source_bytes')!=len(text.encode()) or
-                not isinstance(data.get('row'),dict) or data['row'].get('revision')!=core.digest_text(text)):
+                not isinstance(data.get('row'),dict) or any(data['row'].get(key)!=row[key] for key in cards.FIELDS)):
                 raise core.WsError('Record/card changed during sync. '+HINT)
         elif name.endswith('.index.md') and name.replace('.index.md','.md') not in files: raise core.WsError('Orphan folder card. '+HINT)
         elif name.startswith('status/'):
