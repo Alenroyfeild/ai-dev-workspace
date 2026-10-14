@@ -87,3 +87,12 @@ class TeamStatusTests(unittest.TestCase):
             path=self.clone/'status'/(author+'.json');row=json.loads(path.read_text());row['date']=date;core.atomic_write(path,json.dumps(row))
         fields=team_status.brief_fields(self.root);prefixes=[p for p,_,_ in fields]
         self.assertEqual(len(prefixes),2);self.assertIn('alpha',prefixes[0]);self.assertIn('zeta',prefixes[1])
+
+    def test_newest_snapshot_after_first_hundred_valid_aliases_is_selected(self):
+        from ws import team_status
+        directory=self.clone/'status';directory.mkdir()
+        for n in range(101):
+            author='author%03d'%n;date='2026-10-14T10:00:00+00:00' if n==100 else '2001-01-01T00:00:00+00:00'
+            core.atomic_write(directory/(author+'.json'),json.dumps({'author':author,'task':'Receipts','line':'Checking','date':date}))
+        fields=team_status.brief_fields(self.root)
+        self.assertTrue(any('author100' in prefix for prefix,_,_ in fields))

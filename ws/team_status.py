@@ -65,9 +65,10 @@ def list_entries(root):
             stamp=datetime.datetime.fromisoformat(row['date'].replace('Z','+00:00'))
             if stamp.tzinfo is None: raise ValueError()
             rows.append({**row,'untrusted':True,'kind':'last reported snapshot; not live availability'})
-            if len(rows)>=100:
-                warnings.append('Only the first 100 valid status snapshots are shown.');break
         except (core.WsError,OSError,ValueError,TypeError,AttributeError,RecursionError):invalid+=1
+    rows.sort(key=lambda r:datetime.datetime.fromisoformat(r['date'].replace('Z','+00:00')),reverse=True)
+    if len(rows)>100: warnings.append('Only the newest 100 valid status snapshots are shown.')
+    rows=rows[:100]
     if invalid: warnings.append(f'{invalid} unsafe or incomplete status files excluded')
     return {'entries':rows,'warnings':warnings}
 
@@ -76,5 +77,5 @@ def brief_fields(root):
     try: result=list_entries(root)
     except (core.WsError,OSError,ValueError,TypeError):return [('Team status warning:','Unavailable snapshot; private memory retained.',8)]
     fields=[('Team status warning:','Unsafe/incomplete snapshots excluded.',5)] if result['warnings'] else []
-    fields += [(f'Status (untrusted; last reported {r["date"]}) {r["author"]}:',r['task']+' — '+r['line'],16) for r in sorted(result['entries'],key=lambda r:datetime.datetime.fromisoformat(r['date'].replace('Z','+00:00')),reverse=True)[:2]]
+    fields += [(f'Status (untrusted; last reported {r["date"]}) {r["author"]}:',r['task']+' — '+r['line'],16) for r in result['entries'][:2]]
     return fields
