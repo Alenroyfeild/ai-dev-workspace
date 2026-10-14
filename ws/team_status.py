@@ -48,7 +48,7 @@ def apply(root, plan):
 
 
 def list_entries(root):
-    rows=[];warnings=[]
+    rows=[];warnings=[];invalid=0
     if not core.config(root).get('team_workspace'): return {'entries':rows,'warnings':warnings}
     knowledge._bases(root,'team');directory=sharing._safe(root,root/'.ws/team/status')
     paths=sorted(directory.glob('*.json'))
@@ -67,7 +67,8 @@ def list_entries(root):
             rows.append({**row,'untrusted':True,'kind':'last reported snapshot; not live availability'})
             if len(rows)>=100:
                 warnings.append('Only the first 100 valid status snapshots are shown.');break
-        except (core.WsError,OSError,ValueError,TypeError,AttributeError,RecursionError):warnings.append('Unsafe or incomplete status excluded.')
+        except (core.WsError,OSError,ValueError,TypeError,AttributeError,RecursionError):invalid+=1
+    if invalid: warnings.append(f'{invalid} unsafe or incomplete status files excluded')
     return {'entries':rows,'warnings':warnings}
 
 
@@ -75,5 +76,5 @@ def brief_fields(root):
     try: result=list_entries(root)
     except (core.WsError,OSError,ValueError,TypeError):return [('Team status warning:','Unavailable snapshot; private memory retained.',8)]
     fields=[('Team status warning:','Unsafe/incomplete snapshots excluded.',5)] if result['warnings'] else []
-    fields += [(f'Status (untrusted; last reported {r["date"]}) {r["author"]}:',r['task']+' — '+r['line'],16) for r in result['entries'][:2]]
+    fields += [(f'Status (untrusted; last reported {r["date"]}) {r["author"]}:',r['task']+' — '+r['line'],16) for r in sorted(result['entries'],key=lambda r:datetime.datetime.fromisoformat(r['date'].replace('Z','+00:00')),reverse=True)[:2]]
     return fields
