@@ -15,7 +15,7 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). In a
 
 ## Daily loop
 
-Claude and Codex hooks can capture cue-bearing decisions and assistant summaries from supported transcripts. Captures are redacted and unverified; use `/handoff` for precise notes.
+Claude and Codex hooks can capture cue-bearing decisions and assistant summaries from supported transcripts. Captures are redacted, unverified and best-effort. Save important corrections explicitly with `ws remember`; use `/handoff` for progress notes.
 
 | Command | Does |
 |---|---|
@@ -31,7 +31,27 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | `ws lesson add "<what happened → rule>"` / `ws lesson search "<words>"` | Lessons learned. |
 | `ws search "<words>"` | Ranked snippets from the vault notes. |
 | `ws sessions search "<words>"` | Search local Claude Code, Codex, Cursor and Gemini transcripts with read-only, redacted snippets. |
-| `ws import native [--client claude\|codex\|gemini\|all] [--task ID] [--yes]` | Preview (max 20 redacted lines) memories the assistants saved natively. Claude: `~/.claude/projects/<folder>/memory/*.md` for the workspace and each configured repo folder. Codex: `stage1_outputs` rollout summaries in `$CODEX_HOME/memories_1.sqlite` whose slug or raw memory names the workspace or repo folder. Gemini CLI: the `## Gemini Added Memories` lines of `~/.gemini/GEMINI.md` (written by older `save_memory`/`/memory add`; current Gemini CLI docs say the agent edits memory Markdown files directly, including a private per-project folder whose format is undocumented, so newer entries are not imported). `--yes` appends one `### Imported <date> (unverified, from <client>)` block per client to the task Handoff (`--task`, else the single in-progress task): redacted, at most 150 words per client, skipped when already there. Native stores are only read. |
+| `ws import native [--client claude\|codex\|gemini\|all] [--task ID] [--yes]` | Preview (max 20 redacted lines) memories the assistants saved natively. Claude: `~/.claude/projects/<folder>/memory/*.md` for the workspace and each configured repo folder. Codex: `stage1_outputs` rollout summaries in `$CODEX_HOME/memories_1.sqlite` whose slug or raw memory names the workspace or repo folder. Gemini CLI: the `## Save a correction
+
+After `ws start` has created and claimed your branch task, save a correction before
+closing the session:
+
+```bash
+ws remember "Correction: store totals in integer cents; this replaces the earlier float decision."
+ws brief
+```
+
+Check that the corrected decision appears in the brief. You can also ask your
+assistant to save it with the MCP `remember` tool, then confirm with `ws brief`.
+A chat correction alone is not a reliable saved record.
+
+`ws remember` appends a decision; it keeps earlier notes. Say which earlier choice
+the correction replaces, and review the task's Handoff if old notes conflict.
+The saved decision survives a checkpoint, so use your usual `/handoff` or
+`ws checkpoint` to record the next action too. With multiple claimed tasks, pass
+`--task <ID>` to select the task you own.
+
+## Gemini Added Memories` lines of `~/.gemini/GEMINI.md` (written by older `save_memory`/`/memory add`; current Gemini CLI docs say the agent edits memory Markdown files directly, including a private per-project folder whose format is undocumented, so newer entries are not imported). `--yes` appends one `### Imported <date> (unverified, from <client>)` block per client to the task Handoff (`--task`, else the single in-progress task): redacted, at most 150 words per client, skipped when already there. Native stores are only read. |
 | `ws paste` | Save clipboard text (or piped stdin) redacted in `.ws/inbox/`, then print only its digest. |
 | `ws digest <file> [--focus <regex>] [--local-summary]` | Show bounded context around matching lines first (bounded regex, scans the first 4096 characters per line), then the deterministic digest. `--local-summary` requires the `local-llm` pack. |
 
