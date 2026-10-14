@@ -99,7 +99,9 @@ Reviewed integration clone: later, if users need it.
 1. Plan/preview: focused fixtures for claim drift, overlaps, bad roots, dry-run and
    interrupted preparation; no client execution.
 2. Scheduler: bounded concurrency, isolated receipts, timeout/cancel descendants,
-   failed admission and restart without paid resume. No launch until O2d passes.
+   failed admission and restart without paid resume. A fixture changes a collected
+   tree after passing checks and verifies acceptance requires collection and checks
+   again on the new tree. No launch until O2d passes.
 4. One live Codex sample task: two independent edits/checks, reviewed branches,
    per-unit checks, lead confirmation and clean undo. Hostile attempts
    against source/workspace/HOME/Git/sibling/escape paths remain denied. Claude runs
