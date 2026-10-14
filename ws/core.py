@@ -1650,6 +1650,8 @@ def _brief(root, task_id=None):
     truncated |= len(' '.join(decisions).split()) > 25
     fields += [('', line, 18) for line in others_line(task['id'])]
     fields.append(('Explicit Handoff prose (saved task record):', ' '.join(prose), 18))
+    from . import team_status
+    fields += team_status.brief_fields(root)
     lessons = relevant_lessons(root, task)
     fields += [('Lesson:', line, 25) for line in lessons[:3]]
     if len(lessons) > 3: fields.append(('Lessons:', f'{len(lessons) - 3} more (ws lesson search)', 8))

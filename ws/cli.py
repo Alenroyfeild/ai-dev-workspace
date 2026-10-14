@@ -246,10 +246,14 @@ def main(argv=None):
         s.add_argument('--as', dest='as_format', choices=('runbook',), default='')
         s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s = sub.add_parser('team', help='preview or link a private team Git repository')
-    s.add_argument('action', choices=('init', 'link', 'unlink')); s.add_argument('remote', nargs='?', default='')
+    s.add_argument('action', choices=('init', 'link', 'unlink', 'status')); s.add_argument('remote', nargs='?', default='')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s.add_argument('--attest-private', action='store_true', help='I confirm this exact remote is private to my team')
     s.add_argument('--verify-with', choices=('gh', 'glab'), default='')
+    s.add_argument('--author', default='local', help='portable alias for a status snapshot')
+    status_mode = s.add_mutually_exclusive_group()
+    status_mode.add_argument('--publish-status', action='store_true', help='opt in to previewed status saves')
+    status_mode.add_argument('--disable-status', action='store_true', help='turn off status and preview removal of this alias')
     pulls = s.add_mutually_exclusive_group()
     pulls.add_argument('--auto-pull', dest='auto_pull', action='store_true', default=None)
     pulls.add_argument('--no-auto-pull', dest='auto_pull', action='store_false')
@@ -425,6 +429,14 @@ def main(argv=None):
             from . import scope
             out(scope.record(root, a.item, a.value, a.expected_sha)); return 0
         if a.cmd == 'team':
+            if a.action == 'status':
+                from . import team_status
+                if not a.remote and not a.disable_status:
+                    out(team_status.list_entries(root)); return 0
+                plan = team_status.preview(root, a.remote, a.author, a.publish_status, a.disable_status); out(plan)
+                if not a.dry_run and (a.yes or input('Save this exact local status preview? [y/N] ').strip().lower() in ('y', 'yes')):
+                    out(team_status.apply(root, plan))
+                return 0
             from . import team
             plan = team.manage(root, a.action, a.remote, attest=a.attest_private,
                                auto_pull=bool(a.auto_pull), verifier=a.verify_with); out(plan)
