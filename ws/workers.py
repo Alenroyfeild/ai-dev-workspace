@@ -246,7 +246,7 @@ def discard(root, run_id, apply=False, confirm=None):
     return dict(_public(state), applied=True)
 
 
-def _profile(directory):
+def _profile(directory, executable=None):
     checkout = directory / 'checkout'; scratch = directory / 'scratch'
     runtime = Path(core.sys.base_prefix).resolve()
     if runtime == Path(runtime.anchor) or runtime == Path.home().resolve() or runtime in Path.home().resolve().parents:
@@ -254,6 +254,15 @@ def _profile(directory):
     rules = {':minimal': 'read', str(runtime): 'read',
              str(directory / 'source.git'): 'read', str(scratch): 'write',
              ':workspace_roots': {'.': 'write', '.git': 'read', '.codex': 'read', '.claude': 'read'}}
+    if executable:
+        executable = Path(executable).resolve(); rules[str(executable)] = 'read'
+        package = executable.parent.parent; home = Path.home().resolve()
+        try: metadata = json.loads((package / 'codex-package.json').read_text())
+        except (OSError, ValueError): metadata = {}
+        protected = (home, home / '.codex', home / '.local', home / '.local/bin', *home.parents)
+        if (package not in protected and isinstance(metadata, dict) and metadata.get('layoutVersion') == 1 and metadata.get('variant') == 'codex'
+                and metadata.get('entrypoint') == 'bin/codex' and (package / 'bin/codex').resolve() == executable):
+            rules[str(package)] = 'read'
     def value(v):
         if isinstance(v, dict): return '{' + ', '.join(json.dumps(k, ensure_ascii=False) + ' = ' + value(x) for k, x in v.items()) + '}'
         return 'false' if v is False else json.dumps(v, ensure_ascii=False)
@@ -351,9 +360,11 @@ def _launch(root, run_id):
             raise core.WsError('Prepared checkout changed; prepare a new run.')
         binding = orchestration.route(root, 'worker', provider='codex')
         if not binding['available'] or binding['model'] != state['model']: raise core.WsError('Prepared Codex model is unavailable or changed; no fallback.')
+        executable = shutil.which(binding['executable'])
+        if executable: binding = dict(binding, executable=str(Path(executable).resolve()))
         (directory / 'scratch').mkdir(mode=0o700)
         args = ['exec', '--ignore-user-config', '--ignore-rules', '--ephemeral', '--json', '-m', state['model'],
-                '-c', 'model_reasoning_effort=' + json.dumps(state['effort']), *_profile(directory),
+                '-c', 'model_reasoning_effort=' + json.dumps(state['effort']), *_profile(directory, executable),
                 '--disable', 'hooks', '--disable', 'apps', '--disable', 'plugins', '-C', str(checkout), '-']
         binding = dict(binding, headless=args)
         state.update(state='running', checks=[], started_at=core.now())
