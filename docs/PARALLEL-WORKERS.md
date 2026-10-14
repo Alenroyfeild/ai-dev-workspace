@@ -80,8 +80,11 @@ ownership. Retain existing runs and accepted commits for inspection.
 ## Review and acceptance
 
 For each unit, use O2 lead review and acceptance to create `ws/worker/<run-id>`.
-Approval binds the displayed diff to immutable tree/check identities. Later
-checkout edits are excluded and warned about; acceptance uses the reviewed commit.
+Approval binds the displayed diff to immutable tree/check identities. Required
+checks must run against that same collected tree; any later edit invalidates their
+evidence and requires collection and checks again before acceptance. This matching
+check-input identity is an O3 implementation requirement, not a claim about current O2.
+Later checkout edits are excluded and warned about; acceptance uses the reviewed commit.
 The warning can appear for unchanged files with Git eol normalization.
 
 The lead merges accepted unit branches through the normal branch/PR flow.
