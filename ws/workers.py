@@ -134,6 +134,9 @@ def review(root, run_id, approve=False, confirm=None):
     result = dict(_public(state), applied=False)
     patch = directory / 'diff.patch'
     result['diff'] = patch.read_text(errors='replace') if patch.is_file() else ''
+    if state.get('blocked'):
+        result['message'] = 'Blocked: start a new run with ws worker prepare'
+        if approve: raise core.WsError(result['message'])
     if not approve: return result
     if state['state'] != 'needs-review' or state.get('blocked'): raise core.WsError('Worker is blocked or not ready for review.')
     signature = _snapshot(state)
@@ -161,6 +164,20 @@ def _approved(root, run_id):
     return directory, state, source
 
 
+def _later_edits(directory, state):
+    checkout = directory / 'checkout'; expected = {}
+    for entry in git(checkout, 'ls-tree', '-r', '-z', state['tree']).split('\0'):
+        if entry:
+            metadata, name = entry.split('\t', 1); mode, _, blob = metadata.split(); expected[name] = (mode, blob)
+    names = set(filter(None, git(checkout, 'ls-files', '--cached', '--others', '-z').split('\0')))
+    if names != set(expected): return True
+    for name, (mode, blob) in expected.items():
+        path = checkout / name
+        if (path.is_symlink() or not path.is_file() or git(checkout, 'hash-object', '--no-filters', '--', name) != blob
+                or os.name != 'nt' and bool(path.stat().st_mode & 0o111) != (mode == '100755')): return True
+    return False
+
+
 def accept(root, run_id, apply=False, confirm=None):
     directory, state, source = _approved(root, run_id)
     branch = 'ws/worker/' + run_id; ref = 'refs/heads/' + branch
@@ -173,11 +190,13 @@ def accept(root, run_id, apply=False, confirm=None):
         return present
     existing()
     result = dict(_public(state), branch=branch, snapshot=_snapshot(state), applied=False)
+    if _later_edits(directory, state): result['warning'] = 'later edits in the worker checkout are not included'
     if not apply or confirm is not None and not confirm(result): return result
     if state['state'] != 'accepting': collect(root, run_id)
     with core.lock(root):
         directory, state, source = _approved(root, run_id)
         if _snapshot(state) != result['snapshot']: raise core.WsError('Worker changed during acceptance; review again.')
+        if _later_edits(directory, state): result['warning'] = 'later edits in the worker checkout are not included'
         identity = {key: value for role in ('AUTHOR', 'COMMITTER') for key, value in
                     ((f'GIT_{role}_NAME', 'ai-dev-workspace'), (f'GIT_{role}_EMAIL', 'worker@workspace.invalid'))}
         if state['state'] == 'accepting':
@@ -194,7 +213,7 @@ def accept(root, run_id, apply=False, confirm=None):
         if not existing(): git(source, 'update-ref', '--no-deref', '-m', 'Accept worker ' + run_id, ref, commit, '0' * len(commit))
         state.update(state='accepted', branch=branch, commit=commit, accepted_at=core.now())
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
-    return dict(_public(state), applied=True)
+    return dict(_public(state), warning=result.get('warning', ''), applied=True)
 
 
 def discard(root, run_id, apply=False, confirm=None):
