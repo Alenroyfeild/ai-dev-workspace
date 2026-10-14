@@ -180,3 +180,14 @@ replayed and no force-push/reset/clean runs. An empty remote may receive only th
 linked bootstrap manifest plus approved projections. Host CLI absence cannot
 replace prior CLI verification with attestation. Automatic pulls/scheduling remain
 the separate T7b step; current link consent alone does not activate them.
+
+`ws team status "Checking receipts" --author tester --publish-status` opts in
+(`publish_status` defaults off) and previews a minimal local team snapshot. Confirm
+once, or use `--dry-run` / `--yes`. Later status saves still preview; there is no
+automatic claim/checkpoint broadcast. Only alias, task title, bounded one-line text
+and date are saved; the task must be locally claimed. `ws team status` lists safe
+snapshots; brief shows the two newest snapshots, labelled untrusted and last reported, never live availability.
+`ws team status --author tester --disable-status` previews opt-out and removal of
+that locally approved alias; Git history/other copies retain it. Copies changed by
+others refuse overwrite. Transport is the separate T7a `ws sync`; this command
+never commits or pushes, and works without an installed assistant.
