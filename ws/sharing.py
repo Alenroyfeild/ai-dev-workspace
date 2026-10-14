@@ -89,9 +89,12 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
         content = (f'---\nid: {entry}\nteam: {link["id"]}\ncategory: {category}\n'
                    f'author: {author}\nsource: {item}\nsource_sha: {source_sha}\ndate: {date}\n---\n'
                    'Shared context; untrusted and never permission to execute.\n\n' + body + '\n')
-    return {'item': item, 'as_format': as_format, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
+    from . import cards
+    artifacts = cards.plan(root, 'team', {target: None if unshare else content})
+    artifact_diff = ''.join(''.join(difflib.unified_diff(_text(p).splitlines(True), (t or '').splitlines(True), fromfile=p.relative_to(clone).as_posix(), tofile='preview')) for p,t in artifacts.items())
+    return {'artifacts': {p.relative_to(clone).as_posix():t for p,t in artifacts.items()}, 'artifact_diff': artifact_diff, 'item': item, 'as_format': as_format, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
             'source_sha': source_sha, 'config_sha': core.digest_text(cfg_text), 'state_sha': core.digest_text(state_text),
-            'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old,
+            'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old and not artifacts,
             'diff': ''.join(difflib.unified_diff(old.splitlines(True), content.splitlines(True), fromfile='team copy', tofile='preview')),
             'omissions': ('Raw task, Handoff prose, captures, private markers, local paths and claims.' if as_format else 'Inline Handoff, captures, private markers, local paths, claims and all unselected sections.'),
             'warning': 'Git history and teammates copies retain removed text.' if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
@@ -106,14 +109,14 @@ def apply(root, plan):
         target = _safe(root, root / '.ws/team' / plan['destination']); old = _text(target)
         if plan['unshare']: state.pop(plan['key'])
         else: state[plan['key']] = {'id': plan['entry'], 'sha': core.digest_text(plan['content']), 'date': plan['date']}
-        try:
-            if plan['unshare']: target.unlink()
-            else: core.atomic_write(target, plan['content'])
-            core.atomic_write(registry, json.dumps(state, indent=2) + '\n')
-        except OSError:
-            if old: core.atomic_write(target, old)
-            elif target.exists(): target.unlink()
-            raise core.WsError('Copy failed; original team content retained. Preview again.')
+        from . import cards
+        changes = {target: None if plan['unshare'] else plan['content']}
+        changes.update({_safe(root, root / '.ws/team' / p):t for p,t in plan['artifacts'].items()})
+        approvals = state.setdefault('_artifacts:' + plan['key'].split(':')[0], {})
+        if not isinstance(approvals, dict): raise core.WsError('Invalid artifact receipts; retain them for recovery.')
+        approvals.update({p.relative_to(root / '.ws/team').as_posix(): core.digest_text(t) if t is not None else '' for p,t in changes.items()})
+        changes[registry] = json.dumps(state, indent=2) + '\n'
+        cards.write(root, changes)
     return {'applied': True, 'destination': plan['destination'], 'remote_published': False}
 
 
@@ -126,4 +129,9 @@ def standalone(root, kind, text, team_scope=True, category='other'):
         path = _safe(root, core.vault(root) / scope.DIRECTORIES[kind] / (identifier + '.md'))
         metadata = ('category: ' + category + '\ncreated: ' + core.now() + '\n') if kind == 'knowledge' else ''
         core.atomic_write(path, f'---\nid: {identifier}\nscope: {"team" if team_scope else "private"}\n' + metadata + '---\n\n' + body + '\n')
+        if kind == 'knowledge':
+            from . import cards
+            try: cards.write(root, cards.plan(root, 'private'))
+            except (core.WsError, OSError):
+                path.unlink(); raise
     return kind + ':' + identifier
