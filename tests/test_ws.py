@@ -15,6 +15,7 @@ KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT))
 from ws import core, assist  # noqa: E402
 from mcp import server  # noqa: E402
+from testutil import isolate_home, rmtree_owned  # noqa: E402
 
 
 def slow_subprocess(test):
@@ -64,12 +65,21 @@ class Base(unittest.TestCase):
         patch = mock.patch.object(assist, 'cost_data', return_value=({}, {}))
         patch.start(); self.addCleanup(patch.stop)
         self.tmp = tempfile.TemporaryDirectory()
+        isolate_home(self, self.tmp.name)  # no test may touch the real home on any OS
         self.root = Path(self.tmp.name) / 'w'
         core.init(self.root, 'demo', ['ios'])
         core.task_new(self.root, 'T-1', 'Fix crash', 'Crash on empty email')
 
     def tearDown(self):
+        rmtree_owned(self.tmp.name, self.tmp.name)  # read-only git objects fail plain cleanup on Windows
         self.tmp.cleanup()
+
+
+class HomeIsolationTests(Base):
+    def test_home_resolves_inside_test_tmp(self):
+        tmp = Path(self.tmp.name).resolve()
+        for home in (Path.home(), Path(os.path.expanduser('~'))):
+            self.assertTrue(home.resolve().is_relative_to(tmp), home)
 
 
 class MoreClientTests(Base):
