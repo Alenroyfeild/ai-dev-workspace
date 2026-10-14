@@ -51,7 +51,9 @@ def list_entries(root):
     rows=[];warnings=[]
     if not core.config(root).get('team_workspace'): return {'entries':rows,'warnings':warnings}
     knowledge._bases(root,'team');directory=sharing._safe(root,root/'.ws/team/status')
-    for path in sorted(directory.glob('*.json'))[:100]:
+    paths=sorted(directory.glob('*.json'))
+    if len(paths)>1000: warnings.append('Status scan limited to 1000 files; inspect omitted snapshots locally.')
+    for path in paths[:1000]:
         try:
             path=sharing._safe(root,path)
             if not path.is_file() or path.stat().st_size>4096: raise ValueError()
@@ -63,6 +65,8 @@ def list_entries(root):
             stamp=datetime.datetime.fromisoformat(row['date'].replace('Z','+00:00'))
             if stamp.tzinfo is None: raise ValueError()
             rows.append({**row,'untrusted':True,'kind':'last reported snapshot; not live availability'})
+            if len(rows)>=100:
+                warnings.append('Only the first 100 valid status snapshots are shown.');break
         except (core.WsError,OSError,ValueError,TypeError,AttributeError,RecursionError):warnings.append('Unsafe or incomplete status excluded.')
     return {'entries':rows,'warnings':warnings}
 
