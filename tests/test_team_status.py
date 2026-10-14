@@ -63,3 +63,11 @@ class TeamStatusTests(unittest.TestCase):
         path=self.clone/'status/tester.json';path.parent.mkdir();path.write_text('['*1100+'0'+']'*1100)
         self.assertFalse(team_status.list_entries(self.root)['entries'])
         self.assertIn('Team status warning',core.brief(self.root))
+
+    def test_invalid_status_files_do_not_hide_later_valid_author(self):
+        from ws import team_status
+        team_status.apply(self.root,team_status.preview(self.root,'Checking receipts','zztester',enable=True))
+        for i in range(100):(self.clone/'status'/('%03d.json'%i)).write_text('{}')
+        listing=team_status.list_entries(self.root)
+        self.assertEqual([r['author'] for r in listing['entries']],['zztester'])
+        self.assertTrue(listing['warnings'])
