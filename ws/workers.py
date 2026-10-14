@@ -5,6 +5,7 @@ import os
 import re
 import stat
 import subprocess
+import shutil
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from . import core, orchestration
 
@@ -94,16 +95,16 @@ def launch(root, run_id):
     raise core.WsError('Write workers remain preparation-only until the O2d real-client hostile probe passes.')
 
 
-def _record(root, run_id):
+def _record(root, run_id, require_checkout=True):
     if not isinstance(run_id, str) or not re.fullmatch(r'[0-9a-f]{16}', run_id): raise core.WsError('Invalid worker run ID.')
     directory = Path(root).resolve() / '.ws/workers' / run_id
-    for p in (directory.parent.parent, directory.parent, directory, directory / 'checkout', directory / 'source.git'):
+    for p in (directory.parent.parent, directory.parent, directory, directory / 'checkout', directory / 'source.git', directory / 'run.json', directory / 'diff.patch'):
         if p.is_symlink(): raise core.WsError('Worker run paths must not be symlinked.')
     state = json.loads((directory / 'run.json').read_text())
-    if (state.get('directory') != str(directory) or state.get('checkout') != str(directory / 'checkout')
-            or not state.get('complete') or state.get('provider') != 'codex'):
+    if (state.get('id') != run_id or state.get('directory') != str(directory) or state.get('checkout') != str(directory / 'checkout')
+            or require_checkout and not state.get('complete') or state.get('provider') != 'codex'):
         raise core.WsError('Worker preparation is incomplete or its recorded paths changed.')
-    if Path(git(directory / 'checkout', 'rev-parse', '--git-common-dir')).resolve() != directory / 'source.git':
+    if require_checkout and Path(git(directory / 'checkout', 'rev-parse', '--git-common-dir')).resolve() != directory / 'source.git':
         raise core.WsError('Worker Git metadata moved outside its private run.')
     return directory, state
 
@@ -113,6 +114,136 @@ def _claim(root, state):
     if (task.get('conflicted') or task['meta'].get('status') == 'done' or task['sha'] != state['task_sha']
             or core._claim_defaults(root, state['task'], None, None) != (state['claimed_by'], state['claim_token'])):
         raise core.WsError('Worker task or local claim changed; output retained without acceptance.')
+    return task
+
+
+def _public(state):
+    return {k: v for k, v in state.items() if k not in ('claim_token', 'claimed_by')}
+
+
+def _snapshot(state):
+    fields = ('tree', 'diff_sha', 'checks', 'base', 'source', 'scope', 'task_sha')
+    if not all(state.get(k) for k in fields): raise core.WsError('Worker has no checked snapshot to review.')
+    return hashlib.sha256(json.dumps({k: state[k] for k in fields}, sort_keys=True).encode()).hexdigest()
+
+
+def review(root, run_id, approve=False, confirm=None):
+    directory, state = _record(root, run_id, require_checkout=False)
+    if state['state'] == 'needs-review' and not state.get('blocked'):
+        collect(root, run_id); directory, state = _record(root, run_id)
+    result = dict(_public(state), applied=False)
+    result['diff'] = ''
+    if state.get('tree') and state.get('diff_sha'):
+        diff = git(directory / 'checkout', 'diff', '--binary', '--no-ext-diff', '--no-textconv', state['base'], state['tree'], binary=True)
+        if hashlib.sha256(diff).hexdigest() != state['diff_sha']:
+            raise core.WsError('Worker diff changed since collection; collect again')
+        result['diff'] = core.redact(diff.decode('utf-8', errors='replace'))
+    if state.get('blocked'):
+        result['message'] = 'Blocked: start a new run with ws worker prepare'
+        if approve: raise core.WsError(result['message'])
+    if not approve: return result
+    if state['state'] != 'needs-review' or state.get('blocked'): raise core.WsError('Worker is blocked or not ready for review.')
+    signature = _snapshot(state)
+    if confirm is not None and not confirm(result): return result
+    with core.lock(root):
+        directory, state = _record(root, run_id); _claim(root, state)
+        if state['state'] != 'needs-review' or state.get('blocked') or _snapshot(state) != signature:
+            raise core.WsError('Worker changed during review; review again.')
+        state['review'] = dict(snapshot=signature, reviewer=state['claimed_by'], reviewed_at=core.now())
+        core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
+    return dict(_public(state), diff=result['diff'], applied=True)
+
+
+def _approved(root, run_id):
+    directory, state = _record(root, run_id)
+    approval = state.get('review')
+    if (state['state'] not in ('needs-review', 'accepting') or state.get('blocked')
+            or not isinstance(approval, dict) or approval.get('snapshot') != _snapshot(state)
+            or approval.get('reviewer') != state['claimed_by']):
+        raise core.WsError('Worker needs a current lead review before acceptance.')
+    task = _claim(root, state); source = Path(state['source']).resolve()
+    if (source != Path(task['meta'].get('repo') or '').expanduser().resolve() or source not in [p.resolve() for p in core.read_roots(root)[1:]]
+            or Path(git(source, 'rev-parse', '--show-toplevel')).resolve() != source):
+        raise core.WsError('Worker source repository changed.')
+    return directory, state, source
+
+
+def _later_edits(directory, state):
+    checkout = directory / 'checkout'; expected = {}
+    for entry in git(checkout, 'ls-tree', '-r', '-z', state['tree']).split('\0'):
+        if entry:
+            metadata, name = entry.split('\t', 1); mode, _, blob = metadata.split(); expected[name] = (mode, blob)
+    names = set(filter(None, git(checkout, 'ls-files', '--cached', '--others', '-z').split('\0')))
+    if names != set(expected): return True
+    for name, (mode, blob) in expected.items():
+        path = checkout / name
+        if (path.is_symlink() or not path.is_file() or git(checkout, 'hash-object', '--no-filters', '--', name) != blob
+                or os.name != 'nt' and bool(path.stat().st_mode & 0o111) != (mode == '100755')): return True
+    return False
+
+
+def accept(root, run_id, apply=False, confirm=None):
+    directory, state, source = _approved(root, run_id)
+    branch = 'ws/worker/' + run_id; ref = 'refs/heads/' + branch
+    def existing():
+        ref_path = source / git(source, 'rev-parse', '--git-path', ref)
+        target = git(source, 'for-each-ref', '--format=%(objectname) %(symref)', ref)
+        present = ref_path.exists() or ref_path.is_symlink() or bool(target)
+        if present and (state['state'] != 'accepting' or target != state.get('commit') or ref_path.is_symlink()):
+            raise core.WsError('Worker branch already exists at a different or unowned commit.')
+        return present
+    existing()
+    result = dict(_public(state), branch=branch, snapshot=_snapshot(state), applied=False)
+    if _later_edits(directory, state): result['warning'] = 'later edits in the worker checkout are not included'
+    if not apply or confirm is not None and not confirm(result): return result
+    if state['state'] != 'accepting': collect(root, run_id)
+    with core.lock(root):
+        directory, state, source = _approved(root, run_id)
+        if _snapshot(state) != result['snapshot']: raise core.WsError('Worker changed during acceptance; review again.')
+        if _later_edits(directory, state): result['warning'] = 'later edits in the worker checkout are not included'
+        identity = {key: value for role in ('AUTHOR', 'COMMITTER') for key, value in
+                    ((f'GIT_{role}_NAME', 'ai-dev-workspace'), (f'GIT_{role}_EMAIL', 'worker@workspace.invalid'))}
+        if state['state'] == 'accepting':
+            commit = state.get('commit', '')
+            if (state.get('branch') != branch or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', commit)
+                    or git(directory / 'source.git', 'show', '-s', '--format=%T %P', commit) != state['tree'] + ' ' + state['base']):
+                raise core.WsError('Pending acceptance receipt does not match the reviewed commit.')
+        else:
+            commit = git(directory / 'source.git', 'commit-tree', state['tree'], '-p', state['base'], '-m', 'Reviewed worker ' + run_id, env_extra=identity)
+        git(source, 'fetch', '--no-tags', '--no-write-fetch-head', '--no-recurse-submodules', '--no-auto-maintenance', '--', str(directory / 'source.git'), commit)
+        if state['state'] != 'accepting':
+            state.update(state='accepting', branch=branch, commit=commit)
+            core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
+        if not existing(): git(source, 'update-ref', '--no-deref', '-m', 'Accept worker ' + run_id, ref, commit, '0' * len(commit))
+        state.update(state='accepted', branch=branch, commit=commit, accepted_at=core.now())
+        core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
+    return dict(_public(state), warning=result.get('warning', ''), applied=True)
+
+
+def discard(root, run_id, apply=False, confirm=None):
+    directory, state = _record(root, run_id, require_checkout=False)
+    if state['state'] in ('running', 'accepting', 'accepted'): raise core.WsError('Running, accepting or accepted workers cannot be discarded.')
+    names = ('checkout', 'source.git', 'scratch', 'brief.md', 'diff.patch', 'collection.index', 'collection.index.lock', 'worker.config.toml')
+    result = dict(_public(state), paths=[str(directory / n) for n in names], applied=False)
+    if state['state'] == 'discarded' or not apply or confirm is not None and not confirm(result): return result
+    with core.lock(root):
+        directory, state = _record(root, run_id, require_checkout=False)
+        if state['state'] in ('running', 'accepting', 'accepted'): raise core.WsError('Worker state changed; discard refused.')
+        def readonly_retry(function, filename, error):
+            paths = (Path(filename), Path(filename).parent)
+            if (not isinstance(error[1], PermissionError) or any(path.is_symlink() or path.resolve() != path.absolute()
+                    or not path.resolve().is_relative_to(directory) for path in paths)):
+                raise error[1]
+            for path in paths: os.chmod(str(path), path.stat().st_mode | stat.S_IWRITE)
+            function(filename)
+        for name in names:
+            path = directory / name
+            if path.is_symlink() or path.is_file(): path.unlink()
+            elif path.is_dir(): shutil.rmtree(path, onerror=readonly_retry)
+        for key in ('tree', 'diff_sha', 'checks', 'review', 'output'): state.pop(key, None)
+        state.update(state='discarded', discarded_at=core.now())
+        core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
+    return dict(_public(state), applied=True)
 
 
 def _profile(directory):
@@ -138,6 +269,8 @@ def _profile(directory):
 def collect(root, run_id):
     """Lead-side snapshot; no approval or source-repo changes."""
     directory, state = _record(root, run_id); checkout = directory / 'checkout'
+    if state.get('blocked'): raise core.WsError('Blocked: start a new run with ws worker prepare')
+    if state['state'] in ('accepting', 'accepted', 'discarded'): raise core.WsError('Accepting or terminal worker runs cannot be collected again.')
     reasons = []; changed = []; secrets = []; binary = []; snapshot = {}
     checks = state.pop('checks', None)
     for field in ('tree', 'diff_sha'): state.pop(field, None)
@@ -196,9 +329,14 @@ def collect(root, run_id):
     except (core.WsError, OSError, UnicodeError) as error: reasons.append(core.redact(str(error)))
     state.update(state='needs-review', changed=changed, blocked=bool(reasons), reason='; '.join(reasons))
     with core.lock(root):
+        _, latest = _record(root, run_id, require_checkout=False)
+        if latest['state'] in ('accepting', 'accepted', 'discarded') or latest.get('blocked'):
+            raise core.WsError('Worker state changed during collection; output retained.')
         try: _claim(root, state)
         except core.WsError as error: state.update(blocked=True, reason=str(error))
         if not state['blocked']: state.update(snapshot)
+        if state.get('review') and (state['blocked'] or state['review'].get('snapshot') != _snapshot(state)):
+            state.pop('review', None)
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     return {k: v for k, v in state.items() if k not in ('claim_token', 'claimed_by')}
 

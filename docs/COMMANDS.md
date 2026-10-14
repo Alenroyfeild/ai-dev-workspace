@@ -136,6 +136,26 @@ The private task is never changed. Runbooks and ordinary task copies have separa
 receipts; `ws unshare <task-ID> --as runbook` removes only the runbook projection.
 Command examples remain inert text; sharing never executes them.
 
+## Worker review and acceptance
+
+Blocked runs are final: review says "Blocked: start a new run with ws worker prepare".
+Accept warns when later checkout edits are excluded from the immutable reviewed tree.
+Known limit: that advisory warning can appear for unchanged files with Git eol normalization.
+
+`ws worker review <id>` refreshes an eligible run's collection and shows its diff,
+checks and blocking reason. `--approve` asks once to record the current local lead's
+review of those exact bytes and checks; `--yes` confirms that displayed review.
+`ws worker accept <id> [--dry-run]` previews a new `ws/worker/<id>` branch, then asks
+once (`--yes` confirms). It revalidates the claim, source and reviewed snapshot;
+edits invalidate approval. Acceptance keeps the source checkout, index and active
+branch as they are. `ws worker discard <id> [--dry-run]` similarly confirms removal
+of only that run's artifacts, retaining its record and every sibling run. Running
+and accepted runs cannot be discarded. No automatic push or PR is created.
+Public launch remains disabled until O2d; completed-run evidence in current tests
+is synthetic. Acceptance uses [commit-tree](https://git-scm.com/docs/git-commit-tree),
+[fetch without FETCH_HEAD](https://git-scm.com/docs/git-fetch) and
+[update-ref with an absent-ref check](https://git-scm.com/docs/git-update-ref).
+
 ## Categorized knowledge (T4 catalog)
 
 `ws know add "text" --category product|feature|domain|repo|runbook|other` saves a
