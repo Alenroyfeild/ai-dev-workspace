@@ -7,6 +7,11 @@ from . import cards, core, knowledge, sharing
 HINT='Folder pull stopped; retain both copies, resolve conflicts/partial files or pending local edits manually, then retry.'
 
 
+def _decode(text):
+    try: return json.loads(text)
+    except (ValueError,RecursionError): raise core.WsError('Incomplete/malformed folder data. '+HINT)
+
+
 def snapshot(root, folder, local=False):
     folder=Path(folder).expanduser().absolute()
     if local and folder != sharing._safe(root,root/'.ws/team'): raise core.WsError(HINT)
@@ -26,7 +31,7 @@ def snapshot(root, folder, local=False):
             text=core.read_text(path,[folder],errors='strict'); total+=len(text.encode())
             if len(files)>=1000 or total>8*1024*1024: raise core.WsError('Folder snapshot exceeds 1000 files / 8 MiB.')
             files[name]=text
-    manifest=json.loads(files.get('team.json','{}'));team=manifest.get('id') if isinstance(manifest,dict) else None
+    manifest=_decode(files.get('team.json','{}'));team=manifest.get('id') if isinstance(manifest,dict) else None
     if (not isinstance(manifest,dict) or manifest.get('kind')!='ai-dev-workspace-team' or manifest.get('schema_version')!=1 or
         not re.fullmatch(r'[a-f0-9]{32}',str(team))): raise core.WsError('Folder needs a valid team.json from its host.')
     for name,text in files.items():
@@ -34,13 +39,13 @@ def snapshot(root, folder, local=False):
             row,_=knowledge._read(root,root/'.ws/team'/name,'team',team,raw=text,include_all=True)
             card=files.get(name[:-3]+'.index.md','')
             if card.count(cards.HEAD)!=1 or card.count(cards.TAIL)!=1: raise core.WsError('Incomplete folder record/card. '+HINT)
-            data=json.loads(card.split(cards.HEAD)[1].split(cards.TAIL)[0])
+            data=_decode(card.split(cards.HEAD)[1].split(cards.TAIL)[0])
             if (not isinstance(data,dict) or data.get('schema')!=1 or data.get('source_bytes')!=len(text.encode()) or
                 not isinstance(data.get('row'),dict) or any(data['row'].get(key)!=row[key] for key in cards.FIELDS)):
                 raise core.WsError('Record/card changed during sync. '+HINT)
         elif name.endswith('.index.md') and name.replace('.index.md','.md') not in files: raise core.WsError('Orphan folder card. '+HINT)
         elif name.startswith('status/'):
-            row=json.loads(text)
+            row=_decode(text)
             if not isinstance(row,dict) or set(row)!={'author','task','line','date'} or not all(isinstance(v,str) for v in row.values()):
                 raise core.WsError('Incomplete status snapshot. '+HINT)
     return {'files':files,'identity':[info.st_dev,info.st_ino],'team':team,'source':str(folder)}

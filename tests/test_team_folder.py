@@ -109,3 +109,22 @@ class TeamFolderTests(unittest.TestCase):
         path.write_text(cards.HEAD+'\n'+json.dumps(data)+'\n'+cards.TAIL+'\n')
         with self.assertRaises(core.WsError):team_auto.pull(self.root)
         self.assertEqual(local.read_bytes(),before)
+
+    def test_partial_json_returns_recovery_hint_and_preserves_snapshot(self):
+        import contextlib,io
+        from ws import cli,team_auto
+        self.link();local=self.root/'.ws/team/team.json';before=local.read_bytes()
+        status=self.folder/'status/tester.json';status.parent.mkdir()
+        for path,broken in ((self.folder/'team.json','{'),(self.folder/'entries'/(self.entry+'.index.md'),cards.HEAD+'\n{\n'+cards.TAIL),(status,'{')):
+            with self.subTest(path=path.name):
+                old=path.read_bytes() if path.exists() else None
+                try:
+                    path.write_text(broken);err=io.StringIO()
+                    with contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(err):
+                        self.assertEqual(cli.main(['--workspace-root',str(self.root),'sync','--pull-only']),2)
+                    self.assertIn('Folder pull stopped',err.getvalue());self.assertNotIn('Traceback',err.getvalue())
+                    with self.assertRaises(core.WsError):team_auto.pull(self.root)
+                    self.assertEqual(local.read_bytes(),before)
+                finally:
+                    if old is None:path.unlink()
+                    else:path.write_bytes(old)
