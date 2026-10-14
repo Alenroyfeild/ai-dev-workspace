@@ -439,6 +439,7 @@ def main(argv=None):
             from . import team_sync, team_auto
             if a.automatic and not a.pull_only: raise core.WsError('--automatic requires --pull-only.')
             if a.pull_only:
+                if a.dry_run: raise core.WsError('--pull-only cannot combine with --dry-run; omit --dry-run for a read-only pull.')
                 out(team_auto.pull(root, a.automatic)); return 0
             if a.daily:
                 plan = team_auto.schedule(root, a.daily); out(plan)

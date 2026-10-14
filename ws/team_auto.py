@@ -1,4 +1,5 @@
 """Consented read-only pulls and previewed per-user daily launchd jobs."""
+import hashlib
 import json
 import os
 import plistlib
@@ -60,7 +61,7 @@ def schedule(root, at, apply=False, expected=None):
             raise core.WsError('Scheduler interval is unmanaged; preserve it before continuing.')
         plan['previous_time']=f"{calendar['Hour']:02}:{calendar['Minute']:02}"
     data={'Label':label,'ProgramArguments':argv,'StartCalendarInterval':{'Hour':hour,'Minute':minute},'EnvironmentVariables':{'WS_MANAGED_TEAM_PULL':label}}
-    plan.update(path=str(path),old_sha=core.digest_text(old.decode('utf-8')),exists=path.exists(),content=plistlib.dumps(data).decode('utf-8'))
+    plan.update(path=str(path),old_sha=hashlib.sha256(old).hexdigest(),exists=path.exists(),content=plistlib.dumps(data).decode('utf-8'))
     if not apply: return plan
     with core.lock(root):
         if schedule(root,at)!=expected: raise core.WsError('Scheduler or consent changed; preview again.')

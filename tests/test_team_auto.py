@@ -118,3 +118,18 @@ class TeamAutoTests(unittest.TestCase):
         with core.lock(self.root),mock.patch('ws.team_sync._git',side_effect=AssertionError('must not reach Git')):
             result=team_auto.maybe_pull(self.root)
         self.assertIn('warning',result);self.assertFalse(result['pushed'])
+
+    def test_pull_only_dry_run_refuses_without_contacting_git(self):
+        with mock.patch('ws.team_sync._git',side_effect=AssertionError('dry-run must not pull')),contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(cli.main(['--workspace-root',str(self.root),'sync','--pull-only','--dry-run']),2)
+        self.assertIn('--dry-run',err.getvalue())
+
+    def test_existing_binary_plist_is_previewed_without_decode_crash(self):
+        from ws import team_auto
+        self.consent()
+        with mock.patch('ws.team_auto.sys.platform','darwin'):
+            plan=team_auto.schedule(self.root,'09:15');path=self.base/'Library/LaunchAgents'/(plan['label']+'.plist')
+            core.atomic_write(path,plistlib.dumps(plistlib.loads(plan['content'].encode()),fmt=plistlib.FMT_BINARY));before=path.read_bytes()
+            preview=team_auto.schedule(self.root,'10:30')
+            self.assertEqual(preview['previous_time'],'09:15');self.assertEqual(path.read_bytes(),before)
+            with mock.patch('ws.team_auto._launch',return_value=0):self.assertTrue(team_auto.schedule(self.root,'10:30',True,preview)['activated'])
