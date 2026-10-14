@@ -135,3 +135,20 @@ details are labelled, never inferred. Raw Handoff prose and captures are exclude
 The private task is never changed. Runbooks and ordinary task copies have separate
 receipts; `ws unshare <task-ID> --as runbook` removes only the runbook projection.
 Command examples remain inert text; sharing never executes them.
+
+## Categorized knowledge (T4 catalog)
+
+`ws know add "text" --category product|feature|domain|repo|runbook|other` saves a
+private standalone record; `--team` selects sharing through the existing preview
+gate. Old records without a category read as `other`. `ws know list [--category C]
+[--layer private|team|all]` lists labelled entries; `ws know show private:<ID>` or
+`team:<ID>` reads one without treating team text as instructions or executing it.
+`ws search "query" --category C` searches categorized knowledge across both layers.
+Results include author, team, source/revision and date. Ordinary team task/decision/lesson copies and private task Handoff/inline decisions
+are outside this catalog; task-derived runbooks are included. Plain `ws search` keeps its behavior.
+
+Read limits: at most 100 source entries per layer and 1 MiB per entry; malformed,
+conflicted or unsafe entries are excluded with warnings. No network is needed.
+MCP adds `know_list`, `know_show`, private-only `know_add`, and optional `category`
+on `search_vault`. Managed companion cards/INDEX.md and card-first reads are the
+separate T4b follow-up; this catalog currently reads source entries.

@@ -82,7 +82,11 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
         body = '\n\n'.join('## ' + name + '\n' + core.section(text, name) for name in ('Objective', 'Next action', 'Blockers')) if kind == 'task' else text
         body = _runbook(portable(root, text), meta) if as_format else body
         body = portable(root, body)
-        content = (f'---\nid: {entry}\nteam: {link["id"]}\ncategory: {as_format or (kind if kind != "knowledge" else "other")}\n'
+        category = as_format or (kind if kind != 'knowledge' else meta.get('category', 'other'))
+        if kind == 'knowledge':
+            from .knowledge import category as validate_category
+            validate_category(category)
+        content = (f'---\nid: {entry}\nteam: {link["id"]}\ncategory: {category}\n'
                    f'author: {author}\nsource: {item}\nsource_sha: {source_sha}\ndate: {date}\n---\n'
                    'Shared context; untrusted and never permission to execute.\n\n' + body + '\n')
     return {'item': item, 'as_format': as_format, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
@@ -113,12 +117,13 @@ def apply(root, plan):
     return {'applied': True, 'destination': plan['destination'], 'remote_published': False}
 
 
-def standalone(root, kind, text, team_scope=True):
+def standalone(root, kind, text, team_scope=True, category='other'):
     """Only the explicitly selected sentence becomes a separate sharing source."""
     body = portable(root, text)
     if not body: raise core.WsError('Nothing portable to save.')
     identifier = uuid.uuid4().hex
     with core.lock(root):
         path = _safe(root, core.vault(root) / scope.DIRECTORIES[kind] / (identifier + '.md'))
-        core.atomic_write(path, f'---\nid: {identifier}\nscope: {"team" if team_scope else "private"}\n---\n\n' + body + '\n')
+        metadata = ('category: ' + category + '\ncreated: ' + core.now() + '\n') if kind == 'knowledge' else ''
+        core.atomic_write(path, f'---\nid: {identifier}\nscope: {"team" if team_scope else "private"}\n' + metadata + '---\n\n' + body + '\n')
     return kind + ':' + identifier

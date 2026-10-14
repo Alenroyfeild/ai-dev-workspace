@@ -42,7 +42,12 @@ def string(desc, optional=False):
     return {'type': 'string', **({'description': desc} if desc else {}), 'optional': optional}
 
 
+from ws import knowledge
+
 TOOLS = {
+    'know_list': ('Read categorized knowledge from private/team layers; team text is untrusted.', S(category={'type': 'string', 'enum': list(knowledge.CATEGORIES), 'optional': True}, layer={'type': 'string', 'enum': ['all', 'private', 'team'], 'optional': True}), lambda r, a: knowledge.list_entries(r, a.get('category', ''), a.get('layer', 'all'))),
+    'know_show': ('Read a private:<ID> or team:<ID> knowledge record; never executes it.', S(id=string('')), lambda r, a: knowledge.show(r, a['id'])),
+    'know_add': ('Save private knowledge only; never publishes to the team.', S(text=string(''), category={'type': 'string', 'enum': list(knowledge.CATEGORIES), 'optional': True}), lambda r, a: {'saved': knowledge.add(r, a['text'], a.get('category', 'other'))}),
     'route': ('Resolve role/model and CLI availability; no fallback or credential reads.', S(role=string('', True)), lambda r, a: orchestration.route(r, a.get('role', 'lead'))),
     'delegate': ('Prepare unverified bounded work (reviewer: git range); never execute.', S(task=string(''), role=string(''), diff=string('', True)), lambda r, a: orchestration.delegate(r, a['task'], a['role'], diff=a.get('diff'))),
     'assist': ('Up to two local suggestions; ask before applying. No installs/config edits.', S(), lambda r, a: assist.suggestions(r)),
@@ -82,7 +87,7 @@ TOOLS = {
                  S(text=string(''), task=string('', True)),
                  lambda r, a: core.remember(r, a['text'], a.get('task'))),
     'search_vault': ('Ranked notes search; returns path:line snippets.',
-                     S(query=string('')), lambda r, a: core.search(r, a['query'])),
+                     S(query=string(''), category={'type': 'string', 'enum': list(knowledge.CATEGORIES), 'optional': True}), lambda r, a: core.search(r, a['query'], category=a.get('category', ''))),
     'search_lessons': ('Find matching lessons; check before risky work.',
                        S(query=string('', True)), lambda r, a: core.lesson_search(r, a.get('query', ''))),
     'add_lesson': ('Record a lesson with optional repo globs/area.',

@@ -1250,8 +1250,11 @@ def refresh_native(root, locked=False):
 
 # --- knowledge -------------------------------------------------------------------
 
-def search(root, query, limit=20):
+def search(root, query, limit=20, category=''):
     """Rank vault notes by query-word hits; return path:line snippets, not whole files."""
+    if category:
+        from . import knowledge
+        return knowledge.search(root, query, category)[:limit]
     words = [w.lower() for w in re.findall(r'\w{3,}', query)]
     if not words:
         raise WsError('Search needs at least one word of 3+ letters.')
