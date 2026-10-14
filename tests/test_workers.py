@@ -309,6 +309,8 @@ class WorkerPrepareTests(Base):
         message = 'Blocked: start a new run with ws worker prepare'
         self.assertEqual(workers.review(self.root, plan['id'])['message'], message)
         with self.assertRaisesRegex(core.WsError, message): workers.review(self.root, plan['id'], approve=True)
+        self.complete_worker(plan)
+        with self.assertRaisesRegex(core.WsError, message): workers.collect(self.root, plan['id'])
 
     def test_accept_warns_later_edits_are_excluded_from_reviewed_snapshot(self):
         plan = self.collected_for_review(); workers.review(self.root, plan['id'], approve=True)
