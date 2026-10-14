@@ -1,4 +1,5 @@
 import os
+import subprocess
 import unittest
 from unittest import mock
 import test_sharing
@@ -116,8 +117,20 @@ class TeamSyncTests(unittest.TestCase):
     def test_minimal_status_snapshot_requires_the_same_exact_approval(self):
         import json
         from ws import team_sync
-        self.bootstrap();path=self.clone/'status/tester.json';path.parent.mkdir();text=json.dumps({'author':'tester','task':'Receipt guard','line':'Checking retries','date':'2026-10-14'})+'\n';path.write_text(text)
+        self.bootstrap();path=self.clone/'status/tester.json';path.parent.mkdir();text=json.dumps({'author':'tester','task':'Receipt guard','line':'Checking retries','date':'2026-10-14'})+'\n';core.atomic_write(path,text)
         with self.assertRaises(core.WsError):team_sync.preview(self.root)
         receipt=self.root/'.ws/shares.json';receipt.write_text(json.dumps({'_artifacts:'+core.config(self.root)['team_workspace']['id']:{'status/tester.json':core.digest_text(text)}}))
         plan=team_sync.preview(self.root);self.assertEqual(plan['files']['status/tester.json'],text)
         self.assertTrue(team_sync.apply(self.root,plan)['pushed'])
+
+    def test_windows_text_stdin_translation_cannot_change_approved_blob_bytes(self):
+        from ws import team_sync
+        self.bootstrap();self.approved();plan=team_sync.preview(self.root);runner=subprocess.run
+        def windows_text(*args,**kwargs):
+            if kwargs.get('text') and isinstance(kwargs.get('input'),str):
+                kwargs['input']=kwargs['input'].replace('\n','\r\n')
+            return runner(*args,**kwargs)
+        with mock.patch('ws.team_sync.subprocess.run',side_effect=windows_text):result=team_sync.apply(self.root,plan)
+        name='INDEX.md'
+        blob=subprocess.run(['git','-C',str(self.clone),'cat-file','blob',result['commit']+':'+name],capture_output=True,check=True).stdout
+        self.assertEqual(blob,plan['files'][name].encode('utf-8'))
