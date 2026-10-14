@@ -89,3 +89,14 @@ class TeamFolderTests(unittest.TestCase):
             with self.assertRaises(core.WsError):team_auto.pull(self.root)
         self.assertEqual(path.read_bytes(),before)
         with self.assertRaises(core.WsError):team_sync.preview(self.root)
+
+    def test_consent_question_cannot_refresh_an_unshown_folder_preview(self):
+        import contextlib,io
+        from ws import cli
+        answers=iter(('y','n'))
+        def answer(prompt):
+            if 'automatically' in prompt:self.record('Changed while deciding.')
+            return next(answers)
+        with mock.patch('builtins.input',side_effect=answer),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root',str(self.root),'team','link',str(self.folder),'--folder','--attest-private']),2)
+        self.assertNotIn('team_workspace',core.config(self.root))
