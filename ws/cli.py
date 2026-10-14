@@ -254,6 +254,7 @@ def main(argv=None):
     s.add_argument('--automatic', action='store_true', help=argparse.SUPPRESS)
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink', 'status')); s.add_argument('remote', nargs='?', default='')
+    s.add_argument('--folder', action='store_true', help='link an attested existing synced folder (read-only)')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s.add_argument('--attest-private', action='store_true', help='I confirm this exact remote is private to my team')
     s.add_argument('--verify-with', choices=('gh', 'glab'), default='')
@@ -459,6 +460,17 @@ def main(argv=None):
                 plan = team_status.preview(root, a.remote, a.author, a.publish_status, a.disable_status); out(plan)
                 if not a.dry_run and (a.yes or input('Save this exact local status preview? [y/N] ').strip().lower() in ('y', 'yes')):
                     out(team_status.apply(root, plan))
+                return 0
+            if a.folder:
+                from . import team_folder
+                if a.action != 'link': raise core.WsError('--folder supports link only; unlink uses ws team unlink.')
+                plan = team_folder.link(root, a.remote, attest=a.attest_private, auto_pull=bool(a.auto_pull)); out(plan)
+                if not a.dry_run and not plan.get('already') and (a.yes or input('Link this exact private folder snapshot? [y/N] ').strip().lower() in ('y','yes')):
+                    pulls = a.auto_pull
+                    if pulls is None and not a.yes:
+                        pulls = input('Keep team knowledge updated automatically (read-only pulls)? [y/N] ').strip().lower() in ('y','yes')
+                        plan['auto_pull'] = bool(pulls)
+                    out(team_folder.link(root, a.remote, True, a.attest_private, bool(pulls), plan))
                 return 0
             from . import team
             plan = team.manage(root, a.action, a.remote, attest=a.attest_private,

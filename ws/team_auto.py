@@ -16,6 +16,9 @@ def pull(root, automatic=False):
     with core.lock(root):
         if automatic and core.config(root).get('team_workspace',{}).get('auto_pull') is not True:
             return {'skipped':True,'pushed':False}
+        if core.config(root).get('team_workspace',{}).get('host')=='folder':
+            from . import team_folder
+            return team_folder.pull(root)
         token=team_sync.AUTO_DEADLINE.set(time.monotonic()+4) if automatic else None
         try: return team_sync._view(root,True,read_only=True)
         finally:
