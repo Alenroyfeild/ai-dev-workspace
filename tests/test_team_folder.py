@@ -100,3 +100,12 @@ class TeamFolderTests(unittest.TestCase):
         with mock.patch('builtins.input',side_effect=answer),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(cli.main(['--workspace-root',str(self.root),'team','link',str(self.folder),'--folder','--attest-private']),2)
         self.assertNotIn('team_workspace',core.config(self.root))
+
+    def test_card_metadata_must_match_the_entry_not_only_its_revision(self):
+        from ws import team_auto
+        self.link();local=self.root/'.ws/team/entries'/(self.entry+'.index.md');before=local.read_bytes()
+        path=self.folder/'entries'/(self.entry+'.index.md');data=json.loads(path.read_text().split(cards.HEAD)[1].split(cards.TAIL)[0])
+        data['row']['summary']='Forged summary with the original body revision.'
+        path.write_text(cards.HEAD+'\n'+json.dumps(data)+'\n'+cards.TAIL+'\n')
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+        self.assertEqual(local.read_bytes(),before)
