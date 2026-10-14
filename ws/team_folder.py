@@ -24,7 +24,9 @@ def snapshot(root, folder, local=False):
         for path in directory.iterdir():
             name=path.relative_to(folder).as_posix()
             if name in ('entries','status') and path.is_dir() and not path.is_symlink(): continue
-            if name=='.DS_Store' and not path.is_symlink(): continue
+            if path.name in ('.DS_Store','Icon\r','.dropbox','.dropbox.attr') and not path.is_symlink(): continue
+            if path.name.startswith('.') and path.name.endswith('.icloud'):
+                raise core.WsError(path.name[1:-7]+' is not downloaded yet; open the folder in Finder or choose Keep Downloaded, then retry.')
             if not re.fullmatch(r'team\.json|INDEX\.md|entries/[a-f0-9]{32}(?:\.index)?\.md|status/[A-Za-z0-9][A-Za-z0-9_.-]{0,39}\.json',name):
                 raise core.WsError('Unexpected/conflict-copy file: '+name+'. '+HINT)
             if path.resolve()!=path or not path.is_file() or path.stat().st_size>1024*1024: raise core.WsError(HINT)
@@ -57,6 +59,7 @@ def _hashes(files):
 
 def link(root, folder, apply=False, attest=False, auto_pull=False, expected=None):
     root=Path(root).resolve(); cfg_path=sharing._safe(root,root/'workspace.json');original=sharing._text(cfg_path);cfg=json.loads(original)
+    folder=Path(folder).expanduser().resolve()
     data=snapshot(root,folder);target=sharing._safe(root,root/'.ws/team');linked=cfg.get('team_workspace')
     if linked:
         if not isinstance(linked,dict) or linked.get('host')!='folder' or linked.get('remote')!=data['source']: raise core.WsError('Unlink the current team first.')

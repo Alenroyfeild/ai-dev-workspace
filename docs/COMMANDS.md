@@ -206,7 +206,10 @@ never commits or pushes, and works without an installed assistant.
 `ws team link /path/to/shared-folder --folder --attest-private` previews an
 existing team folder and copies a validated snapshot into `.ws/team`; it never
 writes the source folder. Attestation binds the canonical folder, filesystem
-identity and team manifest. The folder must contain `team.json` plus complete
+identity and team manifest. User-selected aliases resolve at link; internal symlinks
+remain refused. Sync metadata (`Icon\r`, `.DS_Store`, `.dropbox`, `.dropbox.attr`) is
+skipped; iCloud placeholders stop with a Finder/Keep Downloaded hint.
+The folder must contain `team.json` plus complete
 entry/card pairs; unexpected/conflict-copy files or partial cards stop the pull
 and retain the previous snapshot for manual recovery. `ws sync --pull-only`
 refreshes only an unedited mirror; pending local changes are preserved and stop

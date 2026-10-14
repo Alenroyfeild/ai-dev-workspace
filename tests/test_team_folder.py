@@ -71,12 +71,39 @@ class TeamFolderTests(unittest.TestCase):
         (self.folder/'team.json').write_text(json.dumps({'kind':'ai-dev-workspace-team','schema_version':1,'id':'d'*32}))
         with self.assertRaises(core.WsError):team_auto.pull(self.root)
 
-    def test_folder_cannot_be_inside_private_workspace_or_symlink(self):
+    def test_folder_cannot_overlap_private_workspace(self):
         from ws import team_folder
         with self.assertRaises(core.WsError):team_folder.link(self.root,str(self.root),attest=True)
-        if os.name!='nt':
-            alias=self.base/'alias';alias.symlink_to(self.folder,target_is_directory=True)
-            with self.assertRaises(core.WsError):team_folder.link(self.root,str(alias),attest=True)
+
+    @unittest.skipIf(os.name=='nt','Symlink creation may require Windows privileges.')
+    def test_user_folder_alias_is_canonicalized_but_internal_links_refuse(self):
+        from ws import team_auto,team_folder
+        alias=self.base/'alias';alias.symlink_to(self.folder,target_is_directory=True)
+        plan=team_folder.link(self.root,str(alias),attest=True)
+        team_folder.link(self.root,str(alias),True,True,False,plan)
+        self.assertEqual(core.config(self.root)['team_workspace']['remote'],str(self.folder))
+        alias.unlink();self.assertFalse(team_auto.pull(self.root)['updated'])
+        (self.folder/'Icon\r').symlink_to(self.home,target_is_directory=True)
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+
+    def test_sync_client_metadata_is_skipped_without_copying_it(self):
+        from ws import team_auto
+        self.link()
+        names=('.DS_Store','.dropbox','.dropbox.attr')+ (('Icon\r',) if os.name!='nt' else ())
+        for folder in (self.folder,self.folder/'entries'):
+            for name in names:
+                if name=='.dropbox':(folder/name).mkdir()
+                else:(folder/name).write_text('Sync metadata.')
+        self.assertFalse(team_auto.pull(self.root)['updated'])
+        self.assertFalse((self.root/'.ws/team/.dropbox').exists())
+
+    def test_icloud_placeholder_has_download_hint_and_retains_snapshot(self):
+        from ws import team_auto
+        self.link();local=self.root/'.ws/team/entries'/(self.entry+'.md');before=local.read_bytes()
+        placeholder=self.folder/'entries'/('.'+self.entry+'.md.icloud');placeholder.write_text('Placeholder metadata.')
+        with self.assertRaisesRegex(core.WsError,'not downloaded yet;.*Keep Downloaded'):team_auto.pull(self.root)
+        self.assertEqual(local.read_bytes(),before);self.assertTrue(placeholder.exists())
+        placeholder.unlink();self.assertFalse(team_auto.pull(self.root)['updated'])
 
     def test_snapshot_write_failure_rolls_back_and_normal_sync_cannot_publish(self):
         from ws import team_auto,team_sync
