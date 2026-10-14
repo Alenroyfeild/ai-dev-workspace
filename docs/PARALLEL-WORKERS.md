@@ -64,8 +64,12 @@ Workers cannot update the parent task or each other's receipts.
 A failure stops admission of queued units; retain already-running units until
 completion or explicit cancellation. Failed/cancelled output stays inspectable;
 it is never accepted automatically. A blocked run is final and needs a new run.
-Timeout/cancel terminates each child process group and records unfinished units.
-Restart only reports interrupted state; it never resumes a paid client implicitly.
+The plan deadline bounds every worker. Record each run's process-group ID and start
+time. Timeout/cancel terminates each child process group and records unfinished units.
+After restart, report a run whose recorded group is still alive as
+`interrupted-running`. `ws worker cancel <id>` terminates only that group, and only
+when its start time still matches the recorded value (PID reuse guard). No automatic
+kill or resume after restart.
 Claim or task-revision changes block further launch/acceptance without stealing
 ownership. Retain existing runs and accepted commits for inspection.
 
@@ -73,6 +77,7 @@ ownership. Retain existing runs and accepted commits for inspection.
 |---|---|
 | prepared | Confirm launch, inspect, or discard owned artifacts. |
 | running | Collect independent results; cancel remaining work explicitly. |
+| interrupted-running | Recorded group survived restart; inspect or explicitly cancel with the start-time guard. |
 | needs-review | Review units; blocked units require replacement in a new plan. |
 | accepted | Selected units have reviewed O2 branches; merge through the normal PR flow. |
 | discarded | Owned artifacts removed; tombstone and accepted source branches retained. |
@@ -99,7 +104,8 @@ Reviewed integration clone: later, if users need it.
 1. Plan/preview: focused fixtures for claim drift, overlaps, bad roots, dry-run and
    interrupted preparation; no client execution.
 2. Scheduler: bounded concurrency, isolated receipts, timeout/cancel descendants,
-   failed admission and restart without paid resume. A fixture changes a collected
+   failed admission, crash-surviving groups, start-time mismatch on cancel and
+   restart without paid resume. A fixture changes a collected
    tree after passing checks and verifies acceptance requires collection and checks
    again on the new tree. No launch until O2d passes.
 4. One live Codex sample task: two independent edits/checks, reviewed branches,
