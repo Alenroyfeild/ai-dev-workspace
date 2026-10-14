@@ -17,8 +17,8 @@ def _git(clone, *args, data=None, index=None):
     if index: env['GIT_INDEX_FILE'] = str(index)
     try:
         return subprocess.run(['git','-c','core.hooksPath='+os.devnull,'-c','commit.gpgSign=false',
-            '-C',str(clone),*args], input=data, env=env, text=True, capture_output=True, check=True, timeout=30).stdout
-    except (OSError, subprocess.SubprocessError): raise core.WsError('Team sync Git operation stopped. '+HINT)
+            '-C',str(clone),*args], input=data.encode('utf-8') if data is not None else None, env=env, capture_output=True, check=True, timeout=30).stdout.decode('utf-8')
+    except (OSError, UnicodeError, subprocess.SubprocessError): raise core.WsError('Team sync Git operation stopped. '+HINT)
 
 
 def _remote(clone, remote, branch):
