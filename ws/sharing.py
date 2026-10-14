@@ -117,7 +117,11 @@ def apply(root, plan):
         approvals.update({p.relative_to(root / '.ws/team').as_posix(): core.digest_text(t) if t is not None else '' for p,t in changes.items()})
         changes[registry] = json.dumps(state, indent=2) + '\n'
         cards.write(root, changes)
-    return {'applied': True, 'destination': plan['destination'], 'remote_published': False}
+    result = {'applied': True, 'destination': plan['destination'], 'remote_published': False}
+    from . import team_auto
+    update = team_auto.maybe_pull(root)
+    if update is not None: result['team_update'] = update
+    return result
 
 
 def standalone(root, kind, text, team_scope=True, category='other'):

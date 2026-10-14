@@ -1176,7 +1176,11 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
             text = set_section(text, name, redact(body))
         atomic_write(path, text)
         refresh_native(root, locked=True)
-    return {'task': task_id, 'status': status, 'sha': digest_text(text)}
+    result = {'task': task_id, 'status': status, 'sha': digest_text(text)}
+    from . import team_auto
+    update = team_auto.maybe_pull(root)
+    if update is not None: result['team_update'] = update
+    return result
 
 
 def remember(root, text, task_id=None):
@@ -2440,7 +2444,7 @@ def doctor(root=None, mcp=False):
             privacy = cfg['team_workspace'].get('privacy')
             method = privacy.get('method') if isinstance(privacy, dict) else None
             report['team_workspace'] = {'privacy': method if method in ('gh', 'glab', 'attested') else 'unknown',
-                                        'auto_pull': bool(cfg['team_workspace'].get('auto_pull')), 'pulls_active': False}
+                                        'auto_pull': cfg['team_workspace'].get('auto_pull') is True, 'pulls_active': cfg['team_workspace'].get('auto_pull') is True}
         report['capture_health'] = capture_health(root)
         from . import native
         report['codex_goals'] = native.codex_goals(root)
