@@ -1,20 +1,19 @@
-# O3: parallel worker plans and reviewed integration
+# O3: parallel worker plans and reviewed unit branches
 
-Status: design for Claude review. No parallel execution or integration is enabled.
+Status: approved design, trimmed per Claude review. No parallel execution is enabled.
 O2c (#123) and the real Codex/all-tools O2d gate must land before implementation.
-The unresolved O2c snapshot-rendering and warning-normalization findings are gates,
-not assumptions that this design treats as fixed. Claude workers stay preparation-only
-until Claude completes the matching native-sandbox probe.
+O2c rendering integrity is checked against the immutable collected tree. Claude
+workers stay preparation-only until Claude completes the matching native-sandbox probe.
 
 ## User outcome
 
 The lead splits one claimed task into small independent units, previews their
 scopes and checks, and confirms one plan. Each unit runs in a separate private
 clone. The lead reviews each collected snapshot and explicitly accepts selected
-results. A separate integration checkout combines only accepted commits, runs
-checks under the native boundary, and presents one final diff for lead approval.
-The user's checkout, branch, index and dirty files remain untouched throughout.
-Publishing still uses the user's normal branch/PR flow.
+results as `ws/worker/<run-id>` branches. The lead merges those branches through
+the normal branch/PR flow. Disjoint scopes make conflicts rare; the lead resolves
+any conflicts through that same review process. Worker execution and acceptance
+leave the user's checkout, branch, index and dirty files untouched.
 
 ## Smallest first version
 
@@ -47,7 +46,7 @@ scopes (including ancestor/descendant directories). All units read the same base
 only their own checkout/scratch are writable. Source repo, parent workspace,
 siblings, HOME/config, credentials and Git metadata stay outside worker write access.
 Unit scopes are checked separately from checkout-wide sandbox write access:
-collection rejects out-of-scope snapshots before unit acceptance or integration.
+collection rejects out-of-scope snapshots before unit acceptance.
 Worker tools cannot read private HOME/config or credentials outside the run; the
 profile grants reads only to runtime/toolchain, checkout, private Git metadata and
 scratch. Scratch contains no authentication secrets; authentication stays with
@@ -75,51 +74,22 @@ ownership. Retain existing runs and accepted commits for inspection.
 | prepared | Confirm launch, inspect, or discard owned artifacts. |
 | running | Collect independent results; cancel remaining work explicitly. |
 | needs-review | Review units; blocked units require replacement in a new plan. |
-| integrating | Selected accepted commits are being combined in an owned clone. |
-| conflict / failed-checks | Inspect retained integration output; no automatic resolution. |
-| integration-review | Lead reviews the exact combined snapshot and check evidence. |
-| accepting / accepted | Durable receipt precedes creation of the final branch. |
+| accepted | Selected units have reviewed O2 branches; merge through the normal PR flow. |
 | discarded | Owned artifacts removed; tombstone and accepted source branches retained. |
 
-## Review and integration
+## Review and acceptance
 
 For each unit, use O2 lead review and acceptance to create `ws/worker/<run-id>`.
-Approval binds the actual displayed diff to immutable tree/check identities, after
-O2c rendering integrity is resolved. Later checkout edits are excluded and warned
-about; acceptance uses the reviewed commit, not current mutable checkout bytes.
-Do not merge a worker's live checkout or resolve a branch name again after selection:
-pin every selected accepted commit/tree and the plan's current claim.
+Approval binds the displayed diff to immutable tree/check identities. Later
+checkout edits are excluded and warned about; acceptance uses the reviewed commit.
+The warning can appear for unchanged files with Git eol normalization.
 
-Preview a deterministic integration order and explicit target commit. If the target
-advanced, show it and require a new integration preview; unit approvals remain
-bound to their original snapshots. Create a fresh private integration clone from
-that target, fetch only selected commit objects, and merge them in the shown order
-with `--no-commit --no-ff`, hooks disabled (`core.hooksPath = os.devnull`),
-isolated config and no shared
-object store. After each clean merge, create a private merge commit before the next
-merge; intermediate commits remain in the owned clone until final approval. Supply
-the tool-owned commit identity per command, never by changing user Git config.
-Never run merge drivers inherited from the source user's config.
-
-Conflicts stop before the next merge. Keep the integration clone and conflict list;
-no worker or scheduler silently resolves them. The lead may propose a resolution,
-but changed resolution bytes require fresh integration collection, checks and review.
-Do not change or rewrite unit acceptance branches.
-
-Checks execute in the native sandbox, with network disabled and only the owned
-integration checkout/scratch accessible. For validation, checkout/Git metadata are
-read-only and generated outputs go to scratch; checks needing broader writes fail.
-Collect the combined diff against the explicit target, scope/secret/binary/size
-findings and command evidence. Checks are evidence, not approval. No integration
-acceptance follows a failed check, stale claim or unreviewed snapshot.
-
-Final lead confirmation creates `ws/worker-plan/<id>` at the reviewed integration
-commit using an absent-ref comparison and a durable `accepting` receipt. Retry may
-finish the exact matching ref or create a missing one; a different ref is refused.
-Unselected/failed units stay visible in the final preview; acceptance does not mark
-the parent task done. No ref deletion/rewriting, checkout switch, automatic push,
-PR merge, release or tag.
+The lead merges accepted unit branches through the normal branch/PR flow.
+Failed or unselected units remain visible; acceptance does not mark the parent task
+finished. No automatic checkout switch, push, PR merge, release or tag.
 Discard touches only recorded owned paths and never removes accepted source refs.
+
+Reviewed integration clone: later, if users need it.
 
 ## Proof and implementation slices
 
@@ -127,10 +97,8 @@ Discard touches only recorded owned paths and never removes accepted source refs
    interrupted preparation; no client execution.
 2. Scheduler: bounded concurrency, isolated receipts, timeout/cancel descendants,
    failed admission and restart without paid resume. No launch until O2d passes.
-3. Integration: accepted commits only, advanced target, conflict retention, final
-   branch collision/recovery and immutable review; prove source HEAD/index/dirty files unchanged.
 4. One live Codex sample task: two independent edits/checks, reviewed branches,
-   combined sandboxed checks, lead confirmation and clean undo. Hostile attempts
+   per-unit checks, lead confirmation and clean undo. Hostile attempts
    against source/workspace/HOME/Git/sibling/escape paths remain denied. Claude runs
    its own worker probe; other clients keep their existing support and fixture tests.
 
@@ -141,14 +109,13 @@ No benchmarks. This design PR stops at review; it does not authorize implementat
 
 [Git worktrees](https://git-scm.com/docs/git-worktree) share repository metadata;
 O2's private clones are the isolation building block here.
-[Git merge](https://git-scm.com/docs/git-merge) supports explicit commits and stopping
-before committing; conflicts require a separate reviewed resolution.
+[Git merge](https://git-scm.com/docs/git-merge) documents the normal branch merging
+flow; conflicts remain the lead's responsibility.
 [Git update-ref](https://git-scm.com/docs/git-update-ref) supports expected-old-value
 checks for conservative branch creation.
 [Codex permissions](https://learn.chatgpt.com/docs/permissions) and
 [noninteractive execution](https://learn.chatgpt.com/docs/non-interactive-mode)
 define the native boundary and execution receipts; they do not replace live proof.
 
-Claude review needed: plan scopes/concurrency, failure policy, immutable unit and
-integration approvals, read-only validation, advanced-target/conflict behavior,
-and the Claude-worker probe. No live Claude session was run.
+Claude review needed: Claude-worker probe. The v1 design and this trim were
+approved in the 2026-10-14 15:40 note; implementation still waits for O2d.
