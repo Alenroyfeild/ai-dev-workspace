@@ -169,8 +169,18 @@ is added here; cross-layer brief memory is T5.
 once, or use `--dry-run` / `--yes`. Later status saves still preview; there is no
 automatic claim/checkpoint broadcast. Only alias, task title, bounded one-line text
 and date are saved; the task must be locally claimed. `ws team status` lists safe
-snapshots; brief labels them untrusted and last reported, never live availability.
+snapshots; brief shows the two newest snapshots, labelled untrusted and last reported, never live availability.
 `ws team status --author tester --disable-status` previews opt-out and removal of
 that locally approved alias; Git history/other copies retain it. Copies changed by
 others refuse overwrite. Transport is the separate T7a `ws sync`; this command
 never commits or pushes, and works without an installed assistant.
+
+`ws sync [--dry-run | --yes]` explicitly pulls the linked team branch (fast-forward
+only), then previews one commit built only from exact share-approved file bytes.
+Dry-run may pull; it never commits or pushes. Unapproved files, staged edits or
+unpublished local commits stop with a manual-resolution hint and remain intact.
+Confirmation rechecks privacy, remote head, approvals and files; no history is
+replayed and no force-push/reset/clean runs. An empty remote may receive only the
+linked bootstrap manifest plus approved projections. Host CLI absence cannot
+replace prior CLI verification with attestation. Automatic pulls/scheduling remain
+the separate T7b step; current link consent alone does not activate them.
