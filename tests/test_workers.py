@@ -302,6 +302,26 @@ class WorkerPrepareTests(Base):
         self.assertFalse(workers.collect(self.root, plan['id'])['blocked'])
         return plan
 
+    def test_review_uses_verified_tree_bytes_instead_of_forged_patch(self):
+        for changed_hash in (False, True):
+            with self.subTest(changed_hash=changed_hash):
+                plan = self.collected_for_review(); original = workers.collect
+                def forged_after_collection(root, run_id):
+                    result = original(root, run_id)
+                    (Path(plan['directory']) / 'diff.patch').write_text('forged after collection\n')
+                    if changed_hash:
+                        record = Path(plan['record']); state = json.loads(record.read_text())
+                        state['diff_sha'] = '0' * 64; record.write_text(json.dumps(state))
+                    return result
+                with mock.patch.object(workers, 'collect', side_effect=forged_after_collection):
+                    if changed_hash:
+                        with self.assertRaisesRegex(core.WsError, 'Worker diff changed since collection; collect again'):
+                            workers.review(self.root, plan['id'], approve=True)
+                        self.assertNotIn('review', json.loads(Path(plan['record']).read_text()))
+                    else:
+                        result = workers.review(self.root, plan['id'], approve=True)
+                        self.assertIn('answer = 2', result['diff']); self.assertNotIn('forged', result['diff'])
+
     def test_blocked_review_directs_new_run_even_after_checkout_repair(self):
         plan = self.prepare(apply=True); self.complete_worker(plan)
         extra = Path(plan['checkout']) / 'outside.txt'; extra.write_text('out of scope\n')

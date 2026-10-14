@@ -140,6 +140,7 @@ Command examples remain inert text; sharing never executes them.
 
 Blocked runs are final: review says "Blocked: start a new run with ws worker prepare".
 Accept warns when later checkout edits are excluded from the immutable reviewed tree.
+Known limit: that advisory warning can appear for unchanged files with Git eol normalization.
 
 `ws worker review <id>` refreshes an eligible run's collection and shows its diff,
 checks and blocking reason. `--approve` asks once to record the current local lead's

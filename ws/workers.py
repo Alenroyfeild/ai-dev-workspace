@@ -132,8 +132,12 @@ def review(root, run_id, approve=False, confirm=None):
     if state['state'] == 'needs-review' and not state.get('blocked'):
         collect(root, run_id); directory, state = _record(root, run_id)
     result = dict(_public(state), applied=False)
-    patch = directory / 'diff.patch'
-    result['diff'] = patch.read_text(errors='replace') if patch.is_file() else ''
+    result['diff'] = ''
+    if state.get('tree') and state.get('diff_sha'):
+        diff = git(directory / 'checkout', 'diff', '--binary', '--no-ext-diff', '--no-textconv', state['base'], state['tree'], binary=True)
+        if hashlib.sha256(diff).hexdigest() != state['diff_sha']:
+            raise core.WsError('Worker diff changed since collection; collect again')
+        result['diff'] = core.redact(diff.decode('utf-8', errors='replace'))
     if state.get('blocked'):
         result['message'] = 'Blocked: start a new run with ws worker prepare'
         if approve: raise core.WsError(result['message'])
