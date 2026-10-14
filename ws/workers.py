@@ -329,6 +329,9 @@ def collect(root, run_id):
     except (core.WsError, OSError, UnicodeError) as error: reasons.append(core.redact(str(error)))
     state.update(state='needs-review', changed=changed, blocked=bool(reasons), reason='; '.join(reasons))
     with core.lock(root):
+        _, latest = _record(root, run_id, require_checkout=False)
+        if latest['state'] in ('accepting', 'accepted', 'discarded') or latest.get('blocked'):
+            raise core.WsError('Worker state changed during collection; output retained.')
         try: _claim(root, state)
         except core.WsError as error: state.update(blocked=True, reason=str(error))
         if not state['blocked']: state.update(snapshot)

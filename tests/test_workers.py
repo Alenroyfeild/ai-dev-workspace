@@ -322,6 +322,23 @@ class WorkerPrepareTests(Base):
                         result = workers.review(self.root, plan['id'], approve=True)
                         self.assertIn('answer = 2', result['diff']); self.assertNotIn('forged', result['diff'])
 
+    def test_collection_preserves_terminal_transition_before_record_write(self):
+        for terminal in ('accepted', 'discarded'):
+            with self.subTest(terminal=terminal):
+                plan = self.collected_for_review(); workers.review(self.root, plan['id'], approve=True)
+                original = workers.git; transitioned = False
+                def transition(repo, *args, **kw):
+                    nonlocal transitioned
+                    result = original(repo, *args, **kw)
+                    if args[:3] == ('diff', '--cached', '--check') and not transitioned:
+                        transitioned = True
+                        getattr(workers, 'accept' if terminal == 'accepted' else 'discard')(self.root, plan['id'], apply=True)
+                    return result
+                with mock.patch.object(workers, 'git', side_effect=transition):
+                    with self.assertRaisesRegex(core.WsError, 'Worker state changed during collection'):
+                        workers.collect(self.root, plan['id'])
+                self.assertEqual(json.loads(Path(plan['record']).read_text())['state'], terminal)
+
     def test_blocked_review_directs_new_run_even_after_checkout_repair(self):
         plan = self.prepare(apply=True); self.complete_worker(plan)
         extra = Path(plan['checkout']) / 'outside.txt'; extra.write_text('out of scope\n')
