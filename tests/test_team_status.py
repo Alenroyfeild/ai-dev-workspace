@@ -70,7 +70,7 @@ class TeamStatusTests(unittest.TestCase):
         for i in range(100):(self.clone/'status'/('%03d.json'%i)).write_text('{}')
         listing=team_status.list_entries(self.root)
         self.assertEqual([r['author'] for r in listing['entries']],['zztester'])
-        self.assertTrue(listing['warnings'])
+        self.assertEqual(listing['warnings'],['100 unsafe or incomplete status files excluded'])
 
     def test_empty_foreign_status_before_or_after_preview_is_preserved(self):
         from ws import team_status
@@ -79,3 +79,11 @@ class TeamStatusTests(unittest.TestCase):
         with self.assertRaises(core.WsError):team_status.preview(self.root,'Checking receipts','tester',enable=True)
         with self.assertRaises(core.WsError):team_status.apply(self.root,plan)
         self.assertEqual(path.read_bytes(),b'');self.assertFalse(core.config(self.root).get('publish_status',False))
+
+    def test_brief_shows_two_newest_dates_instead_of_first_aliases(self):
+        from ws import team_status
+        for author,date in [('alpha','2026-10-14T09:00:00+00:00'),('beta','2026-10-14T09:30:00+01:00'),('zeta','2026-10-14T08:45:00+00:00')]:
+            team_status.apply(self.root,team_status.preview(self.root,'Checking receipts',author,enable=True))
+            path=self.clone/'status'/(author+'.json');row=json.loads(path.read_text());row['date']=date;core.atomic_write(path,json.dumps(row))
+        fields=team_status.brief_fields(self.root);prefixes=[p for p,_,_ in fields]
+        self.assertEqual(len(prefixes),2);self.assertIn('alpha',prefixes[0]);self.assertIn('zeta',prefixes[1])
