@@ -150,7 +150,7 @@ def review(root, run_id, approve=False, confirm=None):
 def _approved(root, run_id):
     directory, state = _record(root, run_id)
     approval = state.get('review')
-    if (state['state'] != 'needs-review' or state.get('blocked')
+    if (state['state'] not in ('needs-review', 'accepting') or state.get('blocked')
             or not isinstance(approval, dict) or approval.get('snapshot') != _snapshot(state)
             or approval.get('reviewer') != state['claimed_by']):
         raise core.WsError('Worker needs a current lead review before acceptance.')
@@ -164,20 +164,34 @@ def _approved(root, run_id):
 def accept(root, run_id, apply=False, confirm=None):
     directory, state, source = _approved(root, run_id)
     branch = 'ws/worker/' + run_id; ref = 'refs/heads/' + branch
-    ref_path = source / git(source, 'rev-parse', '--git-path', ref)
-    if ref_path.exists() or ref_path.is_symlink() or ref in git(source, 'for-each-ref', '--format=%(refname)', ref).splitlines():
-        raise core.WsError('Worker branch already exists.')
+    def existing():
+        ref_path = source / git(source, 'rev-parse', '--git-path', ref)
+        target = git(source, 'for-each-ref', '--format=%(objectname) %(symref)', ref)
+        present = ref_path.exists() or ref_path.is_symlink() or bool(target)
+        if present and (state['state'] != 'accepting' or target != state.get('commit') or ref_path.is_symlink()):
+            raise core.WsError('Worker branch already exists at a different or unowned commit.')
+        return present
+    existing()
     result = dict(_public(state), branch=branch, snapshot=_snapshot(state), applied=False)
     if not apply or confirm is not None and not confirm(result): return result
-    collect(root, run_id)
+    if state['state'] != 'accepting': collect(root, run_id)
     with core.lock(root):
         directory, state, source = _approved(root, run_id)
         if _snapshot(state) != result['snapshot']: raise core.WsError('Worker changed during acceptance; review again.')
         identity = {key: value for role in ('AUTHOR', 'COMMITTER') for key, value in
                     ((f'GIT_{role}_NAME', 'ai-dev-workspace'), (f'GIT_{role}_EMAIL', 'worker@workspace.invalid'))}
-        commit = git(directory / 'source.git', 'commit-tree', state['tree'], '-p', state['base'], '-m', 'Reviewed worker ' + run_id, env_extra=identity)
+        if state['state'] == 'accepting':
+            commit = state.get('commit', '')
+            if (state.get('branch') != branch or not re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', commit)
+                    or git(directory / 'source.git', 'show', '-s', '--format=%T %P', commit) != state['tree'] + ' ' + state['base']):
+                raise core.WsError('Pending acceptance receipt does not match the reviewed commit.')
+        else:
+            commit = git(directory / 'source.git', 'commit-tree', state['tree'], '-p', state['base'], '-m', 'Reviewed worker ' + run_id, env_extra=identity)
         git(source, 'fetch', '--no-tags', '--no-write-fetch-head', '--no-recurse-submodules', '--no-auto-maintenance', '--', str(directory / 'source.git'), commit)
-        git(source, 'update-ref', '--no-deref', '-m', 'Accept worker ' + run_id, ref, commit, '0' * len(commit))
+        if state['state'] != 'accepting':
+            state.update(state='accepting', branch=branch, commit=commit)
+            core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
+        if not existing(): git(source, 'update-ref', '--no-deref', '-m', 'Accept worker ' + run_id, ref, commit, '0' * len(commit))
         state.update(state='accepted', branch=branch, commit=commit, accepted_at=core.now())
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     return dict(_public(state), applied=True)
@@ -185,17 +199,24 @@ def accept(root, run_id, apply=False, confirm=None):
 
 def discard(root, run_id, apply=False, confirm=None):
     directory, state = _record(root, run_id, require_checkout=False)
-    if state['state'] in ('running', 'accepted'): raise core.WsError('Running or accepted workers cannot be discarded.')
+    if state['state'] in ('running', 'accepting', 'accepted'): raise core.WsError('Running, accepting or accepted workers cannot be discarded.')
     names = ('checkout', 'source.git', 'scratch', 'brief.md', 'diff.patch', 'collection.index', 'collection.index.lock', 'worker.config.toml')
     result = dict(_public(state), paths=[str(directory / n) for n in names], applied=False)
     if state['state'] == 'discarded' or not apply or confirm is not None and not confirm(result): return result
     with core.lock(root):
         directory, state = _record(root, run_id, require_checkout=False)
-        if state['state'] in ('running', 'accepted'): raise core.WsError('Worker state changed; discard refused.')
+        if state['state'] in ('running', 'accepting', 'accepted'): raise core.WsError('Worker state changed; discard refused.')
+        def readonly_retry(function, filename, error):
+            path = Path(filename)
+            if (not isinstance(error[1], PermissionError) or path.is_symlink() or path.resolve() != path.absolute()
+                    or not path.resolve().is_relative_to(directory)):
+                raise error[1]
+            os.chmod(filename, path.stat().st_mode | stat.S_IWRITE)
+            function(filename)
         for name in names:
             path = directory / name
             if path.is_symlink() or path.is_file(): path.unlink()
-            elif path.is_dir(): shutil.rmtree(path)
+            elif path.is_dir(): shutil.rmtree(path, onerror=readonly_retry)
         for key in ('tree', 'diff_sha', 'checks', 'review', 'output'): state.pop(key, None)
         state.update(state='discarded', discarded_at=core.now())
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
@@ -225,7 +246,7 @@ def _profile(directory):
 def collect(root, run_id):
     """Lead-side snapshot; no approval or source-repo changes."""
     directory, state = _record(root, run_id); checkout = directory / 'checkout'
-    if state['state'] in ('accepted', 'discarded'): raise core.WsError('Terminal worker runs cannot be collected again.')
+    if state['state'] in ('accepting', 'accepted', 'discarded'): raise core.WsError('Accepting or terminal worker runs cannot be collected again.')
     reasons = []; changed = []; secrets = []; binary = []; snapshot = {}
     checks = state.pop('checks', None)
     for field in ('tree', 'diff_sha'): state.pop(field, None)
