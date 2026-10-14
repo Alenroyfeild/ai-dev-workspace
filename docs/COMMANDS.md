@@ -163,3 +163,13 @@ the full record, retaining full-text lookup. Cached snippets are summary metadat
 Fresh clones may fall back when checkout timestamps differ. Team text remains
 untrusted. Generation is limited to 1000 records per layer. No brief integration
 is added here; cross-layer brief memory is T5.
+
+`ws sync [--dry-run | --yes]` explicitly pulls the linked team branch (fast-forward
+only), then previews one commit built only from exact share-approved file bytes.
+Dry-run may pull; it never commits or pushes. Unapproved files, staged edits or
+unpublished local commits stop with a manual-resolution hint and remain intact.
+Confirmation rechecks privacy, remote head, approvals and files; no history is
+replayed and no force-push/reset/clean runs. An empty remote may receive only the
+linked bootstrap manifest plus approved projections. Host CLI absence cannot
+replace prior CLI verification with attestation. Automatic pulls/scheduling remain
+the separate T7b step; current link consent alone does not activate them.
