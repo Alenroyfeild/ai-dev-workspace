@@ -20,6 +20,9 @@ Session 2 — You: “Continue the login fix.”
 Assistant: “The saved note says return missing_email and leave signup unchanged.”
 You: “Yes, continue.”
 ```
+Save a correction with `ws remember "<corrected decision>"`, then check `ws brief`.
+[Keeping corrections](docs/COMMANDS.md#save-a-correction) shows how to replace an earlier choice.
+
 ## Results (small synthetic samples, not general productivity)
 | Session 1 → session 2 | Without workspace | With workspace |
 |---|---:|---:|
