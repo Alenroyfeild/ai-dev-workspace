@@ -179,7 +179,8 @@ Confirmation rechecks privacy, remote head, approvals and files; no history is
 replayed and no force-push/reset/clean runs. An empty remote may receive only the
 linked bootstrap manifest plus approved projections. Host CLI absence cannot
 replace prior CLI verification with attestation. `ws sync --pull-only` only fetches
-and fast-forwards; it never checks publishing receipts or pushes. Explicit
+and fast-forwards; it never checks publishing receipts or pushes. Combining it
+with `--dry-run` refuses without contacting Git. Explicit
 `--auto-pull` consent at link (or `team_workspace.auto_pull=true`) enables quiet
 read-only attempts at session start and after share/checkpoint (4-second budget); failures retain
 local memory and report a manual-resolution hint. Ordinary brief/search never pull.
