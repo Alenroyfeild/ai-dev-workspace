@@ -207,11 +207,11 @@ def discard(root, run_id, apply=False, confirm=None):
         directory, state = _record(root, run_id, require_checkout=False)
         if state['state'] in ('running', 'accepting', 'accepted'): raise core.WsError('Worker state changed; discard refused.')
         def readonly_retry(function, filename, error):
-            path = Path(filename)
-            if (not isinstance(error[1], PermissionError) or path.is_symlink() or path.resolve() != path.absolute()
-                    or not path.resolve().is_relative_to(directory)):
+            paths = (Path(filename), Path(filename).parent)
+            if (not isinstance(error[1], PermissionError) or any(path.is_symlink() or path.resolve() != path.absolute()
+                    or not path.resolve().is_relative_to(directory) for path in paths)):
                 raise error[1]
-            os.chmod(filename, path.stat().st_mode | stat.S_IWRITE)
+            for path in paths: os.chmod(str(path), path.stat().st_mode | stat.S_IWRITE)
             function(filename)
         for name in names:
             path = directory / name

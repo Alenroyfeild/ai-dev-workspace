@@ -392,7 +392,8 @@ class WorkerPrepareTests(Base):
                 if onerror is None: raise error
                 with mock.patch.object(workers.os, 'chmod') as chmod:
                     retry = mock.Mock(); onerror(retry, str(owned), (PermissionError, error, None))
-                    chmod.assert_called_once(); retry.assert_called_once_with(str(owned)); chmod.reset_mock()
+                    self.assertEqual([c.args[0] for c in chmod.call_args_list], [str(owned), str(owned.parent)])
+                    retry.assert_called_once_with(str(owned)); chmod.reset_mock()
                     with mock.patch.object(Path, 'is_symlink', return_value=True), self.assertRaises(PermissionError):
                         onerror(retry, str(owned), (PermissionError, error, None))
                     for outside in (self.repo / 'calc.py', directory.parent / 'other-run/file'):
@@ -401,6 +402,16 @@ class WorkerPrepareTests(Base):
             return original(path, onerror=onerror)
         with mock.patch.object(workers.shutil, 'rmtree', side_effect=readonly):
             self.assertEqual(workers.discard(self.root, plan['id'], apply=True)['state'], 'discarded')
+
+    def test_discard_readonly_directory_and_file_without_changing_source(self):
+        plan = self.prepare(apply=True); checkout = Path(plan['checkout']); file = checkout / 'calc.py'
+        before = (self.repo / 'calc.py').stat().st_mode
+        file.chmod(0o444); checkout.chmod(0o555)
+        try:
+            self.assertEqual(workers.discard(self.root, plan['id'], apply=True)['state'], 'discarded')
+            self.assertEqual((self.repo / 'calc.py').stat().st_mode, before)
+        finally:
+            if checkout.exists(): checkout.chmod(0o755)
 
     def test_discard_only_owned_artifacts_preserves_sibling_and_source(self):
         plan = self.prepare(apply=True); sibling = self.prepare(apply=True)
