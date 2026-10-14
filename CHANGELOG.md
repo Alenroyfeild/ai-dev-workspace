@@ -2,15 +2,25 @@
 
 ## 0.1.0-beta.4 (unreleased)
 
+### New
+- Link a personal workspace to a private team workspace. New notes stay private; preview what will be shared, then choose what to share or remove. `ws sync` shows incoming changes and publishes only the copies you approved.
+- Add categorized team knowledge, generated index cards, and turn a finished task into a shareable runbook. [Team workspace guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
+- Install and start without `pipx`: the quick start includes a virtual-environment path.
+
 ### Improved
 - `ws remember "use Postgres, not SQLite"` saves one decision in your current task, and the next session's brief shows it ahead of automatically captured notes. Assistants can save one too through the new MCP `remember` tool, so a decision you state in chat holds in later sessions.
 - At session start, Claude Code and Codex now show you one line such as `Remembered: 3 decisions · next: write the migration`, so you can see the saved memory was loaded. With nothing saved, it tells you how to save something.
+- Team sync checks the exact approved text before publishing; on Windows it preserves CRLF line endings. It never pushes unrelated local commits.
 
 ### Fixed
 - `ws start` gives new tasks readable branch IDs and leaves Next action unsaved until you supply it. Existing tasks and decisions are preserved. [Repo setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/REPO-START.md).
 - Codex session-start memory survives a missing transcript and read-only usage metadata. Plain brief and MCP memory reads need no write access. [Setup and hook trust](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/SETUP.md).
 - `ws connect claude` and `ws connect codex` no longer add skills to your global `~/.claude` or `~/.agents` folders without asking. Project skills work as before; add `--skills` to link the extra ones globally. Skills you already linked are left alone.
 - `ws doctor` and `ws update --check` never reported new versions, because GitHub hides beta releases from its "latest release" lookup. They now see beta releases and show the release summary.
+
+### Known limits
+- Corrections spoken only in chat are not reliably saved yet. Use `ws remember` to keep a decision; see the beta.3 measured result for the current correction-capture limits.
+- Team sharing and sync are tested with local bare repositories, not a hosted multi-user team under concurrent writes.
 
 ## 0.1.0-beta.3 (2026-10-12)
 
