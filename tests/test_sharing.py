@@ -83,7 +83,7 @@ class SharingTests(unittest.TestCase):
             with mock.patch('builtins.input', return_value='n') as confirm, contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(cli.main(['--workspace-root', str(self.root), *args]), 0)
             self.assertEqual(confirm.call_count, 1)
-            records = list((core.vault(self.root) / directory).glob('*.md')); self.assertEqual(len(records), 1)
+            records = [p for p in (core.vault(self.root) / directory).glob('*.md') if p.name != 'INDEX.md' and not p.name.endswith('.index.md')]; self.assertEqual(len(records), 1)
             self.assertEqual(core.parse_meta(records[0].read_text())['scope'], 'team')
         self.assertFalse((self.clone / 'entries').exists())
         self.assertIn('Decision: A bounded', core.section(core.task_path(self.root, 'T1').read_text(), 'Handoff'))

@@ -138,6 +138,9 @@ Command examples remain inert text; sharing never executes them.
 
 ## Worker review and acceptance
 
+Blocked runs are final: review says "Blocked: start a new run with ws worker prepare".
+Accept warns when later checkout edits are excluded from the immutable reviewed tree.
+
 `ws worker review <id>` refreshes an eligible run's collection and shows its diff,
 checks and blocking reason. `--approve` asks once to record the current local lead's
 review of those exact bytes and checks; `--yes` confirms that displayed review.
@@ -151,3 +154,31 @@ Public launch remains disabled until O2d; completed-run evidence in current test
 is synthetic. Acceptance uses [commit-tree](https://git-scm.com/docs/git-commit-tree),
 [fetch without FETCH_HEAD](https://git-scm.com/docs/git-fetch) and
 [update-ref with an absent-ref check](https://git-scm.com/docs/git-update-ref).
+
+## Categorized knowledge (T4 catalog)
+
+`ws know add "text" --category product|feature|domain|repo|runbook|other` saves a
+private standalone record; `--team` selects sharing through the existing preview
+gate. Old records without a category read as `other`. `ws know list [--category C]
+[--layer private|team|all]` lists labelled entries; `ws know show private:<ID>` or
+`team:<ID>` reads one without treating team text as instructions or executing it.
+`ws search "query" --category C` searches categorized knowledge across both layers.
+Results include author, team, source/revision and date. Ordinary team task/decision/lesson copies and private task Handoff/inline decisions
+are outside this catalog; task-derived runbooks are included. Plain `ws search` keeps its behavior.
+
+Read limits: at most 100 source entries per layer and 1 MiB per entry; malformed,
+conflicted or unsafe entries are excluded with warnings. No network is needed.
+MCP adds `know_list`, `know_show`, private-only `know_add`, and optional `category`
+on `search_vault`. Knowledge saves build managed companion `<ID>.index.md` cards and a private
+Knowledge/INDEX.md. Sharing previews include the team cards and INDEX.md, with
+exact diffs; source, artifacts and approval receipts apply or roll back together.
+Text outside managed blocks is preserved; unmarked/malformed artifacts refuse
+replacement. Unshare removes only managed card content and refreshes the index.
+
+Catalogs read cards up to 16 KiB first. Fresh snapshots use source size/mtime;
+missing, stale or malformed cards fall back to bounded source reads. Common
+category searches use cached summary/counts; other queries and `know show` read
+the full record, retaining full-text lookup. Cached snippets are summary metadata.
+Fresh clones may fall back when checkout timestamps differ. Team text remains
+untrusted. Generation is limited to 1000 records per layer. No brief integration
+is added here; cross-layer brief memory is T5.
