@@ -195,20 +195,28 @@ class WorkerPrepareTests(Base):
         manifest.write_text(json.dumps(dict(layoutVersion=1, variant='codex', entrypoint='bin/codex')))
         alias = home / '.local/bin/codex'; alias.parent.mkdir(parents=True)
         alias.symlink_to(executable)
-        workers._profile(directory, alias)
+        with mock.patch('ws.workers.Path.home', return_value=home): workers._profile(directory, alias)
         profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
         self.assertIn(json.dumps(str(executable.resolve())) + ' = "read"', profile)
         self.assertIn(json.dumps(str(package.resolve())) + ' = "read"', profile)
         for path in (home, home / '.codex', alias.parent, home / '.codex/config.toml', home / '.codex/auth.json'):
             self.assertNotIn(json.dumps(str(path)) + ' = ', profile)
         for metadata in ([], dict(layoutVersion=1, variant='codex', entrypoint='../other')):
-            manifest.write_text(json.dumps(metadata)); workers._profile(directory, alias)
+            manifest.write_text(json.dumps(metadata))
+            with mock.patch('ws.workers.Path.home', return_value=home): workers._profile(directory, alias)
             profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
             self.assertNotIn(json.dumps(str(package.resolve())) + ' = ', profile)
         manifest.write_text(json.dumps(dict(layoutVersion=1, variant='codex', entrypoint='bin/codex')))
         with mock.patch('ws.workers.Path.home', return_value=package): workers._profile(directory, alias)
         profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
         self.assertNotIn(json.dumps(str(package.resolve())) + ' = ', profile)
+        unrelated = self.root / 'unrelated'; other = unrelated / 'bin/codex'
+        other.parent.mkdir(parents=True); other.write_text('lookalike executable')
+        (unrelated / 'secret.txt').write_text('synthetic private file')
+        (unrelated / 'codex-package.json').write_text(manifest.read_text())
+        with mock.patch('ws.workers.Path.home', return_value=home): workers._profile(directory, other)
+        profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+        self.assertNotIn(json.dumps(str(unrelated.resolve())) + ' = ', profile)
 
     def test_collection_blocks_ignored_out_of_scope_secrets_binary_and_symlinks(self):
         for name, data in (('ignored.txt', b'ignored change'), ('calc.py', b'api_key=' + b'x'*20), ('calc.py', b'\xffbinary')):
