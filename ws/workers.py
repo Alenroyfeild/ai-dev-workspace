@@ -260,7 +260,8 @@ def _profile(directory, executable=None):
         try: metadata = json.loads((package / 'codex-package.json').read_text())
         except (OSError, ValueError): metadata = {}
         protected = (home, home / '.codex', home / '.local', home / '.local/bin', *home.parents)
-        if (package.parent == (home / '.codex/packages/standalone/releases').resolve() and package not in protected
+        install = home / '.codex/packages/standalone/releases'
+        if (install == install.resolve() and package.parent == install and package not in protected
                 and isinstance(metadata, dict) and metadata.get('layoutVersion') == 1 and metadata.get('variant') == 'codex'
                 and metadata.get('entrypoint') == 'bin/codex' and (package / 'bin/codex').resolve() == executable):
             rules[str(package)] = 'read'

@@ -218,6 +218,22 @@ class WorkerPrepareTests(Base):
         profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
         self.assertNotIn(json.dumps(str(unrelated.resolve())) + ' = ', profile)
 
+    def test_profile_refuses_redirected_codex_install(self):
+        plan = self.prepare(apply=True); directory = Path(plan['directory'])
+        home = self.root / 'synthetic-home'; releases = home / '.codex/packages/standalone/releases'
+        releases.parent.mkdir(parents=True)
+        outside = self.root / 'unrelated'; package = outside / 'fixture'
+        executable = package / 'bin/codex'; executable.parent.mkdir(parents=True)
+        executable.write_text('synthetic executable')
+        (package / 'secret.txt').write_text('synthetic secret')
+        (package / 'codex-package.json').write_text(json.dumps(dict(layoutVersion=1, variant='codex', entrypoint='bin/codex')))
+        releases.symlink_to(outside, target_is_directory=True)
+        with mock.patch('ws.workers.Path.home', return_value=home):
+            workers._profile(directory, releases / 'fixture/bin/codex')
+        profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+        self.assertIn(json.dumps(str(executable.resolve())) + ' = "read"', profile)
+        self.assertNotIn(json.dumps(str(package.resolve())) + ' = ', profile)
+
     def test_collection_blocks_ignored_out_of_scope_secrets_binary_and_symlinks(self):
         for name, data in (('ignored.txt', b'ignored change'), ('calc.py', b'api_key=' + b'x'*20), ('calc.py', b'\xffbinary')):
             with self.subTest(name=name, data=data):
