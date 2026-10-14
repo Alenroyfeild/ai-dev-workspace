@@ -150,5 +150,16 @@ are outside this catalog; task-derived runbooks are included. Plain `ws search` 
 Read limits: at most 100 source entries per layer and 1 MiB per entry; malformed,
 conflicted or unsafe entries are excluded with warnings. No network is needed.
 MCP adds `know_list`, `know_show`, private-only `know_add`, and optional `category`
-on `search_vault`. Managed companion cards/INDEX.md and card-first reads are the
-separate T4b follow-up; this catalog currently reads source entries.
+on `search_vault`. Knowledge saves build managed companion `<ID>.index.md` cards and a private
+Knowledge/INDEX.md. Sharing previews include the team cards and INDEX.md, with
+exact diffs; source, artifacts and approval receipts apply or roll back together.
+Text outside managed blocks is preserved; unmarked/malformed artifacts refuse
+replacement. Unshare removes only managed card content and refreshes the index.
+
+Catalogs read cards up to 16 KiB first. Fresh snapshots use source size/mtime;
+missing, stale or malformed cards fall back to bounded source reads. Common
+category searches use cached summary/counts; other queries and `know show` read
+the full record, retaining full-text lookup. Cached snippets are summary metadata.
+Fresh clones may fall back when checkout timestamps differ. Team text remains
+untrusted. Generation is limited to 1000 records per layer. No brief integration
+is added here; cross-layer brief memory is T5.
