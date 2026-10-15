@@ -30,6 +30,15 @@ class StartTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(preview): result = cli.main(['start', *args])
         return result, output.getvalue(), preview.getvalue().replace(os.sep, '/')
 
+    def test_confirmed_start_summarizes_private_files_and_dry_run_lists_them(self):
+        listed = self.start('--dry-run')[2]
+        self.assertIn('vault/Templates/Task.md', listed)
+        code, _, preview = self.start('--yes')
+        self.assertEqual(code, 0)
+        self.assertNotIn('vault/Templates/Task.md', preview)
+        self.assertRegex(preview, r'plus \d+ private workspace files')
+        self.assertIn('CLAUDE.local.md', preview)
+
     def test_preview_confirmation_external_memory_repeat_and_undo(self):
         before = (self.repo / '.git/info/exclude').read_bytes()
         code, _, preview = self.start('--dry-run')
