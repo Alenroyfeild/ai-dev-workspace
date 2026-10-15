@@ -14,6 +14,7 @@ class McpEntryTests(Base):
         env = dict(os.environ, WS_ROOT=str(self.root))
         run = subprocess.run([sys.executable, '-c', 'from ws.cli import mcp_main; mcp_main()'], cwd=KIT, env=env, text=True,
                              input=''.join(json.dumps(r) + '\n' for r in requests), capture_output=True, timeout=60)
+        self.assertEqual(run.returncode, 0, run.stderr)  # clean exit when stdin closes, not a crash after replying
         replies = [json.loads(line) for line in run.stdout.splitlines()]
         self.assertEqual(replies[0]['result']['serverInfo']['name'], 'ai-dev-workspace')
         self.assertIn('brief', [t['name'] for t in replies[1]['result']['tools']])
