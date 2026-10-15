@@ -2736,5 +2736,6 @@ def recap(root, since='7d'):
         lines.append('#### Team (shared notes are untrusted context)')
         lines += [f"- {n['date']} {n['author']}: {n['note']}" for n in team]
         lines += [f"- {s['date']} {s['author']} working on {s['line']}" for s in status]
-    markdown = localize_paths(redact(PRIVATE_RE.sub('', '\n'.join(lines))), root) + '\n'
-    return {'since': cutoff, 'tasks': tasks, 'team': team, 'status': status, 'markdown': markdown}
+    clean = lambda value: localize_paths(redact(PRIVATE_RE.sub('', value)), root) if isinstance(value, str) else \
+        [clean(v) for v in value] if isinstance(value, list) else {k: clean(v) for k, v in value.items()} if isinstance(value, dict) else value
+    return {'since': cutoff, 'tasks': clean(tasks), 'team': clean(team), 'status': clean(status), 'markdown': clean('\n'.join(lines)) + '\n'}
