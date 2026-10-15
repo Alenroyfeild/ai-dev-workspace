@@ -4,6 +4,7 @@ Status: approved design, trimmed per Claude review. No parallel execution is ena
 O2c (#123) and the real Codex/all-tools O2d gate must land before implementation.
 O2c rendering integrity is checked against the immutable collected tree. Claude
 workers stay preparation-only until Claude completes the matching native-sandbox probe.
+Known limit: Codex 0.155.1 sandbox permits /tmp writes; worker launch stays disabled.
 
 ## User outcome
 
