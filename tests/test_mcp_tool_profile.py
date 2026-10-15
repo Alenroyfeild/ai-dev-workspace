@@ -37,3 +37,9 @@ class ToolProfileTests(Base):
 
     def test_doctor_reports_the_profile(self):
         self.assertEqual(core.doctor(self.root)['mcp_tools'], {'profile': 'core', 'listed': 7})
+
+    def test_doctor_reports_effective_core_for_invalid_settings(self):
+        for value in ('everything', None, 5):
+            with self.subTest(value=value):
+                self.configure(value)
+                self.assertEqual(core.doctor(self.root)['mcp_tools'], {'profile': 'core', 'listed': 7})
