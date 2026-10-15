@@ -253,8 +253,14 @@ The folder must contain `team.json` plus complete
 entry/card pairs; unexpected/conflict-copy files or partial cards stop the pull
 and retain the previous snapshot for manual recovery. `ws sync --pull-only`
 refreshes only an unedited mirror; pending local changes are preserved and stop
-refresh. Reads use the last local snapshot offline. Folder initialization and
-publishing are not available in this first slice. No sync client is configured,
+refresh. Reads use the last local snapshot offline. `ws team init <existing-empty-folder> --folder --attest-private` previews one
+new manifest and the local link; it never replaces an existing manifest. If the
+manifest is created but linking fails, both copies remain for manual recovery.
+POSIX creation uses the attested directory descriptor, even if its pathname is
+replaced. Windows checks identity before and after each write and reports the
+written path on a mismatch; concurrent replacement of the team folder by another
+local process is outside the trust boundary on Windows.
+Folder publication remains a separate step. No sync client is configured,
 installed or contacted by ws; cloud delivery and cross-device atomicity are not
 proved. Unlink keeps the local mirror and source folder.
 
