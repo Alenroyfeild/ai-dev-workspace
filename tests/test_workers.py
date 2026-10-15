@@ -160,15 +160,16 @@ class WorkerPrepareTests(Base):
         check = subprocess.run(['git', '-C', str(Path(result['directory']) / 'source.git'), 'cat-file', '-e', unrelated], capture_output=True)
         self.assertNotEqual(check.returncode, 0)
 
-    def test_public_launch_rejects_non_codex_records_without_running(self):
-        plan = self.prepare(apply=True); record = Path(plan['record'])
-        state = json.loads(record.read_text()); state['provider'] = 'claude'
-        record.write_text(json.dumps(state)); before = record.read_bytes()
+    def test_write_launch_gate_is_closed_without_writes(self):
+        plan = self.prepare(apply=True); before = Path(plan['record']).read_bytes()
         with mock.patch('ws.workers.orchestration.worker_run', side_effect=AssertionError('launch')):
-            with self.assertRaises(core.WsError): workers.launch(self.root, plan['id'])
-        self.assertEqual(record.read_bytes(), before)
+            with self.assertRaisesRegex(core.WsError, 'O2d'): workers.launch(self.root, plan['id'])
+        with contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'launch', plan['id']]), 2)
+        self.assertIn('O2d', errors.getvalue())
+        self.assertEqual(Path(plan['record']).read_bytes(), before)
 
-    def test_public_codex_launch_collects_snapshot_and_protects_source(self):
+    def test_internal_probe_launch_collects_snapshot_and_protects_source(self):
         plan = self.prepare(apply=True); checkout = Path(plan['checkout']); source = self.git('status', '--porcelain')
         binding = dict(provider='codex', model='fixture', effort='low', available=True, executable='codex', timeout_seconds=10)
         def run(binding, repo, body, receipt=None):
@@ -179,13 +180,9 @@ class WorkerPrepareTests(Base):
             receipt(json.dumps({'type':'item.completed','item':{'type':'command_execution','command':'python3 -m unittest','exit_code':0}}))
             return 0, 'synthetic checked', 1, 2, True
         with mock.patch('ws.orchestration.route', return_value=binding), mock.patch('ws.orchestration.worker_run', side_effect=run):
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'launch', plan['id']]), 0)
-            result = json.loads(output.getvalue())
+            result = workers._launch(self.root, plan['id'])
         self.assertEqual(result['state'], 'needs-review'); self.assertFalse(result['blocked'])
         self.assertEqual(result['changed'], ['calc.py']); self.assertTrue(result['tree']); self.assertTrue(result['diff_sha'])
-        self.assertEqual(json.loads(Path(plan['record']).read_text())['diff_sha'], result['diff_sha'])
         self.assertEqual(result['checks'][0]['exit_code'], 0)
         self.assertEqual((self.repo / 'calc.py').read_text(), 'answer = 1\n'); self.assertEqual(self.git('status', '--porcelain'), source)
         profile = (Path(plan['directory']) / 'worker.config.toml').read_text()
