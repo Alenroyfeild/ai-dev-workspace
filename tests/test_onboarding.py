@@ -39,9 +39,14 @@ class OnboardingTests(unittest.TestCase):
         return mock.patch.dict(os.environ, HOME=str(home), USERPROFILE=str(home), WS_OFFLINE='1')
 
     def test_new_teammate_without_task_gets_three_categories_from_cards_without_writes(self):
-        # Git checkout order can make a valid card look older than its body.
+        # Exercise Git's Windows CRLF checkout even on POSIX.
+        for body in (self.peer / '.ws/team/entries').glob('*.md'):
+            if not body.name.endswith('.index.md'):
+                body.write_bytes(body.read_text().replace('\r\n', '\n').replace('\n', '\r\n').encode())
+        # This test requires valid cards; CRLF changes their recorded byte size.
         for card in (self.peer / '.ws/team/entries').glob('*.index.md'):
             body = card.with_name(card.name.replace('.index.md', '.md'))
+            body.write_bytes(body.read_text().replace('\r\n', '\n').encode())
             stamp = body.stat().st_mtime_ns + 1000000
             os.utime(card, ns=(stamp, stamp))
         before = {p: p.read_bytes() for p in self.peer.rglob('*') if p.is_file()}
