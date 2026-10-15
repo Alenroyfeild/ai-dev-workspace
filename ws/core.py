@@ -2720,14 +2720,19 @@ def recap(root, since='7d'):
     team, status = [], []
     if config(root).get('team_workspace'):
         from . import knowledge, team_status
-        try:
+        unreadable = {'author': '', 'date': '', 'category': '', 'note': 'Part of the team workspace is unreadable; recap shows what could be read.'}
+        try:  # notes and status are read independently so one failure keeps the other
             team = [{'author': r['author'], 'date': r['date'][:10], 'category': r.get('category', ''),
                      'note': re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', r['summary'])}
                     for r in knowledge.list_entries(root, layer='team')['entries'] if r['date'][:10] >= cutoff]
+        except (WsError, OSError, ValueError, TypeError):
+            team = [unreadable]
+        try:
             status = [{'author': r['author'], 'date': r['date'][:10], 'line': f"{r['task']}: {r['line']}"}
                       for r in team_status.list_entries(root)['entries'] if r['date'][:10] >= cutoff]
         except (WsError, OSError, ValueError, TypeError):
-            team = [{'author': '', 'date': '', 'category': '', 'note': 'Team workspace unreadable; private recap only.'}]
+            status = []
+            if unreadable not in team: team.append(unreadable)
     def clean(value):
         if isinstance(value, str):
             return ' '.join(localize_paths(redact(PRIVATE_RE.sub(' ', value)), root).split())
