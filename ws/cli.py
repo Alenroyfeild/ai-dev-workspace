@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import core, assist, orchestration, native
+from . import core, assist, orchestration, native, workers
 
 
 def _read_limited_stdin():
@@ -35,32 +35,18 @@ def _block_prompt(client, reason):
     return 0
 
 
-COMMAND_GROUPS = (
-    ('Setup', ('init', 'setup', 'connect', 'packs', 'pack')),
-    ('Daily', ('status', 'task', 'next', 'claim', 'release', 'checkpoint', 'brief', 'nudge', 'paste', 'search', 'sessions', 'import', 'lesson')),
-    ('Orchestration', ('route', 'delegate')),
-    ('Measure', ('tools', 'digest', 'run', 'trace')),
-    ('Maintain', ('doctor', 'validate', 'map', 'feedback', 'update', 'version', 'upgrade', 'notices', 'assist')),
-)
+DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
     def _format_action(self, action):
         if isinstance(action, argparse._SubParsersAction) and action.dest == 'cmd':
             choices = {item.dest: item for item in action._choices_actions}
-            output = []
-            for label, commands in COMMAND_GROUPS:
-                output.append(' ' * self._current_indent + label + ':\n')
-                self._indent()
-                output.extend(argparse.HelpFormatter._format_action(self, choices[name])
-                              for name in commands if name in choices)
-                self._dedent()
-            extra = choices.keys() - {name for _, commands in COMMAND_GROUPS for name in commands}
-            if extra:
-                output.append(' ' * self._current_indent + 'Other:\n')
-                self._indent()
-                output.extend(argparse.HelpFormatter._format_action(self, choices[name]) for name in sorted(extra))
-                self._dedent()
+            output = [' ' * self._current_indent + 'Daily:\n']
+            self._indent()
+            output.extend(argparse.HelpFormatter._format_action(self, choices[name])
+                          for name in DAILY_COMMANDS if name in choices)
+            self._dedent()
             return ''.join(output)
         return super()._format_action(action)
 
@@ -125,8 +111,11 @@ def text_doctor(report):
     lines = [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
+    if report.get('team_workspace'):
+        lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls not active yet')
     if report.get('setup'):
         lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
+    for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
@@ -232,12 +221,49 @@ def main(argv=None):
     s = sub.add_parser('delegate', help='prepare bounded work or test the read-only worker'); s.add_argument('task', nargs='?'); s.add_argument('--role'); s.add_argument('--run', action='store_true')
     s.add_argument('--selftest', action='store_true'); s.add_argument('--provider', choices=('codex', 'claude'))
     s.add_argument('--diff', help='reviewer-only Git range, e.g. HEAD~1..HEAD')
+    w = sub.add_parser('worker', help='prepare an isolated implementation checkout; no worker launch').add_subparsers(dest='action', required=True)
+    s = w.add_parser('prepare'); s.add_argument('task'); s.add_argument('--scope', action='append', required=True)
+    s.add_argument('--base', default='HEAD'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
+    s = w.add_parser('launch', help='gated until the real-client hostile probe passes'); s.add_argument('id')
+    s = w.add_parser('review', help='show diff/checks or record the current lead review'); s.add_argument('id')
+    s.add_argument('--approve', action='store_true'); s.add_argument('--yes', action='store_true')
+    for action in ('accept', 'discard'):
+        s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
+    s.add_argument('--skills', action='store_true', help='also link the kit skills into your global ~/.claude/skills or ~/.agents/skills')
+    s = sub.add_parser('start', help='connect this repo to private memory outside the checkout')
+    s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
+    s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
+    s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
+    s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep private memory')
+    s = sub.add_parser('scope', help='read or change local record sharing eligibility; never publishes')
+    s.add_argument('item'); s.add_argument('value', nargs='?', choices=('private', 'team'))
+    s.add_argument('--expected-sha', help='refuse if the record changed since inspection')
+    for command in ('share', 'unshare'):
+        s = sub.add_parser(command, help='preview a local team copy or its removal')
+        s.add_argument('item'); s.add_argument('--author', default='local')
+        s.add_argument('--as', dest='as_format', choices=('runbook',), default='')
+        s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
+    s = sub.add_parser('sync', help='pull team updates and preview an approved-only push')
+    s.add_argument('--dry-run', action='store_true', help='pull and preview; never commit or push')
+    s.add_argument('--yes', action='store_true', help='approve the exact printed push preview')
+    s = sub.add_parser('team', help='preview or link a private team Git repository')
+    s.add_argument('action', choices=('init', 'link', 'unlink', 'status')); s.add_argument('remote', nargs='?', default='')
+    s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
+    s.add_argument('--attest-private', action='store_true', help='I confirm this exact remote is private to my team')
+    s.add_argument('--verify-with', choices=('gh', 'glab'), default='')
+    s.add_argument('--author', default='local', help='portable alias for a status snapshot')
+    status_mode = s.add_mutually_exclusive_group()
+    status_mode.add_argument('--publish-status', action='store_true', help='opt in to previewed status saves')
+    status_mode.add_argument('--disable-status', action='store_true', help='turn off status and preview removal of this alias')
+    pulls = s.add_mutually_exclusive_group()
+    pulls.add_argument('--auto-pull', dest='auto_pull', action='store_true', default=None)
+    pulls.add_argument('--no-auto-pull', dest='auto_pull', action='store_false')
     s = sub.add_parser('setup', help='choose assistants and configure project connections')
     s.add_argument('--assistants', help='comma-separated assistants; no client is launched')
     s.add_argument('--preset', help='routing preset name')
@@ -267,7 +293,17 @@ def main(argv=None):
     s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
 
-    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query')
+    s = sub.add_parser('remember', help='save one decision in the current task for the next session')
+    s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
+    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
+    s = k.add_parser('add')
+    s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    s.add_argument('--category', default='other')
+    s = k.add_parser('list'); s.add_argument('--category', default=''); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
+    s = k.add_parser('show'); s.add_argument('id')
+
+    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query'); s.add_argument('--category', default='')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
@@ -275,6 +311,7 @@ def main(argv=None):
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
     s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
+    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
     s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
@@ -312,8 +349,28 @@ def main(argv=None):
     s = r.add_parser('import'); s.add_argument('source', choices=('codeburn',)); s.add_argument('--since'); s.add_argument('--task')
     s = sub.add_parser('trace', help='read-only Markdown timeline of reported orchestration steps'); s.add_argument('task')
 
+    args = sys.argv[1:] if argv is None else argv
+    if args == ['help', 'all']:
+        p.formatter_class = argparse.HelpFormatter
+        p.print_help()
+        return 0
+    if args in (['--help'], ['-h']):
+        p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
     a = p.parse_args(argv)
     try:
+        if a.cmd == 'start':
+            from . import repo
+            if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
+            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo)
+            except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
+            if result and result.get('undone'):
+                print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
+                return 2 if result.get('partial') else 0
+            if result:
+                print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected') + ('; Codex: ' + result.get('codex_status', 'connected')))
+                print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
+                print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
+            return 2 if result and result.get('partial') else 0
         if a.cmd == 'setup' and a.detect:
             from . import setup
             if a.assistants is not None or a.preset: raise core.WsError('--detect cannot configure assistants.')
@@ -365,6 +422,48 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        def share_gate(item, remove=False):
+            from . import sharing
+            plan = sharing.preview(root, item, remove, getattr(a, 'author', 'local'), as_format=getattr(a, 'as_format', '')); out(plan)
+            if getattr(a, 'dry_run', False) or plan['unchanged']: return
+            if not a.yes:
+                print('Apply this exact local team preview? [y/N]')
+                if input().strip().lower() not in ('y', 'yes'): return
+            out(sharing.apply(root, plan))
+        if a.cmd in ('share', 'unshare'):
+            share_gate(a.item, a.cmd == 'unshare'); return 0
+        if a.cmd == 'scope':
+            from . import scope
+            out(scope.record(root, a.item, a.value, a.expected_sha)); return 0
+        if a.cmd == 'sync':
+            from . import team_sync
+            plan = team_sync.preview(root); out(plan)
+            if a.dry_run or not plan['files']: return 0
+            if a.yes or input('Publish this exact team sync preview? [y/N] ').strip().lower() in ('y', 'yes'):
+                out(team_sync.apply(root, plan))
+            return 0
+        if a.cmd == 'team':
+            if a.action == 'status':
+                from . import team_status
+                if not a.remote and not a.disable_status:
+                    out(team_status.list_entries(root)); return 0
+                plan = team_status.preview(root, a.remote, a.author, a.publish_status, a.disable_status); out(plan)
+                if not a.dry_run and (a.yes or input('Save this exact local status preview? [y/N] ').strip().lower() in ('y', 'yes')):
+                    out(team_status.apply(root, plan))
+                return 0
+            from . import team
+            plan = team.manage(root, a.action, a.remote, attest=a.attest_private,
+                               auto_pull=bool(a.auto_pull), verifier=a.verify_with); out(plan)
+            if a.dry_run or plan.get('already'): return 0
+            if not a.yes:
+                print('Apply this team preview? [y/N]')
+                if input().strip().lower() not in ('y', 'yes'): return 0
+            pulls = a.auto_pull
+            if pulls is None and not a.yes and a.action != 'unlink':
+                print('Keep team knowledge updated automatically (pull at session start and daily)? [y/N]')
+                pulls = input().strip().lower() in ('y', 'yes')
+            out(team.manage(root, a.action, a.remote, True, a.attest_private, bool(pulls), a.verify_with, plan['sha']))
+            return 0
         if a.cmd == 'setup':
             from . import setup
             if a.assistants is not None: selected = [name.strip().lower() for name in a.assistants.split(',')]
@@ -380,6 +479,18 @@ def main(argv=None):
         if a.cmd == 'route':
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2
+        if a.cmd == 'worker':
+            if a.action == 'launch': out(workers.launch(root, a.id)); return 0
+            def confirm(plan):
+                print(json.dumps(plan, indent=2), file=sys.stderr)
+                print('Apply this worker ' + a.action + ' action? [y/N] ', end='', file=sys.stderr)
+                try: return input().strip().lower() in ('y', 'yes')
+                except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
+            approval = None if a.yes else confirm
+            if a.action == 'review': out(workers.review(root, a.id, a.approve, approval))
+            elif a.action in ('accept', 'discard'): out(getattr(workers, a.action)(root, a.id, apply=not a.dry_run, confirm=approval))
+            else: out(workers.prepare(root, a.task, a.scope, a.base, apply=not a.dry_run, confirm=approval))
+            return 0
         if a.cmd == 'delegate':
             if a.selftest:
                 if a.task or a.role or a.diff: raise core.WsError('Selftest takes no task, role or diff; run ws delegate --help.')
@@ -408,20 +519,29 @@ def main(argv=None):
             out(result)
         elif a.cmd in ('brief', 'nudge'):
             payload = json.load(sys.stdin) if a.hook else {}
+            branch_task = None
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
-            if a.hook: assist.observe(root, payload)
+            if a.hook and a.cmd == 'brief' and payload.get('hook_event_name') in ('SessionStart', 'sessionStart'):
+                branch_task = core.session_task(root, payload.get('cwd'))
+            if a.hook:
+                try: assist.observe(root, payload)
+                except OSError: pass  # Optional usage metadata must not block read-only memory.
             if a.hook and a.client != 'claude':
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
-                    core.capture_decisions(root, payload.get('transcript_path'), a.client)
-                message = core.brief(root) if a.cmd == 'brief' else ''
+                    core.capture_decisions(root, payload.get('transcript_path'), a.client,
+                                           assist.session_task(root, payload.get('session_id')))
+                message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else ''
+                summary = core.memory_summary(root) if message and a.client == 'codex' else ''
                 out({'additional_context': message} if a.client == 'cursor' and message else
+                    {'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if summary else
                     {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if message else {})
                 return 0
             if a.hook and a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop'):
-                core.capture_decisions(root, payload.get('transcript_path'))
+                core.capture_decisions(root, payload.get('transcript_path'), 'claude',
+                                       assist.session_task(root, payload.get('session_id')))
             if a.cmd == 'brief' and a.refresh: core.refresh_native(root)
-            message = core.brief(root) if a.cmd == 'brief' else core.nudge(root)
+            message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else core.nudge(root)
             if a.hook and a.cmd == 'nudge':
                 if payload.get('hook_event_name') == 'Stop':
                     uses = claude_tool_uses(payload.get('transcript_path'))
@@ -431,15 +551,21 @@ def main(argv=None):
                 elif message:
                     out({'systemMessage': message})
             elif message:
-                out(message)
+                summary = core.memory_summary(root) if a.hook and a.cmd == 'brief' and a.client == 'claude' else ''
+                out({'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if a.client == 'claude' and summary else message)
         elif a.cmd == 'connect':
-            result = core.connect(root, a.client, a.write, skills=True, verify=True)
-            if 'skills' in result:
-                linked = ', '.join(result['skills']['linked']) or 'none'
-                kept = ', '.join(result['skills']['kept']) or 'none'
-                skipped = ', '.join(result['skills']['skipped']) or 'none'
-                print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+            result = core.connect(root, a.client, a.write, skills=a.skills, verify=True)
+            if a.client in ('claude', 'codex'):
                 location = '.claude/skills' if a.client == 'claude' else '.agents/skills'
+                if 'skills' in result:
+                    linked = ', '.join(result['skills']['linked']) or 'none'
+                    kept = ', '.join(result['skills']['kept']) or 'none'
+                    skipped = ', '.join(result['skills']['skipped']) or 'none'
+                    print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+                else:
+                    count = core.skills_to_link(a.client, root)
+                    if count:
+                        print(f"Optional: ws connect {a.client} --skills links {count} extra skill{'s' if count > 1 else ''} into ~/{location}", file=sys.stderr)
                 project_skills = Path(root) / location
                 if project_skills.is_dir() and any((p / 'SKILL.md').is_file() for p in project_skills.iterdir() if p.is_dir()):
                     print(f'Project skills: available in {location}.', file=sys.stderr)
@@ -483,10 +609,26 @@ def main(argv=None):
             notes = dict(n.split('=', 1) for n in a.note)
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
             if a.status == 'done' and (hint := native.goal_hint(root, a.id)): print(hint, file=sys.stderr)  # stderr keeps stdout JSON clean
+        elif a.cmd == 'remember':
+            result = core.remember(root, a.text, a.task)
+            out(f"Remembered in {result['task']}: {result['remembered']}" if human() else result)
+            if a.team:
+                from . import sharing
+                share_gate(sharing.standalone(root, 'decision', a.text))
+        elif a.cmd == 'know':
+            from . import knowledge
+            if a.action == 'add':
+                item = knowledge.add(root, a.text, a.category, a.team); out({'saved': item})
+                if a.team: share_gate(item)
+            elif a.action == 'list': out(knowledge.list_entries(root, a.category, a.layer))
+            else: out(knowledge.show(root, a.id))
         elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
-        elif a.cmd == 'search': out(core.search(root, a.query))
+        elif a.cmd == 'search': out(core.search(root, a.query, category=a.category))
         elif a.cmd == 'lesson':
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
+            if a.action == 'add' and a.team:
+                from . import sharing
+                share_gate(sharing.standalone(root, 'lesson', a.text))
         elif a.cmd == 'feedback':
             if a.action == 'add': out(core.feedback_add(root, a.text, a.kind, a.source))
             elif a.action == 'submit': out(core.feedback_submit(root, a.n, a.yes))

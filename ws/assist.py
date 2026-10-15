@@ -55,8 +55,14 @@ def observe(root, payload):
         data = state(root)
         if payload.get('hook_event_name') in ('SessionStart', 'sessionStart') and payload.get('session_id'):
             data.pop('long_session_bytes', None)
+            current = core.sole_local_claim(root)
+            bindings = data.setdefault('session_tasks', {}); sid = core.digest_text(str(payload['session_id']))
+            previous = bindings.pop(sid, current)
+            bindings[sid] = current if previous == current else ''
+            while len(bindings) > 200:
+                del bindings[next(iter(bindings))]
             for task in core.task_list(root):
-                if not task['claimed_by']:
+                if task['id'] != current:
                     continue
                 meta = core.task_read(root, task['id'], ['Next action'])['meta']
                 count = meta.get('checkpoint_count', '0')
@@ -65,12 +71,21 @@ def observe(root, payload):
                 if record.get('last') != sid:
                     record.update(last=sid, count=(record.get('count', 0) if record.get('checkpoint') == count else 0) + 1, checkpoint=count)
         try:
-            size = Path(payload.get('transcript_path', '')).stat().st_size
+            transcript = payload.get('transcript_path')
+            size = Path(transcript).stat().st_size if isinstance(transcript, str) and transcript else 0
             if size > 2000000:
                 data['long_session_bytes'] = size
         except OSError:
             pass
         save(root, data)
+
+
+def session_task(root, session_id):
+    if not session_id: return None  # Legacy hooks without a session ID retain claim selection.
+    try:
+        sid = core.digest_text(str(session_id))
+        return state(root).get('session_tasks', {}).get(sid, '')
+    except (OSError, ValueError, AttributeError): return ''  # Unknown bindings cannot authorize capture.
 
 
 def feature_suggestions(root, add):

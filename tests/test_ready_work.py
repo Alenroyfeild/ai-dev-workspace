@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from ws import core  # noqa: E402
+from testutil import isolate_home, rmtree_owned  # noqa: E402
 
 FIX = ROOT / 'tests/fixtures/ready_work'
 
@@ -16,9 +17,11 @@ FIX = ROOT / 'tests/fixtures/ready_work'
 class ReadyWorkBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(rmtree_owned, self.tmp.name, self.tmp.name)  # runs first (LIFO)
+        isolate_home(self, self.tmp.name)
         self.root = Path(self.tmp.name) / 'ws'
         core.init(self.root, 'ready')
-        self.addCleanup(self.tmp.cleanup)
 
     def new(self, *ids, status=None):
         for i in ids:

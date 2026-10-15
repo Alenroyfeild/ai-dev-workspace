@@ -1,5 +1,5 @@
-name: Feedback
-description: Share an idea, friction point or praise
+name: Something confused me
+description: Tell us what you were trying to do and what felt confusing (about 30 seconds).
 title: "[feedback] "
 labels:
   - feedback
@@ -9,38 +9,37 @@ body:
     attributes:
       label: Kind
       options:
-        - idea
-        - bug
         - friction
+        - idea
         - praise
     validations:
       required: true
   - type: textarea
     id: text
     attributes:
-      label: Feedback text
-      description: The text recorded by ws feedback add and included by ws feedback submit.
-      placeholder: What happened or what would you like to see?
+      label: What were you trying to do, and what confused you?
+      description: One sentence is enough. Redact secrets and private data.
+      placeholder: I tried …, but …
     validations:
       required: true
   - type: input
     id: recorded
     attributes:
-      label: Recorded date
-      description: ws feedback submit fills this from the local feedback record.
+      label: Recorded date (optional)
+      description: Filled automatically by ws feedback submit.
     validations:
       required: false
   - type: input
     id: kit_version
     attributes:
-      label: Kit version
-      description: ws feedback submit adds the current kit version.
+      label: Kit version (optional)
+      description: Filled automatically by ws feedback submit.
     validations:
       required: false
   - type: input
     id: packs
     attributes:
-      label: Enabled packs
-      description: ws feedback submit adds the workspace pack names.
+      label: Enabled packs (optional)
+      description: Filled automatically by ws feedback submit.
     validations:
       required: false
