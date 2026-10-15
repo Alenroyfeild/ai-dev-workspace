@@ -49,7 +49,7 @@ def create(folder, identity, name, text):
 def parent(folder, identity, name, writing=False):
     from pathlib import PurePosixPath
     parts=PurePosixPath(name).parts
-    if not parts or len(parts)>2 or any(p in ('.','..','/') for p in parts) or (len(parts)==2 and parts[0] not in ('entries','status')):
+    if '\\' in name or ':' in name or not parts or len(parts)>2 or any(p in ('.','..','/') for p in parts) or (len(parts)==2 and parts[0] not in ('entries','status')):
         raise core.WsError('Invalid shared file path.')
     path=folder/name;child=None
     with directory(folder,identity,path if writing else None) as fd:
