@@ -56,7 +56,10 @@ class PrNotesTests(Base):
         path = core.task_path(self.root, 'T-1')
         original = path.read_text()
         for capture in ('<!-- ws:captured:fixture -->\nDecision: Unverified guess.',
-                        '### Captured today\nDecision: Unverified guess.\n<!-- /ws:captured -->'):
+                        '### Captured today\nDecision: Unverified guess.\n<!-- /ws:captured -->',
+                        '<!-- ws:captured:one --><!-- ws:captured:two -->\nDecision: Guess.\n<!-- /ws:captured -->',
+                        '<!-- ws:captured:broken -->\nDecision: Old guess.\n'
+                        '<!-- ws:captured:new -->\nDecision: New guess.\n<!-- /ws:captured -->'):
             with self.subTest(capture=capture):
                 path.write_text(core.set_section(original, 'Handoff', capture))
                 with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
