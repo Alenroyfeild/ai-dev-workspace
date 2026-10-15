@@ -47,7 +47,12 @@ class FolderInitTests(unittest.TestCase):
             if path==host/'team.json' and args and args[0]=='x':
                 with original(path,'w') as writer:writer.write('Foreign manifest.')
             return original(path,*args,**kwargs)
-        with mock.patch.object(Path,'open',race):
+        native=os.open
+        def fd_race(path,flags,*args,**kwargs):
+            if path=='team.json' and kwargs.get('dir_fd') is not None:
+                with original(host/'team.json','w') as writer:writer.write('Foreign manifest.')
+            return native(path,flags,*args,**kwargs)
+        with mock.patch.object(Path,'open',race),mock.patch.object(os,'open',fd_race):
             with self.assertRaises(core.WsError):team_folder.initialize(self.root,str(host),True,True,False,plan)
         self.assertEqual((host/'team.json').read_text(),'Foreign manifest.')
         self.assertNotIn('team_workspace',core.config(self.root))
@@ -67,3 +72,46 @@ class FolderInitTests(unittest.TestCase):
         team_folder.initialize(self.root,str(alias),True,True,False,plan);alias.unlink()
         self.assertEqual(core.config(self.root)['team_workspace']['remote'],str(host))
         self.assertEqual(json.loads((host/'team.json').read_text())['id'],plan['team'])
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX directory descriptor and symlink race.')
+    def test_swapped_root_never_receives_a_manifest(self):
+        host=self.host();plan=team_folder.initialize(self.root,str(host),attest=True)
+        original=self.base/'original-directory';foreign=self.base/'unapproved';foreign.mkdir()
+        opener=Path.open;native=os.open;swapped=[]
+        def swap():
+            if not swapped:
+                host.rename(original);host.symlink_to(foreign,target_is_directory=True);swapped.append(True)
+        def path_open(path,*args,**kwargs):
+            if path==host/'team.json' and args and args[0]=='x':swap()
+            return opener(path,*args,**kwargs)
+        def fd_open(path,flags,*args,**kwargs):
+            if path=='team.json' and kwargs.get('dir_fd') is not None:swap()
+            return native(path,flags,*args,**kwargs)
+        with mock.patch.object(Path,'open',path_open),mock.patch.object(os,'open',fd_open):
+            with self.assertRaises(core.WsError):team_folder.initialize(self.root,str(host),True,True,False,plan)
+        self.assertTrue(swapped,'The write boundary must actually be exercised.')
+        self.assertFalse((foreign/'team.json').exists())
+        self.assertEqual(json.loads((original/'team.json').read_text())['id'],plan['team'])
+        self.assertNotIn('team_workspace',core.config(self.root))
+
+    def test_checked_path_backend_reports_exact_written_path_after_swap(self):
+        from ws import folder_io
+        host=self.host();plan=team_folder.initialize(self.root,str(host),attest=True)
+        parked=self.base/'parked';opener=Path.open
+        class SwapWriter:
+            def __init__(self,stream):self.stream=stream
+            def __enter__(self):return self
+            def __exit__(self,*args):
+                self.stream.close();host.rename(parked);host.mkdir()
+            def write(self,text):self.stream.write(text)
+            def flush(self):self.stream.flush()
+            def fileno(self):return self.stream.fileno()
+        def race(path,*args,**kwargs):
+            stream=opener(path,*args,**kwargs)
+            return SwapWriter(stream) if path==host/'team.json' and args and args[0]=='x' else stream
+        with mock.patch.object(folder_io,'DIR_FD',False),mock.patch.object(Path,'open',race):
+            with self.assertRaisesRegex(core.WsError,'Write may have reached') as error:
+                team_folder.initialize(self.root,str(host),True,True,False,plan)
+        self.assertIn(str(host/'team.json'),str(error.exception))
+        self.assertEqual(json.loads((parked/'team.json').read_text())['id'],plan['team'])
+        self.assertFalse((host/'team.json').exists());self.assertNotIn('team_workspace',core.config(self.root))
