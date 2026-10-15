@@ -288,6 +288,7 @@ def main(argv=None):
     s = t.add_parser('import', help='create tasks from Task Master tasks.json or a Spec Kit tasks.md (preview unless --yes)')
     s.add_argument('file'); s.add_argument('--prefix', default='SPEC'); s.add_argument('--yes', action='store_true', help='write the tasks')
     s = sub.add_parser('next', help='open tasks whose dependencies are done'); s.add_argument('--json', action='store_true')
+    s = sub.add_parser('pr-notes', help='print saved task decisions and checks for a PR description'); s.add_argument('task', nargs='?')
 
     s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker')
     s = sub.add_parser('release', help='release a task claim'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
@@ -428,6 +429,9 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        if a.cmd == 'pr-notes':
+            from . import pr_notes
+            out(pr_notes.render(root, a.task)); return 0
         def share_gate(item, remove=False):
             from . import sharing
             author = getattr(a, 'author', None)
