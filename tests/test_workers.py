@@ -3,6 +3,10 @@ import io
 import json
 import os
 import subprocess
+import shutil
+import sys
+import tempfile
+import unittest
 from pathlib import Path
 from unittest import mock
 from test_ws import Base
@@ -175,9 +179,13 @@ class WorkerPrepareTests(Base):
             receipt(json.dumps({'type':'item.completed','item':{'type':'command_execution','command':'python3 -m unittest','exit_code':0}}))
             return 0, 'synthetic checked', 1, 2, True
         with mock.patch('ws.orchestration.route', return_value=binding), mock.patch('ws.orchestration.worker_run', side_effect=run):
-            result = workers.launch(self.root, plan['id'])
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'launch', plan['id']]), 0)
+            result = json.loads(output.getvalue())
         self.assertEqual(result['state'], 'needs-review'); self.assertFalse(result['blocked'])
         self.assertEqual(result['changed'], ['calc.py']); self.assertTrue(result['tree']); self.assertTrue(result['diff_sha'])
+        self.assertEqual(json.loads(Path(plan['record']).read_text())['diff_sha'], result['diff_sha'])
         self.assertEqual(result['checks'][0]['exit_code'], 0)
         self.assertEqual((self.repo / 'calc.py').read_text(), 'answer = 1\n'); self.assertEqual(self.git('status', '--porcelain'), source)
         profile = (Path(plan['directory']) / 'worker.config.toml').read_text()
@@ -192,6 +200,33 @@ class WorkerPrepareTests(Base):
             self.assertIn(json.dumps(name) + ' = "deny"', profile)
         self.assertIn(json.dumps(str(directory / 'scratch')) + ' = "write"', profile)
         self.assertIn('".git" = "read"', profile)
+
+    @unittest.skipUnless(sys.platform == 'darwin' and os.environ.get('WS_NATIVE_CODEX_TEST') == '1' and shutil.which('codex'),
+                         'opt-in macOS native Codex sandbox check; no model call')
+    def test_native_profile_denies_source_and_ambient_temp_writes(self):
+        plan = self.prepare(apply=True); directory = Path(plan['directory'])
+        (directory / 'scratch').mkdir()
+        args = workers._profile(directory, Path(shutil.which('codex')).resolve())
+        with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory(dir='/tmp') as slash_tmp:
+            paths = {'source': self.repo / 'calc.py', 'tmpdir': Path(tmpdir).resolve() / 'canary',
+                     'slash_tmp': Path(slash_tmp).resolve() / 'canary',
+                     'checkout': Path(plan['checkout']) / 'native-positive', 'scratch': directory / 'scratch/positive'}
+            probe = directory / 'source.git/native_probe.py'
+            probe.write_text('import json,sys\nfrom pathlib import Path\nresult={}\n'
+                             'for name,path in json.loads(sys.argv[1]).items():\n'
+                             ' try: Path(path).write_text("probe");result[name]=True\n'
+                             ' except OSError: result[name]=False\nprint(json.dumps(result))\n')
+            codex_home = Path.home() / '.codex'; codex_home.mkdir()
+            env = dict(os.environ, CODEX_HOME=str(codex_home), TMPDIR=tmpdir)
+            result = subprocess.run(['codex', 'sandbox', '--include-managed-config', '-P', 'worker-private',
+                                     '-C', plan['checkout'], *args, '--', sys.executable, '-I', '-B', str(probe),
+                                     json.dumps({k: str(v) for k, v in paths.items()})],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout), dict(source=False, tmpdir=False, slash_tmp=False,
+                                                             checkout=True, scratch=True))
+            self.assertEqual((self.repo / 'calc.py').read_text(), 'answer = 1\n')
+            self.assertFalse(paths['tmpdir'].exists()); self.assertFalse(paths['slash_tmp'].exists())
 
     def test_profile_reads_only_resolved_codex_install(self):
         plan = self.prepare(apply=True); directory = Path(plan['directory'])
