@@ -13,7 +13,7 @@ ws know add "Payments API rejects floats; send integer cents" --category domain 
 ws sync
 # a teammate: ws team link <private-repo>, then their next brief shows it
 ```
-Product, feature, domain and repo knowledge, plus runbooks from finished tasks. [Team quick start](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TEAM-WORKSPACE.md#quick-start).
+Product, feature, domain and repo knowledge, plus runbooks from finished tasks. [Team quick start](https://github.com/Alenroyfeild/ai-dev-workspace/blob/v0.1.0-beta.4/docs/TEAM-WORKSPACE.md#quick-start).
 
 ### New
 - Link a personal workspace to a private team workspace. New notes stay private; preview what will be shared, then choose what to share or remove. `ws sync` shows incoming changes and publishes only the copies you approved.
