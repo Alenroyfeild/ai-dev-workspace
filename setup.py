@@ -1,13 +1,15 @@
 """Build the CLI with its checkout resources inside the installed ws package."""
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from setuptools import setup
 from setuptools.command.build_py import build_py
-from ws.packaging import package_version
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))  # PEP 517 builds (pip, pipx, python -m build) do not put the source folder on sys.path
+from ws.packaging import package_version  # noqa: E402
 
 
 def kit_files():
