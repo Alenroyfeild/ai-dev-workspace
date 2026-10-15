@@ -54,14 +54,19 @@ class FolderPublishTests(unittest.TestCase):
 
     def test_source_write_failure_restores_unchanged_owned_writes_and_keeps_backup(self):
         from ws import folder_publish
-        self.link();_,name=self.approved();plan=folder_publish.preview(self.root);before=self.inventory();writer=core.atomic_write
-        def fail(path,text):
-            if path==self.folder/name:raise OSError('synthetic source failure')
-            return writer(path,text)
-        with mock.patch('ws.core.atomic_write',side_effect=fail):
+        self.link();self.approved();folder_publish.apply(self.root,folder_publish.preview(self.root))
+        index=self.folder/'INDEX.md';index.write_bytes(index.read_bytes().replace(b'\n',b'\r\n'))
+        _,name=self.approved();plan=folder_publish.preview(self.root);before=self.inventory()
+        from ws import folder_io
+        writer=folder_io.replace
+        def fail(folder,identity,path,text,expected):
+            if path==name and text is not None:raise OSError('synthetic source failure')
+            return writer(folder,identity,path,text,expected)
+        with mock.patch('ws.folder_io.replace',side_effect=fail):
             with self.assertRaises(core.WsError):folder_publish.apply(self.root,plan)
         self.assertEqual(before,self.inventory());self.assertTrue((self.root/'.ws/team'/name).exists())
-        self.assertTrue(list((self.root/'.ws/backups').glob('folder-*/state.json')))
+        backups=[json.loads(p.read_text()) for p in (self.root/'.ws/backups').glob('folder-*/state.json')]
+        self.assertTrue(any('\r\n' in (b['files'].get('INDEX.md') or '') for b in backups))
 
     def test_published_source_local_refresh_failure_is_honest_and_retryable(self):
         from ws import folder_publish

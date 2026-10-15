@@ -260,7 +260,11 @@ POSIX creation uses the attested directory descriptor, even if its pathname is
 replaced. Windows checks identity before and after each write and reports the
 written path on a mismatch; concurrent replacement of the team folder by another
 local process is outside the trust boundary on Windows.
-Folder publication remains a separate step. No sync client is configured,
+`ws share` stages only approved portable copies in the local mirror; preview
+`ws sync`, then confirm to publish them to the attested folder. Each attempt saves
+raw source copies in `.ws/backups/folder-*/state.json`; conflicts stop, partial
+failures keep the backup and local approvals, and a completed publication with
+a failed local refresh is reported explicitly for retry. Automatic pulls never publish. No sync client is configured,
 installed or contacted by ws; cloud delivery and cross-device atomicity are not
 proved. Unlink keeps the local mirror and source folder.
 

@@ -39,6 +39,14 @@ def _runbook(text, meta):
             '\n\n'.join('## ' + name + '\n' + (body or 'Not recorded; verify the source task.') for name, body in fields))
 
 
+def check_public(root, name, text):
+    if text is None:return
+    from . import cards
+    scan=text.replace(cards.HEAD,'').replace(cards.TAIL,'')
+    if name.endswith('.index.md') or name.startswith('status/'):scan=json.dumps(json.loads(scan),ensure_ascii=False)
+    if portable(root,scan)!=scan.strip():raise core.WsError('Nonportable/private shared content blocks sync.')
+
+
 def default_author(root):
     """A portable attribution hint; never read email or credentials."""
     try: name = team._git(root, 'config', '--get', 'user.name').strip()
@@ -61,7 +69,10 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', author): raise core.WsError('Author must be a portable alias (letters, numbers, ._-).')
     cfg_path = _safe(root, root / 'workspace.json'); cfg_text = _text(cfg_path)
     link = json.loads(cfg_text).get('team_workspace', {})
-    if isinstance(link,dict) and link.get('host')=='folder': raise core.WsError('Folder publishing is not available yet; private records remain local.')
+    folder_host=isinstance(link,dict) and link.get('host')=='folder'
+    if folder_host:
+        from . import team_folder
+        team_folder.source(root)
     if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Link a private team with ws team link first.')
     clone = _safe(root, root / '.ws/team'); manifest = json.loads(_text(_safe(root, clone / 'team.json')))
     privacy = link.get('privacy', {})
@@ -69,7 +80,7 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
     if (manifest.get('kind') != 'ai-dev-workspace-team' or manifest.get('schema_version') != 1 or
             not re.fullmatch(r'[a-f0-9]{32}', str(manifest.get('id', ''))) or manifest.get('id') != link.get('id') or
             privacy.get('remote') != link.get('remote') or privacy.get('method') not in ('gh', 'glab', 'attested') or
-            team._git(clone, 'remote', 'get-url', 'origin').strip() != link.get('remote')):
+            (not folder_host and team._git(clone, 'remote', 'get-url', 'origin').strip() != link.get('remote'))):
         raise core.WsError('Team identity or privacy consent changed; link again before sharing.')
     registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = json.loads(state_text or '{}')
     if not isinstance(state, dict): raise core.WsError('Invalid local share receipts; retain them for recovery.')
@@ -105,7 +116,7 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
             'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old and not artifacts,
             'diff': ''.join(difflib.unified_diff(old.splitlines(True), content.splitlines(True), fromfile='team copy', tofile='preview')),
             'omissions': ('Raw task, Handoff prose, captures, private markers, local paths and claims.' if as_format else 'Inline Handoff, captures, private markers, local paths, claims and all unselected sections.'),
-            'warning': 'Git history and teammates copies retain removed text.' if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
+            'warning': ('Shared copies and backups may retain removed text.' if folder_host else 'Git history and teammates copies retain removed text.') if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
 
 
 def apply(root, plan):
