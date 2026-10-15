@@ -202,6 +202,15 @@ def unrecorded_work(root, uses):
             f'(done if the task is finished). Skip only if these edits were unrelated to {task}.') if task else ''
 
 
+def mcp_main():
+    """Console script `ai-dev-workspace`: the stdio MCP server, for uvx and MCP registry launchers."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('ws_mcp_server', core.KIT / 'mcp' / 'server.py')
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)  # by path: a top-level 'mcp' import could pick up the unrelated MCP SDK
+    server.main()
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
                                 formatter_class=GroupedHelpFormatter)
