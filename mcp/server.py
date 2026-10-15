@@ -121,6 +121,22 @@ TOOLS = {
 }
 
 
+
+CORE_TOOLS = frozenset(('brief', 'remember', 'checkpoint', 'search_vault', 'find_task', 'read_task'))
+
+
+def selected_tools(root):
+    cfg = core.config(root) if root else {}
+    profile = cfg.get('mcp_tool_profile', 'core')
+    extra = cfg.get('mcp_tools', [])
+    if profile not in ('core', 'full'):
+        raise core.WsError('mcp_tool_profile must be core or full')
+    if not isinstance(extra, list) or any(not isinstance(n, str) or n not in TOOLS for n in extra):
+        raise core.WsError('mcp_tools must be a list of registered tool names')
+    names = set(TOOLS) if profile == 'full' else CORE_TOOLS | set(extra)
+    return {n: tool for n, tool in TOOLS.items() if n in names}
+
+
 def rpc_error(mid, code, message):
     return {'jsonrpc': '2.0', 'id': mid, 'error': {'code': code, 'message': message}}
 
@@ -154,6 +170,9 @@ def validate_input(value, schema, field='arguments'):
 def _dispatch(root, msg):
     method, mid = msg['method'], msg['id']
     params = msg.get('params', {})
+    if method in ('tools/list', 'tools/call'):
+        try: available = selected_tools(root)
+        except (core.WsError, OSError, ValueError) as exc: return rpc_error(mid, -32602, str(exc))
     if method == 'initialize':
         try:
             validate_input(params, S(protocolVersion=string('version', True),
@@ -196,20 +215,20 @@ def _dispatch(root, msg):
         except (core.WsError, OSError) as exc:
             return rpc_error(mid, -32603, str(exc))
     elif method == 'tools/list':
-        result = {'tools': [{'name': n, 'description': d, 'inputSchema': s} for n, (d, s, _) in TOOLS.items()]}
+        result = {'tools': [{'name': n, 'description': d, 'inputSchema': s} for n, (d, s, _) in available.items()]}
     elif method == 'tools/call':
         name = params.get('name')
         args = params.get('arguments', {})
         if not isinstance(name, str):
             return rpc_error(mid, -32602, 'Tool name must be a string')
-        if name not in TOOLS:
+        if name not in available:
             return rpc_error(mid, -32602, f'Unknown tool {name}')
         try:
-            validate_input(args, TOOLS[name][1])
+            validate_input(args, available[name][1])
         except ValueError as exc:
             return rpc_error(mid, -32602, str(exc))
         try:
-            value = TOOLS[name][2](root, args)
+            value = available[name][2](root, args)
             result = {'content': [{'type': 'text', 'text': json.dumps(value, ensure_ascii=False, indent=1)}], 'isError': False}
         except (core.WsError, KeyError, OSError, ValueError, TypeError) as exc:
             result = {'content': [{'type': 'text', 'text': f'{type(exc).__name__}: {exc}'}], 'isError': True}

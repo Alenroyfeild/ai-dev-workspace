@@ -672,7 +672,9 @@ class KnowledgeTests(Base):
         self.assertEqual([hit['date'] for hit in hits], ['2026-10-02', '2026-10-01'])
         self.assertNotIn('abcdefghijklmnop1234', hits[1]['snippet'])
         with mock.patch.object(core, 'session_search', return_value=hits):
-            reply = server.handle(self.root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
+            cfg = core.config(self.root); cfg['mcp_tools'] = ['search_sessions']
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        reply = server.handle(self.root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
                 'name': 'search_sessions', 'arguments': {'query': 'release decision'}}})
         self.assertFalse(reply['result']['isError'])
 
@@ -803,6 +805,8 @@ class KnowledgeTests(Base):
         self.assertEqual(core.doctor(self.root, mcp=True)['mcp'][0]['step'], 'launch')
 
     def test_mcp_log_step_metadata_and_trace(self):
+        cfg = core.config(self.root); cfg['mcp_tools'] = ['log_step', 'trace']
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
         reply = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
             'params': {'name': 'log_step', 'arguments': {'task': 'T-1', 'step': 'review',
                 'provider': 'codex', 'worker_role': 'worker', 'effort': 'medium',
@@ -846,7 +850,7 @@ class KnowledgeTests(Base):
     def test_doctor_mcp_runs_configured_server_and_reports_bad_command(self):
         report = core.doctor(self.root, mcp=True)['mcp']
         self.assertTrue(report[0]['ok'])
-        self.assertEqual(report[0]['steps'], ['initialize', 'tools/list', 'status'])
+        self.assertEqual(report[0]['steps'], ['initialize', 'tools/list', 'brief'])
         path = self.root / '.mcp.json'
         config = json.loads(path.read_text())
         config['mcpServers']['ai-dev-workspace']['command'] = 'missing-mcp-command'
@@ -903,6 +907,8 @@ class MapTests(unittest.TestCase):
             result = core.codebase_map(root)
             self.assertEqual(result['repo'], str(repo.resolve()))
             self.assertIn('Keep this.', path.read_text())
+            cfg = core.config(root); cfg['mcp_tools'] = ['codebase_map']
+            (root / 'workspace.json').write_text(json.dumps(cfg))
             reply = server.handle(root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
                 'name': 'codebase_map', 'arguments': {}}})
             self.assertFalse(reply['result']['isError'])

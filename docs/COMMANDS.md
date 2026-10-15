@@ -87,7 +87,17 @@ The saved decision survives a checkpoint, so use your usual `/handoff` or
 
 `ws run log` accepts `--result ok|failed|rejected|accepted|skipped` (default `ok`), plus `--worker-role`, `--effort`, repeated `--check "<command>=<exit code>"`, `--files N`, `--verdict accepted|changes|rejected`, and `--findings N`. Counts must be nonnegative. Checks are caller-reported; commands are never executed. Records append to `vault/Runs/<task>.jsonl`; old records remain readable. Two consecutive steps on one task with failed/rejected results, changes/rejected verdicts, or nonzero check codes make `ws brief` and `ws nudge` warn: "stop: two failed attempts, re-diagnose before trying again". A later nonfailing step clears that task's warning; another task's steps do not. This is an advisory guard, not execution enforcement. Log actual token counts only when available; omitted counts retain the existing zero defaults.
 
-`mcp/server.py` exposes 25 tools: `route`, `delegate`, `assist`, `import_usage`, `search_sessions`, `codebase_map`, `brief`, `nudge`, `connect_client`, `find_task`, `read_task`, `new_task`, `claim_task`, `release_task`, `checkpoint`, `remember`, `search_vault`, `search_lessons`, `add_lesson`, `add_feedback`, `digest_file`, `log_step`, `trace`, `notices`, and `status`. MCP `log_step` accepts the same metadata (`checks` is an array of `command=exit code` strings); `trace` takes `task`. Setup, pack installation and feedback submission stay CLI-only on purpose.
+The MCP server defaults to the **core** profile: `brief`, `remember`, `checkpoint`, `search_vault`, `find_task`, and `read_task`. `ws doctor` shows the MCP profile separately from the external tool catalog's `tool_profile`.
+
+To enable more tools, edit your private workspace's `workspace.json`:
+
+```json
+{"mcp_tool_profile": "core", "mcp_tools": ["know_add", "search_sessions"]}
+```
+
+Set `"mcp_tool_profile": "full"` to restore all registered tools for an existing workflow. `mcp_tools` adds named tools to core; invalid names or profile values reject tool requests. Unselected tools cannot be called directly. Restart the client after changing this configuration so it refreshes its tool list. CLI commands, MCP prompts and resources keep their existing behavior. MCP `log_step` accepts the same metadata as `ws run log`; `trace` takes `task`. Setup, pack installation and feedback submission stay CLI-only.
+
+Discovery and calls follow the [MCP tools specification](https://modelcontextprotocol.io/specification/2025-06-18/server/tools).
 
 
 ### Select assistants

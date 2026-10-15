@@ -5,6 +5,7 @@
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
 
 ### New
+- MCP starts with six core memory tools. Enable advanced tools explicitly in workspace configuration; `ws doctor` shows the selected MCP profile.
 - Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
