@@ -198,8 +198,18 @@ unpublished local commits stop with a manual-resolution hint and remain intact.
 Confirmation rechecks privacy, remote head, approvals and files; no history is
 replayed and no force-push/reset/clean runs. An empty remote may receive only the
 linked bootstrap manifest plus approved projections. Host CLI absence cannot
-replace prior CLI verification with attestation. Automatic pulls/scheduling remain
-the separate T7b step; current link consent alone does not activate them.
+replace prior CLI verification with attestation. `ws sync --pull-only` only fetches
+and fast-forwards; it never checks publishing receipts or pushes. Combining it
+with `--dry-run` refuses without contacting Git. Explicit
+`--auto-pull` consent at link (or `team_workspace.auto_pull=true`) enables quiet
+read-only attempts at session start and after share/checkpoint (4-second budget); failures retain
+local memory and report a manual-resolution hint. Ordinary brief/search never pull.
+`ws sync --daily HH:MM` previews one managed macOS launchd job before activation;
+`--dry-run` previews only, including any existing managed time. Unmanaged jobs,
+invalid intervals, and changes after preview refuse replacement.
+Scheduled jobs check consent every run; setting auto_pull=false disables future
+automatic pulls. Times are local. Other platforms print an inspectable cron/Task
+Scheduler suggestion and change nothing. No automatic publishing or installs.
 
 `ws team status "Checking receipts" --author tester --publish-status` opts in
 (`publish_status` defaults off) and previews a minimal local team snapshot. Confirm
