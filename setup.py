@@ -9,6 +9,11 @@ from setuptools.command.build_py import build_py
 ROOT = Path(__file__).resolve().parent
 
 
+def package_version(version):
+    """Translate the kit's beta SemVer to the equivalent PEP 440 version."""
+    return version.replace('-beta.', 'b')
+
+
 def kit_files():
     for name in ('template', 'packs', 'skills', 'mcp', 'bin', 'docs', 'kit.json', 'tools.json', 'LICENSE'):
         source = ROOT / name
@@ -33,7 +38,7 @@ class BuildKit(build_py):
         return super().get_source_files() + [str(p) for p in kit_files()]
 
 
-setup(name='ai-dev-workspace', version=json.loads((ROOT / 'kit.json').read_text())['version'],
+setup(name='ai-dev-workspace', version=package_version(json.loads((ROOT / 'kit.json').read_text())['version']),
       description='Shared task memory for AI coding assistants: Claude Code, Codex, Cursor, Copilot, Gemini CLI',
       long_description=(ROOT / 'README.md').read_text(encoding='utf-8'), long_description_content_type='text/markdown',
       url='https://github.com/Alenroyfeild/ai-dev-workspace', license='MIT',

@@ -4,7 +4,7 @@ Every step after 2 is optional. `ws doctor` tells you what is missing and how to
 
 ## 1. Install the kit
 
-For an isolated CLI, use `pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace`. This includes templates, packs, skills and the MCP server; generated client configs and hooks use the install's Python environment. `ws update` prints `pipx upgrade ai-dev-workspace` for this installation. It does not run pipx for you; `ws update --check` still checks release notes. A plain venv installation uses that venv's pip with the original source to update. The git-clone alternative follows:
+For an isolated CLI, install the beta from PyPI with `pipx install ai-dev-workspace --pip-args='--pre'` (omit `--pip-args='--pre'` after a stable release). This includes templates, packs, skills and the MCP server; generated client configs and hooks use the install's Python environment. `ws update` prints `pipx upgrade ai-dev-workspace` for this installation. It does not run pipx for you; `ws update --check` still checks release notes. A plain venv installation uses that venv's pip with the original source to update. The git-clone alternative follows:
 
 ```bash
 git clone https://github.com/Alenroyfeild/ai-dev-workspace.git ~/ai-dev-workspace
@@ -96,6 +96,10 @@ The model only sees the deterministic digest, and its answer is checked against 
 `ws packs` lists them (e.g. `ios`). `ws pack add ios` adds runbooks and rules for that platform. Missing your domain? Write a pack: [PACKS.md](PACKS.md).
 
 ## Updates and feedback
+
+### Maintainer: prepare a PyPI upload
+
+The GitHub release workflow publishes GitHub release notes only. For a PyPI release, build `dist/` from the release tag with `python3 setup.py sdist bdist_wheel`, then upload those artifacts using the maintainer's configured PyPI publishing tool. Keep publishing credentials outside the repository; maintainers handle the upload.
 
 The assistant can check `ws notices` at session start. `ws tools` lists optional tools; nothing installs automatically. `ws assist` offers local workspace suggestions and asks before applying. Optional routing, tool profiles and cost controls are in [Advanced settings](ADVANCED.md).
 
