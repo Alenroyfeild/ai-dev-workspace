@@ -11,6 +11,11 @@ NOW = '2026-10-16T12:00:00+00:00'
 
 
 class RecapTests(Base):
+    def setUp(self):
+        clock = mock.patch.object(core, 'now', return_value=NOW)
+        clock.start(); self.addCleanup(clock.stop)
+        super().setUp()
+
     def report(self, since='7d'):
         from ws import recap
         with mock.patch.object(core, 'now', return_value=NOW): return recap.report(self.root, since)
@@ -53,6 +58,23 @@ class RecapTests(Base):
         path.write_text(core.set_section(core.set_meta(path.read_text(), {'updated': NOW}), 'Activity', '[' * 1500 + ']' * 1500))
         self.assertTrue(self.report()['warnings'])
 
+    def test_private_snapshots_do_not_hide_visible_older_decisions(self):
+        path = core.task_path(self.root, 'T-1')
+        handoff = 'Decision: visible receipt decision.\n' + 'Decision: #private hidden\n' * 5
+        path.write_text(core.set_section(core.set_meta(path.read_text(), {'updated': NOW}), 'Handoff', handoff))
+        self.assertEqual(self.report()['tasks'][0]['current_decisions'], ['visible receipt decision.'])
+
+    def test_history_cap_retains_last_1000_entries_and_warns(self):
+        path = core.task_path(self.root, 'T-1')
+        rows = [json.dumps(dict(at=NOW, kind='decision', text=f'receipt {i}')) for i in range(1001)]
+        path.write_text(core.set_section(core.set_meta(path.read_text(), {'updated': NOW}), 'Activity', '\n'.join(rows)))
+        result = self.report(); events = result['tasks'][0]['events']
+        self.assertEqual(len(events), 1000); self.assertEqual(events[0]['text'], 'receipt 1')
+        self.assertTrue(any('last 1000' in w for w in result['warnings']))
+
+    def test_date_only_task_metadata_is_a_current_snapshot(self):
+        self.assertEqual(self.report()['tasks'][0]['id'], 'T-1')
+
     def test_cli_plain_and_json(self):
         core.remember(self.root, 'Keep receipt checksum.', 'T-1')
         for suffix in ([], ['--json']):
@@ -63,7 +85,10 @@ class RecapTests(Base):
 
 
 class TeamRecapTests(unittest.TestCase):
-    setUp = test_sharing.SharingTests.setUp
+    def setUp(self):
+        clock = mock.patch.object(core, 'now', return_value=NOW)
+        clock.start(); self.addCleanup(clock.stop)
+        test_sharing.SharingTests.setUp(self)
 
     def test_only_approved_shared_decisions_and_status_snapshots(self):
         from ws import recap

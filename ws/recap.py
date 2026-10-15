@@ -32,7 +32,8 @@ def report(root, since='7d'):
     for task in core.task_list(root):
         try:
             data = core.task_read(root, task['id'], ['Activity', 'Handoff', 'Next action'])
-            updated = _date(data['meta'].get('updated', data['meta'].get('created', '')))
+            updated = data['meta'].get('updated', data['meta'].get('created', ''))
+            updated = _date(updated + 'T00:00:00+00:00' if re.fullmatch(r'\d{4}-\d\d-\d\d', updated) else updated)
             lines = data['sections']['Activity'].splitlines(); events = []
             if len(lines) > 1000: warnings.append(task['id'] + ': only the last 1000 activity entries examined.')
             for line in lines[-1000:]:
@@ -50,7 +51,7 @@ def report(root, since='7d'):
                 except (ValueError, KeyError, TypeError, RecursionError): warnings.append(task['id'] + ': invalid activity entry excluded.')
             if not events and not start <= updated <= end: continue
             handoff = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', data['sections']['Handoff'], flags=re.S)
-            decisions = [_clean(line[10:]) for line in handoff.splitlines() if line.startswith('Decision: ')]
+            decisions = list(filter(None, (_clean(line[10:]) for line in handoff.splitlines() if line.startswith('Decision: '))))
             if len(decisions) > 5: warnings.append(task['id'] + ': only the last five current decisions shown.')
             tasks.append(dict(id=task['id'], title=_clean(task['title']), status=task['status'],
                               events=events, current_decisions=[d for d in decisions[-5:] if d]))
