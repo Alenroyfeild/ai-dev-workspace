@@ -9,6 +9,9 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
 
+### Improved
+- Each session starts lighter: the MCP server lists 7 core memory tools by default instead of 28, about 1,360 fewer tokens of tool descriptions per session. Set `"mcp_tools": "all"` in workspace.json to list everything; other tools still work when called by name.
+
 ### Known limits
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
