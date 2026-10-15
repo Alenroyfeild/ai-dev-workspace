@@ -13,6 +13,8 @@ from mcp import server
 
 class SurfaceSecurityTests(Base):
     def test_mcp_digest_and_map_refuse_undeclared_roots(self):
+        cfg = core.config(self.root); cfg['mcp_tools'] = ['digest_file', 'codebase_map']
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
         outside = self.root.parent / 'outside'; outside.mkdir(); secret = outside / 'private.log'; secret.write_text('fatal PRIVATE_SENTINEL')
         for name, args in [('digest_file', {'path': str(secret)}), ('codebase_map', {'repo': str(outside)})]:
             reply = server.handle(self.root, {'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':name,'arguments':args}})

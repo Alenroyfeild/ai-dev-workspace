@@ -89,6 +89,8 @@ class PasteGuardTests(unittest.TestCase):
         self.assertEqual(list((self.root / '.ws/inbox').glob('*.log'))[0].read_text(), 'clipboard text')
 
     def test_focus_matches_precede_deterministic_digest_and_mcp_accepts_focus(self):
+        cfg = core.config(self.root); cfg['mcp_tools'] = ['digest_file']
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
         path = self.root / 'focus.log'
         path.write_text('noise\nkeep this\nerror: failed\n')
         result = core.digest_file(path, focus='keep', root=self.root)

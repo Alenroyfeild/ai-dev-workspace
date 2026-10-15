@@ -20,6 +20,8 @@ class CodeburnTests(Base):
         return data, export
 
     def test_import_real_schema_deduplicates_preserves_task_and_guard(self):
+        cfg = core.config(self.root); cfg['mcp_tools'] = ['import_usage']
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
         data, export = self.fixture()
         path = core.task_path(self.root, 'T-1'); before = path.read_bytes()
         core.run_log(self.root, 'T-1', 'attempt 1', 'codex', result='failed')
