@@ -193,6 +193,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         if not core.task_path(root, task).exists(): task = ''
         partial = state.get('complete') is False or any(not path(repo, n).is_file() or hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha'] for n, e in state['files'].items())
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
+        elif core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version']):
+            print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         elif state.get('kit_version') != core.kit_meta()['version']:
             # Rerunning start never rewrites wiring; older instructions and hooks stay until the user refreshes them.
             print('Repo setup is from an older ai-dev-workspace version; run ws start --undo && ws start to refresh it (saved memory is kept).', file=sys.stderr)
