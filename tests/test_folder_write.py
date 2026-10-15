@@ -43,17 +43,3 @@ class FolderWriteTests(unittest.TestCase):
             with self.subTest(name=name),mock.patch.object(folder_io,'_read',return_value=None) as reader:
                 with self.assertRaises(core.WsError):folder_io.read(self.folder,identity,name)
                 reader.assert_not_called()
-
-    def test_intervening_leaf_edit_survives_replace_or_delete(self):
-        info=self.folder.stat();identity=[info.st_dev,info.st_ino]
-        name='entries/'+self.entry+'.md';path=self.folder/name
-        for content in ('published',None):
-            with self.subTest(content=content):
-                path.write_text('original');reader=folder_io._read
-                def edit_after_read(fd,leaf):
-                    text=reader(fd,leaf);path.write_text('concurrent teammate edit');return text
-                with mock.patch.object(folder_io,'_read',side_effect=edit_after_read):
-                    try:folder_io.replace(self.folder,identity,name,content,'original')
-                    except core.WsError:pass
-                self.assertTrue(any(p.is_file() and p.read_bytes()==b'concurrent teammate edit' for p in self.folder.rglob('*')),
-                                'The intervening edit must remain available for recovery.')

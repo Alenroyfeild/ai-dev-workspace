@@ -54,9 +54,12 @@ class FolderPublishTests(unittest.TestCase):
 
     def test_source_write_failure_restores_unchanged_owned_writes_and_keeps_backup(self):
         from ws import folder_publish
-        self.link();self.approved();folder_publish.apply(self.root,folder_publish.preview(self.root))
-        index=self.folder/'INDEX.md';index.write_bytes(index.read_bytes().replace(b'\n',b'\r\n'))
-        _,name=self.approved();plan=folder_publish.preview(self.root);before=self.inventory()
+        self.link();item,name=self.approved();folder_publish.apply(self.root,folder_publish.preview(self.root))
+        card_name=name[:-3]+'.index.md';card=self.folder/card_name
+        card.write_bytes(card.read_bytes().replace(b'\n',b'\r\n'))
+        private=core.vault(self.root)/'Knowledge'/(item.split(':')[1]+'.md')
+        private.write_text(private.read_text()+'\nBound receipt retries.\n')
+        sharing.apply(self.root,sharing.preview(self.root,item));plan=folder_publish.preview(self.root);before=self.inventory()
         from ws import folder_io
         writer=folder_io.replace
         def fail(folder,identity,path,text,expected):
@@ -66,7 +69,7 @@ class FolderPublishTests(unittest.TestCase):
             with self.assertRaises(core.WsError):folder_publish.apply(self.root,plan)
         self.assertEqual(before,self.inventory());self.assertTrue((self.root/'.ws/team'/name).exists())
         backups=[json.loads(p.read_text()) for p in (self.root/'.ws/backups').glob('folder-*/state.json')]
-        self.assertTrue(any('\r\n' in (b['files'].get('INDEX.md') or '') for b in backups))
+        self.assertTrue(any('\r\n' in (b['files'].get(card_name) or '') for b in backups))
 
     def test_published_source_local_refresh_failure_is_honest_and_retryable(self):
         from ws import folder_publish
@@ -79,3 +82,34 @@ class FolderPublishTests(unittest.TestCase):
         self.assertTrue((self.folder/name).exists())
         folder_publish.apply(self.root,folder_publish.preview(self.root))
         self.assertFalse(folder_publish.preview(self.root)['files'])
+
+    def forge_foreign_artifacts(self, remove):
+        self.link();before=self.inventory();local=self.root/'.ws/team';name='entries/'+self.entry+'.md'
+        path=local/name
+        if remove:
+            path.unlink();path.with_suffix('.index.md').unlink()
+        else:path.write_text(path.read_text().replace('CEDAR41','BIRCH74'))
+        cards.write(self.root,cards.plan(self.root,'team'))
+        approved={p.relative_to(local).as_posix():core.digest_text(p.read_text()) for p in local.rglob('*') if p.is_file()}
+        if remove:approved.update({name:'',name[:-3]+'.index.md':''})
+        (self.root/'.ws/shares.json').write_text(json.dumps({'_artifacts:'+self.team:approved}))
+        return before
+
+    def test_teammate_entry_cannot_be_replaced_by_forged_artifact_receipts(self):
+        from ws import folder_publish
+        before=self.forge_foreign_artifacts(False)
+        with self.assertRaises(core.WsError):folder_publish.preview(self.root)
+        self.assertEqual(before,self.inventory())
+
+    def test_teammate_entry_cannot_be_deleted_by_forged_artifact_receipts(self):
+        from ws import folder_publish
+        before=self.forge_foreign_artifacts(True)
+        with self.assertRaises(core.WsError):folder_publish.preview(self.root)
+        self.assertEqual(before,self.inventory())
+
+    def test_publication_never_writes_shared_index(self):
+        from ws import folder_publish
+        index=self.folder/'INDEX.md';index.write_text(cards.HEAD+'\n# Existing index\n'+cards.TAIL+'\n')
+        original=index.read_bytes();self.link();self.approved();plan=folder_publish.preview(self.root)
+        self.assertNotIn('INDEX.md',plan['files'])
+        folder_publish.apply(self.root,plan);self.assertEqual(index.read_bytes(),original)
