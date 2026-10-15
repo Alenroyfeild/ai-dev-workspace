@@ -20,7 +20,7 @@ class CliPolishTests(unittest.TestCase):
         short = self.run_ws('--help')
         self.assertEqual(short.returncode, 0, short.stderr)
         usage = short.stdout.splitlines()[0]
-        self.assertIn('{start,status,task,claim,checkpoint,remember,search,lesson,doctor}', usage)
+        self.assertIn('{start,status,task,claim,checkpoint,remember,recap,search,lesson,doctor}', usage)
         self.assertNotIn('init', usage)
         for command in ('start', 'status', 'task', 'claim', 'checkpoint', 'search', 'lesson', 'doctor'):
             self.assertIn('    ' + command, short.stdout)
@@ -28,7 +28,7 @@ class CliPolishTests(unittest.TestCase):
             self.assertNotIn('    ' + command, short.stdout)
         invalid = self.run_ws('not-a-command')
         self.assertIn('COMMAND ...', invalid.stderr)
-        self.assertNotIn('{start,status,task,claim,checkpoint,remember,search,lesson,doctor}', invalid.stderr)
+        self.assertNotIn('{start,status,task,claim,checkpoint,remember,recap,search,lesson,doctor}', invalid.stderr)
 
         full = self.run_ws('help', 'all')
         self.assertEqual(full.returncode, 0, full.stderr)
