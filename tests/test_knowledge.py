@@ -40,6 +40,8 @@ class KnowledgeTests(unittest.TestCase):
         with self.assertRaises(core.WsError): knowledge.show(self.root, 'private:'+item.split(':')[1])
 
     def test_cli_and_mcp_category_calls_never_publish(self):
+        cfg = core.config(self.root); cfg['mcp_tools'] = ['know_list', 'know_show', 'know_add']
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
         from ws import knowledge
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(cli.main(['--workspace-root',str(self.root),'know','add','Bounded queue contract.','--category','product']),0)

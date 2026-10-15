@@ -1,3 +1,4 @@
+import json
 import subprocess
 import sys
 from unittest import mock
@@ -38,6 +39,8 @@ class LessonContextTests(Base):
             self.assertNotIn('Never rebuild', core.brief(self.root))
 
     def test_cli_mcp_tags_are_validated_redacted_and_area_ranked(self):
+        cfg = core.config(self.root); cfg['mcp_tools'] = ['add_lesson']
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
         core.claim(self.root, 'T-1', 'synthetic'); core.checkpoint(self.root, 'T-1', 'in_progress', 'Continue.')
         reply = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'add_lesson', 'arguments': {'text': 'Cached values expired; reuse stable receipts.', 'paths': ['src/*.py'], 'area': 'crash'}}})
         self.assertFalse(reply['result']['isError'])

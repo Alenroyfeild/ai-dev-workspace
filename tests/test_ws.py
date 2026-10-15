@@ -671,12 +671,13 @@ class KnowledgeTests(Base):
         self.assertEqual([hit['tool'] for hit in hits], ['codex', 'claude'])
         self.assertEqual([hit['date'] for hit in hits], ['2026-10-02', '2026-10-01'])
         self.assertNotIn('abcdefghijklmnop1234', hits[1]['snippet'])
-        with mock.patch.object(core, 'session_search', return_value=hits):
-            cfg = core.config(self.root); cfg['mcp_tools'] = ['search_sessions']
+        cfg = core.config(self.root); cfg['mcp_tools'] = ['search_sessions']
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
-        reply = server.handle(self.root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
+        with mock.patch.object(core, 'session_search', return_value=hits):
+            reply = server.handle(self.root, {'jsonrpc': '2.0', 'method': 'tools/call', 'id': 1, 'params': {
                 'name': 'search_sessions', 'arguments': {'query': 'release decision'}}})
         self.assertFalse(reply['result']['isError'])
+        self.assertEqual(json.loads(reply['result']['content'][0]['text']), hits)
 
     def test_search_returns_snippets_ranked(self):
         hits = core.search(self.root, 'simulator logs')
@@ -1090,7 +1091,7 @@ class InterfaceTests(Base):
         self.assertEqual(replies[1]['result']['serverInfo']['name'], 'ai-dev-workspace')
         self.assertEqual(replies[1]['result']['serverInfo']['version'], core.kit_meta()['version'])
         names = {t['name'] for t in replies[2]['result']['tools']}
-        self.assertTrue({'find_task', 'checkpoint', 'search_vault', 'log_step'} <= names)
+        self.assertEqual(names, {'brief', 'remember', 'checkpoint', 'search_vault', 'find_task', 'read_task'})
         for tool in replies[2]['result']['tools']:
             self.assertNotIn('optional', json.dumps(tool['inputSchema']))
         self.assertIn('T-1', replies[3]['result']['content'][0]['text'])
