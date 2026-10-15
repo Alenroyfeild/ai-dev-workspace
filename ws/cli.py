@@ -140,6 +140,9 @@ def text_doctor(report):
         rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"
                     for name, value in routes.items() if isinstance(value, dict) and 'provider' in value]
         lines.append('Routes: ' + (', '.join(rendered) or routes.get('error', 'unavailable')))
+    if report.get('mcp_tools'):
+        tools = report['mcp_tools']
+        lines.append(f"MCP tools listed: {tools['listed']} ({tools['profile']}; set \"mcp_tools\": \"all\" in workspace.json to list every tool)")
     missing = [item['name'] for item in report.get('toolbox', [])]
     lines.append('Missing recommended tools: ' + (', '.join(missing) or 'none'))
     if 'mcp' in report:
