@@ -58,3 +58,12 @@ class FolderInitTests(unittest.TestCase):
             with self.assertRaisesRegex(core.WsError,'initialized'):team_folder.initialize(self.root,str(host),True,True,False,plan)
         self.assertEqual(json.loads((host/'team.json').read_text())['id'],plan['team'])
         self.assertNotIn('team_workspace',core.config(self.root))
+
+    @unittest.skipIf(os.name=='nt','Symlink creation may require Windows privileges.')
+    def test_user_selected_alias_initializes_only_the_canonical_folder(self):
+        host=self.host();alias=self.base/'cloud-alias';alias.symlink_to(host,target_is_directory=True)
+        plan=team_folder.initialize(self.root,str(alias),attest=True)
+        self.assertEqual(plan['source'],str(host))
+        team_folder.initialize(self.root,str(alias),True,True,False,plan);alias.unlink()
+        self.assertEqual(core.config(self.root)['team_workspace']['remote'],str(host))
+        self.assertEqual(json.loads((host/'team.json').read_text())['id'],plan['team'])
