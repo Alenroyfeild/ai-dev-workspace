@@ -40,6 +40,9 @@ class StartTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn('ws start --undo && ws start', err)
         self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), wiring)
+        state['kit_version'] = '99.0.0'; link.write_text(json.dumps(state))
+        err = self.start()[2]
+        self.assertIn('newer ai-dev-workspace version', err); self.assertNotIn('ws start --undo && ws start', err)
 
     def test_preview_confirmation_external_memory_repeat_and_undo(self):
         before = (self.repo / '.git/info/exclude').read_bytes()
