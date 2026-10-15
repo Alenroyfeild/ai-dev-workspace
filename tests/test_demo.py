@@ -70,6 +70,7 @@ class CommandDemoTests(unittest.TestCase):
 
     def test_failed_demo_removes_its_workspace(self):
         roots = []
+        before = dict(os.environ)
         original = core.init
         def initialize(root, *args, **kwargs):
             roots.append(Path(root))
@@ -80,6 +81,7 @@ class CommandDemoTests(unittest.TestCase):
             self.assertEqual(cli.main(['demo']), 2)
         self.assertEqual(len(roots), 1)
         self.assertFalse(roots[0].exists())
+        self.assertEqual(dict(os.environ), before)
 
     def test_explicit_workspace_is_refused(self):
         with contextlib.redirect_stderr(io.StringIO()):
@@ -91,6 +93,19 @@ class CommandDemoTests(unittest.TestCase):
                 contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(cli.main(['demo']), 2)
         self.assertFalse(Path(child.call_args.kwargs['cwd']).exists())
+
+    def test_parent_initialization_uses_disposable_home_and_restores_environment(self):
+        original, observed = core.init, []
+        def initialize(root, *args, **kwargs):
+            self.assertTrue(Path.home().is_relative_to(Path(root).parent))
+            self.assertEqual(os.environ.get('WS_OFFLINE'), '1')
+            observed.append(True)
+            return original(root, *args, **kwargs)
+        before = dict(os.environ)
+        with mock.patch.object(core, 'init', side_effect=initialize), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(['demo']), 0)
+        self.assertEqual(observed, [True])
+        self.assertEqual(dict(os.environ), before)
 
 
 if __name__ == '__main__':
