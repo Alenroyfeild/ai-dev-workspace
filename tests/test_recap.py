@@ -102,3 +102,11 @@ class TeamRecapTests(unittest.TestCase):
         self.assertNotIn('<img', result['markdown'])
         self.assertIn('&lt;img', result['markdown'])
         self.assertIn(r'\[follow\]', result['markdown'])
+
+    def test_status_failure_keeps_team_notes(self):
+        item = knowledge.add(self.root, 'The payments API rejects floats.', 'domain', True)
+        sharing.apply(self.root, sharing.preview(self.root, item, author='sam'))
+        with mock.patch('ws.team_status.list_entries', side_effect=OSError('unreadable')):
+            result = core.recap(self.root)
+        self.assertIn('sam: The payments API rejects floats.', result['markdown'])
+        self.assertIn('unreadable', result['markdown'])
