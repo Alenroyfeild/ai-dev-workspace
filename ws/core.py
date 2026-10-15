@@ -2437,6 +2437,10 @@ def doctor(root=None, mcp=False):
     report['recommended'] = missing_tools
     report['toolbox'] = missing_tools
     report['tool_profile'] = config(root).get('tool_profile', 'standard') if root else 'standard'
+    if root:
+        choice = config(root).get('mcp_tools', 'core')
+        listed = [item['name'] for item in tool_costs(root, usage={})['mcp_tools']]
+        report['mcp_tools'] = {'profile': choice if isinstance(choice, str) else 'custom', 'listed': len(listed)}
     report['tools'] = listed_tools
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     report['kit'] = {'version': kit_meta()['version']}
