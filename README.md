@@ -20,9 +20,6 @@ Session 2 — You: “Continue the login fix.”
 Assistant: “The saved note says return missing_email and leave signup unchanged.”
 You: “Yes, continue.”
 ```
-Save a correction with `ws remember "<corrected decision>"`, then check `ws brief`.
-[Keeping corrections](docs/COMMANDS.md#save-a-correction) shows how to replace an earlier choice.
-
 ## Results (small synthetic samples, not general productivity)
 | Session 1 → session 2 | Without workspace | With workspace |
 |---|---:|---:|
@@ -40,4 +37,4 @@ Save a correction with `ws remember "<corrected decision>"`, then check `ws brie
 | Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested |
 | Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested |
 
-Testers on Cursor, Copilot (VS Code), or Gemini CLI: please share problems through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml). · [Overview](docs/OVERVIEW.md) · [Setup](docs/SETUP.md) · [Commands](docs/COMMANDS.md) · [Measurements](docs/MEASUREMENTS.md) · [Client verification](docs/CLIENT-VERIFICATION.md) · [Packs](docs/PACKS.md) · [Team use](docs/TEAM.md) · [Windows](docs/WINDOWS.md) · [Roadmap](docs/ROADMAP.md) · [License](LICENSE)
+Testers on Cursor, Copilot (VS Code), or Gemini CLI: please share problems through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml). · [Overview](docs/OVERVIEW.md) · [Setup](docs/SETUP.md) · [Commands](docs/COMMANDS.md) · [Keeping corrections](docs/COMMANDS.md#save-a-correction) · [Measurements](docs/MEASUREMENTS.md) · [Client verification](docs/CLIENT-VERIFICATION.md) · [Packs](docs/PACKS.md) · [Team use](docs/TEAM.md) · [Windows](docs/WINDOWS.md) · [Roadmap](docs/ROADMAP.md) · [License](LICENSE)
