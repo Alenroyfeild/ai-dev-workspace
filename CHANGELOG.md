@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.0-beta.5 (unreleased)
+
+Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
+
+### New
+- Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
+- Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
+- Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
+
+### Known limits
+- Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
+- Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
+
 ## 0.1.0-beta.4 (2026-10-15)
 
 Start memory from inside your own repo with one command, keep a decision with `ws remember`, and see at session start what was remembered. A private team workspace arrives as a preview.
