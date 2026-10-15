@@ -60,6 +60,21 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 0)
         self.assertIn('Continue the saved next action', core.task_read(workspace, task['id'])['text'])
 
+    def test_correction_instruction_is_written_and_undo_restores_user_text(self):
+        instruction = ('When the user corrects an earlier decision, call the MCP `remember` tool '
+                       'with the corrected decision, saying what it replaces.')
+        originals = {'CLAUDE.local.md': b'Private Claude notes.\n',
+                     'AGENTS.override.md': b'Private Codex notes.\n'}
+        for name, content in originals.items():
+            (self.repo / name).write_bytes(content)
+        self.assertEqual(self.start('--yes')[0], 0)
+        for name, content in originals.items():
+            self.assertTrue((self.repo / name).read_bytes().startswith(content))
+            self.assertIn(instruction, (self.repo / name).read_text())
+        self.assertEqual(self.start('--undo')[0], 0)
+        for name, content in originals.items():
+            self.assertEqual((self.repo / name).read_bytes(), content)
+
     def test_existing_local_settings_restored_and_user_edits_kept(self):
         local = self.repo / '.claude/settings.local.json'; local.parent.mkdir()
         local.write_text('{"permissions":{"allow":["Read"]},"hooks":{}}')
