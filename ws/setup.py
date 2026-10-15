@@ -1,6 +1,8 @@
 """Assistant selection; read-only detection and explicit project configuration."""
 import json
 import difflib
+import subprocess
+import sys
 from pathlib import Path
 from . import core, orchestration, upgrade
 
@@ -10,6 +12,14 @@ def detect():
     return [dict(assistant=name, cli=data['cli'], cli_available=bool(core.shutil.which(data['cli'])),
                  apps=[app for app in data.get('apps', []) if core._has_app(app)])
             for name, data in providers.items()]
+
+
+def branch(repo):
+    try:
+        result = subprocess.run(['git', '-C', str(repo), 'symbolic-ref', '--quiet', '--short', 'HEAD'],
+                                capture_output=True, text=True, timeout=2)
+        return result.stdout.strip() if result.returncode == 0 else ''
+    except (OSError, subprocess.SubprocessError): return ''
 
 
 def selection_json(text, values):

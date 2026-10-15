@@ -155,7 +155,7 @@ def worker_command(binding, repo, body=''):
     return [exe, *args]
 
 
-def worker_run(binding, repo, body):
+def worker_run(binding, repo, body, receipt=None):
     code = 1
     try:
         process = subprocess.Popen(worker_command(binding, repo, body), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
@@ -164,6 +164,7 @@ def worker_run(binding, repo, body):
             if os.name == 'nt': subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)], capture_output=True)
             else: os.killpg(process.pid, signal.SIGKILL)
             stdout, stderr = process.communicate(); stderr += f"\nWorker timed out after {binding['timeout_seconds']} seconds."
+        if receipt is not None: receipt(stdout)
         rendered, tokens_in, tokens_out, known = _worker_output(binding['provider'], stdout)
         return code, core.redact(rendered + ('\n' + stderr[-1000:] if code else ''))[:24000], tokens_in, tokens_out, known
     except OSError:

@@ -8,6 +8,24 @@ Most workspaces need only `ws tools`, `ws assist` and the defaults. These settin
 
 `ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#measure-and-maintain).
 
+### Prepare a private implementation checkout
+
+```sh
+ws worker prepare TASK --scope src --scope tests --dry-run
+ws worker prepare TASK --scope src --scope tests
+```
+
+The task needs a local claim and one declared Git repository. Preview shows the
+pinned commit, allowed paths, provider and new private paths. One confirmation
+creates a private clone and its detached worktree; `--yes` confirms for scripts.
+`--base COMMIT_OR_BRANCH` selects the committed source; the default is HEAD.
+Ignored files and uncommitted edits stay in the user's checkout. Tracked files
+are copied, so preparation does not imply they were checked for secrets.
+This version refuses submodules, tracked symlinks, unsafe scope paths and changed
+claims. Metadata stays under the workspace's local `.ws/workers/`; interrupted
+preparation keeps an incomplete record for inspection. It starts no client and
+enables no write worker. Scope is a review contract, not a filesystem sandbox.
+
 ## Tool profiles and assist
 
 `ws tools` is the explicit catalog for recommended, optional and caution tools. It reports availability and never installs anything. Set `tool_profile` in `workspace.json` to `lean` (core only), `standard` (recommended) or `full`; `tool_overrides` maps tool names to `on`, `off` or `ask`. These settings guide `ws doctor` and assist suggestions and never remove software. `ws tools --cost` estimates MCP schema bytes, skill/plugin metadata size and cached CodeBurn use.
@@ -35,3 +53,17 @@ The generated `routing.json` records `preset`, `assistants` and `delegation_mode
 ## Framework recipes
 
 Existing ADK or LangGraph users can opt into the [stub-model-tested MCP examples](examples/frameworks/README.md). They use four native-adapter tools and disposable memory, add no core dependencies, and distinguish saved task memory from framework execution state. Hosted models are untested.
+
+O2b adds internal Codex launch/collection for the O2d probe. Public `workers.launch` and `ws worker launch <run-id>`
+refuse execution with the O2d gate reason; no passing real-client gate is claimed.
+The run owns `worker.config.toml` and scratch, selects `worker-private` via CLI
+config overrides, ignores user/project configuration and rules, disables hooks,
+apps/plugins and approvals, and uses no legacy sandbox flag. Native tool access is
+limited to runtime/checkout/private Git reads and checkout/scratch writes; network
+is off. Authentication stays with the trusted client, outside worker tool roots. Tool
+environments inherit no parent variables; only PATH, scratch HOME/temp and Git/Python
+controls are passed. The real-client gate must verify this policy too.
+Collection includes ignored/untracked files and deletions in a private Git index,
+records an immutable tree/diff digest and completed command evidence, and blocks
+scope, metadata, symlink, secret, binary-scan, diff-check or claim failures. Output
+remains unverified; review/accept/discard arrive in O2c. [Official permission profiles](https://learn.chatgpt.com/docs/permissions).
