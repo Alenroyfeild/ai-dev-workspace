@@ -71,12 +71,14 @@ class PluginRuntimeTests(unittest.TestCase):
             self.assertEqual(self.hook(payload), {})
 
     def test_mcp_outside_repo_starts_but_does_not_expose_ambient_memory(self):
+        before = {p: p.read_bytes() for p in self.base.rglob('*') if p.is_file()}
         replies = self.wire(self.base)
         self.assertTrue(replies[1]['tools'])
         self.assertTrue(replies[2]['isError'])
         self.assertIn('Run ws start in this repo', replies[2]['content'][0]['text'])
         self.assertEqual(replies[3]['resources'], [])
         self.assertNotIn('integer cents', json.dumps(replies))
+        self.assertEqual(before, {p: p.read_bytes() for p in self.base.rglob('*') if p.is_file()})
 
     def test_mcp_inside_linked_repo_reads_the_bound_memory(self):
         nested = self.repo / 'src'; nested.mkdir()
@@ -89,3 +91,13 @@ class PluginRuntimeTests(unittest.TestCase):
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
         self.assertEqual(self.hook({'cwd': str(self.repo), 'hook_event_name': 'SessionStart'}), {})
         self.assertTrue(self.wire(self.repo)[2]['isError'])
+
+
+class DoctorAutoPullTextTests(unittest.TestCase):
+    def test_doctor_text_reports_the_saved_auto_pull_state(self):
+        from ws.cli import text_doctor
+        for consent in (True, False, None):
+            with self.subTest(consent=consent):
+                line = text_doctor({'team_workspace': {'privacy': 'attested', 'auto_pull': consent}})
+                self.assertIn('automatic pulls ' + ('enabled (read-only)' if consent is True else 'off (consent required)'), line)
+                self.assertNotIn('not active yet', line)

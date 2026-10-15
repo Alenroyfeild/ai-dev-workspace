@@ -26,6 +26,7 @@ PROMPTS = {'handoff': 'Save verified progress and the next action.',
 
 
 def resources(root):
+    if root is None: return []
     result = [{'uri': 'workspace://brief', 'name': 'brief', 'mimeType': 'text/plain'}]
     result += [{'uri': 'workspace://tasks/' + task['id'], 'name': task['id'], 'mimeType': 'text/markdown'}
                for task in core.task_list(root) if task['claimed_by']
@@ -209,6 +210,7 @@ def _dispatch(root, msg):
         except ValueError as exc:
             return rpc_error(mid, -32602, str(exc))
         try:
+            if root is None: raise core.WsError('Run ws start in this repo.')
             value = TOOLS[name][2](root, args)
             result = {'content': [{'type': 'text', 'text': json.dumps(value, ensure_ascii=False, indent=1)}], 'isError': False}
         except (core.WsError, KeyError, OSError, ValueError, TypeError) as exc:
@@ -275,7 +277,14 @@ def main():
         for stream in (sys.stdin, sys.stdout, sys.stderr): stream.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser()
     p.add_argument('--root', help='workspace directory (default: WS_ROOT or current directory)')
-    root = core.find_root(p.parse_args().root)
+    p.add_argument('--plugin', action='store_true', help='optional plugin mode: inactive outside ws-started repos')
+    args = p.parse_args()
+    if args.plugin:
+        from ws import plugin_runtime
+        try: root = plugin_runtime.workspace(args.root)
+        except (core.WsError, OSError, ValueError, TypeError, KeyError): root = None
+    else:
+        root = core.find_root(args.root)
     legacy = {}
     for line in sys.stdin:
         if not line.strip():
