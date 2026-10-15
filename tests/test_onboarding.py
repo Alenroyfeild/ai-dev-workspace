@@ -39,6 +39,11 @@ class OnboardingTests(unittest.TestCase):
         return mock.patch.dict(os.environ, HOME=str(home), USERPROFILE=str(home), WS_OFFLINE='1')
 
     def test_new_teammate_without_task_gets_three_categories_from_cards_without_writes(self):
+        # Git checkout order can make a valid card look older than its body.
+        for card in (self.peer / '.ws/team/entries').glob('*.index.md'):
+            body = card.with_name(card.name.replace('.index.md', '.md'))
+            stamp = body.stat().st_mtime_ns + 1000000
+            os.utime(card, ns=(stamp, stamp))
         before = {p: p.read_bytes() for p in self.peer.rglob('*') if p.is_file()}
         reader = core.read_text
         def cards_only(path, *args, **kwargs):

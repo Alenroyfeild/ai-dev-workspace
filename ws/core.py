@@ -1607,7 +1607,10 @@ def _brief(root, task_id=None):
         shown = [f"{t['id']} ({redact(t['claimed_by'])})" for t in others if t['id'] != task_id][:3]
         return ['Others working: ' + ', '.join(shown)] if shown else []
     if not task:
-        return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()]), ''
+        from . import knowledge
+        fields = [('', guard or 'No in-progress task. Find or create the task before working.', 194)]
+        fields += [('', line, 18) for line in others_line()]
+        return _bounded_brief(fields + knowledge.onboarding_fields(root)), ''
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     next_action = record['sections']['Next action']
     template = (KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8')
@@ -1658,15 +1661,18 @@ def _brief(root, task_id=None):
     truncated |= len(' '.join(decisions).split()) > 25
     fields += [('', line, 18) for line in others_line(task['id'])]
     from . import knowledge
-    fields += knowledge.brief_fields(root, task['title'] + ' ' + next_action, '\n'.join(decisions + ([constraints] if captured else [])))
+    blockers = record['sections']['Blockers'].strip()
+    saved_context = bool(any(c.strip() for c in decisions + prose) or captured or (blockers and blockers != template_blockers))
+    if not saved_context and not saved_next:
+        fields += knowledge.onboarding_fields(root)
+    else:
+        fields += knowledge.brief_fields(root, task['title'] + ' ' + next_action, '\n'.join(decisions + ([constraints] if captured else [])))
     fields.append(('Explicit Handoff prose (saved task record):', ' '.join(prose), 18))
     from . import team_status
     fields += team_status.brief_fields(root)
     lessons = relevant_lessons(root, task)
     fields += [('Lesson:', line, 25) for line in lessons[:3]]
     if len(lessons) > 3: fields.append(('Lessons:', f'{len(lessons) - 3} more (ws lesson search)', 8))
-    blockers = record['sections']['Blockers'].strip()
-    saved_context = bool(any(c.strip() for c in decisions + prose) or captured or (blockers and blockers != template_blockers))
     return _bounded_brief(fields, truncated), _summary_line(task['id'], remembered, next_action if saved_next else '', saved_context, unverified_count)
 
 
