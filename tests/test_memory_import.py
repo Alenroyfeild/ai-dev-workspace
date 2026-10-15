@@ -99,3 +99,17 @@ class MemoryImportTests(unittest.TestCase):
         self.assertEqual(code, 0)
         text = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
         self.assertNotIn('ESCAPED_MEMORY_SENTINEL', text)
+
+    def test_rule_file_limit_is_visible_in_preview(self):
+        rules = self.repo / '.cursor/rules'; rules.mkdir(parents=True)
+        for i in range(17): (rules / f'{i:02}.mdc').write_text('Receipt rule.')
+        code, _, preview = self.start('--dry-run')
+        self.assertEqual(code, 0); self.assertIn('1 Cursor rule file(s) skipped: 16-file limit', preview)
+
+    def test_new_source_after_preview_is_not_silently_approved(self):
+        def add_source():
+            (self.repo / 'CLAUDE.md').write_text('UNAPPROVED_LATE_SOURCE'); return 'y'
+        with mock.patch('builtins.input', side_effect=add_source): code, _, _ = self.start()
+        self.assertEqual(code, 0)
+        text = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
+        self.assertIn('User rules remain', text); self.assertNotIn('UNAPPROVED_LATE_SOURCE', text)
