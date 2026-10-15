@@ -269,3 +269,5 @@ installed or contacted by ws; cloud delivery and cross-device atomicity are not
 proved. Unlink keeps the local mirror and source folder.
 
 Team saves (`ws remember --team`, `ws lesson add --team`, `ws know add --team`, and `ws share`) accept `--author <alias>`. The default is Git `user.name` with non-portable characters replaced by `-`, capped at 40 characters (`local` when unavailable). Review that alias in the existing sharing preview before approving; use an override to avoid sharing your Git name. Briefs show a compact untrusted author/date label; `ws know show team:<ID>` retains full provenance.
+
+Folder publication is limited to receipt-owned entry/card files and the publisher’s own status file; the shared `INDEX.md` is never written. Two devices publishing the same owner’s projection at once can race. Private originals remain intact: reconcile the retained copies, then publish the owner’s original again.
