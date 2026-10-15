@@ -1,11 +1,10 @@
-import subprocess
-import sys
+import json
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from ws import cli
+from ws import cli, packaging
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,11 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class PackagingTests(unittest.TestCase):
     def test_beta_kit_version_is_published_as_pep440(self):
-        result = subprocess.run(
-            [sys.executable, 'setup.py', '--version'], cwd=ROOT,
-            check=True, capture_output=True, text=True,
-        )
-        self.assertEqual(result.stdout.strip(), '0.1.0b5')
+        version = json.loads((ROOT / 'kit.json').read_text())['version']
+        self.assertEqual(packaging.package_version(version), '0.1.0b5')
 
     def test_cli_prints_kit_version_without_a_command(self):
         output = StringIO()
