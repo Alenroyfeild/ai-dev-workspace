@@ -22,7 +22,7 @@ class RecapTests(Base):
         core.claim(self.root, 'T-1', 'synthetic')
         core.remember(self.root, 'store totals in integer cents')
         core.checkpoint(self.root, 'T-1', 'in_progress', 'Open the PR.', notes={
-            'Handoff': 'Decision: store totals in integer cents\n<!-- ws:captured:x -->\nDecision: captured guess\n<!-- /ws:captured -->'})
+            'Handoff': 'Useful handoff\n<!-- ws:captured:x -->\nDecision: captured guess\n<!-- /ws:captured -->'})
         core.task_new(self.root, 'T-2', 'Old cleanup', 'x'); age(self.root, 'T-2', 30)
         result = core.recap(self.root)
         self.assertEqual([t['id'] for t in result['tasks']], ['T-1'])
@@ -93,3 +93,12 @@ class TeamRecapTests(unittest.TestCase):
         self.assertIn('sam: Shared note', result['markdown'])
         self.assertNotIn('\n### forged heading', result['markdown'])
         self.assertNotIn('\n- forged task', result['markdown'])
+
+    def test_shared_markup_is_literal_text(self):
+        note = {'author': 'sam', 'date': datetime.date.today().isoformat(), 'category': 'domain',
+                'summary': '<img src="https://example.invalid/tracker"> [follow](https://example.invalid)'}
+        with mock.patch('ws.knowledge.list_entries', return_value={'entries': [note]}):
+            result = core.recap(self.root)
+        self.assertNotIn('<img', result['markdown'])
+        self.assertIn('&lt;img', result['markdown'])
+        self.assertIn(r'\[follow\]', result['markdown'])
