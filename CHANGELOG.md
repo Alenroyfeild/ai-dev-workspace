@@ -7,6 +7,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 ### New
 - Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
+- `ws recap` lists the tasks you changed this week with their decisions and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
 
 ### Known limits
