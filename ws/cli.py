@@ -116,6 +116,7 @@ def text_doctor(report):
     if report.get('setup'):
         lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
+    lines.append('MCP tool profile: ' + str(report.get('mcp_tool_profile', 'core')))
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))

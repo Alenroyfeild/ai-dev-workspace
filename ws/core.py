@@ -2299,7 +2299,7 @@ def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
     messages = [
         {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 'ws-doctor', 'version': '1'}}},
         {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'},
-        {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'status', 'arguments': {}}},
+        {'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'brief', 'arguments': {}}},
     ]
     for client in clients:
         config = _mcp_config(root, client)
@@ -2326,13 +2326,13 @@ def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
             replies = {reply.get('id'): reply for reply in map(json.loads, run.stdout.splitlines())}
         except (AttributeError, json.JSONDecodeError):
             replies = {}
-        for ident, step in ((1, 'initialize'), (2, 'tools/list'), (3, 'status')):
+        for ident, step in ((1, 'initialize'), (2, 'tools/list'), (3, 'brief')):
             reply = replies.get(ident, {})
             if 'error' in reply or reply.get('result', {}).get('isError') or 'result' not in reply:
                 report.update(step=step, stderr=run.stderr[-400:])
                 break
         else:
-            report.update(ok=True, steps=['initialize', 'tools/list', 'status'])
+            report.update(ok=True, steps=['initialize', 'tools/list', 'brief'])
         checks.append(report)
     return checks
 
@@ -2350,7 +2350,7 @@ def _protocol_health(root, configured, results=None):
                 continue
             status = 'passed' if result.get('ok') else 'failed'
             check = {'status': status}
-            if status == 'failed' and result.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status'):
+            if status == 'failed' and result.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status', 'brief'):
                 check['step'] = result['step']
             checks[client] = check
         with lock(root):
@@ -2364,7 +2364,7 @@ def _protocol_health(root, configured, results=None):
                 checks = {client: check for client, check in saved['checks'].items()
                           if client in configured and isinstance(check, dict)
                           and check.get('status') in ('passed', 'failed')
-                          and (check.get('step') is None or check.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status'))}
+                          and (check.get('step') is None or check.get('step') in ('config', 'launch', 'timeout', 'initialize', 'tools/list', 'status', 'brief'))}
         except (WsError, OSError, ValueError, TypeError):
             pass
     state = {client: (checks.get(client, {'status': 'not_run'}) if is_configured
@@ -2437,6 +2437,7 @@ def doctor(root=None, mcp=False):
     report['recommended'] = missing_tools
     report['toolbox'] = missing_tools
     report['tool_profile'] = config(root).get('tool_profile', 'standard') if root else 'standard'
+    report['mcp_tool_profile'] = config(root).get('mcp_tool_profile', 'core') if root else 'core'
     report['tools'] = listed_tools
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     report['kit'] = {'version': kit_meta()['version']}
