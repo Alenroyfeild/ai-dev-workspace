@@ -105,7 +105,7 @@ class TeamFolderTests(unittest.TestCase):
         self.assertEqual(local.read_bytes(),before);self.assertTrue(placeholder.exists())
         placeholder.unlink();self.assertFalse(team_auto.pull(self.root)['updated'])
 
-    def test_snapshot_write_failure_rolls_back_and_normal_sync_cannot_publish(self):
+    def test_snapshot_write_failure_rolls_back_and_normal_sync_only_pulls(self):
         from ws import team_auto,team_sync
         self.link();path=self.root/'.ws/team/entries'/(self.entry+'.md');before=path.read_bytes();self.record('Changed receipt.')
         writer=core.atomic_write
@@ -115,7 +115,10 @@ class TeamFolderTests(unittest.TestCase):
         with mock.patch('ws.core.atomic_write',side_effect=fail):
             with self.assertRaises(core.WsError):team_auto.pull(self.root)
         self.assertEqual(path.read_bytes(),before)
-        with self.assertRaises(core.WsError):team_sync.preview(self.root)
+        source=(self.folder/'entries'/(self.entry+'.md')).read_bytes()
+        self.assertFalse(team_sync.preview(self.root)['files'])
+        self.assertEqual(path.read_bytes(),source)
+        self.assertEqual((self.folder/'entries'/(self.entry+'.md')).read_bytes(),source)
 
     def test_consent_question_cannot_refresh_an_unshown_folder_preview(self):
         import contextlib,io
