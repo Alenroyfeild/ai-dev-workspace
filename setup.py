@@ -5,13 +5,9 @@ from pathlib import Path
 
 from setuptools import setup
 from setuptools.command.build_py import build_py
+from ws.packaging import package_version
 
 ROOT = Path(__file__).resolve().parent
-
-
-def package_version(version):
-    """Translate the kit's beta SemVer to the equivalent PEP 440 version."""
-    return version.replace('-beta.', 'b')
 
 
 def kit_files():
