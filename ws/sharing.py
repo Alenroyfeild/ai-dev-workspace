@@ -39,6 +39,13 @@ def _runbook(text, meta):
             '\n\n'.join('## ' + name + '\n' + (body or 'Not recorded; verify the source task.') for name, body in fields))
 
 
+def default_author(root):
+    """A portable attribution hint; never read email or credentials."""
+    try: name = team._git(root, 'config', '--get', 'user.name').strip()
+    except core.WsError: return 'local'
+    return re.sub(r'[^A-Za-z0-9_.-]+', '-', name).strip('._-')[:40] or 'local'
+
+
 def preview(root, item, unshare=False, author='local', entry=None, date=None, as_format=''):
     scope.policy(root)
     if as_format not in ('', 'runbook'): raise core.WsError('Only runbook task projection is supported.')
