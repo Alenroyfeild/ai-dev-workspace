@@ -1,23 +1,29 @@
 """Explicit, previewed publication from approved blobs, never local history."""
+import contextvars
 import difflib
 import json
 import os
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from . import cards, core, knowledge, sharing, team
+
+AUTO_DEADLINE = contextvars.ContextVar('team_auto_deadline', default=None)
 
 HINT = 'Resolve manually in .ws/team, retain local files, then preview ws sync again; never reset/force-push.'
 
 
 def _git(clone, *args, data=None, index=None):
+    deadline = AUTO_DEADLINE.get(); remaining = deadline-time.monotonic() if deadline is not None else 30
+    if remaining <= 0: raise core.WsError('Automatic team pull timed out; run ws sync --pull-only manually.')
     env = dict(os.environ)
     for key in ('GIT_DIR','GIT_WORK_TREE','GIT_COMMON_DIR','GIT_INDEX_FILE','GIT_OBJECT_DIRECTORY','GIT_ALTERNATE_OBJECT_DIRECTORIES','GIT_NAMESPACE'): env.pop(key,None)
     if index: env['GIT_INDEX_FILE'] = str(index)
     try:
         return subprocess.run(['git','-c','core.hooksPath='+os.devnull,'-c','commit.gpgSign=false',
-            '-C',str(clone),*args], input=data.encode('utf-8') if data is not None else None, env=env, capture_output=True, check=True, timeout=30).stdout.decode('utf-8')
+            '-C',str(clone),*args], input=data.encode('utf-8') if data is not None else None, env=env, capture_output=True, check=True, timeout=min(30,remaining)).stdout.decode('utf-8')
     except (OSError, UnicodeError, subprocess.SubprocessError): raise core.WsError('Team sync Git operation stopped. '+HINT)
 
 
@@ -28,7 +34,7 @@ def _remote(clone, remote, branch):
     return line[0]
 
 
-def _view(root, pull):
+def _view(root, pull, read_only=False):
     knowledge._bases(root,'team')  # Validates the linked manifest and all path components.
     cfg_text = sharing._text(sharing._safe(root,root/'workspace.json')); cfg=json.loads(cfg_text)
     link=cfg.get('team_workspace',{}); clone=sharing._safe(root,root/'.ws/team')
@@ -53,6 +59,7 @@ def _view(root, pull):
         if _git(clone,'rev-parse','FETCH_HEAD').strip()!=base: raise core.WsError('Remote advanced; preview again.')
         _git(clone,'merge-base','--is-ancestor',head,base)
         _git(clone,'merge','--ff-only','--no-edit','FETCH_HEAD')
+    if read_only: return {'updated':base!=head,'head':base,'pushed':False}
     receipt=sharing._text(sharing._safe(root,root/'.ws/shares.json')); saved=json.loads(receipt or '{}')
     approved=saved.get('_artifacts:'+link['id'],{})
     if not isinstance(approved,dict): raise core.WsError('Invalid approval receipts. '+HINT)

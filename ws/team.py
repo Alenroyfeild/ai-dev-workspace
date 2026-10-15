@@ -117,4 +117,4 @@ def manage(root, action, remote='', apply=False, attest=False, auto_pull=False, 
             try: core.atomic_write(metadata, json.dumps(cfg, indent=2) + '\n')
             except OSError: raise core.WsError('Unlink write failed; team clone retained. Preview before retrying.')
     return {**plan, 'applied': True, 'privacy': cfg.get('team_workspace', {}).get('privacy', {}).get('method', ''),
-            'bootstrap_pending': action == 'init', 'pulls_active': False}
+            'bootstrap_pending': action == 'init', 'pulls_active': cfg.get('team_workspace',{}).get('auto_pull') is True}
