@@ -79,6 +79,17 @@ class OnboardingTests(unittest.TestCase):
         self.assertIn('Team warning:', text)
         self.assertNotIn('household budgets', text)
 
+    def test_saved_next_action_switches_to_task_relevance(self):
+        with self.home('peer'):
+            core.task_new(self.peer, 'T1', 'Unrelated work')
+            core.claim(self.peer, 'T1', 'synthetic')
+            self.assertIn('household budgets', core.brief(self.peer))
+            core.checkpoint(self.peer, 'T1', 'in_progress', 'Inspect the invoice exporter.')
+            text = core.brief(self.peer)
+        self.assertIn('Inspect the invoice exporter.', text)
+        self.assertNotIn('household budgets', text)
+        self.assertNotIn('Team product', text)
+
     def test_unlinked_workspace_keeps_existing_no_task_guidance(self):
         with self.home('peer'):
             plain = self.base / 'plain'
