@@ -28,7 +28,7 @@ What you get:
   and `--team` show a redacted preview and ask once; `ws unshare` removes a copy.
 - **Team knowledge in every brief.** Relevant shared notes appear after your own
   decisions and next action, labelled as untrusted team context. Your decisions win.
-- **Categorized.** `ws know list --category product|feature|domain|repo|runbook`;
+- **Categorized.** `ws know list --category domain` (or product, feature, repo, runbook);
   `ws share <task> --as runbook` turns a finished task into a reusable runbook.
 - **Optional status.** `ws team status "Checking receipts" --author sam --publish-status`
   shares a short "working on" line, off by default.
