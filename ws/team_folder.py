@@ -1,6 +1,5 @@
-"""Attested existing folder hosts: stable local snapshots, no source writes."""
+"""Attested folder hosts with validated snapshots and previewed initialization."""
 import json
-import os
 import uuid
 import re
 from pathlib import Path
@@ -118,8 +117,8 @@ def initialize(root, folder, apply=False, attest=False, auto_pull=False, expecte
         if plan!=expected or sharing._text(metadata)!=original or snapshot(root,folder,allow_empty=True)!=data:
             raise core.WsError('Folder/workspace changed; preview again.')
         try:
-            with (folder/'team.json').open('x',encoding='utf-8',newline='') as stream:
-                stream.write(content);stream.flush();os.fsync(stream.fileno())
+            from . import folder_io
+            folder_io.create(folder,data['identity'],'team.json',content)
         except OSError:raise core.WsError('Manifest creation stopped; existing/partial team.json retained. Inspect the folder before linking again.')
     try:
         join=link(root,folder,attest=True,auto_pull=auto_pull)
