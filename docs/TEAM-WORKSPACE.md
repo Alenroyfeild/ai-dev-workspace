@@ -1,6 +1,47 @@
-# Team workspace proposal (T0)
+# Team workspace (preview)
 
-**Status: design for review; the commands and formats below are not implemented.**
+Each developer keeps a private workspace. A team shares one private Git repository
+for knowledge people choose to share: product, feature, domain and repo facts, and
+runbooks from finished tasks. Nothing leaves your workspace until you approve a preview.
+
+## Quick start
+
+One person creates an empty **private** repository, then runs the commands below. On GitHub
+or GitLab, `gh`/`glab` confirms it is private; on other hosts, add `--attest-private` to
+confirm it yourself.
+
+```bash
+ws team init <private-repo>        # preview, then confirm
+ws know add "Payments API rejects floats; send integer cents" --category domain --team
+ws sync                            # preview the exact files, confirm to push
+```
+
+Teammates, after `ws start` in their own code repo:
+
+```bash
+ws team link <private-repo>
+ws brief                           # shows relevant team notes after your own decisions
+```
+
+Later, `ws sync` pulls new team notes and publishes only what you approved.
+What you get:
+
+- **Private by default.** Notes, tasks and decisions stay in your workspace. `ws share`
+  and `--team` show a redacted preview and ask once; `ws unshare` removes a copy.
+- **Team knowledge in every brief.** Relevant shared notes appear after your own
+  decisions and next action, labelled as untrusted team context. Your decisions win.
+- **Categorized.** `ws know list --category domain` (or product, feature, repo, runbook);
+  `ws share <task> --as runbook` turns a finished task into a reusable runbook.
+- **Optional status.** `ws team status "Checking receipts" --author sam --publish-status`
+  shares a short "working on" line, off by default.
+
+Preview limits: tested with local bare repositories, not a hosted team under
+concurrent writes. Automatic and scheduled pulls, and shared synced folders
+(Dropbox, iCloud, Drive), come in a later release. Full command reference:
+[Commands](COMMANDS.md#link-a-private-team-repo-t1).
+
+## Design notes (T0)
+
 Claude approved this design on 2026-10-13; the decisions below guide T1 onward. This extends the plain-file model in
 [Architecture](ARCHITECTURE.md). The existing [shared workspace workflow](TEAM.md)
 continues to work; there is no automatic migration or change to its sharing rules.

@@ -1,8 +1,19 @@
 # Changelog
 
-## 0.1.0-beta.4 (unreleased)
+## 0.1.0-beta.4 (2026-10-15)
 
 Start memory from inside your own repo with one command, keep a decision with `ws remember`, and see at session start what was remembered. A private team workspace arrives as a preview.
+
+### Highlight: your team's knowledge in every session (preview)
+Share a fact once and every teammate's assistant starts with it. Your notes stay private until you approve a preview; teammates see shared notes in their brief, labelled as team context, after their own decisions.
+
+```bash
+ws team init <private-repo>
+ws know add "Payments API rejects floats; send integer cents" --category domain --team
+ws sync
+# a teammate: ws team link <private-repo>, then their next brief shows it
+```
+Product, feature, domain and repo knowledge, plus runbooks from finished tasks. [Team quick start](https://github.com/Alenroyfeild/ai-dev-workspace/blob/v0.1.0-beta.4/docs/TEAM-WORKSPACE.md#quick-start).
 
 ### New
 - Link a personal workspace to a private team workspace. New notes stay private; preview what will be shared, then choose what to share or remove. `ws sync` shows incoming changes and publishes only the copies you approved.
