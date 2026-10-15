@@ -67,3 +67,17 @@ Collection includes ignored/untracked files and deletions in a private Git index
 records an immutable tree/diff digest and completed command evidence, and blocks
 scope, metadata, symlink, secret, binary-scan, diff-check or claim failures. Output
 remains unverified; review/accept/discard arrive in O2c. [Official permission profiles](https://learn.chatgpt.com/docs/permissions).
+
+## Plugin runtime (packaging preview)
+
+The optional `python3 mcp/server.py --plugin` entrypoint discovers memory only through
+`.ws-start.json` in the current repo or its parents. Outside a started repo it still
+speaks MCP, but tools return “Run ws start in this repo”; it does not use `WS_ROOT`.
+`python3 bin/ws-plugin --client claude|codex` accepts a hook payload and delegates to
+the existing memory hooks only for a validated repo link. Unknown events or invalid
+links return `{}`. Existing CLI and server invocations are unchanged.
+
+This is runtime groundwork, not an installable marketplace package. Keep existing
+repo-local connections until packaging, duplicate-connection detection and live
+client checks are complete. Installing or enabling a Codex plugin does not trust
+its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
