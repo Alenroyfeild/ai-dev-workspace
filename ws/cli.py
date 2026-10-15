@@ -246,7 +246,7 @@ def main(argv=None):
     s.add_argument('--expected-sha', help='refuse if the record changed since inspection')
     for command in ('share', 'unshare'):
         s = sub.add_parser(command, help='preview a local team copy or its removal')
-        s.add_argument('item'); s.add_argument('--author', default='local')
+        s.add_argument('item'); s.add_argument('--author')
         s.add_argument('--as', dest='as_format', choices=('runbook',), default='')
         s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s = sub.add_parser('sync', help='pull team updates and preview an approved-only push')
@@ -300,10 +300,10 @@ def main(argv=None):
 
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
     s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
-    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
     k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
     s = k.add_parser('add')
-    s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
     s.add_argument('--category', default='other')
     s = k.add_parser('list'); s.add_argument('--category', default=''); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
     s = k.add_parser('show'); s.add_argument('id')
@@ -316,7 +316,7 @@ def main(argv=None):
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
     s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
-    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
     s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
@@ -429,7 +429,9 @@ def main(argv=None):
         root = core.find_root(a.workspace_root)
         def share_gate(item, remove=False):
             from . import sharing
-            plan = sharing.preview(root, item, remove, getattr(a, 'author', 'local'), as_format=getattr(a, 'as_format', '')); out(plan)
+            author = getattr(a, 'author', None)
+            if author is None: author = sharing.default_author(root)
+            plan = sharing.preview(root, item, remove, author, as_format=getattr(a, 'as_format', '')); out(plan)
             if getattr(a, 'dry_run', False) or plan['unchanged']: return
             if not a.yes:
                 print('Apply this exact local team preview? [y/N]')

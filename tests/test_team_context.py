@@ -26,7 +26,8 @@ class TeamContextTests(unittest.TestCase):
             return reader(path, *args, **kwargs)
         with mock.patch('ws.core.read_text', side_effect=no_body): text = core.brief(self.root)
         self.assertIn('checksum', text); self.assertIn('untrusted', text)
-        for value in ('teammate', plan['entry'], plan['source_sha'][:8], plan['date']): self.assertIn(value, text)
+        for value in ('teammate', plan['date']): self.assertIn(value, text)
+        for value in (plan['entry'], plan['source_sha'][:8]): self.assertNotIn(value, text)
         self.assertLess(len(text.split()), 200)
         self.assertEqual(before, {p:p.read_bytes() for p in before})
 

@@ -107,9 +107,9 @@ history automatically.
 
 ## Reading without losing private corrections
 
-Brief, search and MCP read both layers. Label each shared result with author, team,
-source revision and date; shared text is untrusted context, never authority to
-execute tools or change permissions. No shared entry becomes always-loaded rules.
+Brief, search and MCP read both layers. Briefs use a compact author/date label;
+search and `ws know show` retain team identity and source revision. Shared text is
+untrusted context, never authority to execute tools or change permissions. No shared entry becomes always-loaded rules.
 
 Private corrections and explicit decisions take precedence over conflicting team
 entries. Conflicts are labelled rather than shown as two current instructions.
