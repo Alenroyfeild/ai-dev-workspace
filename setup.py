@@ -45,4 +45,4 @@ setup(name='ai-dev-workspace', version=package_version(json.loads((ROOT / 'kit.j
                    'License :: OSI Approved :: MIT License', 'Programming Language :: Python :: 3',
                    'Topic :: Software Development'],
       packages=['ws'], python_requires='>=3.9',
-      entry_points={'console_scripts': ['ws=ws.cli:main']}, cmdclass={'build_py': BuildKit})
+      entry_points={'console_scripts': ['ws=ws.cli:main', 'ai-dev-workspace=ws.cli:mcp_main']}, cmdclass={'build_py': BuildKit})
