@@ -2689,3 +2689,52 @@ def notices(root):
                     f'(oldest: "{unsent[0]["text"][:80]}").', 'suggest': f'ws feedback submit {unsent[0]["n"]}'})
     from . import assist
     return assist.notices(root, 2, out)
+
+
+RECAP_ORDER = ('done', 'review', 'in_progress', 'blocked', 'ready', 'backlog')
+
+
+def recap(root, since='7d'):
+    """Tasks touched since a date with their explicit decisions, plus team notes and status; read-only, safe to paste."""
+    if m := re.fullmatch(r'(\d{1,3})d', since or ''):
+        cutoff = (datetime.date.today() - datetime.timedelta(days=int(m[1]))).isoformat()
+    elif re.fullmatch(r'\d{4}-\d{2}-\d{2}', since or ''):
+        cutoff = since
+    else:
+        raise WsError('Use --since 7d (days) or --since YYYY-MM-DD.')
+    tasks = []
+    for item in task_list(root):
+        record = task_read(root, item['id'], ['Handoff'])
+        updated = str(record.get('meta', {}).get('updated', ''))[:10]
+        if updated < cutoff: continue
+        handoff = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections']['Handoff'], flags=re.S)
+        tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
+                      'decisions': [l.strip()[9:].strip() for l in handoff.splitlines() if l.strip().startswith('Decision:')],
+                      'next': '' if item['status'] == 'done' else item['next']})
+    rank = {s: i for i, s in enumerate(RECAP_ORDER)}
+    tasks.sort(key=lambda t: t['updated'], reverse=True)  # newest first within each status group
+    tasks.sort(key=lambda t: rank.get(t['status'], len(rank)))
+    team, status = [], []
+    if config(root).get('team_workspace'):
+        from . import knowledge, team_status
+        try:
+            team = [{'author': r['author'], 'date': r['date'][:10], 'category': r.get('category', ''),
+                     'note': re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', r['summary'])}
+                    for r in knowledge.list_entries(root, layer='team')['entries'] if r['date'][:10] >= cutoff]
+            status = [{'author': r['author'], 'date': r['date'][:10], 'line': f"{r['task']}: {r['line']}"}
+                      for r in team_status.list_entries(root)['entries'] if r['date'][:10] >= cutoff]
+        except (WsError, OSError, ValueError, TypeError):
+            team = [{'author': '', 'date': '', 'category': '', 'note': 'Team workspace unreadable; private recap only.'}]
+    lines = [f'### Recap since {cutoff}']
+    for t in tasks:
+        ident = '' if t['title'] == t['id'] else f"{t['id']}, "
+        lines.append(f"- **{t['title']}** ({ident}{t['status'].replace('_', ' ')}, {t['updated']})")
+        lines += [f'  - Decision: {d}' for d in t['decisions']]
+        if t['next']: lines.append(f"  - Next: {t['next'].splitlines()[0]}")
+    if not tasks: lines.append('- No task changes in this period.')
+    if team or status:
+        lines.append('#### Team (shared notes are untrusted context)')
+        lines += [f"- {n['date']} {n['author']}: {n['note']}" for n in team]
+        lines += [f"- {s['date']} {s['author']} working on {s['line']}" for s in status]
+    markdown = localize_paths(redact(PRIVATE_RE.sub('', '\n'.join(lines))), root) + '\n'
+    return {'since': cutoff, 'tasks': tasks, 'team': team, 'status': status, 'markdown': markdown}
