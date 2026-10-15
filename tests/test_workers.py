@@ -185,6 +185,15 @@ class WorkerPrepareTests(Base):
         self.assertIn('":minimal" = "read"', profile); self.assertIn('"enabled" = false', profile)
         self.assertNotIn(json.dumps(str(Path.home() / '.codex')) + ' = ', next(line for line in profile.splitlines() if line.startswith('permissions.')))
 
+    def test_profile_denies_ambient_root_and_temporary_directories(self):
+        plan = self.prepare(apply=True); directory = Path(plan['directory'])
+        args = workers._profile(directory)
+        profile = next(arg for arg in args if arg.startswith('permissions.worker-private='))
+        for name in (':root', ':tmpdir', ':slash_tmp'):
+            self.assertIn(json.dumps(name) + ' = "deny"', profile)
+        self.assertIn(json.dumps(str(directory / 'scratch')) + ' = "write"', profile)
+        self.assertIn('".git" = "read"', profile)
+
     def test_profile_reads_only_resolved_codex_install(self):
         plan = self.prepare(apply=True); directory = Path(plan['directory'])
         home = self.root / 'synthetic-home'
