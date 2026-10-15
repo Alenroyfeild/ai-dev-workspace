@@ -469,14 +469,15 @@ def main(argv=None):
                 return 0
             if a.folder:
                 from . import team_folder
-                if a.action != 'link': raise core.WsError('--folder supports link only; unlink uses ws team unlink.')
-                plan = team_folder.link(root, a.remote, attest=a.attest_private, auto_pull=bool(a.auto_pull)); out(plan)
+                if a.action not in ('init','link'): raise core.WsError('--folder supports init/link; unlink uses ws team unlink.')
+                handler = team_folder.initialize if a.action=='init' else team_folder.link
+                plan = handler(root, a.remote, attest=a.attest_private, auto_pull=bool(a.auto_pull)); out(plan)
                 if not a.dry_run and not plan.get('already') and (a.yes or input('Link this exact private folder snapshot? [y/N] ').strip().lower() in ('y','yes')):
                     pulls = a.auto_pull
                     if pulls is None and not a.yes:
                         pulls = input('Keep team knowledge updated automatically (read-only pulls)? [y/N] ').strip().lower() in ('y','yes')
                         plan['auto_pull'] = bool(pulls)
-                    out(team_folder.link(root, a.remote, True, a.attest_private, bool(pulls), plan))
+                    out(handler(root, a.remote, True, a.attest_private, bool(pulls), plan))
                 return 0
             from . import team
             plan = team.manage(root, a.action, a.remote, attest=a.attest_private,
