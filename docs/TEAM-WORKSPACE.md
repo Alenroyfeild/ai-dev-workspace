@@ -6,10 +6,12 @@ runbooks from finished tasks. Nothing leaves your workspace until you approve a 
 
 ## Quick start
 
-One person creates an empty **private** repository (GitHub, GitLab or any Git host), then:
+One person creates an empty **private** repository, then runs the commands below. On GitHub
+or GitLab, `gh`/`glab` confirms it is private; on other hosts, add `--attest-private` to
+confirm it yourself.
 
 ```bash
-ws team init <private-repo>        # preview, confirm; checks the repo is private with gh/glab
+ws team init <private-repo>        # preview, then confirm
 ws know add "Payments API rejects floats; send integer cents" --category domain --team
 ws sync                            # preview the exact files, confirm to push
 ```
