@@ -2,6 +2,7 @@ import os
 import contextlib
 import io
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -33,11 +34,24 @@ class CommandDemoTests(unittest.TestCase):
         self.home = isolate_home(self, self.tmp.name)
 
     def test_fresh_process_remembers_without_clients_network_or_existing_workspace_writes(self):
+        guard = Path(self.tmp.name) / 'network-guard'
+        guard.mkdir()
+        (guard / 'sitecustomize.py').write_text(
+            'import socket\n'
+            'def deny(*args, **kwargs): raise AssertionError("demo network denied")\n'
+            'socket.socket.connect = deny\nsocket.socket.connect_ex = deny\n'
+            'socket.getaddrinfo = deny\n', encoding='utf-8')
+        env = dict(os.environ, PYTHONPATH=str(guard))
+        control = subprocess.run([sys.executable, '-B', '-c',
+                                  'import socket; socket.create_connection(("localhost", 9))'],
+                                 env=env, text=True, capture_output=True)
+        self.assertNotEqual(control.returncode, 0)
+        self.assertIn('demo network denied', control.stderr)
         sentinel = self.home / 'workspace.json'
         sentinel.write_text('leave this alone', encoding='utf-8')
         before = {p.relative_to(self.home): p.read_bytes() for p in self.home.rglob('*') if p.is_file()}
         output = io.StringIO()
-        with mock.patch.dict(os.environ, WS_ROOT=str(self.home)), \
+        with mock.patch.dict(os.environ, WS_ROOT=str(self.home), PYTHONPATH=str(guard)), \
                 mock.patch.object(core, 'connect', side_effect=AssertionError('connect')), \
                 mock.patch.object(core, 'brief', return_value='PARENT-ONLY-BRIEF'), \
                 mock.patch('urllib.request.urlopen', side_effect=AssertionError('network')), \
