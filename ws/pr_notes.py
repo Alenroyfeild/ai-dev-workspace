@@ -12,6 +12,8 @@ def render(root, task_id=None):
     if record.get('conflicted'):
         raise core.WsError(core.conflict_hint(task_id))
     text = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['text'], flags=re.S)
+    if 'ws:captured:' in text or '/ws:captured' in text:
+        raise core.WsError('Malformed capture block; repair it before exporting PR notes.')
     text = sharing.portable(root, text)
     title = re.search(r'^# (.+)$', text, re.M)
     handoff = core.section(text, 'Handoff')
@@ -20,6 +22,7 @@ def render(root, task_id=None):
     fields = [('Objective', core.section(text, 'Objective')), ('Decisions and reasons', decisions),
               ('Checks (recorded, not rerun)', core.section(text, 'Checks'))]
     source = core.task_path(root, task_id).relative_to(root).as_posix()
-    return (f'## Task: {task_id} — {title.group(1) if title else task_id}\n\n'
+    draft = (f'## Task: {task_id} — {title.group(1) if title else task_id}\n\n'
             f'Source: `{source}` (saved task record; review before publishing).\n\n' +
             '\n\n'.join('### ' + label + '\n' + (body or 'Not recorded.') for label, body in fields))
+    return sharing.portable(root, draft)

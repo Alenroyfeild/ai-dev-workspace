@@ -51,3 +51,24 @@ class PrNotesTests(Base):
         path.write_text(path.read_text() + '\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n')
         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(['--workspace-root', str(self.root), 'pr-notes', 'T-1']), 2)
+
+    def test_malformed_capture_is_refused_instead_of_becoming_explicit(self):
+        path = core.task_path(self.root, 'T-1')
+        original = path.read_text()
+        for capture in ('<!-- ws:captured:fixture -->\nDecision: Unverified guess.',
+                        '### Captured today\nDecision: Unverified guess.\n<!-- /ws:captured -->'):
+            with self.subTest(capture=capture):
+                path.write_text(core.set_section(original, 'Handoff', capture))
+                with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(cli.main(['--workspace-root', str(self.root), 'pr-notes', 'T-1']), 2)
+
+    def test_derived_source_metadata_is_redacted_too(self):
+        import json
+        secret = 'abcd1234efgh5678ijkl'
+        name = 'API_KEY=' + secret
+        (self.root / 'vault').rename(self.root / name)
+        cfg = core.config(self.root); cfg['vault'] = name
+        core.atomic_write(self.root / 'workspace.json', json.dumps(cfg))
+        output = self.notes('T-1')
+        self.assertIn('[REDACTED]', output)
+        self.assertNotIn(secret, output)
