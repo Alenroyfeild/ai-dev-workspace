@@ -1,5 +1,6 @@
-"""Attested existing folder hosts: stable local snapshots, no source writes."""
+"""Attested folder hosts with validated snapshots and previewed initialization."""
 import json
+import uuid
 import re
 from pathlib import Path
 from . import cards, core, knowledge, sharing
@@ -12,7 +13,7 @@ def _decode(text):
     except (ValueError,RecursionError): raise core.WsError('Incomplete/malformed folder data. '+HINT)
 
 
-def snapshot(root, folder, local=False):
+def snapshot(root, folder, local=False, allow_empty=False):
     folder=Path(folder).expanduser().absolute()
     if local and folder != sharing._safe(root,root/'.ws/team'): raise core.WsError(HINT)
     if folder.resolve()!=folder or not folder.is_dir() or (not local and (folder==root or root in folder.parents or folder in root.parents)):
@@ -33,6 +34,7 @@ def snapshot(root, folder, local=False):
             text=core.read_text(path,[folder],errors='strict'); total+=len(text.encode())
             if len(files)>=1000 or total>8*1024*1024: raise core.WsError('Folder snapshot exceeds 1000 files / 8 MiB.')
             files[name]=text
+    if allow_empty and not files: return {'files':{},'identity':[info.st_dev,info.st_ino],'team':'','source':str(folder)}
     manifest=_decode(files.get('team.json','{}'));team=manifest.get('id') if isinstance(manifest,dict) else None
     if (not isinstance(manifest,dict) or manifest.get('kind')!='ai-dev-workspace-team' or manifest.get('schema_version')!=1 or
         not re.fullmatch(r'[a-f0-9]{32}',str(team))): raise core.WsError('Folder needs a valid team.json from its host.')
@@ -95,3 +97,34 @@ def pull(root):
     if changes:
         changes[base]=json.dumps(_hashes(data['files']));cards.write(root,changes)
     return {'updated':updated,'pushed':False,'host':'folder'}
+
+
+def initialize(root, folder, apply=False, attest=False, auto_pull=False, expected=None):
+    root=Path(root).resolve();folder=Path(folder).expanduser().resolve()
+    metadata=sharing._safe(root,root/'workspace.json');original=sharing._text(metadata);cfg=json.loads(original)
+    if cfg.get('team_workspace'):return link(root,folder,attest=attest,auto_pull=auto_pull)
+    if sharing._safe(root,root/'.ws/team').exists():raise core.WsError('Retain/move the existing local mirror before initializing.')
+    data=snapshot(root,folder,allow_empty=True)
+    if data['files']:raise core.WsError('Existing team folder: use ws team link --folder instead.')
+    identifier=expected.get('team') if apply and isinstance(expected,dict) else uuid.uuid4().hex
+    if not re.fullmatch(r'[a-f0-9]{32}',str(identifier)):raise core.WsError('Invalid initialization preview; preview again.')
+    content=json.dumps({'kind':'ai-dev-workspace-team','schema_version':1,'id':identifier},indent=2)+'\n'
+    plan={'action':'init','source':str(folder),'identity':data['identity'],'team':identifier,'content':content,
+          'sha':core.digest_text(original),'auto_pull':bool(auto_pull),'attested':bool(attest),'publishes':'team.json only'}
+    if not apply:return plan
+    if not attest:raise core.WsError('Confirm this folder is private to your team with --attest-private.')
+    with core.lock(root):
+        if plan!=expected or sharing._text(metadata)!=original or snapshot(root,folder,allow_empty=True)!=data:
+            raise core.WsError('Folder/workspace changed; preview again.')
+        try:
+            from . import folder_io
+            folder_io.create(folder,data['identity'],'team.json',content)
+        except OSError:raise core.WsError('Manifest creation stopped; existing/partial team.json retained. Inspect the folder before linking again.')
+    try:
+        join=link(root,folder,attest=True,auto_pull=auto_pull)
+        if (join.get('sha')!=plan['sha'] or join.get('team')!=identifier or join.get('identity')!=data['identity'] or
+            join.get('files')!=['team.json']):raise core.WsError('Source/config changed after initialization.')
+        result=link(root,folder,True,True,auto_pull,join)
+    except (core.WsError,OSError,ValueError):
+        raise core.WsError('Folder initialized; local link incomplete. Retain team.json and local files; inspect them, then preview ws team link --folder again.')
+    return {**result,'initialized':True}
