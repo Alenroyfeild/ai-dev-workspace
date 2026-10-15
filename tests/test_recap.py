@@ -42,6 +42,16 @@ class RecapTests(Base):
         self.assertNotIn('Nothing left', result['markdown'])
         self.assertNotIn('ghp_' + 'b' * 36, result['markdown'])
 
+    def test_json_fields_are_redacted_like_the_markdown(self):
+        # A hand-edited task file can hold raw secrets; --json must not pass them through.
+        path = core.task_path(self.root, 'T-1')
+        secret = 'ghp_' + 'c' * 36
+        raw = core.set_section(path.read_text(), 'Handoff', f'Decision: deploy with token={secret} from /Users/alice/app <private>internal host</private>')
+        path.write_text(core.set_meta(raw, {'updated': core.now()}))
+        dumped = json.dumps(core.recap(self.root))
+        for leaked in (secret, '/Users/alice', 'internal host'):
+            self.assertNotIn(leaked, dumped)
+
     def test_rejects_unclear_since(self):
         for bad in ('last week', '7', '2026/10/01', '2026-02-30', '2026-13-01'):
             with self.assertRaisesRegex(core.WsError, '--since 7d'):
