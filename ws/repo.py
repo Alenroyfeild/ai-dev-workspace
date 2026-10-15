@@ -193,6 +193,9 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         if not core.task_path(root, task).exists(): task = ''
         partial = state.get('complete') is False or any(not path(repo, n).is_file() or hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha'] for n, e in state['files'].items())
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
+        elif state.get('kit_version') != core.kit_meta()['version']:
+            # Rerunning start never rewrites wiring; older instructions and hooks stay until the user refreshes them.
+            print('Repo setup is from an older ai-dev-workspace version; run ws start --undo && ws start to refresh it (saved memory is kept).', file=sys.stderr)
         if not partial and '.codex/config.toml' not in state['files']:
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
         return dict(root=str(root), already=True, partial=partial, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current, codex_status=state.get('codex_status', 'connected'))
@@ -260,7 +263,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
     previous_exclude = exclude.read_bytes() if exclude.exists() else b''
-    state = dict(codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    state = dict(kit_version=core.kit_meta()['version'], codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)

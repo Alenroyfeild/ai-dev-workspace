@@ -9,6 +9,9 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
 
+### Improved
+- Running `ws start` again after an upgrade tells you when the repo setup is from an older version and how to refresh it (`ws start --undo && ws start`; saved memory is kept).
+
 ### Known limits
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.

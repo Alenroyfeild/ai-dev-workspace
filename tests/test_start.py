@@ -30,6 +30,17 @@ class StartTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(preview): result = cli.main(['start', *args])
         return result, output.getvalue(), preview.getvalue().replace(os.sep, '/')
 
+    def test_rerun_after_kit_upgrade_hints_refresh_without_rewriting(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        link = self.repo / '.ws-start.json'
+        self.assertNotIn('older ai-dev-workspace version', self.start()[2])
+        state = json.loads(link.read_text()); state['kit_version'] = '0.0.1'; link.write_text(json.dumps(state))
+        wiring = (self.repo / 'CLAUDE.local.md').read_bytes()
+        code, _, err = self.start()
+        self.assertEqual(code, 0)
+        self.assertIn('ws start --undo && ws start', err)
+        self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), wiring)
+
     def test_preview_confirmation_external_memory_repeat_and_undo(self):
         before = (self.repo / '.git/info/exclude').read_bytes()
         code, _, preview = self.start('--dry-run')
