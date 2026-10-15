@@ -54,6 +54,7 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', author): raise core.WsError('Author must be a portable alias (letters, numbers, ._-).')
     cfg_path = _safe(root, root / 'workspace.json'); cfg_text = _text(cfg_path)
     link = json.loads(cfg_text).get('team_workspace', {})
+    if isinstance(link,dict) and link.get('host')=='folder': raise core.WsError('Folder publishing is not available yet; private records remain local.')
     if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Link a private team with ws team link first.')
     clone = _safe(root, root / '.ws/team'); manifest = json.loads(_text(_safe(root, clone / 'team.json')))
     privacy = link.get('privacy', {})
