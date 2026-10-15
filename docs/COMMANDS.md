@@ -264,3 +264,9 @@ installed or contacted by ws; cloud delivery and cross-device atomicity are not
 proved. Unlink keeps the local mirror and source folder.
 
 Team saves (`ws remember --team`, `ws lesson add --team`, `ws know add --team`, and `ws share`) accept `--author <alias>`. The default is Git `user.name` with non-portable characters replaced by `-`, capped at 40 characters (`local` when unavailable). Review that alias in the existing sharing preview before approving; use an override to avoid sharing your Git name. Briefs show a compact untrusted author/date label; `ws know show team:<ID>` retains full provenance.
+
+### Recap recent work
+
+`ws recap` shows local tasks changed in the last seven days; use `--since 14d` (1–3650 days) or `--json`. New `ws remember` decisions and status-changing checkpoints record dated activity in the task's `Activity` section as part of the same local task write. Recap itself only reads; it does not sync or contact an assistant.
+
+Older/manual notes have no reliable per-decision dates: they appear as **current snapshots**, separately from dated changes. Direct file edits and automatic capture do not create dated events. Each task examines its last 1,000 events and shows up to five current decisions; omissions or malformed entries produce warnings. Dated decision summaries are capped at 500 characters; full decisions remain in Handoff. Team links add only already-approved shared decision/task summaries and published working-on snapshots, labelled untrusted with author/date. These are shared snapshots, not a teammate's private timeline or live availability. Recap changes no sharing policy or shared payload.

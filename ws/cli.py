@@ -35,7 +35,7 @@ def _block_prompt(client, reason):
     return 0
 
 
-DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
+DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'recap', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
@@ -230,6 +230,8 @@ def main(argv=None):
     s.add_argument('--approve', action='store_true'); s.add_argument('--yes', action='store_true')
     for action in ('accept', 'discard'):
         s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
+    s = sub.add_parser('recap', help='summarize recent local memory and approved team snapshots')
+    s.add_argument('--since', default='7d'); s.add_argument('--json', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
@@ -537,6 +539,9 @@ def main(argv=None):
         if a.cmd == 'status':
             result = core.status(root)
             out(text_status(result) if a.text or human() else result)
+        elif a.cmd == 'recap':
+            from . import recap
+            result = recap.report(root, a.since); out(result if a.json else recap.render(result))
         elif a.cmd == 'map': out(core.codebase_map(root, a.repo, allow_external=bool(a.repo)))
         elif a.cmd == 'pack':
             from . import packs

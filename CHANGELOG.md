@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-beta.6 (unreleased)
+
+### New
+- `ws recap` shows dated decisions and status changes from the last seven days, with older local notes and approved teammate updates labelled as snapshots.
+
 ## 0.1.0-beta.5 (unreleased)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.

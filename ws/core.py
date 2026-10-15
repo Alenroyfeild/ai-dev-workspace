@@ -1174,6 +1174,9 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
                 kept = [l for l in outside(section(text, name)) if l.startswith('Decision: ') and l.strip() not in present]
                 body = '\n'.join(kept + [body.strip()]) if kept else body
             text = set_section(text, name, redact(body))
+        if meta.get('status') != status:
+            from . import recap
+            text = recap.record(text, {'kind': 'status', 'from': meta.get('status'), 'to': status})
         atomic_write(path, text)
         refresh_native(root, locked=True)
     result = {'task': task_id, 'status': status, 'sha': digest_text(text)}
@@ -1209,6 +1212,8 @@ def remember(root, text, task_id=None):
         placeholder = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Handoff')
         head = '' if head.strip() == placeholder else head.strip()
         text = set_section(original, 'Handoff', '\n'.join(filter(None, (head, f'Decision: {decision}'))) + ('\n\n' + tail if tail else ''))
+        from . import recap
+        text = recap.record(text, {'kind': 'decision', 'text': decision})
         atomic_write(path, set_meta(text, {'updated': now()}))
         refresh_native(root, locked=True)
     return {'task': task_id, 'remembered': decision}
