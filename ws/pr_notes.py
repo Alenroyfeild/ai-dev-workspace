@@ -11,8 +11,9 @@ def render(root, task_id=None):
     record = core.task_read(root, task_id)
     if record.get('conflicted'):
         raise core.WsError(core.conflict_hint(task_id))
-    text = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['text'], flags=re.S)
-    if 'ws:captured:' in text or '/ws:captured' in text:
+    capture = r'<!-- ws:captured:[^\n]* -->\n(?:(?!<!-- ws:captured:).)*?<!-- /ws:captured -->'
+    text, count = re.subn(capture, '', record['text'], flags=re.S)
+    if record['text'].count('<!-- ws:captured:') != count or 'ws:captured:' in text or '/ws:captured' in text:
         raise core.WsError('Malformed capture block; repair it before exporting PR notes.')
     text = sharing.portable(root, text)
     title = re.search(r'^# (.+)$', text, re.M)
