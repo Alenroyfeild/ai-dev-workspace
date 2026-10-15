@@ -35,6 +35,7 @@ def _remote(clone, remote, branch):
 
 
 def _view(root, pull, read_only=False):
+    if core.config(root).get('team_workspace',{}).get('host')=='folder': raise core.WsError('Folder publication is not available yet; use ws sync --pull-only for read-only updates.')
     knowledge._bases(root,'team')  # Validates the linked manifest and all path components.
     cfg_text = sharing._text(sharing._safe(root,root/'workspace.json')); cfg=json.loads(cfg_text)
     link=cfg.get('team_workspace',{}); clone=sharing._safe(root,root/'.ws/team')

@@ -221,3 +221,19 @@ snapshots; brief shows the two newest snapshots, labelled untrusted and last rep
 that locally approved alias; Git history/other copies retain it. Copies changed by
 others refuse overwrite. Transport is the separate T7a `ws sync`; this command
 never commits or pushes, and works without an installed assistant.
+
+
+`ws team link /path/to/shared-folder --folder --attest-private` previews an
+existing team folder and copies a validated snapshot into `.ws/team`; it never
+writes the source folder. Attestation binds the canonical folder, filesystem
+identity and team manifest. User-selected aliases resolve at link; internal symlinks
+remain refused. Sync metadata (`Icon\r`, `.DS_Store`, `.dropbox`, `.dropbox.attr`) is
+skipped; iCloud placeholders stop with a Finder/Keep Downloaded hint.
+The folder must contain `team.json` plus complete
+entry/card pairs; unexpected/conflict-copy files or partial cards stop the pull
+and retain the previous snapshot for manual recovery. `ws sync --pull-only`
+refreshes only an unedited mirror; pending local changes are preserved and stop
+refresh. Reads use the last local snapshot offline. Folder initialization and
+publishing are not available in this first slice. No sync client is configured,
+installed or contacted by ws; cloud delivery and cross-device atomicity are not
+proved. Unlink keeps the local mirror and source folder.
