@@ -221,10 +221,10 @@ def main(argv=None):
     s = sub.add_parser('delegate', help='prepare bounded work or test the read-only worker'); s.add_argument('task', nargs='?'); s.add_argument('--role'); s.add_argument('--run', action='store_true')
     s.add_argument('--selftest', action='store_true'); s.add_argument('--provider', choices=('codex', 'claude'))
     s.add_argument('--diff', help='reviewer-only Git range, e.g. HEAD~1..HEAD')
-    w = sub.add_parser('worker', help='prepare an isolated implementation checkout; no worker launch').add_subparsers(dest='action', required=True)
+    w = sub.add_parser('worker', help='prepare, launch and review an isolated Codex worker').add_subparsers(dest='action', required=True)
     s = w.add_parser('prepare'); s.add_argument('task'); s.add_argument('--scope', action='append', required=True)
     s.add_argument('--base', default='HEAD'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
-    s = w.add_parser('launch', help='gated until the real-client hostile probe passes'); s.add_argument('id')
+    s = w.add_parser('launch', help='run a prepared Codex worker under its private permission profile'); s.add_argument('id')
     s = w.add_parser('review', help='show diff/checks or record the current lead review'); s.add_argument('id')
     s.add_argument('--approve', action='store_true'); s.add_argument('--yes', action='store_true')
     for action in ('accept', 'discard'):
