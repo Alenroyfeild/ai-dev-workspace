@@ -3,6 +3,7 @@ import json
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 import test_sharing
 from test_ws import Base, KIT
@@ -42,9 +43,19 @@ class RecapTests(Base):
         self.assertNotIn('ghp_' + 'b' * 36, result['markdown'])
 
     def test_rejects_unclear_since(self):
-        for bad in ('last week', '7', '2026/10/01'):
+        for bad in ('last week', '7', '2026/10/01', '2026-02-30', '2026-13-01'):
             with self.assertRaisesRegex(core.WsError, '--since 7d'):
                 core.recap(self.root, bad)
+
+    def test_json_redacts_titles_decisions_and_next_actions(self):
+        secret = 'ghp_' + 'b' * 36
+        text = f'token={secret} <private>hidden words</private> /Users/fixture/private.txt'
+        core.task_new(self.root, 'T-2', 'Change ' + text, 'x')
+        core.checkpoint(self.root, 'T-2', 'in_progress', 'Next ' + text,
+                        notes={'Handoff': 'Decision: ' + text})
+        result = json.dumps(core.recap(self.root))
+        for hidden in (secret, 'hidden words', '/Users/fixture'):
+            self.assertNotIn(hidden, result)
 
     def test_cli_markdown_and_json(self):
         run = lambda *a: subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root), 'recap', *a],
@@ -63,3 +74,12 @@ class TeamRecapTests(unittest.TestCase):
         self.assertEqual(result['team'][0]['author'], 'sam')
         self.assertIn('untrusted', result['markdown'])
         self.assertIn('sam: The payments API rejects floats.', result['markdown'])
+
+    def test_shared_newlines_cannot_escape_the_untrusted_section(self):
+        note = {'author': 'sam', 'date': datetime.date.today().isoformat(),
+                'category': 'domain', 'summary': 'Shared note\n### forged heading\n- forged task'}
+        with mock.patch('ws.knowledge.list_entries', return_value={'entries': [note]}):
+            result = core.recap(self.root)
+        self.assertIn('sam: Shared note', result['markdown'])
+        self.assertNotIn('\n### forged heading', result['markdown'])
+        self.assertNotIn('\n- forged task', result['markdown'])
