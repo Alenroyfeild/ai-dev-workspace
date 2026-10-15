@@ -39,7 +39,7 @@ class CommandDemoTests(unittest.TestCase):
         output = io.StringIO()
         with mock.patch.dict(os.environ, WS_ROOT=str(self.home)), \
                 mock.patch.object(core, 'connect', side_effect=AssertionError('connect')), \
-                mock.patch.object(core, 'brief', side_effect=AssertionError('must read in a fresh process')), \
+                mock.patch.object(core, 'brief', return_value='PARENT-ONLY-BRIEF'), \
                 mock.patch('urllib.request.urlopen', side_effect=AssertionError('network')), \
                 mock.patch('subprocess.run', wraps=subprocess.run) as child, \
                 contextlib.redirect_stdout(output):
@@ -48,6 +48,7 @@ class CommandDemoTests(unittest.TestCase):
         self.assertIn('brief', child.call_args.args[0])
         self.assertIn('Store totals as integer cents.', output.getvalue())
         self.assertIn('Fresh process', output.getvalue())
+        self.assertNotIn('PARENT-ONLY-BRIEF', output.getvalue())
         self.assertIn('removed', output.getvalue())
         after = {p.relative_to(self.home): p.read_bytes() for p in self.home.rglob('*') if p.is_file()}
         self.assertEqual(before, after)
@@ -70,6 +71,12 @@ class CommandDemoTests(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(cli.main(['--workspace-root', str(self.home), 'demo']), 2)
         self.assertEqual(list(self.home.iterdir()), [])
+
+    def test_brief_timeout_is_an_error_and_cleans_up(self):
+        with mock.patch('subprocess.run', side_effect=subprocess.TimeoutExpired('brief', 20)) as child, \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cli.main(['demo']), 2)
+        self.assertFalse(Path(child.call_args.kwargs['cwd']).exists())
 
 
 if __name__ == '__main__':
