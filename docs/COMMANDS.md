@@ -96,7 +96,7 @@ After `ws init`, run `ws setup` to choose assistants interactively, or `ws setup
 
 Setup previews by default (`--dry-run` also works), reporting routing changes, configuration paths and trust steps. Review that output, then repeat with `--apply`. Apply backs up routing/workspace metadata in `.ws/backups/`, preserves user text and compatible overrides, and connects project configuration for each assistant. An override referring to an unselected provider stops before changes. `copilot` and `vscode` select the `copilot-only` provider preset and the VS Code Local connector; Copilot CLI lifecycle support is not implied. Codex global MCP stays a preview: `ws connect codex --write` is a separate explicit choice. Setup never links user-level skills. Restart/trust the project and approve MCP/hooks in each client; doctor shows the chosen preset, not verified login or model access.
 
-### Link a private team repo (T1)
+### Link a private team repo
 
 `ws team init <private-remote> --dry-run` previews a local team clone and metadata;
 repeat without `--dry-run` to confirm. Create the empty private remote yourself;
@@ -107,12 +107,12 @@ Privacy uses an installed `gh`/`glab`, or explicit `--attest-private` for that e
 remote when verification is unavailable. Known public/internal visibility blocks
 linking. `--verify-with gh|glab` selects a verifier for a self-hosted remote.
 `--yes` confirms the printed preview; use `--auto-pull` or `--no-auto-pull` to record
-the pull preference noninteractively. Automatic pulls/scheduling are not active in
-T1; publishing is never authorized by pull consent. Doctor labels verified versus
-attested privacy. `ws team unlink` preserves `.ws/team` and all private records;
+the pull preference noninteractively. Read-only automatic pulls are optional; pull
+consent never authorizes publication. Doctor labels verified versus attested
+privacy. `ws team unlink` preserves `.ws/team` and all private records;
 move the retained clone yourself before a new link. No installs or assistant runs.
 
-### Local sharing scope (T2)
+### Choose what is eligible to share
 
 `ws scope task:<ID>` reads scope; `ws scope task:<ID> team` (or `private`) changes
 only that record's frontmatter. `decision:`, `lesson:` and `knowledge:` select
@@ -176,7 +176,7 @@ is synthetic. Acceptance uses [commit-tree](https://git-scm.com/docs/git-commit-
 [fetch without FETCH_HEAD](https://git-scm.com/docs/git-fetch) and
 [update-ref with an absent-ref check](https://git-scm.com/docs/git-update-ref).
 
-## Categorized knowledge (T4 catalog)
+## Categorized knowledge
 
 `ws know add "text" --category product|feature|domain|repo|runbook|other` saves a
 private standalone record; `--team` selects sharing through the existing preview
@@ -201,8 +201,7 @@ missing, stale or malformed cards fall back to bounded source reads. Common
 category searches use cached summary/counts; other queries and `know show` read
 the full record, retaining full-text lookup. Cached snippets are summary metadata.
 Fresh clones may fall back when checkout timestamps differ. Team text remains
-untrusted. Generation is limited to 1000 records per layer. No brief integration
-is added here; cross-layer brief memory is T5.
+untrusted. Generation is limited to 1000 records per layer.
 
 Team reading: `ws brief` uses relevant team cards within the remaining 200-word
 budget, after private decisions and next action, labelled untrusted with provenance.
@@ -239,7 +238,7 @@ and date are saved; the task must be locally claimed. `ws team status` lists saf
 snapshots; brief shows the two newest snapshots, labelled untrusted and last reported, never live availability.
 `ws team status --author tester --disable-status` previews opt-out and removal of
 that locally approved alias; Git history/other copies retain it. Copies changed by
-others refuse overwrite. Transport is the separate T7a `ws sync`; this command
+others refuse overwrite. Use `ws sync` to move approved records; this command
 never commits or pushes, and works without an installed assistant.
 
 
