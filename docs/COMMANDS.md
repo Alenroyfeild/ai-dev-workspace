@@ -15,6 +15,8 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). In a
 
 ## Daily loop
 
+A newly linked teammate's brief includes one recent product, domain and repo knowledge card, labelled untrusted, until their selected task has a saved next action or task memory. These summaries fit the existing 200-word budget; saved private decisions still take precedence. Use `ws know list --layer team` for the catalog.
+
 Claude and Codex hooks can capture cue-bearing decisions and assistant summaries from supported transcripts. Captures are redacted, unverified and best-effort. Save important corrections explicitly with `ws remember`; use `/handoff` for progress notes.
 
 | Command | Does |

@@ -120,6 +120,25 @@ def search(root, query, value='', layer='all', include_all=False):
     return sorted(hits, key=lambda h: (h['layer'] == 'team', -h['score']))[:20]
 
 
+def onboarding_fields(root):
+    """A small orientation until the teammate has saved task-specific memory."""
+    if not core.config(root).get('team_workspace'): return []
+    try: listing = list_entries(root, layer='team')
+    except (core.WsError, OSError, ValueError, TypeError):
+        return [('Team warning:', 'Unavailable or invalid team link; private memory retained.', 12)]
+    fields = []
+    if listing['warnings']: fields.append(('Team warning:', 'Unreadable, unsafe or conflicted entries excluded; use ws know list.', 12))
+    for value in ('product', 'domain', 'repo'):
+        rows = [row for row in listing['entries'] if row['category'] == value]
+        if not rows: continue
+        row = max(rows, key=lambda item: (item['date'], item['id']))
+        summary = re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', row['summary'])
+        author = ' '.join(row['author'].split()[:3])
+        prefix = f'Team {value} (untrusted, {author}, {row["date"][:10]}):'
+        fields.append((prefix, summary, 20))
+    return fields
+
+
 def brief_fields(root, query, private):
     """Conservative lexical overlap, never inferred semantic reconciliation."""
     if not core.config(root).get('team_workspace'): return []
