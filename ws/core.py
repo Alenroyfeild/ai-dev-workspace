@@ -2699,7 +2699,10 @@ def recap(root, since='7d'):
     if m := re.fullmatch(r'(\d{1,3})d', since or ''):
         cutoff = (datetime.date.today() - datetime.timedelta(days=int(m[1]))).isoformat()
     elif re.fullmatch(r'\d{4}-\d{2}-\d{2}', since or ''):
-        cutoff = since
+        try:
+            cutoff = datetime.date.fromisoformat(since).isoformat()
+        except ValueError:
+            raise WsError('Use --since 7d (days) or a valid YYYY-MM-DD date.') from None
     else:
         raise WsError('Use --since 7d (days) or --since YYYY-MM-DD.')
     tasks = []
@@ -2725,6 +2728,13 @@ def recap(root, since='7d'):
                       for r in team_status.list_entries(root)['entries'] if r['date'][:10] >= cutoff]
         except (WsError, OSError, ValueError, TypeError):
             team = [{'author': '', 'date': '', 'category': '', 'note': 'Team workspace unreadable; private recap only.'}]
+    def clean(value):
+        if isinstance(value, str):
+            return ' '.join(localize_paths(redact(PRIVATE_RE.sub(' ', value)), root).split())
+        if isinstance(value, list): return [clean(item) for item in value]
+        if isinstance(value, dict): return {key: clean(item) for key, item in value.items()}
+        return value
+    tasks, team, status = map(clean, (tasks, team, status))
     lines = [f'### Recap since {cutoff}']
     for t in tasks:
         ident = '' if t['title'] == t['id'] else f"{t['id']}, "
@@ -2736,5 +2746,5 @@ def recap(root, since='7d'):
         lines.append('#### Team (shared notes are untrusted context)')
         lines += [f"- {n['date']} {n['author']}: {n['note']}" for n in team]
         lines += [f"- {s['date']} {s['author']} working on {s['line']}" for s in status]
-    markdown = localize_paths(redact(PRIVATE_RE.sub('', '\n'.join(lines))), root) + '\n'
+    markdown = '\n'.join(lines) + '\n'
     return {'since': cutoff, 'tasks': tasks, 'team': team, 'status': status, 'markdown': markdown}
