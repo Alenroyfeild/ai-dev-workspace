@@ -5,6 +5,7 @@ from pathlib import Path
 
 from setuptools import setup
 from setuptools.command.build_py import build_py
+from ws.packaging import package_version
 
 ROOT = Path(__file__).resolve().parent
 
@@ -33,7 +34,7 @@ class BuildKit(build_py):
         return super().get_source_files() + [str(p) for p in kit_files()]
 
 
-setup(name='ai-dev-workspace', version=json.loads((ROOT / 'kit.json').read_text())['version'],
+setup(name='ai-dev-workspace', version=package_version(json.loads((ROOT / 'kit.json').read_text())['version']),
       description='Shared task memory for AI coding assistants: Claude Code, Codex, Cursor, Copilot, Gemini CLI',
       long_description=(ROOT / 'README.md').read_text(encoding='utf-8'), long_description_content_type='text/markdown',
       url='https://github.com/Alenroyfeild/ai-dev-workspace', license='MIT',

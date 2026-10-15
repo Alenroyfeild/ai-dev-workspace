@@ -5,10 +5,10 @@ AI Dev Workspace keeps task notes in Markdown your assistant can read next time.
 ## Quick start
 
 ```bash
-pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace
+pipx install ai-dev-workspace --pip-args='--pre'  # beta; omit --pip-args after a stable release
 cd ~/code/myapp && ws start
 ```
-Without pipx: `python3 -m venv ~/.local/share/ai-dev-workspace && ~/.local/share/ai-dev-workspace/bin/pip install git+https://github.com/Alenroyfeild/ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`.
+Without pipx: `python3 -m venv ~/.local/share/ai-dev-workspace && ~/.local/share/ai-dev-workspace/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`.
 ## Example
 ```text
 Session 1 — You: “Empty email returns missing_email; leave signup unchanged.”
