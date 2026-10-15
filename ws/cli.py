@@ -302,6 +302,10 @@ def main(argv=None):
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
     s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
     s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
+    s = sub.add_parser('pr-notes', help="print the task's decisions and checks as a PR-description block")
+    s.add_argument('id', nargs='?', help='task (default: your only claimed task or the current branch task)')
+    s.add_argument('--no-link', action='store_true', help='omit the one-line ai-dev-workspace credit')
+    s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
     k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
     s = k.add_parser('add')
     s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
@@ -647,6 +651,9 @@ def main(argv=None):
             if a.team:
                 from . import sharing
                 share_gate(sharing.standalone(root, 'decision', a.text))
+        elif a.cmd == 'pr-notes':
+            result = core.pr_notes(root, a.id, link=not a.no_link)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
         elif a.cmd == 'know':
             from . import knowledge
             if a.action == 'add':
