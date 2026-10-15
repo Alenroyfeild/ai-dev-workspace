@@ -242,6 +242,8 @@ def main(argv=None):
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
     s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep private memory')
+    s.add_argument('--memory-dir', help='Claude auto-memory directory to preview for import')
+    s.add_argument('--no-import', action='store_true', help='skip existing memory import')
     s = sub.add_parser('scope', help='read or change local record sharing eligibility; never publishes')
     s.add_argument('item'); s.add_argument('value', nargs='?', choices=('private', 'team'))
     s.add_argument('--expected-sha', help='refuse if the record changed since inspection')
@@ -367,7 +369,7 @@ def main(argv=None):
         if a.cmd == 'start':
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
-            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo)
+            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import)
             except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
             if result and result.get('undone'):
                 print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])

@@ -264,3 +264,11 @@ installed or contacted by ws; cloud delivery and cross-device atomicity are not
 proved. Unlink keeps the local mirror and source folder.
 
 Team saves (`ws remember --team`, `ws lesson add --team`, `ws know add --team`, and `ws share`) accept `--author <alias>`. The default is Git `user.name` with non-portable characters replaced by `-`, capped at 40 characters (`local` when unavailable). Review that alias in the existing sharing preview before approving; use an override to avoid sharing your Git name. Briefs show a compact untrusted author/date label; `ws know show team:<ID>` retains full provenance.
+
+### Import existing memory
+
+On first `ws start`, the setup preview includes private copies of `CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/*.mdc`, and Markdown from the standard repo-specific Claude auto-memory directory. One confirmation approves the displayed setup and imported text; `--yes` approves the same preview for scripts. Use `--no-import` to connect without copying memory. For custom Claude storage or a Git worktree, pass `--memory-dir <directory>` (find it with Claude's `/memory`).
+
+Import reads bounded regular files only (16 KiB each, 64 KiB total); unsafe, unreadable or oversized files are skipped. It redacts known secrets and private markers, follows no symlinks or `@` imports, and never executes source instructions. Copies have private scope in the workspace's `vault/Knowledge/`; a bounded, **unverified context** excerpt appears after saved decisions in the task brief. Imported text is not a new user-stated decision or permission to act. Originals remain unchanged. Repeating start shows status; undo removes repo wiring and keeps private memory. Re-setup avoids duplicate copies of unchanged sources. Read the private knowledge records for full copies.
+
+Claude's [memory documentation](https://code.claude.com/docs/en/memory#storage-location) describes the standard per-repository auto-memory directory and custom storage. This importer does not parse Claude settings or recursively follow its memory index.

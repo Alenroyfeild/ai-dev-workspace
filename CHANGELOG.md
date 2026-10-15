@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-beta.6 (unreleased)
+
+### New
+- `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
+
 ## 0.1.0-beta.5 (unreleased)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
