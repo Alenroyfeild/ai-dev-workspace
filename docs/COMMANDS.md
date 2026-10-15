@@ -15,7 +15,7 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). In a
 
 ## Daily loop
 
-Claude and Codex hooks can capture cue-bearing decisions and assistant summaries from supported transcripts. Captures are redacted and unverified; use `/handoff` for precise notes.
+Claude and Codex hooks can capture cue-bearing decisions and assistant summaries from supported transcripts. Captures are redacted, unverified and best-effort. Save important corrections explicitly with `ws remember`; use `/handoff` for progress notes.
 
 | Command | Does |
 |---|---|
@@ -38,6 +38,26 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 `ws connect` installs a prompt-size guard for Claude Code (`UserPromptSubmit`), Codex (`UserPromptSubmit`), Cursor (`beforeSubmitPrompt`) and Gemini CLI (`BeforeAgent`). Prompts over 150 lines or 12 KB are saved redacted in `.ws/inbox/` and blocked; send a short question with the relevant excerpt, or put `!raw` alone on the first line to bypass. These clients document blocking prompt hooks: [Claude Code](https://code.claude.com/docs/en/hooks), [Codex](https://learn.chatgpt.com/docs/hooks), [Cursor](https://cursor.com/docs/hooks), and [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md).
 
 Toolbox levels: recommended tools are suggested for most workspaces, optional tools add specific capabilities, and caution tools can change routing or configuration. Nothing is installed automatically.
+
+## Save a correction
+
+After `ws start` has created and claimed your branch task, save a correction before
+closing the session:
+
+```bash
+ws remember "Correction: store totals in integer cents; this replaces the earlier float decision."
+ws brief
+```
+
+Check that the corrected decision appears in the brief. You can also ask your
+assistant to save it with the MCP `remember` tool, then confirm with `ws brief`.
+A chat correction alone is not a reliable saved record.
+
+`ws remember` appends a decision; it keeps earlier notes. Say which earlier choice
+the correction replaces, and review the task's Handoff if old notes conflict.
+The saved decision survives a checkpoint, so use your usual `/handoff` or
+`ws checkpoint` to record the next action too. With multiple claimed tasks, pass
+`--task <ID>` to select the task you own.
 
 ## Measure and maintain
 
