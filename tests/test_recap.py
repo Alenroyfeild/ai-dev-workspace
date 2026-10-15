@@ -77,3 +77,11 @@ class TeamRecapTests(unittest.TestCase):
         self.assertTrue(all(r['author'] == 'sam' and r['untrusted'] for r in result['team']))
         self.assertNotIn('PRIVATE_TEAM_SENTINEL', json.dumps(result))
         self.assertIn('untrusted', recap.render(result))
+
+    def test_invalid_team_status_date_is_filtered_before_recap(self):
+        from ws import recap
+        team_status.apply(self.root, team_status.preview(self.root, 'Valid receipt status.', author='sam', enable=True))
+        (self.clone / 'status/zzbad.json').write_text(json.dumps(dict(author='zzbad', task='other', line='BAD_DATE_SENTINEL', date='invalid')))
+        with mock.patch.object(core, 'now', return_value=NOW): result = recap.report(self.root)
+        self.assertTrue(any(r['author'] == 'sam' and r['kind'] == 'status snapshot' for r in result['team']))
+        self.assertNotIn('BAD_DATE_SENTINEL', json.dumps(result)); self.assertTrue(result['warnings'])
