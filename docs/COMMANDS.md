@@ -171,8 +171,14 @@ edits invalidate approval. Acceptance keeps the source checkout, index and activ
 branch as they are. `ws worker discard <id> [--dry-run]` similarly confirms removal
 of only that run's artifacts, retaining its record and every sibling run. Running
 and accepted runs cannot be discarded. No automatic push or PR is created.
-Public launch remains disabled until O2d; completed-run evidence in current tests
-is synthetic. Acceptance uses [commit-tree](https://git-scm.com/docs/git-commit-tree),
+`ws worker launch <id>` runs a prepared **Codex-only** worker in its private checkout,
+then collects an immutable snapshot for review. The native permission profile denies
+root and ambient temporary paths, allows only checkout/scratch writes and narrow
+runtime reads, and disables command network access. No provider fallback; Claude
+workers remain preparation-only pending their own live probe. The macOS Codex
+hostile probe passed; Linux/Windows have fixture/CI coverage, not live worker proof.
+See [Codex permission profiles](https://learn.chatgpt.com/docs/permissions).
+Acceptance uses [commit-tree](https://git-scm.com/docs/git-commit-tree),
 [fetch without FETCH_HEAD](https://git-scm.com/docs/git-fetch) and
 [update-ref with an absent-ref check](https://git-scm.com/docs/git-update-ref).
 
