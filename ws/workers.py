@@ -92,7 +92,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
 
 
 def launch(root, run_id):
-    return _launch(root, run_id)
+    raise core.WsError('Write workers remain preparation-only until the O2d real-client hostile probe passes.')
 
 
 def _record(root, run_id, require_checkout=True):
@@ -354,7 +354,7 @@ def collect(root, run_id):
 
 
 def _launch(root, run_id):
-    """Run the prepared Codex worker under its private native permission profile."""
+    """Internal probe path only; public launch stays gated until O2d."""
     directory, state = _record(root, run_id); checkout = directory / 'checkout'
     with core.lock(root):
         _claim(root, state)
