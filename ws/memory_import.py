@@ -10,7 +10,8 @@ from . import core
 
 
 def _read(path, base):
-    if any(p.is_symlink() for p in (path, *path.parents) if p == base or base in p.parents):
+    anchor = Path.home() if Path.home() in path.parents else Path(path.anchor)
+    if any(p.is_symlink() for p in (path, *path.parents) if p == anchor or anchor in p.parents):
         raise core.WsError('Symlink memory source skipped.')
     info = path.stat()
     if not stat.S_ISREG(info.st_mode) or info.st_size > 16384:

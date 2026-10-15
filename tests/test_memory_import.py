@@ -88,3 +88,14 @@ class MemoryImportTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 0)
         text = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
         self.assertNotIn('PRIVATE_SENTINEL', text)
+
+    @unittest.skipIf(os.name == 'nt', 'Windows symlink fixture needs developer mode')
+    def test_custom_memory_symlink_parent_outside_home_is_skipped(self):
+        outside = self.repo.parent.resolve() / 'other-memory'; outside.mkdir()
+        (outside / 'child').mkdir()
+        (outside / 'child/MEMORY.md').write_text('ESCAPED_MEMORY_SENTINEL')
+        parent = self.repo.parent.resolve() / 'linked-memory'; parent.symlink_to(outside, target_is_directory=True)
+        code, _, preview = self.start('--yes', '--memory-dir', str(parent / 'child'))
+        self.assertEqual(code, 0)
+        text = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
+        self.assertNotIn('ESCAPED_MEMORY_SENTINEL', text)
