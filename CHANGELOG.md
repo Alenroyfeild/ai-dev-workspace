@@ -10,7 +10,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
 
 ### Improved
-- Running `ws start` again after an upgrade tells you when the repo setup is from an older version and how to refresh it (`ws start --undo && ws start`; saved memory is kept).
+- After an upgrade, run `ws start` again in your repo: it refreshes the setup files it wrote (instructions, hooks, MCP config) for the new version, after showing them and asking. Files you edited are left alone and reported; saved memory is kept.
 
 ### Known limits
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
