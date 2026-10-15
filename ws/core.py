@@ -2743,8 +2743,10 @@ def recap(root, since='7d'):
         if t['next']: lines.append(f"  - Next: {t['next'].splitlines()[0]}")
     if not tasks: lines.append('- No task changes in this period.')
     if team or status:
+        import html
+        literal = lambda value: re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(value))
         lines.append('#### Team (shared notes are untrusted context)')
-        lines += [f"- {n['date']} {n['author']}: {n['note']}" for n in team]
-        lines += [f"- {s['date']} {s['author']} working on {s['line']}" for s in status]
+        lines += [f"- {literal(n['date'])} {literal(n['author'])}: {literal(n['note'])}" for n in team]
+        lines += [f"- {literal(s['date'])} {literal(s['author'])} working on {literal(s['line'])}" for s in status]
     markdown = '\n'.join(lines) + '\n'
     return {'since': cutoff, 'tasks': tasks, 'team': team, 'status': status, 'markdown': markdown}
