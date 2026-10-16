@@ -140,6 +140,9 @@ def text_doctor(report):
         rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"
                     for name, value in routes.items() if isinstance(value, dict) and 'provider' in value]
         lines.append('Routes: ' + (', '.join(rendered) or routes.get('error', 'unavailable')))
+    if report.get('mcp_tools'):
+        tools = report['mcp_tools']
+        lines.append(f"MCP tools listed: {tools['listed']} ({tools['profile']}; set \"mcp_tools\": \"all\" in workspace.json to list every tool)")
     missing = [item['name'] for item in report.get('toolbox', [])]
     lines.append('Missing recommended tools: ' + (', '.join(missing) or 'none'))
     if 'mcp' in report:
@@ -200,6 +203,15 @@ def unrecorded_work(root, uses):
     return (f'Files changed this session but {task} was not updated. Before stopping, run '
             f'`ws checkpoint {task} --status in_progress|review|done --next "<exact next action>"` '
             f'(done if the task is finished). Skip only if these edits were unrelated to {task}.') if task else ''
+
+
+def mcp_main():
+    """Console script `ai-dev-workspace`: the stdio MCP server, for uvx and MCP registry launchers."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('ws_mcp_server', core.KIT / 'mcp' / 'server.py')
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)  # by path: a top-level 'mcp' import could pick up the unrelated MCP SDK
+    server.main()
 
 
 def main(argv=None):
@@ -302,6 +314,10 @@ def main(argv=None):
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
     s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
     s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
+    s = sub.add_parser('pr-notes', help="print the task's decisions and checks as a PR-description block")
+    s.add_argument('id', nargs='?', help='task (default: your only claimed task or the current branch task)')
+    s.add_argument('--no-link', action='store_true', help='omit the one-line ai-dev-workspace credit')
+    s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
     k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
     s = k.add_parser('add')
     s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
@@ -647,6 +663,9 @@ def main(argv=None):
             if a.team:
                 from . import sharing
                 share_gate(sharing.standalone(root, 'decision', a.text))
+        elif a.cmd == 'pr-notes':
+            result = core.pr_notes(root, a.id, link=not a.no_link)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
         elif a.cmd == 'know':
             from . import knowledge
             if a.action == 'add':

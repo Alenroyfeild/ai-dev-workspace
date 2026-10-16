@@ -255,7 +255,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         if not partial and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         refreshed = refresh(repo, root, state, yes, dry_run) if not partial and not newer and state.get('kit_version') != core.kit_meta()['version'] else []
         if refreshed is None: return None
-        if not partial and '.codex/config.toml' not in state['files']:
+        if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
         return dict(root=str(root), already=True, partial=partial, refreshed=refreshed, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current, codex_status=state.get('codex_status', 'connected'))
     if remove: raise core.WsError('No repo setup to undo; run ws start first.')
