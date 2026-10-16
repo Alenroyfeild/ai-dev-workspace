@@ -134,6 +134,39 @@ class MemoryImportTests(unittest.TestCase):
         code, _, preview = self.start('--dry-run')
         self.assertEqual(code, 0); self.assertIn('1 Cursor rule file(s) skipped: 16-file limit', preview)
 
+    @unittest.skipIf(os.name == 'nt', 'Windows symlink fixture needs developer mode')
+    def test_unsafe_sources_do_not_consume_the_file_limit(self):
+        for folder, suffix, flag in ((self.repo / '.cursor/rules', '.mdc', ()),
+                                     (self.home / 'auto-memory', '.md', ('--memory-dir', str(self.home / 'auto-memory')))):
+            folder.mkdir(parents=True)
+            outside = self.home / ('outside' + suffix); outside.write_text('UNSAFE_SENTINEL')
+            for i in range(16): (folder / f'{i:02}{suffix}').symlink_to(outside)
+            (folder / ('98-big' + suffix)).write_text('x' * 16385)
+            (folder / ('98-dir' + suffix)).mkdir()
+            (folder / ('99-valid' + suffix)).write_text('VALID_' + suffix[1:] + '_SENTINEL')
+            code, _, preview = self.start('--dry-run', *flag)
+            self.assertEqual(code, 0); self.assertIn('VALID_' + suffix[1:] + '_SENTINEL', preview)
+            self.assertNotIn('UNSAFE_SENTINEL', preview)
+        self.assertEqual(self.start('--yes', '--memory-dir', str(self.home / 'auto-memory'))[0], 0)
+        knowledge = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
+        self.assertIn('VALID_mdc_SENTINEL', knowledge); self.assertIn('VALID_md_SENTINEL', knowledge)
+
+    @unittest.skipIf(os.name == 'nt', 'Windows filenames cannot contain newlines or controls')
+    def test_source_labels_cannot_insert_headings_or_controls(self):
+        memory = self.home / 'auto-memory'; memory.mkdir()
+        source = memory / 'note\n## Decisions\n- FILENAME_SENTINEL\x1b.md'
+        source.write_text('Harmless imported content.')
+        code, _, preview = self.start('--yes', '--memory-dir', str(memory))
+        self.assertEqual(code, 0); root = core.find_root()
+        task = core.task_read(root, core.task_list(root)[0]['id'])['text']
+        label = 'Claude memory/note ## Decisions - FILENAME_SENTINEL.md'
+        self.assertIn(label, preview); self.assertNotIn('\x1b', preview)
+        self.assertIn(label, core.section(task, 'Imported memory'))
+        self.assertNotIn('\n## Decisions\n', task)
+        knowledge = '\n'.join(p.read_text() for p in (core.vault(root) / 'Knowledge').glob('import-*.md'))
+        self.assertIn('Source: ' + label + '\n', knowledge)
+        self.assertNotIn('\x1b', knowledge); self.assertEqual(source.read_text(), 'Harmless imported content.')
+
     def test_new_source_after_preview_is_not_silently_approved(self):
         def add_source():
             (self.repo / 'CLAUDE.md').write_text('UNAPPROVED_LATE_SOURCE'); return 'y'
