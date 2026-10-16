@@ -50,3 +50,12 @@ class PrNotesTests(Base):
                                            capture_output=True, text=True, check=True).stdout
         self.assertIn('- use Postgres', run('--no-link'))
         self.assertEqual(json.loads(run('--json'))['decisions'], 1)
+
+    def test_wrapped_lines_continue_and_unterminated_captures_are_dropped(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'x', notes={'Handoff':
+            'Decision: store totals in integer cents\n  because the payments API rejects floats\n'
+            'Reason: rounding drift\n  showed up in refunds\n<!-- ws:captured:2026-10-16 -->\nDecision: captured guess'})
+        md = core.pr_notes(self.root, 'T-1', link=False)['markdown']
+        self.assertIn('- store totals in integer cents because the payments API rejects floats', md)
+        self.assertIn('  - Why: rounding drift showed up in refunds', md)
+        self.assertNotIn('captured guess', md)
