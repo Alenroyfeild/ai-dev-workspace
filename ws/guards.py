@@ -11,6 +11,21 @@ from pathlib import Path
 from . import core
 
 HOME_OR_ROOT = {'/', '/*', '~', '~/', '~/*', '$HOME', '$HOME/', '$HOME/*', '${HOME}', '${HOME}/'}
+TOKENS = re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b')
+
+
+def looks_secret(text):
+    """Stricter than redact (which may over-redact): a block needs a real-looking value, not $VAR or a placeholder."""
+    if TOKENS.search(text) or re.search(r'-----BEGIN [^-]*PRIVATE KEY-----', text): return True
+    for match in list(core.SECRET_RE.finditer(text)) + list(core.URL_CREDENTIALS_RE.finditer(text)):
+        found = match[0]
+        if match.re is core.URL_CREDENTIALS_RE: found = match[0].rsplit(':', 1)[-1].rstrip('@')
+        value = re.split(r'[\s:=]+', found.strip(), maxsplit=0)[-1].strip('"\'')
+        if value[:1] in '$<{' or re.search(r'(?i)example|changeme|your|placeholder|dummy|xxx', value): continue
+        if len(value) >= 12 and re.search(r'\d', value) and re.search(r'[A-Za-z]', value): return True
+    return False
+
+
 SHELLS = {'sh', 'bash', 'zsh', 'dash', 'ksh', 'fish'}
 MUTED = re.compile(r'@(?:pytest\.mark\.skip|unittest\.skip)\b|\b(?:it|test|describe)\.(?:only|skip)\(|\bx(?:it|test|describe)\(|\bt\.Skip(?:Now)?\(')
 
@@ -46,7 +61,7 @@ def command_reason(command):
                 return 'Force push rewrites shared history; use --force-with-lease if you must.'
             if sub == 'clean' and any(a.startswith('-') and not a.startswith('--') and 'f' in a for a in rest):
                 return 'git clean -f deletes untracked files for good.'
-    if core.redact(command) != command: return 'The command contains what looks like a secret (token, key or password).'
+    if looks_secret(command): return 'The command contains what looks like a secret (token, key or password).'
     return ''
 
 
@@ -78,7 +93,7 @@ def reason(tool_name, tool_input, cwd=None):
     else:
         new, old = _added(tool_input, cwd)
     if len(MUTED.findall(new)) > len(MUTED.findall(old)): return 'This edit skips or narrows tests (skip/only); fix the test or ask the user first.'
-    if core.redact(new) != new and core.redact(old) == old: return 'This edit writes what looks like a secret (token, key or password) into a file.'
+    if looks_secret(new) and not looks_secret(old): return 'This edit writes what looks like a secret (token, key or password) into a file.'
     return ''
 
 
