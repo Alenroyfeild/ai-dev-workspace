@@ -54,13 +54,17 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0)
         self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), b'Private Claude notes.\n')
 
-    def test_user_edited_wiring_is_not_refreshed(self):
+    def test_user_edited_wiring_is_kept_and_the_rest_still_refreshes(self):
         self.assertEqual(self.start('--yes')[0], 0)
+        fresh = (self.repo / 'CLAUDE.local.md').read_bytes()
+        self.age_setup('CLAUDE.local.md', b'old claude instruction\n')
         self.age_setup('AGENTS.override.md', b'old instruction\n')
         (self.repo / 'AGENTS.override.md').write_bytes(b'old instruction\nmy own edit\n')
         code, _, err = self.start('--yes')
         self.assertNotEqual(code, 0); self.assertIn('local files changed', err)  # existing partial-setup exit
+        self.assertIn('Kept your edits, not refreshed', err)
         self.assertEqual((self.repo / 'AGENTS.override.md').read_bytes(), b'old instruction\nmy own edit\n')
+        self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), fresh)
 
     def test_rerun_with_an_older_kit_never_downgrades_newer_setup(self):
         self.assertEqual(self.start('--yes')[0], 0)
