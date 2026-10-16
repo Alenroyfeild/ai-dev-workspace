@@ -5,9 +5,10 @@ Sol-1's `bin/ws-plugin --client codex` runtime; that entrypoint is not on dev ye
 The fixture tests verify metadata and actual shell command execution with a
 stand-in launcher. They do not prove native plugin loading or memory delivery.
 
-The compatibility manifest lives in `.codex-plugin/plugin.json`; the repo catalog
-in `.agents/plugins/marketplace.json` makes it available rather than required.
+The compatibility manifest lives in `.codex-plugin/plugin.json`. No repo catalog
+advertises this draft while its runtime is missing.
 Commands read `CLAUDE_PLUGIN_ROOT` through Python so paths never become shell code.
+Isolated Python startup excludes repo and `PYTHONPATH` modules from bootstrap imports.
 Codex still requires the user to review and trust the installed hook definitions.
 See [official OpenAI plugin packaging guidance](https://developers.openai.com/plugins/build/plugins).
 Hook-bearing packages are currently ineligible for the universal public directory;
