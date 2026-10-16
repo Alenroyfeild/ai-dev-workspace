@@ -30,6 +30,15 @@ class StartTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(preview): result = cli.main(['start', *args])
         return result, output.getvalue(), preview.getvalue().replace(os.sep, '/')
 
+    def test_confirmed_start_summarizes_private_files_and_dry_run_lists_them(self):
+        listed = self.start('--dry-run')[2]
+        self.assertIn('vault/Templates/Task.md', listed)
+        code, _, preview = self.start('--yes')
+        self.assertEqual(code, 0)
+        self.assertNotIn('vault/Templates/Task.md', preview)
+        self.assertRegex(preview, r'plus \d+ private workspace files')
+        self.assertIn('CLAUDE.local.md', preview)
+
     def test_preview_confirmation_external_memory_repeat_and_undo(self):
         before = (self.repo / '.git/info/exclude').read_bytes()
         code, _, preview = self.start('--dry-run')
@@ -61,8 +70,8 @@ class StartTests(unittest.TestCase):
         self.assertIn('Continue the saved next action', core.task_read(workspace, task['id'])['text'])
 
     def test_correction_instruction_is_written_and_undo_restores_user_text(self):
-        instruction = ('When the user corrects an earlier decision, call the MCP `remember` tool '
-                       'with the corrected decision, saying what it replaces.')
+        instruction = ('When the user states a decision or corrects an earlier one, call the MCP `remember` tool '
+                       'with it; for a correction, say what it replaces.')
         originals = {'CLAUDE.local.md': b'Private Claude notes.\n',
                      'AGENTS.override.md': b'Private Codex notes.\n'}
         for name, content in originals.items():
