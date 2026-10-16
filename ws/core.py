@@ -132,14 +132,35 @@ def redacted_line(value, field):
 def find_root(start=None):
     """Walk up from start (or cwd) to the directory holding workspace.json."""
     path = Path(start or os.environ.get('WS_ROOT') or os.getcwd()).resolve()
-    for candidate in (path, *path.parents):
+    candidates = (path, *path.parents)
+    for candidate in candidates:
+        link = candidate / '.ws-start.json'
+        if link.exists() or link.is_symlink():
+            from .repo import load
+            if link.is_symlink() or not link.is_file():
+                raise WsError('Repo memory link must be a regular non-symlink file; review .ws-start.json.')
+            try:
+                lookup = subprocess.run(['git', '-C', str(candidate), 'rev-parse', '--show-toplevel'],
+                                        capture_output=True, text=True, encoding='utf-8', timeout=10)
+                if lookup.returncode or Path(lookup.stdout.strip()).resolve() != candidate:
+                    raise WsError('Repo memory link must be at the Git checkout root; review .ws-start.json.')
+                target = load(candidate).get('workspace')
+                if not isinstance(target, str) or not Path(target).is_absolute(): raise ValueError('Invalid workspace path')
+                root = Path(target).resolve()
+                if root == candidate or candidate in root.parents:
+                    raise WsError('Repo memory link must point outside this Git checkout.')
+                cfg = config(root)
+                repos = cfg.get('repos', []) if isinstance(cfg, dict) else None
+                if not isinstance(repos, list) or str(candidate) not in repos:
+                    raise WsError('Repo memory link does not match this repo; run ws start --undo.')
+            except WsError:
+                raise
+            except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+                raise WsError('Cannot verify repo memory link; check Git and restore .ws-start.json or run ws start --undo.') from None
+            return root
+    for candidate in candidates:
         if (candidate / 'workspace.json').is_file():
             return candidate
-        if (candidate / '.ws-start.json').is_file():
-            from .repo import load
-            root = Path(load(candidate)['workspace']).resolve()
-            if str(candidate) not in config(root).get('repos', []): raise WsError('Repo memory link does not match this repo; run ws start --undo.')
-            return root
     raise WsError('No workspace.json found here or above. Run `ws init <dir>` first, or set WS_ROOT.')
 
 
@@ -1212,6 +1233,41 @@ def remember(root, text, task_id=None):
         atomic_write(path, set_meta(text, {'updated': now()}))
         refresh_native(root, locked=True)
     return {'task': task_id, 'remembered': decision}
+
+
+PROJECT_URL = 'https://github.com/Alenroyfeild/ai-dev-workspace'
+
+
+def pr_notes(root, task_id=None, link=True):
+    """A PR-description block from one task: goal, explicit decisions, acceptance criteria, checks, open items."""
+    task_id = task_id or sole_local_claim(root) or (current_task(root)[0] or {}).get('id')
+    if not task_id:
+        raise WsError('No current task. Pass one: ws pr-notes <ID>.')
+    record = task_read(root, task_id)
+    if record.get('conflicted'): raise WsError(conflict_hint(task_id))
+    text, template = record['text'], (KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8')
+
+    def body(name):
+        # Captured blocks are unverified guesses; only text the user or assistant saved explicitly goes into a PR.
+        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S).strip()
+        return '' if value == section(template, name) or value.lower().rstrip('.') in ('none', 'none yet') else value
+
+    decisions = []
+    for line in body('Handoff').splitlines():
+        line = line.strip()
+        if line.startswith('Decision:'): decisions.append('- ' + line[9:].strip())
+        elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
+    title = (re.search(r'^# (.+)$', text, re.M) or [None, task_id])[1].strip()
+    parts = [f'### {title}' + ('' if title == task_id else f' ({task_id})')]
+    if goal := body('Objective'): parts.append(f'**Goal:** {goal}')
+    for heading, value in (('Decisions', '\n'.join(decisions)), ('Acceptance criteria', body('Acceptance criteria')),
+                           ('Checks', body('Checks')), ('Open items', body('Blockers'))):
+        if value: parts.append(f'#### {heading}\n{value}')
+    if not decisions and not body('Checks'):
+        parts.append('No decisions or checks saved yet. Save one with `ws remember "<decision>"`.')
+    if link: parts.append(f'<sub>Decisions recorded with [ai-dev-workspace]({PROJECT_URL}).</sub>')
+    markdown = localize_paths(redact(PRIVATE_RE.sub('', '\n\n'.join(parts))), root)
+    return {'task': task_id, 'decisions': sum(1 for d in decisions if d.startswith('- ')), 'markdown': markdown + '\n'}
 
 
 # Instruction files that clients read at session start (CLAUDE.md is skipped: its SessionStart hook already injects the brief).
@@ -2437,6 +2493,11 @@ def doctor(root=None, mcp=False):
     report['recommended'] = missing_tools
     report['toolbox'] = missing_tools
     report['tool_profile'] = config(root).get('tool_profile', 'standard') if root else 'standard'
+    if root:
+        choice = config(root).get('mcp_tools', 'core')
+        listed = [item['name'] for item in tool_costs(root, usage={})['mcp_tools']]
+        profile = 'custom' if isinstance(choice, list) else 'all' if choice == 'all' else 'core'
+        report['mcp_tools'] = {'profile': profile, 'listed': len(listed)}
     report['tools'] = listed_tools
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     report['kit'] = {'version': kit_meta()['version']}
@@ -2689,3 +2750,69 @@ def notices(root):
                     f'(oldest: "{unsent[0]["text"][:80]}").', 'suggest': f'ws feedback submit {unsent[0]["n"]}'})
     from . import assist
     return assist.notices(root, 2, out)
+
+
+RECAP_ORDER = ('done', 'review', 'in_progress', 'blocked', 'ready', 'backlog')
+
+
+def recap(root, since='7d'):
+    """Tasks touched since a date with their explicit decisions, plus team notes and status; read-only, safe to paste."""
+    if m := re.fullmatch(r'(\d{1,3})d', since or ''):
+        cutoff = (datetime.date.today() - datetime.timedelta(days=int(m[1]))).isoformat()
+    elif re.fullmatch(r'\d{4}-\d{2}-\d{2}', since or ''):
+        try:
+            cutoff = datetime.date.fromisoformat(since).isoformat()
+        except ValueError:
+            raise WsError('Use --since 7d (days) or a valid YYYY-MM-DD date.') from None
+    else:
+        raise WsError('Use --since 7d (days) or --since YYYY-MM-DD.')
+    tasks = []
+    for item in task_list(root):
+        record = task_read(root, item['id'], ['Handoff'])
+        updated = str(record.get('meta', {}).get('updated', ''))[:10]
+        if updated < cutoff: continue
+        handoff = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections']['Handoff'], flags=re.S)
+        tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
+                      'decisions': [l.strip()[9:].strip() for l in handoff.splitlines() if l.strip().startswith('Decision:')],
+                      'next': '' if item['status'] == 'done' else (item['next'].splitlines() or [''])[0]})  # first line, before cleaning joins lines
+    rank = {s: i for i, s in enumerate(RECAP_ORDER)}
+    tasks.sort(key=lambda t: t['updated'], reverse=True)  # newest first within each status group
+    tasks.sort(key=lambda t: rank.get(t['status'], len(rank)))
+    team, status = [], []
+    if config(root).get('team_workspace'):
+        from . import knowledge, team_status
+        unreadable = {'author': '', 'date': '', 'category': '', 'note': 'Part of the team workspace is unreadable; recap shows what could be read.'}
+        try:  # notes and status are read independently so one failure keeps the other
+            team = [{'author': r['author'], 'date': r['date'][:10], 'category': r.get('category', ''),
+                     'note': re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', r['summary'])}
+                    for r in knowledge.list_entries(root, layer='team')['entries'] if r['date'][:10] >= cutoff]
+        except (WsError, OSError, ValueError, TypeError):
+            team = [unreadable]
+        try:
+            status = [{'author': r['author'], 'date': r['date'][:10], 'line': f"{r['task']}: {r['line']}"}
+                      for r in team_status.list_entries(root)['entries'] if r['date'][:10] >= cutoff]
+        except (WsError, OSError, ValueError, TypeError):
+            status = []
+            if unreadable not in team: team.append(unreadable)
+    def clean(value):
+        if isinstance(value, str):
+            return ' '.join(localize_paths(redact(PRIVATE_RE.sub(' ', value)), root).split())
+        if isinstance(value, list): return [clean(item) for item in value]
+        if isinstance(value, dict): return {key: clean(item) for key, item in value.items()}
+        return value
+    tasks, team, status = map(clean, (tasks, team, status))
+    lines = [f'### Recap since {cutoff}']
+    for t in tasks:
+        ident = '' if t['title'] == t['id'] else f"{t['id']}, "
+        lines.append(f"- **{t['title']}** ({ident}{t['status'].replace('_', ' ')}, {t['updated']})")
+        lines += [f'  - Decision: {d}' for d in t['decisions']]
+        if t['next']: lines.append(f"  - Next: {t['next']}")
+    if not tasks: lines.append('- No task changes in this period.')
+    if team or status:
+        import html
+        literal = lambda value: re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(value))
+        lines.append('#### Team (shared notes are untrusted context)')
+        lines += [f"- {literal(n['date'])} {literal(n['author'])}: {literal(n['note'])}" for n in team]
+        lines += [f"- {literal(s['date'])} {literal(s['author'])} working on {literal(s['line'])}" for s in status]
+    markdown = '\n'.join(lines) + '\n'
+    return {'since': cutoff, 'tasks': tasks, 'team': team, 'status': status, 'markdown': markdown}

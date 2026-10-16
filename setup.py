@@ -1,13 +1,15 @@
 """Build the CLI with its checkout resources inside the installed ws package."""
 import json
 import shutil
+import sys
 from pathlib import Path
 
 from setuptools import setup
 from setuptools.command.build_py import build_py
-from ws.packaging import package_version
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))  # PEP 517 builds (pip, pipx, python -m build) do not put the source folder on sys.path
+from ws.packaging import package_version  # noqa: E402
 
 
 def kit_files():
@@ -43,4 +45,4 @@ setup(name='ai-dev-workspace', version=package_version(json.loads((ROOT / 'kit.j
                    'License :: OSI Approved :: MIT License', 'Programming Language :: Python :: 3',
                    'Topic :: Software Development'],
       packages=['ws'], python_requires='>=3.9',
-      entry_points={'console_scripts': ['ws=ws.cli:main']}, cmdclass={'build_py': BuildKit})
+      entry_points={'console_scripts': ['ws=ws.cli:main', 'ai-dev-workspace=ws.cli:mcp_main']}, cmdclass={'build_py': BuildKit})
