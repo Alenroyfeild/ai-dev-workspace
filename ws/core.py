@@ -133,13 +133,26 @@ def find_root(start=None):
     """Walk up from start (or cwd) to the directory holding workspace.json."""
     path = Path(start or os.environ.get('WS_ROOT') or os.getcwd()).resolve()
     for candidate in (path, *path.parents):
+        link = candidate / '.ws-start.json'
+        if link.exists() or link.is_symlink():
+            from .repo import load
+            if link.is_symlink() or not link.is_file():
+                raise WsError('Repo memory link must be a regular non-symlink file; review .ws-start.json.')
+            try:
+                target = load(candidate).get('workspace')
+                if not isinstance(target, str) or not target: raise ValueError('Invalid workspace path')
+                root = Path(target).resolve()
+                if root == candidate or candidate in root.parents:
+                    raise WsError('Repo memory link must point to a workspace outside this repo.')
+                cfg = config(root)
+                repos = cfg.get('repos', []) if isinstance(cfg, dict) else None
+                if not isinstance(repos, list) or str(candidate) not in repos:
+                    raise WsError('Repo memory link does not match this repo; run ws start --undo.')
+            except (OSError, ValueError, TypeError):
+                raise WsError('Invalid repo memory link; restore .ws-start.json or run ws start --undo.') from None
+            return root
         if (candidate / 'workspace.json').is_file():
             return candidate
-        if (candidate / '.ws-start.json').is_file():
-            from .repo import load
-            root = Path(load(candidate)['workspace']).resolve()
-            if str(candidate) not in config(root).get('repos', []): raise WsError('Repo memory link does not match this repo; run ws start --undo.')
-            return root
     raise WsError('No workspace.json found here or above. Run `ws init <dir>` first, or set WS_ROOT.')
 
 
