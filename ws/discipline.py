@@ -9,6 +9,8 @@ LIMIT = 3  # failures of one command in one session before the nudge
 NUDGE = (f'This command has now failed {LIMIT} times in this session. Stop retrying it as is: read the error, write down one '
          'hypothesis and change one thing. If the approach is a dead end, tell the user and save it so the next session '
          'skips it: ws checkpoint <task> --status in_progress --next "<next step>" --note "Do not redo=<approach: why it failed>".')
+REPEAT = NUDGE.replace(f'has now failed {LIMIT} times', f'has now returned the same result {LIMIT} times')  # Codex sends no exit code
+SHELLS = ('Bash', 'shell', 'exec_command')  # Codex's real name is Bash; the others are tolerated
 
 
 def failed(payload):
@@ -25,16 +27,23 @@ def failed(payload):
 
 
 def hook(root, payload):
-    if payload.get('tool_name') != 'Bash' or not isinstance(payload.get('tool_input'), dict) or not failed(payload): return {}
+    if payload.get('tool_name') not in SHELLS or not isinstance(payload.get('tool_input'), dict): return {}
     command = payload['tool_input'].get('command', '')
     if isinstance(command, list): command = shlex.join(map(str, command))
     if not isinstance(command, str) or not command.strip(): return {}
+    try: tokens = json.dumps(shlex.split(command))  # tokens keep whitespace inside quotes
+    except ValueError: tokens = command.strip()
+    nudge, extra = NUDGE, ''
+    if not failed(payload):
+        if payload.get('hook_event_name') != 'PostToolUse': return {}
+        response = payload.get('tool_response')  # Codex: bare output, so count identical command + output instead
+        nudge, extra = REPEAT, (json.dumps(response, sort_keys=True) if isinstance(response, dict) else str(response)).rstrip()
     path = core.inside(root / '.ws' / 'discipline' / (core.digest_text(str(payload.get('session_id', '')))[:16] + '.json'), [root])
     try: counts = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError): counts = {}
     if not isinstance(counts, dict): counts = {}
-    key = core.digest_text(' '.join(command.split()))[:16]  # the command itself is not stored
+    key = core.digest_text(tokens + '\0' + extra)[:16]  # neither the command nor the output is stored
     counts[key] = int(counts.get(key, 0)) + 1 if isinstance(counts.get(key, 0), int) else 1
     path.parent.mkdir(parents=True, exist_ok=True); core.atomic_write(path, json.dumps(counts) + '\n')
-    if counts[key] != LIMIT: return {}  # once per command, at the third failure
-    return {'hookSpecificOutput': {'hookEventName': payload['hook_event_name'], 'additionalContext': NUDGE}}
+    if counts[key] != LIMIT: return {}  # once per key, at the third hit
+    return {'hookSpecificOutput': {'hookEventName': payload['hook_event_name'], 'additionalContext': nudge}}
