@@ -21,6 +21,9 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Decisions you state in chat (not only corrections) are now saved by the assistant with `remember`, so they reach the next session as saved decisions rather than unverified captures. In a repo set up earlier, run `ws start` again to pick up the new instruction; saved memory is kept.
 - After an upgrade, run `ws start` again in your repo: it refreshes the setup files it wrote (instructions, hooks, MCP config) for the new version, after showing them and asking. Files you edited are left alone and reported; saved memory is kept.
 
+### Fixed
+- Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
+
 ### Known limits
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
