@@ -244,6 +244,7 @@ def main(argv=None):
         s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
@@ -436,6 +437,10 @@ def main(argv=None):
                 root = None
             report = core.doctor(root, a.mcp)
             out(text_doctor(report) if a.text or human() else report); return 0
+        if a.cmd == 'audit':
+            from . import audit
+            report = audit.audit(a.repo)
+            out(audit.text(report) if a.text or human() else report); return 0
         if a.cmd == 'sessions':
             roots = None
             if a.root:
