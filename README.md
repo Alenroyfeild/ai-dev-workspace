@@ -9,7 +9,7 @@ It keeps decisions, the next step and what not to retry, and warns when files it
 pipx install ai-dev-workspace --pip-args='--pre'  # beta; omit --pip-args after a stable release
 cd ~/code/myapp && ws start
 ```
-Without pipx: `python3 -m venv ~/.local/share/ai-dev-workspace && ~/.local/share/ai-dev-workspace/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`.
+Without pipx: `python3 -m venv ~/.local/share/ai-dev-workspace && ~/.local/share/ai-dev-workspace/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`. Prefer a Claude Code plugin? See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview).
 ## Example
 ```text
 Session 1 — You: “Empty email returns missing_email; leave signup unchanged.”
