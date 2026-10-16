@@ -253,7 +253,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
     else:  # the private files are ws's own; --dry-run lists each one
         print(f'  plus {len(outside)} private workspace files (ws start --dry-run lists them)', file=sys.stderr)
-    imports = [] if no_import else memory_import.preview(repo, memory_dir)
+    imports = [] if no_import else memory_import.preview(repo, memory_dir, dry_run=dry_run)
     if not confirm(yes, dry_run): return None
     memory_import.verify(imports)
     if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
