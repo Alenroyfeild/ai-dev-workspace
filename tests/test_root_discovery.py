@@ -37,6 +37,12 @@ class RootDiscoveryTests(unittest.TestCase):
             with self.subTest(start=start):
                 self.assertEqual(core.find_root(start), self.root)
 
+    def test_nested_repo_workspace_cannot_hide_ancestor_memory_link(self):
+        (self.nested / 'workspace.json').write_text('{}')
+        self.assertEqual(core.find_root(self.nested), self.root)
+        self.link.write_text('{}')
+        with self.assertRaises(core.WsError): core.find_root(self.nested)
+
     def test_invalid_link_never_falls_back_to_repo_or_ancestor(self):
         # Both decoy workspace files must be ignored even when link validation fails.
         (self.base / 'workspace.json').write_text('{}')

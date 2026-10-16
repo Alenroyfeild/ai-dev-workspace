@@ -132,7 +132,8 @@ def redacted_line(value, field):
 def find_root(start=None):
     """Walk up from start (or cwd) to the directory holding workspace.json."""
     path = Path(start or os.environ.get('WS_ROOT') or os.getcwd()).resolve()
-    for candidate in (path, *path.parents):
+    candidates = (path, *path.parents)
+    for candidate in candidates:
         link = candidate / '.ws-start.json'
         if link.exists() or link.is_symlink():
             from .repo import load
@@ -151,6 +152,7 @@ def find_root(start=None):
             except (OSError, ValueError, TypeError):
                 raise WsError('Invalid repo memory link; restore .ws-start.json or run ws start --undo.') from None
             return root
+    for candidate in candidates:
         if (candidate / 'workspace.json').is_file():
             return candidate
     raise WsError('No workspace.json found here or above. Run `ws init <dir>` first, or set WS_ROOT.')
