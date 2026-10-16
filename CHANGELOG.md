@@ -8,7 +8,17 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Try remembered decisions with `ws demo`: an offline, disposable walkthrough that saves a decision and reads it back in a fresh process, without starting an assistant. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 - Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
+- `ws pr-notes` prints the task's saved decisions, reasons, acceptance criteria and checks as a pull request description, so reviewers see why the code changed. Example: `gh pr create --body "$(ws pr-notes)"`.
+- `ws recap` lists the tasks you changed this week with their decisions and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
+
+### Improved
+- Each session starts lighter: the MCP server lists 7 core memory tools by default instead of 28, about 1,360 fewer tokens of tool descriptions per session. Set `"mcp_tools": "all"` in workspace.json to list everything; other tools still work when called by name.
+- Decisions you state in chat (not only corrections) are now saved by the assistant with `remember`, so they reach the next session as saved decisions rather than unverified captures. In a repo set up earlier, run `ws start` again to pick up the new instruction; saved memory is kept.
+- After an upgrade, run `ws start` again in your repo: it refreshes the setup files it wrote (instructions, hooks, MCP config) for the new version, after showing them and asking. Files you edited are left alone and reported; saved memory is kept.
+
+### Fixed
+- Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 
 ### Known limits
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.

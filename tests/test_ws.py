@@ -1084,7 +1084,7 @@ class InterfaceTests(Base):
         self.assertEqual(replies[1]['result']['serverInfo']['name'], 'ai-dev-workspace')
         self.assertEqual(replies[1]['result']['serverInfo']['version'], core.kit_meta()['version'])
         names = {t['name'] for t in replies[2]['result']['tools']}
-        self.assertTrue({'find_task', 'checkpoint', 'search_vault', 'log_step'} <= names)
+        self.assertTrue({'find_task', 'checkpoint', 'search_vault', 'remember'} <= names)  # core profile; log_step stays callable
         for tool in replies[2]['result']['tools']:
             self.assertNotIn('optional', json.dumps(tool['inputSchema']))
         self.assertIn('T-1', replies[3]['result']['content'][0]['text'])
