@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy; runpy.run_path(os.path.join(os.environ['CLAUDE_PLUGIN_ROOT'],'bin','ws-plugin'),run_name='__main__')\" --client codex",
+            "command": "python3 -I -c \"import os,runpy; runpy.run_path(os.path.join(os.environ['CLAUDE_PLUGIN_ROOT'],'bin','ws-plugin'),run_name='__main__')\" --client codex",
             "timeout": 15
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import os,runpy; runpy.run_path(os.path.join(os.environ['CLAUDE_PLUGIN_ROOT'],'bin','ws-plugin'),run_name='__main__')\" --client codex",
+            "command": "python3 -I -c \"import os,runpy; runpy.run_path(os.path.join(os.environ['CLAUDE_PLUGIN_ROOT'],'bin','ws-plugin'),run_name='__main__')\" --client codex",
             "timeout": 15
           }
         ]
