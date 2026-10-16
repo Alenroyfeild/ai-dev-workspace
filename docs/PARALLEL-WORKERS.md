@@ -1,6 +1,6 @@
 # Parallel worker plans and reviewed unit branches
 
-Status: design note for an unreleased feature. No parallel execution is enabled.
+Status: design note for an unreleased feature. No parallel execution is enabled, and no `ws worker plan` command exists in this version.
 Rendering-integrity checks (#123) and a passing live Codex isolation check must land before implementation.
 Rendering integrity is checked against the immutable collected tree. Claude
 workers stay preparation-only until Claude completes the matching native-sandbox probe.
