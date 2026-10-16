@@ -1,0 +1,21 @@
+{
+  "name": "ai-dev-workspace",
+  "version": "0.1.0-beta.5",
+  "description": "Private task memory that Claude Code and Codex share: a short brief at session start, saved decisions, checkpoints and search.",
+  "author": {
+    "name": "Alenroyfeild"
+  },
+  "homepage": "https://github.com/Alenroyfeild/ai-dev-workspace",
+  "repository": "https://github.com/Alenroyfeild/ai-dev-workspace",
+  "license": "MIT",
+  "hooks": "./hooks/claude-hooks.json",
+  "mcpServers": {
+    "ai-dev-workspace": {
+      "command": "python3",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/server.py",
+        "--plugin"
+      ]
+    }
+  }
+}
