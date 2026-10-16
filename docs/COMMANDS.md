@@ -13,6 +13,8 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). In a
 | `ws packs` / `ws pack add <name>` / `ws pack add --from <dir>` / `ws pack remove <name>` | List packs, add a bundled or private local pack, and remove a private pack. Removal deletes only unchanged files that pack created; pre-existing or edited files are kept. Bundled packs are additive and are not removed by this command. |
 | `ws map [<repo>]` | Rewrite the codebase map; link an existing `graphify-out/GRAPH_REPORT.md` and its top headings. `ws search` includes that report. The kit never runs Graphify. |
 
+Restart the assistant session after `ws start --undo` or `ws team unlink`; a running session keeps its MCP server.
+
 ## Daily loop
 
 Claude and Codex hooks can capture cue-bearing decisions and assistant summaries from supported transcripts. Captures are redacted, unverified and best-effort. Save important corrections explicitly with `ws remember`; use `/handoff` for progress notes.
