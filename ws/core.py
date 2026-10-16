@@ -147,12 +147,16 @@ def find_root(start=None):
                 target = load(candidate).get('workspace')
                 if not isinstance(target, str) or not target: raise ValueError('Invalid workspace path')
                 root = Path(target).resolve()
-                if root == candidate or candidate in root.parents:
-                    raise WsError('Repo memory link must point to a workspace outside this repo.')
+                checkouts = [candidate] + [p for p in candidate.parents
+                                            if (p / '.git').exists() or (p / '.git').is_symlink()]
+                if any(root == checkout or checkout in root.parents for checkout in checkouts):
+                    raise WsError('Repo memory link must point outside its containing Git checkouts.')
                 cfg = config(root)
                 repos = cfg.get('repos', []) if isinstance(cfg, dict) else None
                 if not isinstance(repos, list) or str(candidate) not in repos:
                     raise WsError('Repo memory link does not match this repo; run ws start --undo.')
+            except WsError:
+                raise
             except (OSError, ValueError, TypeError, subprocess.SubprocessError):
                 raise WsError('Cannot verify repo memory link; check Git and restore .ws-start.json or run ws start --undo.') from None
             return root
