@@ -137,6 +137,25 @@ def codex_files(repo, root):
     return {'.codex/config.toml': block.encode()}
 
 
+PLUGIN = 'ai-dev-workspace@ai-dev-workspace'
+
+
+def claude_plugin_enabled(repo):
+    """enabledPlugins for this kit's Claude Code plugin; local beats project beats user, like Claude Code."""
+    value = None
+    for settings in (Path.home() / '.claude/settings.json', repo / '.claude/settings.json', repo / '.claude/settings.local.json'):
+        try: plugins = json.loads(settings.read_text(encoding='utf-8')).get('enabledPlugins')
+        except (OSError, ValueError, AttributeError): continue
+        if isinstance(plugins, dict) and isinstance(plugins.get(PLUGIN), bool): value = plugins[PLUGIN]
+    return value is True
+
+
+def plugin_duplicates(root):
+    """Started repos where the Claude Code plugin and ws start's own Claude hooks would both run."""
+    return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file()
+            and '.claude/settings.local.json' in load(p).get('files', {}) and claude_plugin_enabled(p)]
+
+
 def codex_pending(root, check_global=True):
     global_connected = core.client_connected(root, 'codex', global_only=True)
     if check_global and global_connected: return []
