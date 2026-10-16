@@ -81,6 +81,10 @@ class StartTests(unittest.TestCase):
         self.assertIn('Kept your edits, not refreshed', err)
         self.assertEqual((self.repo / 'AGENTS.override.md').read_bytes(), b'old instruction\nmy own edit\n')
         self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), fresh)
+        # Sol-1's reproduction: once the user restores the skipped file, a rerun refreshes it too.
+        (self.repo / 'AGENTS.override.md').write_bytes(b'old instruction\n')
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn(b'remember', (self.repo / 'AGENTS.override.md').read_bytes())
 
     def test_rerun_with_an_older_kit_never_downgrades_newer_setup(self):
         self.assertEqual(self.start('--yes')[0], 0)
