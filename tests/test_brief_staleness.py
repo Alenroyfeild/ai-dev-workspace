@@ -90,3 +90,13 @@ class BriefStalenessTests(Base):
         core.checkpoint(self.root, 'ST-1', 'in_progress', 'Finish the output.', notes={'Handoff': 'Decision: keep export.py as the only writer.'})
         self.git(repo, 'rm', '-q', 'export.py'); self.git(repo, 'commit', '-qm', 'drop export')
         self.assertIn('gone since: export.py', core.brief(self.root))
+
+    def test_same_basename_elsewhere_is_not_reported_gone(self):
+        repo = self.repo('Finish src/export.py output.')
+        (repo / 'src').mkdir(); (repo / 'tests').mkdir()
+        self.commit(repo, 'src/export.py', 'v1\n'); self.commit(repo, 'tests/export.py', 'v1\n')
+        core.checkpoint(self.root, 'ST-1', 'in_progress', 'Finish src/export.py output.')
+        self.git(repo, 'rm', '-q', 'export.py', 'tests/export.py'); self.git(repo, 'commit', '-qm', 'drop two')
+        self.assertNotIn('gone since', core.brief(self.root))
+        self.git(repo, 'rm', '-q', 'src/export.py'); self.git(repo, 'commit', '-qm', 'drop src')
+        self.assertIn('gone since: export.py', core.brief(self.root))  # the named full path is gone

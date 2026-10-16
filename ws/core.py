@@ -1529,13 +1529,22 @@ def _memory_check(root, task_id, meta, next_action):
         status, i = out[i], i + 1
         if status[:1] in 'RC':
             old, new, i = out[i], out[i + 1], i + 2
-            if status[0] == 'R': gone[os.path.basename(old)] = new
+            if status[0] == 'R': gone[old] = new
         else:
             name, i = out[i], i + 1
-            if status == 'D': gone[os.path.basename(name)] = ''
-            elif head != saved: changed.append(os.path.basename(name))  # uncommitted edits alone stay silent, as before
-    gone = [n + (f' (now {gone[n]})' if gone[n] else '') for n in gone if n in next_action][:3]
-    changed = [n for n in dict.fromkeys(changed) if n in next_action][:5]
+            if status == 'D': gone[name] = ''
+            elif head != saved: changed.append(name)  # uncommitted edits alone stay silent, as before
+    present = []
+    def named(path):
+        """The saved text names this path: in full, or by a basename no other current file has."""
+        mentions = lambda name: re.search(r'(?<![\w./-])' + re.escape(name) + r'(?![\w/-])', next_action)  # a whole path token
+        if mentions(path): return True
+        base = os.path.basename(path)
+        if not mentions(base): return False
+        if not present: present.extend(_task_git(root, task_id, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0') or [''])
+        return not any(p != path and os.path.basename(p) == base and p not in gone for p in present)
+    gone = [os.path.basename(n) + (f' (now {gone[n]})' if gone[n] else '') for n in gone if named(n)][:3]
+    changed = list(dict.fromkeys(os.path.basename(n) for n in changed if named(n)))[:5]
     parts = ([f'gone since: {", ".join(gone)}'] if gone else []) + ([f'changed since: {", ".join(changed)}'] if changed else [])
     return f'Memory check: written at {saved[:7]}; {"; ".join(parts)} (verify before acting).' if parts else ''
 
