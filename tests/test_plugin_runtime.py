@@ -24,6 +24,7 @@ class PluginRuntimeTests(unittest.TestCase):
         isolate_home(self, self.base)
         self.repo = self.base / 'repo'
         self.repo.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True, capture_output=True)
         self.root = self.base / 'memory'
         core.init(self.root, 'synthetic', clients=[])
         cfg = core.config(self.root); cfg['repos'] = [str(self.repo)]
@@ -67,8 +68,9 @@ class PluginRuntimeTests(unittest.TestCase):
             self.assertEqual(json.load(sys.stdin), payload)
             print('{}')
             return 0
-        with mock.patch.object(cli, 'main', side_effect=dispatch):
+        with mock.patch.object(cli, 'main', side_effect=dispatch) as handler:
             self.assertEqual(self.hook(payload), {})
+            handler.assert_called_once()
 
     def test_mcp_outside_repo_starts_but_does_not_expose_ambient_memory(self):
         before = {p: p.read_bytes() for p in self.base.rglob('*') if p.is_file()}
