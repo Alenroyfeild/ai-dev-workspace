@@ -39,6 +39,26 @@ class GuardRuleTests(unittest.TestCase):
                         'grep -rf patterns.txt .', 'git log --format=%H'):
             with self.subTest(command): self.assertEqual(self.deny(command), '')
 
+    def test_powershell_destructive_commands_are_denied(self):
+        for command in ('Remove-Item -Recurse -Force ~', 'remove-item $HOME -recurse -force', 'rm -r -fo $env:USERPROFILE', 'ri -Recurse -Force C:\\',
+                        'del C:/ -r -f', 'Remove-Item -Force -Recurse -Path "C:\\*"', 'rd / -Recurse -Force', 'erase -Recurse -Force \\',
+                        'rmdir ~/* -r -f', 'Remove-Item -Recurse:$true -Force -Path ~\\*', 'cd x; Remove-Item -Recurse -Force D:\\',
+                        'git reset --hard', 'git -C sample push -f', 'git clean -fdx', 'Get-Date; git push --force origin main',
+                        'git status && git reset --hard HEAD~1', 'git log | git clean -f', 'git status\ngit push -f',
+                        'echo ' + 'ghp_' + 'A1b2' * 9, '$env:API_KEY = "' + 'q7Rt' * 5 + '"'):
+            with self.subTest(command): self.assertTrue(guards.reason('PowerShell', {'command': command}))
+
+    def test_powershell_everyday_commands_are_allowed(self):
+        for command in ('Remove-Item -Recurse -Force .\\build', 'rm -r -fo dist', 'Remove-Item ~', 'Remove-Item -Recurse $HOME\\old',
+                        'Remove-Item C:\\temp\\x -Recurse -Force', 'Remove-Item -Force C:\\', 'Get-ChildItem ~', 'git status', 'git reset --soft HEAD~1',
+                        'git push --force-with-lease', 'Write-Output "Remove-Item -Recurse -Force ~"', '$env:API_KEY = $env:OTHER'):
+            with self.subTest(command): self.assertEqual(guards.reason('PowerShell', {'command': command}), '')
+
+    def test_powershell_rules_do_not_apply_to_other_tools(self):
+        self.assertEqual(self.deny('Remove-Item -Recurse -Force ~'), '')
+        self.assertEqual(guards.reason('SomeNewTool', {'path': 'x'}), '')
+        self.assertEqual(guards.reason('SomeNewTool', None), '')
+
     def test_codex_argv_command_is_unwrapped(self):
         self.assertTrue(guards.reason('shell', {'command': ['bash', '-lc', 'git reset --hard']}))
         self.assertEqual(guards.reason('shell', {'command': ['bash', '-lc', 'git status']}), '')
@@ -99,7 +119,7 @@ class GuardHookWiringTests(Base):
         self.assertTrue(any('ws start again' in line for line in result['next']))
         claude = core.pack_hooks(self.root, 'claude')['PreToolUse'][0]
         codex = core.pack_hooks(self.root, 'codex')['PreToolUse'][0]
-        self.assertEqual(claude['matcher'], 'Bash|Write|Edit|MultiEdit')
+        self.assertEqual(claude['matcher'], 'Bash|PowerShell|Write|Edit|MultiEdit')
         self.assertNotIn('matcher', codex)
         self.assertTrue(codex['hooks'][0]['command'].endswith(core.command_line(['guard', '--hook', '--client', 'codex'])))  # Windows quotes args
         self.assertEqual(core.pack_hooks(self.root, 'cursor'), {})
