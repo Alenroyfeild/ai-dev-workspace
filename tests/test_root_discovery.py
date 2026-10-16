@@ -94,6 +94,21 @@ class RootDiscoveryTests(unittest.TestCase):
         (self.nested / '.ws-start.json').write_text(json.dumps({'workspace': str(self.root), 'files': {}}))
         self.assertEqual(core.find_root(self.nested), self.root)
 
+    def test_nested_checkout_relative_link_cannot_target_outer_repo_memory(self):
+        subprocess.run(['git', 'init', '-q', str(self.nested)], check=True, capture_output=True)
+        target = self.repo / 'forged-memory'; target.mkdir()
+        (target / 'workspace.json').write_text(json.dumps({'repos': [str(self.nested)]}))
+        (self.nested / '.ws-start.json').write_text(json.dumps({'workspace': '../forged-memory', 'files': {}}))
+        before = {p: p.read_bytes() for p in self.base.rglob('*') if p.is_file()}
+        previous = Path.cwd()
+        try:
+            os.chdir(self.nested)
+            with self.assertRaisesRegex(core.WsError, 'Cannot verify repo memory link'):
+                core.find_root()
+        finally:
+            os.chdir(previous)
+        self.assertEqual(before, {p: p.read_bytes() for p in self.base.rglob('*') if p.is_file()})
+
     def test_git_tracked_home_can_hold_repo_and_external_memory(self):
         # A home Git checkout must not make its nested repo's external memory invalid.
         subprocess.run(['git', 'init', '-q', str(self.base)], check=True, capture_output=True)
