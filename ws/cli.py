@@ -253,6 +253,7 @@ def main(argv=None):
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('guard', help='guards pack: PreToolUse check that denies destructive commands, secrets and muted tests'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
+    s = sub.add_parser('discipline', help='discipline pack: advisory nudge after the same command fails 3 times'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
@@ -458,6 +459,13 @@ def main(argv=None):
             try: payload = json.load(sys.stdin)
             except ValueError: payload = {}
             print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}))); return 0
+        if a.cmd == 'discipline':  # advisory only: any error prints {} so the tool result reaches the model unchanged
+            from . import discipline
+            try:
+                payload = json.load(sys.stdin)
+                result = discipline.hook(core.find_root(a.workspace_root), payload) if isinstance(payload, dict) and payload.get('hook_event_name') in ('PostToolUse', 'PostToolUseFailure') else {}
+            except (ValueError, OSError, core.WsError): result = {}
+            print(json.dumps(result)); return 0
         if a.cmd == 'sessions':
             roots = None
             if a.root:
