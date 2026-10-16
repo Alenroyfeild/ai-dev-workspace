@@ -35,3 +35,12 @@ class DeadEndTests(Base):
         reply = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'checkpoint', 'arguments': args}})
         self.assertFalse(reply['result']['isError'], reply)
         self.assertIn('Polling every second', core.brief(self.root))
+
+    def test_items_are_kept_whole_and_the_rest_are_counted(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Fix the upload.', notes={
+            'Do not redo': 'Never retry the upload in a loop; the API rate-limits after 3 calls.',
+            'Failures': 'Multipart upload failed: the server rejects it with 415 and a long explanation about content types.'})
+        brief = core.brief(self.root)
+        self.assertIn('Never retry the upload in a loop; the API rate-limits after 3 calls.', brief)
+        self.assertIn('(+1 more in the task', brief)
+        self.assertNotIn('[…]', brief.split('Do not redo:')[1].split('\n')[0])

@@ -1611,7 +1611,12 @@ def _dead_ends(root, task_id, template):
         body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', body, flags=re.S).strip()
         if body and body != section(template, name).strip():
             lines += [l.strip().lstrip('-* ').strip() for l in body.splitlines() if l.strip()]
-    return '; '.join(lines)
+    kept, words = [], 0
+    for line in lines:  # whole items only, so a dead end is never cut mid-sentence
+        if kept and words + len(line.split()) > 24: break
+        kept.append(line); words += len(line.split())
+    more = len(lines) - len(kept)
+    return '; '.join(kept) + (f' (+{more} more in the task\'s Do not redo/Failures)' if more else '')
 
 
 def brief(root, task_id=None):
@@ -1723,7 +1728,7 @@ def _brief(root, task_id=None):
     fields += [('Explicit Handoff (saved task record):', _constraint_budget(reversed(decisions), 25), 25),
                ('Next action:', next_action if saved_next else 'Not saved yet. Choose the next step before continuing.', 25),
                ('Blockers:', record['sections']['Blockers'], 8),
-               ('Do not redo:', _dead_ends(root, task['id'], template), 20),
+               ('Do not redo:', _dead_ends(root, task['id'], template), 32),
                ('', plan_warning, 11),
                ('Captured next step (unverified):', captured_step, 16),
                ('', _memory_check(root, task['id'], record['meta'], next_action), 18),
