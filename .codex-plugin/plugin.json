@@ -1,0 +1,9 @@
+{
+  "name": "ai-dev-workspace",
+  "version": "0.1.0-beta.5",
+  "description": "Private task memory across coding sessions.",
+  "homepage": "https://github.com/Alenroyfeild/ai-dev-workspace",
+  "repository": "https://github.com/Alenroyfeild/ai-dev-workspace",
+  "license": "MIT",
+  "hooks": "./hooks/codex-hooks.json"
+}
