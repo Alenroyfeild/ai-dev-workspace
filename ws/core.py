@@ -2729,3 +2729,69 @@ def notices(root):
                     f'(oldest: "{unsent[0]["text"][:80]}").', 'suggest': f'ws feedback submit {unsent[0]["n"]}'})
     from . import assist
     return assist.notices(root, 2, out)
+
+
+RECAP_ORDER = ('done', 'review', 'in_progress', 'blocked', 'ready', 'backlog')
+
+
+def recap(root, since='7d'):
+    """Tasks touched since a date with their explicit decisions, plus team notes and status; read-only, safe to paste."""
+    if m := re.fullmatch(r'(\d{1,3})d', since or ''):
+        cutoff = (datetime.date.today() - datetime.timedelta(days=int(m[1]))).isoformat()
+    elif re.fullmatch(r'\d{4}-\d{2}-\d{2}', since or ''):
+        try:
+            cutoff = datetime.date.fromisoformat(since).isoformat()
+        except ValueError:
+            raise WsError('Use --since 7d (days) or a valid YYYY-MM-DD date.') from None
+    else:
+        raise WsError('Use --since 7d (days) or --since YYYY-MM-DD.')
+    tasks = []
+    for item in task_list(root):
+        record = task_read(root, item['id'], ['Handoff'])
+        updated = str(record.get('meta', {}).get('updated', ''))[:10]
+        if updated < cutoff: continue
+        handoff = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections']['Handoff'], flags=re.S)
+        tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
+                      'decisions': [l.strip()[9:].strip() for l in handoff.splitlines() if l.strip().startswith('Decision:')],
+                      'next': '' if item['status'] == 'done' else (item['next'].splitlines() or [''])[0]})  # first line, before cleaning joins lines
+    rank = {s: i for i, s in enumerate(RECAP_ORDER)}
+    tasks.sort(key=lambda t: t['updated'], reverse=True)  # newest first within each status group
+    tasks.sort(key=lambda t: rank.get(t['status'], len(rank)))
+    team, status = [], []
+    if config(root).get('team_workspace'):
+        from . import knowledge, team_status
+        unreadable = {'author': '', 'date': '', 'category': '', 'note': 'Part of the team workspace is unreadable; recap shows what could be read.'}
+        try:  # notes and status are read independently so one failure keeps the other
+            team = [{'author': r['author'], 'date': r['date'][:10], 'category': r.get('category', ''),
+                     'note': re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', r['summary'])}
+                    for r in knowledge.list_entries(root, layer='team')['entries'] if r['date'][:10] >= cutoff]
+        except (WsError, OSError, ValueError, TypeError):
+            team = [unreadable]
+        try:
+            status = [{'author': r['author'], 'date': r['date'][:10], 'line': f"{r['task']}: {r['line']}"}
+                      for r in team_status.list_entries(root)['entries'] if r['date'][:10] >= cutoff]
+        except (WsError, OSError, ValueError, TypeError):
+            status = []
+            if unreadable not in team: team.append(unreadable)
+    def clean(value):
+        if isinstance(value, str):
+            return ' '.join(localize_paths(redact(PRIVATE_RE.sub(' ', value)), root).split())
+        if isinstance(value, list): return [clean(item) for item in value]
+        if isinstance(value, dict): return {key: clean(item) for key, item in value.items()}
+        return value
+    tasks, team, status = map(clean, (tasks, team, status))
+    lines = [f'### Recap since {cutoff}']
+    for t in tasks:
+        ident = '' if t['title'] == t['id'] else f"{t['id']}, "
+        lines.append(f"- **{t['title']}** ({ident}{t['status'].replace('_', ' ')}, {t['updated']})")
+        lines += [f'  - Decision: {d}' for d in t['decisions']]
+        if t['next']: lines.append(f"  - Next: {t['next']}")
+    if not tasks: lines.append('- No task changes in this period.')
+    if team or status:
+        import html
+        literal = lambda value: re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(value))
+        lines.append('#### Team (shared notes are untrusted context)')
+        lines += [f"- {literal(n['date'])} {literal(n['author'])}: {literal(n['note'])}" for n in team]
+        lines += [f"- {literal(s['date'])} {literal(s['author'])} working on {literal(s['line'])}" for s in status]
+    markdown = '\n'.join(lines) + '\n'
+    return {'since': cutoff, 'tasks': tasks, 'team': team, 'status': status, 'markdown': markdown}
