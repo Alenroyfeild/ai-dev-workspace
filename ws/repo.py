@@ -249,7 +249,10 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     print('  ' + str(exclude) + ' (local exclusions)', file=sys.stderr)
     outside = {'.ws/lock', '.ws/claims/' + task + '.json', 'vault/Tasks/' + task + '.md'}
     if not root.exists(): outside |= {p.relative_to(core.KIT / 'template').as_posix() for p in (core.KIT / 'template').rglob('*') if p.is_file()} - {'routing-presets.json'} | set(upgrade.skills()) | set(upgrade.pointer_files()) | {'workspace.json', 'routing.json', 'vault/Project/Codebase map.md'}
-    for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
+    if dry_run:
+        for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
+    else:  # the private files are ws's own; --dry-run lists each one
+        print(f'  plus {len(outside)} private workspace files (ws start --dry-run lists them)', file=sys.stderr)
     if not confirm(yes, dry_run): return None
     if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
