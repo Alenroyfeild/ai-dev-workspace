@@ -69,8 +69,9 @@ class StartTests(unittest.TestCase):
         self.assertNotIn('PreToolUse', hooks('.claude/settings.local.json'))
         core.pack_add(root, 'guards')
         self.assertEqual(self.start('--yes')[0], 0)
-        self.assertIn('guard --hook --client claude', json.dumps(hooks('.claude/settings.local.json')['PreToolUse']))
-        self.assertIn('guard --hook --client codex', json.dumps(hooks('.codex/hooks.json')['PreToolUse']))
+        commands = lambda name: [h['command'] for entry in hooks(name)['PreToolUse'] for h in entry['hooks']]
+        for name, client in (('.claude/settings.local.json', 'claude'), ('.codex/hooks.json', 'codex')):  # Windows quotes args
+            self.assertTrue(any(c.endswith(core.command_line(['guard', '--hook', '--client', client])) for c in commands(name)), commands(name))
         self.assertTrue(json.loads((self.repo / '.ws-start.json').read_text())['guards'])
         from ws import packs
         packs.remove(root, 'guards')
