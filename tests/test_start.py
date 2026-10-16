@@ -71,6 +71,17 @@ class StartTests(unittest.TestCase):
         self.assertEqual(code, 0); self.assertIn('newer ai-dev-workspace version', err)
         self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), b'newer instruction\n')
 
+    def test_newer_setup_without_codex_config_is_left_unchanged(self):
+        # Luna's reproduction: a newer record missing the Codex config must not get one created by an older kit.
+        self.assertEqual(self.start('--yes')[0], 0)
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text())
+        state['files'].pop('.codex/config.toml', None); (self.repo / '.codex/config.toml').unlink()
+        state['kit_version'] = '99.0.0'; link.write_text(json.dumps(state)); before = link.read_bytes()
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0); self.assertIn('newer ai-dev-workspace version', err)
+        self.assertFalse((self.repo / '.codex/config.toml').exists())
+        self.assertEqual(link.read_bytes(), before)
+
     def test_preview_confirmation_external_memory_repeat_and_undo(self):
         before = (self.repo / '.git/info/exclude').read_bytes()
         code, _, preview = self.start('--dry-run')
