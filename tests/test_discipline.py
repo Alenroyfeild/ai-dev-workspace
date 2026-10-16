@@ -42,6 +42,34 @@ class DisciplineTests(Base):
         results = [discipline.hook(self.root, payload('Process exited with code 1')) for _ in range(3)]
         self.assertEqual(results[2]['hookSpecificOutput']['hookEventName'], 'PostToolUse')
 
+    def test_codex_same_command_same_response_three_times_nudges_once(self):
+        payload = lambda command, text: {'hook_event_name': 'PostToolUse', 'session_id': 'c', 'tool_name': 'Bash',
+                                         'tool_input': {'command': command}, 'tool_response': text}
+        results = [discipline.hook(self.root, payload('npm test', 'FAIL a.test\n' + '\n' * i)) for i in range(4)]  # trailing whitespace is ignored
+        self.assertEqual(results[:2], [{}, {}])
+        out = results[2]['hookSpecificOutput']
+        self.assertEqual(out['hookEventName'], 'PostToolUse')
+        self.assertIn('returned the same result 3 times', out['additionalContext'])
+        self.assertIn('Do not redo=', out['additionalContext'])
+        self.assertEqual(results[3], {})
+        for text in ('one', 'two', 'three'): self.assertEqual(discipline.hook(self.root, payload('npm run x', text)), {})  # different results
+        stored = ''.join(p.read_text() for p in (self.root / '.ws/discipline').iterdir())
+        self.assertNotIn('FAIL', stored)
+
+    def test_quoted_arguments_that_differ_only_in_spaces_are_distinct(self):
+        for command in ('grep "a b" f', 'grep "a  b" f', 'grep "a   b" f'):
+            self.assertEqual(discipline.hook(self.root, claude_failure(command)), {})
+            self.assertEqual(discipline.hook(self.root, claude_failure(command)), {})
+        self.assertTrue(discipline.hook(self.root, claude_failure('grep "a b" f')))
+        self.assertEqual(discipline.hook(self.root, claude_failure('grep "unterminated')), {})  # shlex fails: raw fallback, no crash
+
+    def test_tolerant_shell_tool_names(self):
+        for name in ('shell', 'exec_command'):
+            payload = {'hook_event_name': 'PostToolUse', 'session_id': name, 'tool_name': name,
+                       'tool_input': {'command': 'make'}, 'tool_response': {'exit_code': 1}}
+            results = [discipline.hook(self.root, payload) for _ in range(3)]
+            self.assertIn('failed 3 times', results[2]['hookSpecificOutput']['additionalContext'])
+
     def test_success_other_tools_and_bad_input_are_ignored(self):
         self.assertFalse(discipline.failed(claude_failure('x', code=0)))
         self.assertEqual(discipline.hook(self.root, {**claude_failure('x'), 'tool_name': 'Edit'}), {})
