@@ -294,6 +294,7 @@ def pack_add(root, name):
     nxt = [f"run {KIT / 'packs' / name / manifest['setup']}"] if manifest.get('setup') else []
     if manifest.get('selftest'):
         nxt.append(f"verify with {KIT / 'packs' / name / manifest['selftest']}")
+    nxt += [line for line in manifest.get('next', []) if isinstance(line, str)]
     return {'pack': name, 'installed': True, 'collisions': collisions, 'next': nxt or ['nothing else needed'],
             'missing': [r for r in requirement_status(manifest) if not r['ok']]}
 
@@ -457,6 +458,15 @@ def memory_hooks(root, client='claude'):
                 'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][prompt_event] = [hook if client == 'cursor' else {'hooks': [hook]}]
     return result
+
+
+def guard_hooks(root, client):
+    """PreToolUse hook for the opt-in guards pack (repo setup only, so the kit fingerprint stays config-free)."""
+    if client not in ('claude', 'codex') or not (Path(root) / 'workspace.json').is_file() or 'guards' not in config(root).get('packs', []): return {}
+    arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root), 'guard', '--hook', '--client', client]
+    hook = {'type': 'command', 'timeout': 10, 'command': encoded_hook_command(arguments) if WINDOWS and any('%' in a for a in arguments) else command_line(arguments)}
+    # Codex: every tool (shell tool names vary by version); the guard allows tools it cannot read.
+    return {'PreToolUse': [{'matcher': 'Bash|Write|Edit|MultiEdit', 'hooks': [hook]} if client == 'claude' else {'hooks': [hook]}]}
 def install_memory_hooks(root, collisions, clients=None):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
         if clients is not None and client not in clients: continue

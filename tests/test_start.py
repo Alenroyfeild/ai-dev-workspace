@@ -62,6 +62,22 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0)
         self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), b'Private Claude notes.\n')
 
+    def test_guards_pack_on_and_off_refreshes_the_pre_tool_use_hook(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        root = core.find_root(self.repo)
+        hooks = lambda name: json.loads((self.repo / name).read_text())['hooks']
+        self.assertNotIn('PreToolUse', hooks('.claude/settings.local.json'))
+        core.pack_add(root, 'guards')
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn('guard --hook --client claude', json.dumps(hooks('.claude/settings.local.json')['PreToolUse']))
+        self.assertIn('guard --hook --client codex', json.dumps(hooks('.codex/hooks.json')['PreToolUse']))
+        self.assertTrue(json.loads((self.repo / '.ws-start.json').read_text())['guards'])
+        from ws import packs
+        packs.remove(root, 'guards')
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertNotIn('PreToolUse', hooks('.claude/settings.local.json'))
+        self.assertEqual(self.start('--undo')[0], 0)
+
     def test_refresh_refuses_a_setup_file_committed_to_git(self):
         self.assertEqual(self.start('--yes')[0], 0)
         self.age_setup('CLAUDE.local.md', b'old instruction\n')

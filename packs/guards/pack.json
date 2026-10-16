@@ -1,0 +1,5 @@
+{"name": "guards", "version": "0.1.0", "kind": "guard",
+ "description": "Opt-in PreToolUse hooks for Claude Code and Codex that deny rm -rf on home or root, git reset --hard, force push, git clean -f, secrets in commands or files, and newly skipped tests.",
+ "requires": [],
+ "next": ["run ws start again in each connected repo to add the guard hook (it previews the change first)",
+          "to turn the rules off for one session, start the assistant with WS_GUARDS=off"]}
