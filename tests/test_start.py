@@ -79,6 +79,13 @@ class StartTests(unittest.TestCase):
         self.assertNotIn('PreToolUse', hooks('.claude/settings.local.json'))
         self.assertEqual(self.start('--undo')[0], 0)
 
+    def test_first_start_suggests_a_starter_pack_for_the_repo_type(self):
+        (self.repo / 'package.json').write_text('{}\n')
+        code, out, _ = self.start('--yes')
+        self.assertEqual(code, 0)
+        self.assertIn('Looks like a web app: ws pack add web adds a few starter rules (optional).', out)
+        self.assertNotIn('Looks like', self.start('--yes')[1])  # rerun: no repeat
+
     def test_refresh_refuses_a_setup_file_committed_to_git(self):
         self.assertEqual(self.start('--yes')[0], 0)
         self.age_setup('CLAUDE.local.md', b'old instruction\n')

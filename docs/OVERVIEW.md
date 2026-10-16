@@ -126,6 +126,7 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 | `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |
 | `guards` | Claude Code and Codex hooks (Windows PowerShell too) that deny `rm -rf` / `Remove-Item -Recurse -Force` on home or root, `git reset --hard`, force push, `git clean -f`, secrets in commands or files, and newly skipped tests. Run `ws start` again in each repo after adding or removing it; `WS_GUARDS=off` turns it off for one session. A safety net for honest mistakes, not a security boundary | nothing |
 | `discipline` | Advisory only: after the same shell command fails 3 times in a session, Claude Code and Codex are told to stop retrying, form one hypothesis and save the dead end. Never blocks; stores a hash of the command, not the text | nothing |
+| `web`, `library`, `ml` | A few starter rules for that kind of repo (under 70 words each); the first `ws start` suggests the one that fits | nothing |
 | `codex-worker` | Legacy ACP read-only worker, kept for existing users | Node, `acpx`, a Codex sign-in |
 
 `ws pack add <name>`. Your own domain is a folder with a `pack.json`: [docs/PACKS.md](PACKS.md).
