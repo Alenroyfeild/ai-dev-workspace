@@ -151,6 +151,14 @@ class MemoryImportTests(unittest.TestCase):
         knowledge = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
         self.assertIn('VALID_mdc_SENTINEL', knowledge); self.assertIn('VALID_md_SENTINEL', knowledge)
 
+    def test_invalid_utf8_does_not_consume_the_file_limit(self):
+        rules = self.repo / '.cursor/rules'; rules.mkdir(parents=True)
+        for i in range(16): (rules / f'{i:02}.mdc').write_bytes(bytes([255, 254]))
+        (rules / '99-valid.mdc').write_text('VALID_UTF8_SENTINEL')
+        self.assertEqual(self.start('--yes')[0], 0)
+        knowledge = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
+        self.assertIn('VALID_UTF8_SENTINEL', knowledge)
+
     @unittest.skipIf(os.name == 'nt', 'Windows filenames cannot contain newlines or controls')
     def test_source_labels_cannot_insert_headings_or_controls(self):
         memory = self.home / 'auto-memory'; memory.mkdir()
