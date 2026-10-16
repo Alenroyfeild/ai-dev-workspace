@@ -80,16 +80,18 @@ All commands: [docs/COMMANDS.md](COMMANDS.md). Plain-language guide: [docs/CONCE
 
 ## How it compares
 
-| | AI Dev Workspace | Built-in assistant memory | claude-mem | Beads |
-|---|---|---|---|---|
-| Works across different assistants | yes, measured Claude → Codex | one assistant | Claude Code | yes, through its CLI/MCP |
-| Plain files you can commit and share | yes, Markdown | per-machine local store | local store | yes, git-backed |
-| Captures conversation decisions automatically | yes (Claude, Codex hooks) | when the model chooses to | yes | no, the agent files issues |
-| Task status, claims and dependencies | yes | per tool (Claude Tasks, Codex goals) | no | yes |
-| Warns when memory may be stale | yes | not documented | not documented | not applicable |
-| Published, reproducible benchmark | yes, [bench/](../bench/README.md) | no | no | no |
+| | AI Dev Workspace | Manual HANDOFF.md | Built-in assistant memory | claude-mem | Beads |
+|---|---|---|---|---|---|
+| Works across different assistants | yes, measured Claude → Codex | yes, if each is told to read it | one assistant | Claude Code | yes, through its CLI/MCP |
+| Plain files you can commit and share | yes, Markdown | yes, one file | per-machine local store | local store | yes, git-backed |
+| Captures conversation decisions automatically | yes (Claude, Codex hooks) | no, written by hand at the end | when the model chooses to | yes | no, the agent files issues |
+| Task status, claims and dependencies | yes | one task at a time | per tool (Claude Tasks, Codex goals) | no | yes |
+| Warns when memory may be stale | yes | no, relies on dates | not documented | not documented | not applicable |
+| Published, reproducible benchmark | yes, [bench/](../bench/README.md) | no | no | no | no |
 
 Use it with them, not instead: `ws import native` reads built-in memories, `ws task import` reads Spec Kit and Task Master output, and it runs alongside skill packs in the same session.
+
+Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and next step per task, and the brief hands them to whichever assistant opens the repo next. Handoff patterns compared in [codex-claude-code-config](https://github.com/AnastasiyaW/codex-claude-code-config/blob/main/alternatives/session-handoff.md).
 
 ## Client compatibility
 
