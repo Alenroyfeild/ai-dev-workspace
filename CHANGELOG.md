@@ -10,16 +10,20 @@ Team workspaces can now receive approved shared updates automatically or be read
 - `ws pr-notes` prints the task's saved decisions, reasons, acceptance criteria and checks as a pull request description, so reviewers see why the code changed. Example: `gh pr create --body "$(ws pr-notes)"`.
 - `ws recap` lists the tasks you changed this week with their decisions and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
+- Team notes can show a chosen author alias and short label, so teammates can recognize who shared them.
 
 ### Improved
 - Each session starts lighter: the MCP server lists 7 core memory tools by default instead of 28, about 1,360 fewer tokens of tool descriptions per session. Set `"mcp_tools": "all"` in workspace.json to list everything; other tools still work when called by name.
 - Decisions you state in chat (not only corrections) are now saved by the assistant with `remember`, so they reach the next session as saved decisions rather than unverified captures. In a repo set up earlier, run `ws start` again to pick up the new instruction; saved memory is kept.
 - After an upgrade, run `ws start` again in your repo: it refreshes the setup files it wrote (instructions, hooks, MCP config) for the new version, after showing them and asking. Files you edited are left alone and reported; saved memory is kept.
+- The first-run preview is shorter: it lists the files to be created and asks once before setup.
 
 ### Fixed
+- Source builds and installed CLI/MCP entry points work from the packaged kit, including builds through pip.
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 
 ### Known limits
+- The PyPI upload and hosted two-person team check are still release gates; this entry describes landed dev changes, not a published beta.
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
 
