@@ -145,7 +145,7 @@ def find_root(start=None):
                 if lookup.returncode or Path(lookup.stdout.strip()).resolve() != candidate:
                     raise WsError('Repo memory link must be at the Git checkout root; review .ws-start.json.')
                 target = load(candidate).get('workspace')
-                if not isinstance(target, str) or not target: raise ValueError('Invalid workspace path')
+                if not isinstance(target, str) or not Path(target).is_absolute(): raise ValueError('Invalid workspace path')
                 root = Path(target).resolve()
                 if root == candidate or candidate in root.parents:
                     raise WsError('Repo memory link must point outside this Git checkout.')
