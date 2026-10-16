@@ -1,4 +1,5 @@
 """A disposable, offline demonstration of a remembered decision."""
+import json
 import os
 import subprocess
 import sys
@@ -38,13 +39,19 @@ def run():
             core.remember(root, decision)
             try:
                 result = subprocess.run([sys.executable, '-B', str(core.KIT / 'bin/ws'),
-                                         '--workspace-root', str(root), 'brief'],
+                                         '--workspace-root', str(root), 'brief', '--hook', '--client', 'codex'],
+                                        input=json.dumps({'hook_event_name': 'SessionStart'}),
                                         cwd=base, env=dict(os.environ), capture_output=True, text=True, timeout=20)
             except (OSError, subprocess.TimeoutExpired) as exc:
                 raise core.WsError('Demo brief process could not finish; retry ws demo.') from exc
-            if result.returncode or decision not in result.stdout:
-                raise core.WsError('Demo could not read the saved decision in a fresh process.')
-            brief = result.stdout.strip()
-    return (f'Saved with ws remember: "{decision}"\n\nFresh process — brief read from disk:\n{brief}\n\n'
+            try:
+                hook = json.loads(result.stdout)
+                brief = hook['hookSpecificOutput']['additionalContext']
+                summary = hook['systemMessage']
+                if result.returncode or decision not in brief or not summary.startswith('Remembered:'):
+                    raise ValueError('Missing remembered decision')
+            except (ValueError, KeyError, TypeError, AttributeError):
+                raise core.WsError('Demo could not read the saved decision in a fresh process.') from None
+    return (f'Saved with ws remember: "{decision}"\n\nFresh process — session start:\n{summary}\nDecision: {decision}\n\n'
             'Demo workspace removed. No assistant was started.\n'
             'Try it in your own code repo: ws start')
