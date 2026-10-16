@@ -35,6 +35,18 @@ class GuardRuleTests(unittest.TestCase):
     def test_secret_in_command_is_denied(self):
         self.assertIn('secret', self.deny('curl -H "Authorization: Bearer ghp_' + 'a' * 36 + '" https://x.invalid'))
 
+    def test_variable_references_and_placeholders_are_not_secrets(self):
+        for command in ('export API_KEY=$API_KEY', 'GITHUB_TOKEN="${GITHUB_TOKEN}" make release', 'psql postgres://user:password@localhost/db',
+                        'echo "token: <your-token-here>"'):
+            with self.subTest(command): self.assertEqual(self.deny(command), '')
+        self.assertEqual(guards.reason('Write', {'file_path': '.env.example', 'content': 'API_KEY=your-api-key-here\nDB_PASSWORD=changeme\n'}), '')
+
+    def test_real_looking_tokens_are_denied(self):
+        for command in ('gh auth login --with-token ghp_' + 'A1b2' * 9, 'curl -u x:sk-' + 'Z9y8' * 6 + ' https://x.invalid',
+                        'export AWS_ACCESS_KEY_ID=AKIA' + 'ABCD1234EFGH5678', 'export API_KEY=' + 'q7Rt' * 5):
+            with self.subTest(command): self.assertIn('secret', self.deny(command))
+        self.assertTrue(guards.reason('Write', {'file_path': 'k.pem', 'content': '-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----\n'}))
+
     def test_newly_skipped_tests_are_denied(self):
         self.assertTrue(guards.reason('Edit', {'file_path': 't.py', 'old_string': 'def test_a():', 'new_string': '@unittest.skip("x")\ndef test_a():'}))
         self.assertTrue(guards.reason('Edit', {'old_string': "it('works'", 'new_string': "it.only('works'"}))
