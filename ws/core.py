@@ -1162,6 +1162,8 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         values = {'status': status, 'updated': now(), 'checkpoint_at': now(), 'checkpoint_count': int(meta.get('checkpoint_count', 0)) + 1}
         head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
         if re.fullmatch(r'[0-9a-f]{40,64}', head): values['checkpoint_commit'] = head  # lets brief spot stale memory
+        if 'checkpoint_commit' in values:  # uncommitted edits at checkpoint, so brief can tell when they vanish
+            values['checkpoint_dirty'] = json.dumps([n for n in _task_git(root, task_id, 'diff', '--name-only', '-z', 'HEAD', '--').split('\0') if n][:20])
         text = set_meta(text, values)
         text = set_section(text, 'Next action', redact(next_action))
         for name, body in (notes or {}).items():
@@ -1524,14 +1526,16 @@ def _memory_check(root, task_id, meta, next_action):
         return f'Memory check: code is behind the saved checkpoint ({saved[:7]}); the work it describes may be undone.'
     # Against the working tree, so an uncommitted delete counts; -M reports a rename as old -> new.
     out = _task_git(root, task_id, 'diff', '--no-ext-diff', '--no-textconv', '-M', '--name-status', '-z', saved, '--').split('\0')
-    gone, changed, i = {}, [], 0
+    gone, changed, seen, i = {}, [], set(), 0
     while i < len(out) and out[i]:
         status, i = out[i], i + 1
         if status[:1] in 'RC':
             old, new, i = out[i], out[i + 1], i + 2
+            seen.update((old, new))
             if status[0] == 'R': gone[old] = new
         else:
             name, i = out[i], i + 1
+            seen.add(name)
             if status == 'D': gone[name] = ''
             elif head != saved: changed.append(name)  # uncommitted edits alone stay silent, as before
     present = []
@@ -1544,9 +1548,12 @@ def _memory_check(root, task_id, meta, next_action):
         if not mentions(base): return False
         if not present: present.extend(_task_git(root, task_id, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0') or [''])
         return not any(p != path and os.path.basename(p) == base and p not in gone for p in present)
+    try: dirty = [p for p in json.loads(meta.get('checkpoint_dirty') or '[]') if isinstance(p, str)]
+    except (ValueError, TypeError): dirty = []
+    lost = [os.path.basename(p) for p in dirty if p not in seen][:3]  # back to the checkpoint commit's version
     gone = [os.path.basename(n) + (f' (now {gone[n]})' if gone[n] else '') for n in gone if named(n)][:3]
     changed = list(dict.fromkeys(os.path.basename(n) for n in changed if named(n)))[:5]
-    parts = ([f'gone since: {", ".join(gone)}'] if gone else []) + ([f'changed since: {", ".join(changed)}'] if changed else [])
+    parts = ([f'uncommitted edits gone: {", ".join(lost)} (stashed or reset?)'] if lost else []) + ([f'gone since: {", ".join(gone)}'] if gone else []) + ([f'changed since: {", ".join(changed)}'] if changed else [])
     return f'Memory check: written at {saved[:7]}; {"; ".join(parts)} (verify before acting).' if parts else ''
 
 
