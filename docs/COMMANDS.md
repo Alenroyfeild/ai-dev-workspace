@@ -13,6 +13,8 @@ Every command works from inside a workspace folder (or with `WS_ROOT` set). In a
 | `ws packs` / `ws pack add <name>` / `ws pack add --from <dir>` / `ws pack remove <name>` | List packs, add a bundled or private local pack, and remove a private pack. Removal deletes only unchanged files that pack created; pre-existing or edited files are kept. Bundled packs are additive and are not removed by this command. |
 | `ws map [<repo>]` | Rewrite the codebase map; link an existing `graphify-out/GRAPH_REPORT.md` and its top headings. `ws search` includes that report. The kit never runs Graphify. |
 
+Restart the assistant session after `ws start --undo` or `ws team unlink`; a running session keeps its MCP server.
+
 ## Daily loop
 
 Claude and Codex hooks can capture cue-bearing decisions and assistant summaries from supported transcripts. Captures are redacted, unverified and best-effort. Save important corrections explicitly with `ws remember`; use `/handoff` for progress notes.
@@ -27,6 +29,8 @@ Claude and Codex hooks can capture cue-bearing decisions and assistant summaries
 | `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Evidence=..."]` | Save progress and the exact next step. |
 | `ws release <ID>` | Give the task back. |
 | `ws remember "<decision>" [--task ID]` | Save one decision (e.g. `"use Postgres, not SQLite"`) in your claimed task; the next session's brief lists it first. Secrets and `<private>` text are removed. |
+| `ws pr-notes [ID] [--no-link] [--json]` | Print the task's goal, saved decisions (with reasons), acceptance criteria, checks and open items as Markdown for a pull request description, e.g. `gh pr create --body "$(ws pr-notes)"`. Unverified automatic captures, template placeholders, secrets, `<private>` text and home paths are left out. A one-line credit link is added unless `--no-link`. Prints only; never edits the task or calls GitHub. |
+| `ws recap [--since 7d\|YYYY-MM-DD] [--json]` | Tasks changed in the period (done first, then review, in progress, blocked) with their saved decisions and next action, plus teammates' shared notes and status when a team is linked. Read-only Markdown for standups and handoffs; unverified captures, secrets, `<private>` text and home paths are left out. |
 | `ws brief` | Task memory in under 200 words, with separate section budgets: newest captured constraints and explicit decision lines first, then next action and blockers; long Handoff prose and matching lessons last. Explicit Handoff is labelled as saved task-record text, separate from unverified captures. `[truncated: see task record]` marks clipped or omitted context; read the task's sections for the full source. The brief cannot recover decisions missing from the saved record. Existing Copilot/Cursor native blocks receive the same brief on checkpoint or `ws brief --refresh`. The session-start hook also runs this; in Claude Code and Codex it also shows you one line (`Remembered: 3 decisions · next: ...`, or how to save memory when there is none) via the hook's `systemMessage`; other clients get the brief only. `Memory check` flags changed/undone code; unmatched lesson paths show `(paths gone)`, and more than three matches collapse to `Lessons: N more`. |
 | `ws lesson add "<what happened → rule>"` / `ws lesson search "<words>"` | Lessons learned. |
 | `ws search "<words>"` | Ranked snippets from the vault notes. |
@@ -87,7 +91,7 @@ The saved decision survives a checkpoint, so use your usual `/handoff` or
 
 `ws run log` accepts `--result ok|failed|rejected|accepted|skipped` (default `ok`), plus `--worker-role`, `--effort`, repeated `--check "<command>=<exit code>"`, `--files N`, `--verdict accepted|changes|rejected`, and `--findings N`. Counts must be nonnegative. Checks are caller-reported; commands are never executed. Records append to `vault/Runs/<task>.jsonl`; old records remain readable. Two consecutive steps on one task with failed/rejected results, changes/rejected verdicts, or nonzero check codes make `ws brief` and `ws nudge` warn: "stop: two failed attempts, re-diagnose before trying again". A later nonfailing step clears that task's warning; another task's steps do not. This is an advisory guard, not execution enforcement. Log actual token counts only when available; omitted counts retain the existing zero defaults.
 
-`mcp/server.py` exposes 25 tools: `route`, `delegate`, `assist`, `import_usage`, `search_sessions`, `codebase_map`, `brief`, `nudge`, `connect_client`, `find_task`, `read_task`, `new_task`, `claim_task`, `release_task`, `checkpoint`, `remember`, `search_vault`, `search_lessons`, `add_lesson`, `add_feedback`, `digest_file`, `log_step`, `trace`, `notices`, and `status`. MCP `log_step` accepts the same metadata (`checks` is an array of `command=exit code` strings); `trace` takes `task`. Setup, pack installation and feedback submission stay CLI-only on purpose.
+`mcp/server.py` lists 7 core tools by default: `brief`, `find_task`, `read_task`, `checkpoint`, `remember`, `search_vault` and `add_lesson` (about 500 tokens of tool descriptions instead of about 1,900 for all of them). Set `"mcp_tools": "all"` in workspace.json to list every tool, or a list of names; unlisted tools stay callable by name, and `ws doctor` shows the profile. All 28 tools: `know_list`, `know_show`, `know_add`, `route`, `delegate`, `assist`, `import_usage`, `search_sessions`, `codebase_map`, `brief`, `nudge`, `connect_client`, `find_task`, `read_task`, `new_task`, `claim_task`, `release_task`, `checkpoint`, `remember`, `search_vault`, `search_lessons`, `add_lesson`, `add_feedback`, `digest_file`, `log_step`, `trace`, `notices`, and `status`. MCP `log_step` accepts the same metadata (`checks` is an array of `command=exit code` strings); `trace` takes `task`. Setup, pack installation and feedback submission stay CLI-only on purpose.
 
 
 ### Select assistants
@@ -96,7 +100,7 @@ After `ws init`, run `ws setup` to choose assistants interactively, or `ws setup
 
 Setup previews by default (`--dry-run` also works), reporting routing changes, configuration paths and trust steps. Review that output, then repeat with `--apply`. Apply backs up routing/workspace metadata in `.ws/backups/`, preserves user text and compatible overrides, and connects project configuration for each assistant. An override referring to an unselected provider stops before changes. `copilot` and `vscode` select the `copilot-only` provider preset and the VS Code Local connector; Copilot CLI lifecycle support is not implied. Codex global MCP stays a preview: `ws connect codex --write` is a separate explicit choice. Setup never links user-level skills. Restart/trust the project and approve MCP/hooks in each client; doctor shows the chosen preset, not verified login or model access.
 
-### Link a private team repo (T1)
+### Link a private team repo
 
 `ws team init <private-remote> --dry-run` previews a local team clone and metadata;
 repeat without `--dry-run` to confirm. Create the empty private remote yourself;
@@ -107,12 +111,12 @@ Privacy uses an installed `gh`/`glab`, or explicit `--attest-private` for that e
 remote when verification is unavailable. Known public/internal visibility blocks
 linking. `--verify-with gh|glab` selects a verifier for a self-hosted remote.
 `--yes` confirms the printed preview; use `--auto-pull` or `--no-auto-pull` to record
-the pull preference noninteractively. Automatic pulls/scheduling are not active in
-T1; publishing is never authorized by pull consent. Doctor labels verified versus
-attested privacy. `ws team unlink` preserves `.ws/team` and all private records;
+the pull preference noninteractively. Read-only automatic pulls are optional; pull
+consent never authorizes publication. Doctor labels verified versus attested
+privacy. `ws team unlink` preserves `.ws/team` and all private records;
 move the retained clone yourself before a new link. No installs or assistant runs.
 
-### Local sharing scope (T2)
+### Choose what is eligible to share
 
 `ws scope task:<ID>` reads scope; `ws scope task:<ID> team` (or `private`) changes
 only that record's frontmatter. `decision:`, `lesson:` and `knowledge:` select
@@ -176,7 +180,7 @@ is synthetic. Acceptance uses [commit-tree](https://git-scm.com/docs/git-commit-
 [fetch without FETCH_HEAD](https://git-scm.com/docs/git-fetch) and
 [update-ref with an absent-ref check](https://git-scm.com/docs/git-update-ref).
 
-## Categorized knowledge (T4 catalog)
+## Categorized knowledge
 
 `ws know add "text" --category product|feature|domain|repo|runbook|other` saves a
 private standalone record; `--team` selects sharing through the existing preview
@@ -201,8 +205,7 @@ missing, stale or malformed cards fall back to bounded source reads. Common
 category searches use cached summary/counts; other queries and `know show` read
 the full record, retaining full-text lookup. Cached snippets are summary metadata.
 Fresh clones may fall back when checkout timestamps differ. Team text remains
-untrusted. Generation is limited to 1000 records per layer. No brief integration
-is added here; cross-layer brief memory is T5.
+untrusted. Generation is limited to 1000 records per layer.
 
 Team reading: `ws brief` uses relevant team cards within the remaining 200-word
 budget, after private decisions and next action, labelled untrusted with provenance.
@@ -239,7 +242,7 @@ and date are saved; the task must be locally claimed. `ws team status` lists saf
 snapshots; brief shows the two newest snapshots, labelled untrusted and last reported, never live availability.
 `ws team status --author tester --disable-status` previews opt-out and removal of
 that locally approved alias; Git history/other copies retain it. Copies changed by
-others refuse overwrite. Transport is the separate T7a `ws sync`; this command
+others refuse overwrite. Use `ws sync` to move approved records; this command
 never commits or pushes, and works without an installed assistant.
 
 

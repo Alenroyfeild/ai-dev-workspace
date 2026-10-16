@@ -30,6 +30,18 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(output.getvalue().strip(), 'ws 0.1.0-beta.5')
 
     @unittest.skipUnless(HAS_BUILD_TOOLS, 'setuptools and wheel are needed for artifact builds')
+    def test_pip_builds_a_wheel_from_the_sdist(self):
+        # pip and pipx build source installs through PEP 517, where the source folder is not importable by default.
+        with tempfile.TemporaryDirectory() as temp:
+            subprocess.run([sys.executable, 'setup.py', 'sdist', '--dist-dir', temp], cwd=ROOT, check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            source = next(Path(temp).glob('*.tar.gz'))
+            built = subprocess.run([sys.executable, '-m', 'pip', 'wheel', str(source), '--no-deps', '--no-build-isolation',
+                                    '-w', temp], cwd=temp, capture_output=True, text=True)
+            self.assertEqual(built.returncode, 0, built.stdout[-2000:] + built.stderr[-2000:])
+            self.assertTrue(list(Path(temp).glob('*.whl')))
+
+    @unittest.skipUnless(HAS_BUILD_TOOLS, 'setuptools and wheel are needed for artifact builds')
     def test_sdist_and_wheel_include_pep440_metadata_and_runtime_files(self):
         with tempfile.TemporaryDirectory() as temp:
             dist = Path(temp)

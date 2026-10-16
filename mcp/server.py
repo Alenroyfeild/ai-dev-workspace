@@ -38,6 +38,17 @@ def S(**props):
     return {'type': 'object', 'properties': props, 'required': required, 'additionalProperties': False}
 
 
+# Listed by default: what a session needs to read and save memory. Every other tool stays callable by name.
+CORE_TOOLS = ('brief', 'find_task', 'read_task', 'checkpoint', 'remember', 'search_vault', 'add_lesson')
+
+
+def listed_tools(root):
+    """workspace.json `mcp_tools`: "core" (default), "all", or a list of tool names."""
+    choice = core.config(root).get('mcp_tools', 'core') if root else 'all'
+    names = TOOLS if choice == 'all' else choice if isinstance(choice, list) else CORE_TOOLS
+    return [name for name in TOOLS if name in names]
+
+
 def string(desc, optional=False):
     return {'type': 'string', **({'description': desc} if desc else {}), 'optional': optional}
 
@@ -196,7 +207,7 @@ def _dispatch(root, msg):
         except (core.WsError, OSError) as exc:
             return rpc_error(mid, -32603, str(exc))
     elif method == 'tools/list':
-        result = {'tools': [{'name': n, 'description': d, 'inputSchema': s} for n, (d, s, _) in TOOLS.items()]}
+        result = {'tools': [{'name': n, 'description': TOOLS[n][0], 'inputSchema': TOOLS[n][1]} for n in listed_tools(root)]}
     elif method == 'tools/call':
         name = params.get('name')
         args = params.get('arguments', {})

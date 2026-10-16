@@ -1,7 +1,7 @@
 # AI Dev Workspace
 
-An assistant can lose a decision between sessions, making it repeat work or undo a settled choice.
-AI Dev Workspace keeps task notes in Markdown your assistant can read next time.
+Your assistant remembers work between sessions in Markdown you own.
+<!-- Demo GIF -->
 ## Quick start
 
 ```bash
@@ -25,7 +25,7 @@ You: “Yes, continue.”
 | Claude Code → Codex | 0/5 | **5/5** |
 | Codex → Codex | 0/3 | **3/3** |
 
-## For teams (preview)
+## Team sharing
 Your notes stay private. Share only what you approve, and your teammates' assistants start with it:
 `ws team init <private-repo>` · `ws know add "Payments API rejects floats" --category domain --team` · `ws sync`. A teammate runs `ws team link <private-repo>`; their next brief shows the note, labelled as shared team context, and their own decisions still win. [Team quick start](docs/TEAM-WORKSPACE.md#quick-start)
 ## Compatibility
@@ -37,4 +37,4 @@ Your notes stay private. Share only what you approve, and your teammates' assist
 | Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested |
 | Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested |
 
-Testers on Cursor, Copilot (VS Code), or Gemini CLI: please share problems through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml). · [Overview](docs/OVERVIEW.md) · [Setup](docs/SETUP.md) · [Commands](docs/COMMANDS.md) · [Keeping corrections](docs/COMMANDS.md#save-a-correction) · [Measurements](docs/MEASUREMENTS.md) · [Client verification](docs/CLIENT-VERIFICATION.md) · [Packs](docs/PACKS.md) · [Team use](docs/TEAM.md) · [Windows](docs/WINDOWS.md) · [Roadmap](docs/ROADMAP.md) · [License](LICENSE)
+Testers on Cursor, Copilot (VS Code), or Gemini CLI: please share problems through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml). · [Overview](docs/OVERVIEW.md) · [Setup](docs/SETUP.md) · [Commands](docs/COMMANDS.md) · [Keeping corrections](docs/COMMANDS.md#save-a-correction) · [Measurements](docs/MEASUREMENTS.md) · [Client verification](docs/CLIENT-VERIFICATION.md) · [Packs](docs/PACKS.md) · [Team use](docs/TEAM.md) · [Windows](docs/WINDOWS.md) · [Roadmap](docs/ROADMAP.md) · [License](LICENSE) <!-- mcp-name: io.github.Alenroyfeild/ai-dev-workspace mcp-name: io.github.alenroyfeild/ai-dev-workspace -->
