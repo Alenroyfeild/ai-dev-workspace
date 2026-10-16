@@ -17,6 +17,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - After an upgrade, run `ws start` again in your repo: it refreshes the setup files it wrote (instructions, hooks, MCP config) for the new version, after showing them and asking. Files you edited are left alone and reported; saved memory is kept.
 
 ### Fixed
+- `ws validate` and `ws doctor` no longer call a fresh `ws start` setup invalid: a task that has never been checkpointed may have no next action yet.
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 
 ### Known limits
