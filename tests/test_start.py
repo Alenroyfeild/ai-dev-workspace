@@ -61,8 +61,8 @@ class StartTests(unittest.TestCase):
         self.assertIn('Continue the saved next action', core.task_read(workspace, task['id'])['text'])
 
     def test_correction_instruction_is_written_and_undo_restores_user_text(self):
-        instruction = ('When the user corrects an earlier decision, call the MCP `remember` tool '
-                       'with the corrected decision, saying what it replaces.')
+        instruction = ('When the user states a decision or corrects an earlier one, call the MCP `remember` tool '
+                       'with it; for a correction, say what it replaces.')
         originals = {'CLAUDE.local.md': b'Private Claude notes.\n',
                      'AGENTS.override.md': b'Private Codex notes.\n'}
         for name, content in originals.items():
