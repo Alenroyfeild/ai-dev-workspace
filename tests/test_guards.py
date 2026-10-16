@@ -94,15 +94,15 @@ class GuardRuleTests(unittest.TestCase):
 
 class GuardHookWiringTests(Base):
     def test_pre_tool_use_hook_only_with_the_pack(self):
-        self.assertEqual(core.guard_hooks(self.root, 'claude'), {})
+        self.assertEqual(core.pack_hooks(self.root, 'claude'), {})
         result = core.pack_add(self.root, 'guards')
         self.assertTrue(any('ws start again' in line for line in result['next']))
-        claude = core.guard_hooks(self.root, 'claude')['PreToolUse'][0]
-        codex = core.guard_hooks(self.root, 'codex')['PreToolUse'][0]
+        claude = core.pack_hooks(self.root, 'claude')['PreToolUse'][0]
+        codex = core.pack_hooks(self.root, 'codex')['PreToolUse'][0]
         self.assertEqual(claude['matcher'], 'Bash|Write|Edit|MultiEdit')
         self.assertNotIn('matcher', codex)
         self.assertTrue(codex['hooks'][0]['command'].endswith(core.command_line(['guard', '--hook', '--client', 'codex'])))  # Windows quotes args
-        self.assertEqual(core.guard_hooks(self.root, 'cursor'), {})
+        self.assertEqual(core.pack_hooks(self.root, 'cursor'), {})
         self.assertNotIn('PreToolUse', core.memory_hooks(self.root, 'claude')['hooks'])  # kit fingerprint unchanged
 
     def test_remove_drops_rules_and_config_only(self):

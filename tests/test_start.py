@@ -72,7 +72,7 @@ class StartTests(unittest.TestCase):
         commands = lambda name: [h['command'] for entry in hooks(name)['PreToolUse'] for h in entry['hooks']]
         for name, client in (('.claude/settings.local.json', 'claude'), ('.codex/hooks.json', 'codex')):  # Windows quotes args
             self.assertTrue(any(c.endswith(core.command_line(['guard', '--hook', '--client', client])) for c in commands(name)), commands(name))
-        self.assertTrue(json.loads((self.repo / '.ws-start.json').read_text())['guards'])
+        self.assertEqual(json.loads((self.repo / '.ws-start.json').read_text())['hook_packs'], ['guards'])
         from ws import packs
         packs.remove(root, 'guards')
         self.assertEqual(self.start('--yes')[0], 0)

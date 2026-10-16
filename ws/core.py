@@ -460,13 +460,22 @@ def memory_hooks(root, client='claude'):
     return result
 
 
-def guard_hooks(root, client):
-    """PreToolUse hook for the opt-in guards pack (repo setup only, so the kit fingerprint stays config-free)."""
-    if client not in ('claude', 'codex') or not (Path(root) / 'workspace.json').is_file() or 'guards' not in config(root).get('packs', []): return {}
-    arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root), 'guard', '--hook', '--client', client]
-    hook = {'type': 'command', 'timeout': 10, 'command': encoded_hook_command(arguments) if WINDOWS and any('%' in a for a in arguments) else command_line(arguments)}
-    # Codex: every tool (shell tool names vary by version); the guard allows tools it cannot read.
-    return {'PreToolUse': [{'matcher': 'Bash|Write|Edit|MultiEdit', 'hooks': [hook]} if client == 'claude' else {'hooks': [hook]}]}
+HOOK_PACKS = ('guards', 'discipline')  # packs that add repo hooks; ws start refreshes when this set changes
+
+
+def pack_hooks(root, client):
+    """Hooks for the opt-in guards and discipline packs (repo setup only, so the kit fingerprint stays config-free)."""
+    if client not in ('claude', 'codex') or not (Path(root) / 'workspace.json').is_file(): return {}
+    packs = config(root).get('packs', [])
+    def hook(*suffix):
+        arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root), *suffix, '--hook', '--client', client]
+        return {'type': 'command', 'timeout': 10, 'command': encoded_hook_command(arguments) if WINDOWS and any('%' in a for a in arguments) else command_line(arguments)}
+    result = {}
+    if 'guards' in packs:  # Codex: every tool; the guard allows tools it cannot read
+        result['PreToolUse'] = [{'matcher': 'Bash|Write|Edit|MultiEdit', 'hooks': [hook('guard')]} if client == 'claude' else {'hooks': [hook('guard')]}]
+    if 'discipline' in packs:  # Claude reports failed commands separately; Codex reports every Bash call
+        result['PostToolUseFailure' if client == 'claude' else 'PostToolUse'] = [{'matcher': 'Bash', 'hooks': [hook('discipline')]}]
+    return result
 def install_memory_hooks(root, collisions, clients=None):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
         if clients is not None and client not in clients: continue
