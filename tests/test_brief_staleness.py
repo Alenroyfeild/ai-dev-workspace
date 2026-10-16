@@ -67,3 +67,26 @@ class BriefStalenessTests(Base):
         lines = [l for l in core.relevant_lessons(self.root, {'id': 'ST-1', 'title': 'Publish daily output'})]
         self.assertEqual([l for l in lines if '(paths gone)' in l], [l for l in lines if 'stale rule' in l])
         self.assertTrue(any('live rule' in l and 'paths gone' not in l for l in lines))
+
+    def test_deleted_file_named_in_next_action_is_reported_gone(self):
+        repo = self.repo()
+        self.git(repo, 'rm', '-q', 'export.py'); self.git(repo, 'commit', '-qm', 'drop export')
+        brief = core.brief(self.root)
+        self.assertIn('gone since: export.py', brief)
+        self.assertNotIn('changed since', brief)
+
+    def test_renamed_file_names_its_new_path(self):
+        repo = self.repo()
+        self.git(repo, 'mv', 'export.py', 'publish.py'); self.git(repo, 'commit', '-qm', 'rename export')
+        self.assertIn('gone since: export.py (now publish.py)', core.brief(self.root))
+
+    def test_uncommitted_delete_is_reported_gone(self):
+        repo = self.repo()
+        (repo / 'export.py').unlink()
+        self.assertIn('gone since: export.py', core.brief(self.root))
+
+    def test_file_named_only_in_a_saved_decision_is_checked(self):
+        repo = self.repo('Finish the output.')
+        core.checkpoint(self.root, 'ST-1', 'in_progress', 'Finish the output.', notes={'Handoff': 'Decision: keep export.py as the only writer.'})
+        self.git(repo, 'rm', '-q', 'export.py'); self.git(repo, 'commit', '-qm', 'drop export')
+        self.assertIn('gone since: export.py', core.brief(self.root))
