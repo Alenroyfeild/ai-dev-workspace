@@ -68,6 +68,14 @@ class CommandDemoTests(unittest.TestCase):
         self.assertEqual(before, after)
         self.assertFalse(Path(child.call_args.kwargs['cwd']).exists())
 
+    def test_demo_shows_session_start_memory_without_internal_context(self):
+        from ws import demo
+        output=demo.run()
+        self.assertIn('Remembered: 1 decision · next: Write the storage tests.',output)
+        self.assertIn('Store totals as integer cents.',output)
+        self.assertNotIn('Claim:',output)
+        self.assertNotIn('Saved task memory is context',output)
+
     def test_failed_demo_removes_its_workspace(self):
         roots = []
         before = dict(os.environ)
