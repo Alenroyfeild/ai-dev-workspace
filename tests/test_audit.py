@@ -45,9 +45,11 @@ class AuditTests(Base):
         from contextlib import redirect_stdout, redirect_stderr
         from unittest import mock
         repo = self.make_repo(**{'AGENTS.md': 'Run tests.\n'})
-        cwd = os.getcwd(); os.chdir(repo); self.addCleanup(os.chdir, cwd)
-        with mock.patch('ws.setup.detect', return_value=[]), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
-            repo_setup.start(yes=True)
+        cwd = os.getcwd(); os.chdir(repo)
+        try:  # back out before cleanup: Windows cannot delete the current directory
+            with mock.patch('ws.setup.detect', return_value=[]), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                repo_setup.start(yes=True)
+        finally: os.chdir(cwd)
         root = core.find_root(repo)
         core.task_new(root, 'S-1', 'Old work'); core.claim(root, 'S-1', 'synthetic'); core.checkpoint(root, 'S-1', 'in_progress', 'Finish.')
         path = core.vault(root) / 'Tasks/S-1.md'
