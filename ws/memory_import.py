@@ -9,7 +9,7 @@ from pathlib import Path
 from . import core
 
 
-def _check(path):
+def _read(path, base):
     anchor = Path.home() if Path.home() in path.parents else Path(path.anchor)
     if any(p.is_symlink() for p in (path, *path.parents) if p == anchor or anchor in p.parents):
         raise core.WsError('Symlink memory source skipped.')
@@ -17,9 +17,6 @@ def _check(path):
     if not stat.S_ISREG(info.st_mode) or info.st_size > 16384:
         raise core.WsError('Memory source must be a regular file under 16 KiB.')
 
-
-def _read(path, base):
-    _check(path)
     return core.read_text(path, [base], errors='strict')
 
 
@@ -27,7 +24,7 @@ def _read(path, base):
 def _limited(paths, label):
     safe = []
     for path in sorted(paths):
-        try: _check(path)
+        try: _read(path, path.parent)
         except (core.WsError, OSError, ValueError):
             print('Memory import skipped unsafe/unreadable ' + label + ' source.', file=sys.stderr); continue
         safe.append(path)
