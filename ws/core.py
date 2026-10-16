@@ -140,6 +140,10 @@ def find_root(start=None):
             if link.is_symlink() or not link.is_file():
                 raise WsError('Repo memory link must be a regular non-symlink file; review .ws-start.json.')
             try:
+                lookup = subprocess.run(['git', '-C', str(candidate), 'rev-parse', '--show-toplevel'],
+                                        capture_output=True, text=True, encoding='utf-8', timeout=10)
+                if lookup.returncode or Path(lookup.stdout.strip()).resolve() != candidate:
+                    raise WsError('Repo memory link must be at the Git checkout root; review .ws-start.json.')
                 target = load(candidate).get('workspace')
                 if not isinstance(target, str) or not target: raise ValueError('Invalid workspace path')
                 root = Path(target).resolve()
@@ -149,8 +153,8 @@ def find_root(start=None):
                 repos = cfg.get('repos', []) if isinstance(cfg, dict) else None
                 if not isinstance(repos, list) or str(candidate) not in repos:
                     raise WsError('Repo memory link does not match this repo; run ws start --undo.')
-            except (OSError, ValueError, TypeError):
-                raise WsError('Invalid repo memory link; restore .ws-start.json or run ws start --undo.') from None
+            except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+                raise WsError('Cannot verify repo memory link; check Git and restore .ws-start.json or run ws start --undo.') from None
             return root
     for candidate in candidates:
         if (candidate / 'workspace.json').is_file():

@@ -21,6 +21,7 @@ class RootDiscoveryTests(unittest.TestCase):
         self.base = Path(self.tmp.name).resolve()
         isolate_home(self, self.base)
         self.repo = self.base / 'hostile-repo'; self.repo.mkdir()
+        subprocess.run(['git', 'init', '-q', str(self.repo)], check=True, capture_output=True)
         self.nested = self.repo / 'src'; self.nested.mkdir()
         self.root = self.base / 'private-memory'
         core.init(self.root, 'Synthetic', clients=[])
@@ -73,6 +74,25 @@ class RootDiscoveryTests(unittest.TestCase):
                 (target / 'workspace.json').write_text(json.dumps({'repos': [str(self.repo)]}))
                 self.link.write_text(json.dumps({'workspace': str(target), 'files': {}}))
                 with self.assertRaises(core.WsError): core.find_root(self.nested)
+
+    def test_nested_forged_link_cannot_target_sibling_inside_checkout(self):
+        target = self.repo / 'forged-memory'; target.mkdir()
+        (target / 'workspace.json').write_text(json.dumps({'repos': [str(self.nested)]}))
+        (self.nested / '.ws-start.json').write_text(json.dumps({'workspace': str(target), 'files': {}}))
+        with self.assertRaises(core.WsError): core.find_root(self.nested)
+
+    def test_git_lookup_failure_fails_closed_but_standalone_discovery_stays_local(self):
+        with mock.patch.object(core.subprocess, 'run', side_effect=FileNotFoundError('git unavailable')):
+            with self.assertRaises(core.WsError): core.find_root(self.repo)
+            self.link.unlink()
+            self.assertEqual(core.find_root(self.repo), self.repo)
+
+    def test_genuine_nested_git_checkout_can_use_registered_external_memory(self):
+        subprocess.run(['git', 'init', '-q', str(self.nested)], check=True, capture_output=True)
+        cfg = core.config(self.root); cfg['repos'].append(str(self.nested))
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        (self.nested / '.ws-start.json').write_text(json.dumps({'workspace': str(self.root), 'files': {}}))
+        self.assertEqual(core.find_root(self.nested), self.root)
 
     def test_symlink_and_dangling_link_stop_discovery(self):
         self.link.unlink()
