@@ -1612,9 +1612,9 @@ def _dead_ends(root, task_id, template):
         if body and body != section(template, name).strip():
             lines += [l.strip().lstrip('-* ').strip() for l in body.splitlines() if l.strip()]
     kept, words = [], 0
-    for line in lines:  # whole items only, so a dead end is never cut mid-sentence
-        if kept and words + len(line.split()) > 24: break
-        kept.append(line); words += len(line.split())
+    for line in lines:  # whole items only, so a dead end is never cut mid-sentence; one too long for the budget is counted
+        if words + len(line.split()) <= 24: kept.append(line); words += len(line.split())
+    if not kept and lines: return f"{len(lines)} saved; read the task's Do not redo/Failures before retrying"
     more = len(lines) - len(kept)
     return '; '.join(kept) + (f' (+{more} more in the task\'s Do not redo/Failures)' if more else '')
 
