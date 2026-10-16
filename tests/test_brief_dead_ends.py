@@ -44,3 +44,14 @@ class DeadEndTests(Base):
         self.assertIn('Never retry the upload in a loop; the API rate-limits after 3 calls.', brief)
         self.assertIn('(+1 more in the task', brief)
         self.assertNotIn('[…]', brief.split('Do not redo:')[1].split('\n')[0])
+
+    def test_an_over_budget_first_item_is_pointed_to_not_cut(self):
+        long_item = 'Rewriting the uploader as a streaming client ' + 'with extra retry and backoff layers ' * 7 + 'failed: it deadlocks.'
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Fix the upload.', notes={'Do not redo': long_item + '\n- Short one: fails too'})
+        line = core.brief(self.root).split('Do not redo:')[1].split('\n')[0]
+        self.assertNotIn('[…]', line)
+        self.assertNotIn('streaming client', line)
+        self.assertTrue(line.strip().startswith('Short one: fails too (+1 more in the task'), line)
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Fix the upload.', notes={'Do not redo': long_item, 'Failures': ''})
+        line = core.brief(self.root).split('Do not redo:')[1].split('\n')[0]
+        self.assertIn("1 saved; read the task's Do not redo/Failures before retrying", line)
