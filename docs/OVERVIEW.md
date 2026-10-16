@@ -84,7 +84,7 @@ All commands: [docs/COMMANDS.md](COMMANDS.md). Plain-language guide: [docs/CONCE
 |---|---|---|---|---|
 | Works across different assistants | yes, measured Claude → Codex | one assistant | Claude Code | yes, through its CLI/MCP |
 | Plain files you can commit and share | yes, Markdown | per-machine local store | local store | yes, git-backed |
-| Captures conversation decisions automatically | yes (Claude, Codex, Cursor, Gemini, VS Code hooks) | when the model chooses to | yes | no, the agent files issues |
+| Captures conversation decisions automatically | yes (Claude, Codex hooks) | when the model chooses to | yes | no, the agent files issues |
 | Task status, claims and dependencies | yes | per tool (Claude Tasks, Codex goals) | no | yes |
 | Warns when memory may be stale | yes | not documented | not documented | not applicable |
 | Published, reproducible benchmark | yes, [bench/](../bench/README.md) | no | no | no |
