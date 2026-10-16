@@ -47,6 +47,34 @@ class MemoryImportTests(unittest.TestCase):
         self.assertEqual(self.start('--yes', '--memory-dir', str(memory))[0], 0)
         self.assertEqual(len(list((core.vault(root) / 'Knowledge').glob('import-*.md'))), 5)
 
+    def test_normal_preview_is_compact_and_dry_run_shows_full_text(self):
+        first = 'é' * 100
+        text = first + '\nSECOND_LINE_SENTINEL\n'
+        (self.repo / 'CLAUDE.md').write_text(text, encoding='utf-8')
+        with mock.patch('builtins.input', return_value='n') as ask:
+            code, _, preview = self.start()
+        self.assertEqual(code, 0); ask.assert_called_once()
+        line = next(line for line in preview.splitlines() if 'unverified): CLAUDE.md' in line)
+        self.assertIn(str(len(text.strip().encode('utf-8'))) + ' bytes', line)
+        self.assertIn(first[:80], line); self.assertNotIn(first[:81], line)
+        self.assertNotIn('SECOND_LINE_SENTINEL', preview)
+        code, _, preview = self.start('--dry-run')
+        self.assertEqual(code, 0); self.assertIn('SECOND_LINE_SENTINEL', preview)
+        self.assertFalse((self.home / '.ai-dev-workspace').exists())
+
+    def test_agents_is_searchable_private_knowledge_without_imported_brief_excerpt(self):
+        (self.repo / 'AGENTS.md').write_text('AGENTS_ONLY_SENTINEL receipt rules.\n')
+        (self.repo / 'CLAUDE.md').write_text('CLAUDE_ONLY_SENTINEL integer cents.\n')
+        self.assertEqual(self.start('--yes')[0], 0)
+        root = core.find_root()
+        knowledge = '\n'.join(p.read_text() for p in (core.vault(root) / 'Knowledge').glob('import-*.md'))
+        self.assertIn('AGENTS_ONLY_SENTINEL', knowledge)
+        task = core.task_read(root, core.task_list(root)[0]['id'])['text']
+        imported = core.section(task, 'Imported memory')
+        for text in (imported, core.brief(root)):
+            self.assertNotIn('AGENTS_ONLY_SENTINEL', text)
+            self.assertIn('CLAUDE_ONLY_SENTINEL', text)
+
     def test_default_claude_memory_is_repo_scoped(self):
         project = re.sub(r'[^A-Za-z0-9]', '-', str(self.repo.resolve()))
         memory = self.home / '.claude/projects' / project / 'memory'; memory.mkdir(parents=True)

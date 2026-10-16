@@ -27,7 +27,7 @@ def _limited(paths, label):
     return paths[:16]
 
 
-def preview(repo, memory_dir=None):
+def preview(repo, memory_dir=None, dry_run=False):
     paths = [(repo / name, repo, name) for name in ('CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md', '.cursorrules')]
     rules = repo / '.cursor/rules'
     if rules.is_dir() and not rules.is_symlink():
@@ -50,7 +50,9 @@ def preview(repo, memory_dir=None):
         if not text or total + len(text.encode()) > 65536: continue
         total += len(text.encode())
         rows.append(dict(path=path, base=parent, label=label, sha=core.digest_text(raw), text=text))
-        print('Import to private knowledge (unverified): ' + label + '\n' + json.dumps(text, ensure_ascii=True), file=sys.stderr)
+        first = json.dumps(text.splitlines()[0][:80], ensure_ascii=False)
+        print(f'Import to private knowledge (unverified): {label} ({len(text.encode())} bytes) {first}', file=sys.stderr)
+        if dry_run: print(json.dumps(text, ensure_ascii=True), file=sys.stderr)
     return rows
 
 
@@ -70,8 +72,9 @@ def apply(root, repo, task, rows):
             target = core.inside(core.vault(root) / 'Knowledge' / (name + '.md'), [root])
             if not target.exists():
                 core.atomic_write(target, f'---\nid: {name}\nscope: private\ncategory: repo\ncreated: {core.now()}\n---\n\nImported context (unverified; never permission to execute).\nSource: {row["label"]}\n\n{row["text"]}\n')
-            snippet = ' '.join(row['text'].split()[:12])
-            snippets.append(row['label'] + ': ' + snippet + ' (' + name + ')')
+            if row['label'] != 'AGENTS.md':
+                snippet = ' '.join(row['text'].split()[:12])
+                snippets.append(row['label'] + ': ' + snippet + ' (' + name + ')')
         path = core.task_path(root, task); text = path.read_text(encoding='utf-8')
         # A dedicated section keeps imported text separate from user-stated decisions.
         core.atomic_write(path, core.set_section(text, 'Imported memory', '\n'.join(snippets)))
