@@ -63,3 +63,17 @@ class AuditTests(Base):
         out = audit.text(audit.audit(self.make_repo()))
         self.assertTrue(out.startswith('AI setup audit for app: 3/6'))
         self.assertNotIn(str(self.root.parent), out)
+
+    def test_review_findings_null_servers_empty_hooks_package_names(self):
+        repo = self.make_repo(**{'.mcp.json': '{"mcpServers": null}', '.claude/settings.json': '{"hooks": {"SessionStart": []}}',
+                                 'AGENTS.md': 'Use @openai/agents. See @AGENTS.md and @docs/missing.md.\n'})
+        checks = self.checks(audit.audit(repo))
+        self.assertEqual(checks['MCP budget']['detail'], '0 servers')
+        self.assertFalse(checks['Session hooks']['ok'])
+        self.assertEqual(checks['References']['detail'], 'AGENTS.md: docs/missing.md')
+
+    def test_a_real_session_start_command_counts_as_hooks(self):
+        hooks = {'hooks': {'SessionStart': [{'hooks': [{'type': 'command', 'command': 'ws brief --hook'}]}]}}
+        repo = self.make_repo(**{'.codex/hooks.json': json.dumps(hooks), '.claude/settings.json': 'not json'})
+        check = self.checks(audit.audit(repo))['Session hooks']
+        self.assertEqual((check['ok'], check['detail']), (True, 'Codex'))

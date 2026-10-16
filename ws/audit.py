@@ -24,15 +24,27 @@ def _repo(path):
 
 def _refs(text):
     """Files an instruction file points at: @imports, Markdown links and backticked relative paths."""
-    found = (re.findall(r'(?m)(?:^|\s)@([\w.-]+(?:/[\w.-]+)*)', text) + re.findall(r'\]\(([^)#\s]+)', text)
+    imports = [r.rstrip('.') for r in re.findall(r'(?m)(?:^|\s)@([\w.-]+(?:/[\w.-]+)*)', text)]
+    # @AGENTS.md is a file import; @openai/agents (no extension) is a package name.
+    found = ([r for r in imports if re.search(r'\.\w{1,8}$', r)] + re.findall(r'\]\(([^)#\s]+)', text)
              + re.findall(r'`((?:[\w.-]+/)+[\w.-]+\.\w{1,8}|[\w-]+\.(?:md|py|json|toml|ya?ml|sh|js|ts))`', text))
     return [r for r in dict.fromkeys(found) if '://' not in r and '*' not in r and not r.startswith(('mailto:', '/', '~', '$'))]
 
 
+def _session_start_command(path):
+    """True when a hooks file has at least one SessionStart command (not just an empty list)."""
+    try: entries = json.loads(path.read_text(encoding='utf-8')).get('hooks', {}).get('SessionStart')
+    except (OSError, ValueError, AttributeError): return False
+    if not isinstance(entries, list): return False
+    hooks = [h for e in entries if isinstance(e, dict) for h in (e.get('hooks') if isinstance(e.get('hooks'), list) else [e])]
+    return any(isinstance(h, dict) and isinstance(h.get('command'), str) and h['command'].strip() for h in hooks)
+
+
 def _mcp_servers(repo):
     names = set()
-    try: names |= set(json.loads((repo / '.mcp.json').read_text(encoding='utf-8')).get('mcpServers', {}))
-    except (OSError, ValueError, AttributeError): pass
+    try: servers = json.loads((repo / '.mcp.json').read_text(encoding='utf-8')).get('mcpServers')
+    except (OSError, ValueError, AttributeError): servers = None
+    if isinstance(servers, dict): names |= set(servers)
     try: names |= set(re.findall(r'(?m)^\[mcp_servers\.([^\].]+)\]', (repo / '.codex/config.toml').read_text(encoding='utf-8')))
     except OSError: pass
     return sorted(names)
@@ -60,7 +72,7 @@ def audit(path=None):
     except (core.WsError, OSError, ValueError): pass
     check('Memory', root, 'connected' if root else 'not connected', 'Run ws start in this repo to give every session the saved decisions and next step.')
     hooks = [label for label, rel in (('Claude Code', '.claude/settings.local.json'), ('Claude Code', '.claude/settings.json'), ('Codex', '.codex/hooks.json'))
-             if (repo / rel).is_file() and 'SessionStart' in (repo / rel).read_text(encoding='utf-8', errors='replace')]
+             if _session_start_command(repo / rel)]
     check('Session hooks', hooks, ', '.join(dict.fromkeys(hooks)) or 'none',
           'Run ws start: it adds SessionStart hooks so Claude Code and Codex load memory without being asked.')
     servers = _mcp_servers(repo)
