@@ -233,7 +233,8 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
         if not confirm(yes, dry_run): return None
         for name, data in changes.items(): record_file(repo, state, name, data)  # refuses a file changed meanwhile
     if dry_run: return sorted(changes)
-    state['kit_version'] = core.kit_meta()['version']
+    # Kept (user-edited) files stay pending: the version moves only once every recorded file is current.
+    if not keep: state['kit_version'] = core.kit_meta()['version']
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return sorted(changes)
 
