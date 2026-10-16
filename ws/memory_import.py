@@ -9,19 +9,29 @@ from pathlib import Path
 from . import core
 
 
-def _read(path, base):
+def _check(path):
     anchor = Path.home() if Path.home() in path.parents else Path(path.anchor)
     if any(p.is_symlink() for p in (path, *path.parents) if p == anchor or anchor in p.parents):
         raise core.WsError('Symlink memory source skipped.')
     info = path.stat()
     if not stat.S_ISREG(info.st_mode) or info.st_size > 16384:
         raise core.WsError('Memory source must be a regular file under 16 KiB.')
+
+
+def _read(path, base):
+    _check(path)
     return core.read_text(path, [base], errors='strict')
 
 
 
 def _limited(paths, label):
-    paths = sorted(paths)
+    safe = []
+    for path in sorted(paths):
+        try: _check(path)
+        except (core.WsError, OSError, ValueError):
+            print('Memory import skipped unsafe/unreadable ' + label + ' source.', file=sys.stderr); continue
+        safe.append(path)
+    paths = safe
     if len(paths) > 16:
         print(f'Memory import: {len(paths) - 16} {label} file(s) skipped: 16-file limit.', file=sys.stderr)
     return paths[:16]
@@ -41,6 +51,7 @@ def preview(repo, memory_dir=None, dry_run=False):
         paths += [(p, base, 'Claude memory/' + p.name) for p in _limited(base.glob('*.md'), 'Claude memory')]
     rows = []; total = 0
     for path, parent, label in paths:
+        label = ''.join(c for c in ' '.join(label.split()) if c.isprintable())
         if not path.exists() and not path.is_symlink(): continue
         try: raw = _read(path, parent)
         except (core.WsError, OSError, ValueError):
