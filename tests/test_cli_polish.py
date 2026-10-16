@@ -39,6 +39,8 @@ class CliPolishTests(unittest.TestCase):
     def test_readme_is_short_and_points_to_extended_docs(self):
         readme = (ROOT / 'README.md').read_text()
         self.assertLessEqual(len(readme.splitlines()), 40)
+        self.assertIn('Your assistant remembers work between sessions in Markdown you own.', readme)
+        self.assertIn('<!-- Demo GIF -->', readme)
         sections = ('## Quick start', '## Example', '## Results', '## Compatibility')
         self.assertEqual(sorted(readme.index(section) for section in sections),
                          [readme.index(section) for section in sections])
