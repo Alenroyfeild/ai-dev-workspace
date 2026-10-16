@@ -1214,6 +1214,41 @@ def remember(root, text, task_id=None):
     return {'task': task_id, 'remembered': decision}
 
 
+PROJECT_URL = 'https://github.com/Alenroyfeild/ai-dev-workspace'
+
+
+def pr_notes(root, task_id=None, link=True):
+    """A PR-description block from one task: goal, explicit decisions, acceptance criteria, checks, open items."""
+    task_id = task_id or sole_local_claim(root) or (current_task(root)[0] or {}).get('id')
+    if not task_id:
+        raise WsError('No current task. Pass one: ws pr-notes <ID>.')
+    record = task_read(root, task_id)
+    if record.get('conflicted'): raise WsError(conflict_hint(task_id))
+    text, template = record['text'], (KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8')
+
+    def body(name):
+        # Captured blocks are unverified guesses; only text the user or assistant saved explicitly goes into a PR.
+        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S).strip()
+        return '' if value == section(template, name) or value.lower().rstrip('.') in ('none', 'none yet') else value
+
+    decisions = []
+    for line in body('Handoff').splitlines():
+        line = line.strip()
+        if line.startswith('Decision:'): decisions.append('- ' + line[9:].strip())
+        elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
+    title = (re.search(r'^# (.+)$', text, re.M) or [None, task_id])[1].strip()
+    parts = [f'### {title}' + ('' if title == task_id else f' ({task_id})')]
+    if goal := body('Objective'): parts.append(f'**Goal:** {goal}')
+    for heading, value in (('Decisions', '\n'.join(decisions)), ('Acceptance criteria', body('Acceptance criteria')),
+                           ('Checks', body('Checks')), ('Open items', body('Blockers'))):
+        if value: parts.append(f'#### {heading}\n{value}')
+    if not decisions and not body('Checks'):
+        parts.append('No decisions or checks saved yet. Save one with `ws remember "<decision>"`.')
+    if link: parts.append(f'<sub>Decisions recorded with [ai-dev-workspace]({PROJECT_URL}).</sub>')
+    markdown = localize_paths(redact(PRIVATE_RE.sub('', '\n\n'.join(parts))), root)
+    return {'task': task_id, 'decisions': sum(1 for d in decisions if d.startswith('- ')), 'markdown': markdown + '\n'}
+
+
 # Instruction files that clients read at session start (CLAUDE.md is skipped: its SessionStart hook already injects the brief).
 # Only clients without a session-start brief hook: Claude and Codex read AGENTS.md and already get the brief.
 NATIVE_FILES = ('.github/copilot-instructions.md', '.cursor/rules/ws-current-task.mdc')
@@ -2437,6 +2472,11 @@ def doctor(root=None, mcp=False):
     report['recommended'] = missing_tools
     report['toolbox'] = missing_tools
     report['tool_profile'] = config(root).get('tool_profile', 'standard') if root else 'standard'
+    if root:
+        choice = config(root).get('mcp_tools', 'core')
+        listed = [item['name'] for item in tool_costs(root, usage={})['mcp_tools']]
+        profile = 'custom' if isinstance(choice, list) else 'all' if choice == 'all' else 'core'
+        report['mcp_tools'] = {'profile': profile, 'listed': len(listed)}
     report['tools'] = listed_tools
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     report['kit'] = {'version': kit_meta()['version']}
