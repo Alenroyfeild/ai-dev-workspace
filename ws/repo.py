@@ -413,6 +413,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         raise core.WsError('Workspace belongs elsewhere or is not a workspace; choose ws start --workspace <dir>.')
     task = branch_task(root, repo, current)
     clients = ['claude', 'codex'] + [d['assistant'] for d in setup.detect() if d['assistant'] in ('cursor', 'copilot', 'gemini') and (d['cli_available'] or d['apps'])]
+    if claude_plugin_enabled(repo): clients.remove('claude')  # the Claude Code plugin brings its own hooks and MCP server
     desired = render(repo, root, clients, lambda n: path(repo, n).read_bytes() if path(repo, n).exists() else None)
     desired.update(codex_files(repo, root))
     tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
@@ -464,4 +465,4 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
                 core.atomic_write(target, core.set_meta(core.set_section(text, 'Next action', ''), {'status': 'in_progress'}))
     memory_import.apply(root, repo, task, imports)
     state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
-    return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, codex_status=state['codex_status'], starter=starter(repo, root))
+    return dict(root=str(root), already=False, assistants=clients + (['claude (plugin)'] if 'claude' not in clients else []), task=task, branch=current, codex_status=state['codex_status'], starter=starter(repo, root))
