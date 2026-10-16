@@ -74,6 +74,14 @@ class RecapTests(Base):
         self.assertEqual(json.loads(run('--json', '--since', '30d'))['tasks'][0]['id'], 'T-1')
 
 
+    def test_multiline_next_action_shows_only_its_first_line(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Write the migration.\nThen backfill old rows.')
+        result = core.recap(self.root)
+        self.assertIn('Next: Write the migration.', result['markdown'])
+        self.assertNotIn('backfill', result['markdown'])
+        self.assertEqual(result['tasks'][0]['next'], 'Write the migration.')
+
+
 class TeamRecapTests(unittest.TestCase):
     setUp = test_sharing.SharingTests.setUp
 
@@ -120,10 +128,3 @@ class TeamRecapTests(unittest.TestCase):
         self.assertEqual([s['author'] for s in result['status']], ['sam'])
         self.assertIn('sam working on Checkout: sam line', result['markdown'])
         self.assertNotIn('kim line', result['markdown'])
-
-    def test_multiline_next_action_shows_only_its_first_line(self):
-        core.checkpoint(self.root, 'T-1', 'in_progress', 'Write the migration.\nThen backfill old rows.')
-        result = core.recap(self.root)
-        self.assertIn('Next: Write the migration.', result['markdown'])
-        self.assertNotIn('backfill', result['markdown'])
-        self.assertEqual(result['tasks'][0]['next'], 'Write the migration.')
