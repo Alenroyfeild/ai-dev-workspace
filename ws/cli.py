@@ -318,6 +318,9 @@ def main(argv=None):
     s.add_argument('id', nargs='?', help='task (default: your only claimed task or the current branch task)')
     s.add_argument('--no-link', action='store_true', help='omit the one-line ai-dev-workspace credit')
     s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
+    s = sub.add_parser('recap', help='tasks, decisions and team notes since a date (for standups and handoffs)')
+    s.add_argument('--since', default='7d', help='7d (days back) or YYYY-MM-DD; default 7d')
+    s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
     k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
     s = k.add_parser('add')
     s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
@@ -665,6 +668,9 @@ def main(argv=None):
                 share_gate(sharing.standalone(root, 'decision', a.text))
         elif a.cmd == 'pr-notes':
             result = core.pr_notes(root, a.id, link=not a.no_link)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
+        elif a.cmd == 'recap':
+            result = core.recap(root, a.since)
             print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
         elif a.cmd == 'know':
             from . import knowledge
