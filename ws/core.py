@@ -2753,7 +2753,7 @@ def recap(root, since='7d'):
         handoff = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections']['Handoff'], flags=re.S)
         tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
                       'decisions': [l.strip()[9:].strip() for l in handoff.splitlines() if l.strip().startswith('Decision:')],
-                      'next': '' if item['status'] == 'done' else item['next']})
+                      'next': '' if item['status'] == 'done' else (item['next'].splitlines() or [''])[0]})  # first line, before cleaning joins lines
     rank = {s: i for i, s in enumerate(RECAP_ORDER)}
     tasks.sort(key=lambda t: t['updated'], reverse=True)  # newest first within each status group
     tasks.sort(key=lambda t: rank.get(t['status'], len(rank)))
@@ -2785,7 +2785,7 @@ def recap(root, since='7d'):
         ident = '' if t['title'] == t['id'] else f"{t['id']}, "
         lines.append(f"- **{t['title']}** ({ident}{t['status'].replace('_', ' ')}, {t['updated']})")
         lines += [f'  - Decision: {d}' for d in t['decisions']]
-        if t['next']: lines.append(f"  - Next: {t['next'].splitlines()[0]}")
+        if t['next']: lines.append(f"  - Next: {t['next']}")
     if not tasks: lines.append('- No task changes in this period.')
     if team or status:
         import html
