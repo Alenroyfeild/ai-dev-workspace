@@ -1603,6 +1603,17 @@ def _bounded_brief(fields, truncated=False):
     return '\n'.join(bounded)
 
 
+def _dead_ends(root, task_id, template):
+    """Approaches already tried and rejected, so the next session (any assistant) does not retry them."""
+    sections = task_read(root, task_id, ['Do not redo', 'Failures'])['sections']
+    lines = []
+    for name, body in sections.items():
+        body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', body, flags=re.S).strip()
+        if body and body != section(template, name).strip():
+            lines += [l.strip().lstrip('-* ').strip() for l in body.splitlines() if l.strip()]
+    return '; '.join(lines)
+
+
 def brief(root, task_id=None):
     return _brief(root, task_id)[0]
 
@@ -1712,6 +1723,7 @@ def _brief(root, task_id=None):
     fields += [('Explicit Handoff (saved task record):', _constraint_budget(reversed(decisions), 25), 25),
                ('Next action:', next_action if saved_next else 'Not saved yet. Choose the next step before continuing.', 25),
                ('Blockers:', record['sections']['Blockers'], 8),
+               ('Do not redo:', _dead_ends(root, task['id'], template), 20),
                ('', plan_warning, 11),
                ('Captured next step (unverified):', captured_step, 16),
                ('', _memory_check(root, task['id'], record['meta'], next_action), 18),
