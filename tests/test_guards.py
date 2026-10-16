@@ -22,6 +22,17 @@ class GuardRuleTests(unittest.TestCase):
                         "bash -lc 'git reset --hard'", 'echo ok; git push -uf origin x'):
             with self.subTest(command): self.assertTrue(self.deny(command))
 
+    def test_review_findings_git_options_long_flags_token_swap_skipif(self):
+        for command in ('git -C sample reset --hard', 'git -C sample push -f', 'git -c core.x=1 --no-pager reset --hard', 'git clean --force -d'):
+            with self.subTest(command): self.assertTrue(self.deny(command))
+        self.assertEqual(self.deny('git -C sample status'), '')
+        old, new = 'ghp_' + 'A1b2' * 9, 'ghp_' + 'C3d4' * 9
+        self.assertTrue(guards.reason('Edit', {'old_string': 'TOKEN = "' + old + '"', 'new_string': 'TOKEN = "' + new + '"'}))
+        self.assertEqual(guards.reason('Edit', {'old_string': 'TOKEN = "' + old + '"', 'new_string': '# TOKEN = "' + old + '"'}), '')
+        for added in ('@pytest.mark.skipif(True, reason="x")', '@unittest.skipIf(1, "x")'):
+            with self.subTest(added): self.assertTrue(guards.reason('Edit', {'old_string': 'def test_a():', 'new_string': added + '\ndef test_a():'}))
+        self.assertEqual(guards.reason('Edit', {'old_string': 'def test_a():', 'new_string': '@pytest.mark.skipif(sys.platform == "win32", reason="posix")\ndef test_a():'}), '')
+
     def test_everyday_commands_are_allowed(self):
         for command in ('rm -rf build/', 'rm -rf ./dist', 'rm file.txt', 'git reset HEAD~1', 'git reset --soft HEAD~1',
                         'git push --force-with-lease', 'git push -u origin feature', 'git clean -n', 'echo "rm -rf ~"',
