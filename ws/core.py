@@ -1249,14 +1249,17 @@ def pr_notes(root, task_id=None, link=True):
 
     def body(name):
         # Captured blocks are unverified guesses; only text the user or assistant saved explicitly goes into a PR.
-        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S).strip()
+        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S)
+        value = re.sub(r'<!-- ws:captured:.*\Z', '', value, flags=re.S).strip()  # an unterminated block is still unverified
         return '' if value == section(template, name) or value.lower().rstrip('.') in ('none', 'none yet') else value
 
     decisions = []
-    for line in body('Handoff').splitlines():
-        line = line.strip()
+    for raw in body('Handoff').splitlines():
+        line = raw.strip()
         if line.startswith('Decision:'): decisions.append('- ' + line[9:].strip())
         elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
+        elif line and decisions and raw[:1] in ' \t':  # an indented line continues the previous Decision/Reason
+            decisions[-1] += ' ' + line
     title = (re.search(r'^# (.+)$', text, re.M) or [None, task_id])[1].strip()
     parts = [f'### {title}' + ('' if title == task_id else f' ({task_id})')]
     if goal := body('Objective'): parts.append(f'**Goal:** {goal}')
