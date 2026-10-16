@@ -227,6 +227,8 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
     if changes:
         print('Refresh repo setup for this ai-dev-workspace version (saved memory is kept):', file=sys.stderr)
         for name in changes: print('  ' + str(repo / name), file=sys.stderr)
+        tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes], capture_output=True, text=True, check=True).stdout.strip()
+        if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))  # same rule as first setup
         if dry_run: return sorted(changes)
         if not confirm(yes, dry_run): return None
         for name, data in changes.items(): record_file(repo, state, name, data)  # refuses a file changed meanwhile

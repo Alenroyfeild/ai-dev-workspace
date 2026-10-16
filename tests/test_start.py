@@ -54,6 +54,14 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0)
         self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), b'Private Claude notes.\n')
 
+    def test_refresh_refuses_a_setup_file_committed_to_git(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.age_setup('CLAUDE.local.md', b'old instruction\n')
+        subprocess.run(['git', '-C', str(self.repo), 'add', '-f', 'CLAUDE.local.md'], check=True)
+        code, _, err = self.start('--yes')
+        self.assertNotEqual(code, 0); self.assertIn('tracked local files', err)
+        self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), b'old instruction\n')
+
     def test_user_edited_wiring_is_kept_and_the_rest_still_refreshes(self):
         self.assertEqual(self.start('--yes')[0], 0)
         fresh = (self.repo / 'CLAUDE.local.md').read_bytes()
