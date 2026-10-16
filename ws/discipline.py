@@ -38,6 +38,7 @@ def hook(root, payload):
         if payload.get('hook_event_name') != 'PostToolUse': return {}
         response = payload.get('tool_response')  # Codex: bare output, so count identical command + output instead
         nudge, extra = REPEAT, (json.dumps(response, sort_keys=True) if isinstance(response, dict) else str(response)).rstrip()
+        if not extra or extra in ('{}', 'None'): return {}  # silent commands (git add, mkdir -p) repeat legitimately
     path = core.inside(root / '.ws' / 'discipline' / (core.digest_text(str(payload.get('session_id', '')))[:16] + '.json'), [root])
     try: counts = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError): counts = {}

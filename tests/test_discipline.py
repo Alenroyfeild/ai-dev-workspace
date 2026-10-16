@@ -85,3 +85,7 @@ class DisciplineTests(Base):
         self.assertEqual(run('not json'), {})
         for _ in range(2): run(json.dumps(claude_failure('cargo test')))
         self.assertIn('additionalContext', run(json.dumps(claude_failure('cargo test')))['hookSpecificOutput'])
+
+    def test_codex_silent_repeats_do_not_nudge(self):
+        payload = {'hook_event_name': 'PostToolUse', 'session_id': 'q', 'tool_name': 'Bash', 'tool_input': {'command': 'git add -A'}, 'tool_response': '  '}
+        self.assertEqual([discipline.hook(self.root, payload) for _ in range(4)], [{}] * 4)
