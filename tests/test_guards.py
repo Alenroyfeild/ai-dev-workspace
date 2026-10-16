@@ -91,7 +91,7 @@ class GuardHookWiringTests(Base):
         codex = core.guard_hooks(self.root, 'codex')['PreToolUse'][0]
         self.assertEqual(claude['matcher'], 'Bash|Write|Edit|MultiEdit')
         self.assertNotIn('matcher', codex)
-        self.assertTrue(codex['hooks'][0]['command'].endswith('guard --hook --client codex'))
+        self.assertTrue(codex['hooks'][0]['command'].endswith(core.command_line(['guard', '--hook', '--client', 'codex'])))  # Windows quotes args
         self.assertEqual(core.guard_hooks(self.root, 'cursor'), {})
         self.assertNotIn('PreToolUse', core.memory_hooks(self.root, 'claude')['hooks'])  # kit fingerprint unchanged
 
