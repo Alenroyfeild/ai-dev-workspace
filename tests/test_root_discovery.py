@@ -94,12 +94,10 @@ class RootDiscoveryTests(unittest.TestCase):
         (self.nested / '.ws-start.json').write_text(json.dumps({'workspace': str(self.root), 'files': {}}))
         self.assertEqual(core.find_root(self.nested), self.root)
 
-    def test_nested_git_checkout_cannot_use_forged_memory_inside_outer_checkout(self):
-        subprocess.run(['git', 'init', '-q', str(self.nested)], check=True, capture_output=True)
-        target = self.repo / 'forged-memory'; target.mkdir()
-        (target / 'workspace.json').write_text(json.dumps({'repos': [str(self.nested)]}))
-        (self.nested / '.ws-start.json').write_text(json.dumps({'workspace': str(target), 'files': {}}))
-        with self.assertRaises(core.WsError): core.find_root(self.nested)
+    def test_git_tracked_home_can_hold_repo_and_external_memory(self):
+        # A home Git checkout must not make its nested repo's external memory invalid.
+        subprocess.run(['git', 'init', '-q', str(self.base)], check=True, capture_output=True)
+        self.assertEqual(core.find_root(self.nested), self.root)
 
     def test_symlink_and_dangling_link_stop_discovery(self):
         self.link.unlink()
