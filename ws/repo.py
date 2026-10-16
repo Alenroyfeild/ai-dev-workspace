@@ -214,7 +214,7 @@ def render(repo, root, clients, prior):
     return desired
 
 
-def refresh(repo, root, state, yes, dry_run):
+def refresh(repo, root, state, yes, dry_run, keep=()):
     """Rewrite ws-written files still unchanged since ws wrote them, for this kit version; user edits stop it earlier."""
     def before(name):
         entry = state['files'].get(name)
@@ -222,7 +222,8 @@ def refresh(repo, root, state, yes, dry_run):
     desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before)
     codex = state['files'].get('.codex/config.toml')
     if codex and codex.get('before') is None: desired['.codex/config.toml'] = core.codex_mcp_config(root).encode()
-    changes = {n: data for n, data in desired.items() if n in state['files'] and path(repo, n).read_bytes() != data}
+    changes = {n: data for n, data in desired.items() if n in state['files'] and n not in keep and path(repo, n).read_bytes() != data}
+    for name in keep: print('Kept your edits, not refreshed: ' + str(repo / name), file=sys.stderr)
     if changes:
         print('Refresh repo setup for this ai-dev-workspace version (saved memory is kept):', file=sys.stderr)
         for name in changes: print('  ' + str(repo / name), file=sys.stderr)
@@ -249,11 +250,14 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         if str(repo) not in core.config(root).get('repos', []): raise core.WsError('Linked workspace belongs elsewhere; review .ws-start.json or undo this repo setup.')
         task = branch_task(root, repo, current)
         if not core.task_path(root, task).exists(): task = ''
-        partial = state.get('complete') is False or any(not path(repo, n).is_file() or hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha'] for n, e in state['files'].items())
+        incomplete = state.get('complete') is False or any(not path(repo, n).is_file() for n in state['files'])
+        edited = [n for n, e in state['files'].items() if path(repo, n).is_file() and hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha']]
+        partial = incomplete or bool(edited)
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
-        if not partial and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
-        refreshed = refresh(repo, root, state, yes, dry_run) if not partial and not newer and state.get('kit_version') != core.kit_meta()['version'] else []
+        if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
+        # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and state.get('kit_version') != core.kit_meta()['version'] else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
