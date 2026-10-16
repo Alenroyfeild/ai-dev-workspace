@@ -110,3 +110,13 @@ class TeamRecapTests(unittest.TestCase):
             result = core.recap(self.root)
         self.assertIn('sam: The payments API rejects floats.', result['markdown'])
         self.assertIn('unreadable', result['markdown'])
+
+    def test_team_status_inside_the_window_is_shown_and_older_is_not(self):
+        status = self.root / '.ws/team/status'; status.mkdir(parents=True, exist_ok=True)
+        old = (datetime.date.today() - datetime.timedelta(days=30)).isoformat() + 'T09:00:00+00:00'
+        for author, date in (('sam', core.now()), ('kim', old)):
+            (status / f'{author}.json').write_text(json.dumps({'author': author, 'task': 'Checkout', 'line': f'{author} line', 'date': date}))
+        result = core.recap(self.root)
+        self.assertEqual([s['author'] for s in result['status']], ['sam'])
+        self.assertIn('sam working on Checkout: sam line', result['markdown'])
+        self.assertNotIn('kim line', result['markdown'])
