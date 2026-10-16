@@ -14,20 +14,23 @@ HOME_OR_ROOT = {'/', '/*', '~', '~/', '~/*', '$HOME', '$HOME/', '$HOME/*', '${HO
 TOKENS = re.compile(r'\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b')
 
 
-def looks_secret(text):
-    """Stricter than redact (which may over-redact): a block needs a real-looking value, not $VAR or a placeholder."""
-    if TOKENS.search(text) or re.search(r'-----BEGIN [^-]*PRIVATE KEY-----', text): return True
+def secret_values(text):
+    """Real-looking secrets in text. Stricter than redact (which may over-redact): $VAR and placeholders do not count."""
+    found = set(TOKENS.findall(text)) | set(re.findall(r'-----BEGIN [^-]*PRIVATE KEY-----.*?(?:-----END [^-]*PRIVATE KEY-----|\Z)', text, re.S))
     for match in list(core.SECRET_RE.finditer(text)) + list(core.URL_CREDENTIALS_RE.finditer(text)):
-        found = match[0]
-        if match.re is core.URL_CREDENTIALS_RE: found = match[0].rsplit(':', 1)[-1].rstrip('@')
-        value = re.split(r'[\s:=]+', found.strip(), maxsplit=0)[-1].strip('"\'')
+        hit = match[0].rsplit(':', 1)[-1].rstrip('@') if match.re is core.URL_CREDENTIALS_RE else match[0]
+        value = re.split(r'[\s:=]+', hit.strip())[-1].strip('"\'')
         if value[:1] in '$<{' or re.search(r'(?i)example|changeme|your|placeholder|dummy|xxx', value): continue
-        if len(value) >= 12 and re.search(r'\d', value) and re.search(r'[A-Za-z]', value): return True
-    return False
+        if len(value) >= 12 and re.search(r'\d', value) and re.search(r'[A-Za-z]', value): found.add(value)
+    return found
+
+
+def looks_secret(text):
+    return bool(secret_values(text))
 
 
 SHELLS = {'sh', 'bash', 'zsh', 'dash', 'ksh', 'fish'}
-MUTED = re.compile(r'@(?:pytest\.mark\.skip|unittest\.skip)\b|\b(?:it|test|describe)\.(?:only|skip)\(|\bx(?:it|test|describe)\(|\bt\.Skip(?:Now)?\(')
+MUTED = re.compile(r'@(?:pytest\.mark\.skip|unittest\.skip)\b|@(?:pytest\.mark\.skipif|unittest\.skipIf)\(\s*(?:True|1)\b|\b(?:it|test|describe)\.(?:only|skip)\(|\bx(?:it|test|describe)\(|\bt\.Skip(?:Now)?\(')
 
 
 def _words(command):
@@ -54,12 +57,14 @@ def command_reason(command):
         if name == 'rm' and ('r' in flags.lower() or '--recursive' in args) and ('f' in flags or '--force' in args):
             hit = [a for a in args if a in HOME_OR_ROOT or a.rstrip('/') == os.path.expanduser('~')]
             if hit: return f'rm -rf on {hit[0]} would delete your home folder or the filesystem root.'
+        while name == 'git' and args and args[0].startswith('-'):  # global options: git -C dir, -c k=v, --no-pager ...
+            args = args[2:] if args[0] in ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path') else args[1:]
         if name == 'git' and args:
             sub, rest = args[0], args[1:]
             if sub == 'reset' and '--hard' in rest: return 'git reset --hard throws away uncommitted work.'
             if sub == 'push' and any(a in ('-f', '--force') or a.startswith('+') or (a.startswith('-') and not a.startswith('--') and 'f' in a) for a in rest):
                 return 'Force push rewrites shared history; use --force-with-lease if you must.'
-            if sub == 'clean' and any(a.startswith('-') and not a.startswith('--') and 'f' in a for a in rest):
+            if sub == 'clean' and any(a == '--force' or (a.startswith('-') and not a.startswith('--') and 'f' in a) for a in rest):
                 return 'git clean -f deletes untracked files for good.'
     if looks_secret(command): return 'The command contains what looks like a secret (token, key or password).'
     return ''
@@ -93,7 +98,7 @@ def reason(tool_name, tool_input, cwd=None):
     else:
         new, old = _added(tool_input, cwd)
     if len(MUTED.findall(new)) > len(MUTED.findall(old)): return 'This edit skips or narrows tests (skip/only); fix the test or ask the user first.'
-    if looks_secret(new) and not looks_secret(old): return 'This edit writes what looks like a secret (token, key or password) into a file.'
+    if secret_values(new) - secret_values(old): return 'This edit writes what looks like a secret (token, key or password) into a file.'
     return ''
 
 

@@ -122,7 +122,7 @@ Use it with them, not instead: `ws import native` reads built-in memories, `ws t
 | `obsidian` | Open the memory as a linked Obsidian vault | [Obsidian](https://obsidian.md) |
 | `local-llm` | Free on-device log triage | [Ollama](https://ollama.com) and a small model |
 | `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |
-| `guards` | Claude Code and Codex hooks that deny `rm -rf` on home or root, `git reset --hard`, force push, `git clean -f`, secrets in commands or files, and newly skipped tests. Run `ws start` again in each repo after adding or removing it; `WS_GUARDS=off` turns it off for one session | nothing |
+| `guards` | Claude Code and Codex hooks that deny `rm -rf` on home or root, `git reset --hard`, force push, `git clean -f`, secrets in commands or files, and newly skipped tests. Run `ws start` again in each repo after adding or removing it; `WS_GUARDS=off` turns it off for one session. A safety net for honest mistakes, not a security boundary | nothing |
 | `codex-worker` | Legacy ACP read-only worker, kept for existing users | Node, `acpx`, a Codex sign-in |
 
 `ws pack add <name>`. Your own domain is a folder with a `pack.json`: [docs/PACKS.md](PACKS.md).
