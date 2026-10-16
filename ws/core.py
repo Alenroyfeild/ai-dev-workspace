@@ -472,7 +472,7 @@ def pack_hooks(root, client):
         return {'type': 'command', 'timeout': 10, 'command': encoded_hook_command(arguments) if WINDOWS and any('%' in a for a in arguments) else command_line(arguments)}
     result = {}
     if 'guards' in packs:  # Codex: every tool; the guard allows tools it cannot read
-        result['PreToolUse'] = [{'matcher': 'Bash|Write|Edit|MultiEdit', 'hooks': [hook('guard')]} if client == 'claude' else {'hooks': [hook('guard')]}]
+        result['PreToolUse'] = [{'matcher': 'Bash|PowerShell|Write|Edit|MultiEdit', 'hooks': [hook('guard')]} if client == 'claude' else {'hooks': [hook('guard')]}]
     if 'discipline' in packs:  # Claude reports failed commands separately; Codex reports every Bash call
         result['PostToolUseFailure' if client == 'claude' else 'PostToolUse'] = [{'matcher': 'Bash', 'hooks': [hook('discipline')]}]
     return result
