@@ -175,7 +175,7 @@ edits invalidate approval. Acceptance keeps the source checkout, index and activ
 branch as they are. `ws worker discard <id> [--dry-run]` similarly confirms removal
 of only that run's artifacts, retaining its record and every sibling run. Running
 and accepted runs cannot be discarded. No automatic push or PR is created.
-Public launch remains disabled until O2d; completed-run evidence in current tests
+Public launch stays disabled until a live Codex isolation check passes (Codex 0.155.1 still allows /tmp writes); completed-run evidence in current tests
 is synthetic. Acceptance uses [commit-tree](https://git-scm.com/docs/git-commit-tree),
 [fetch without FETCH_HEAD](https://git-scm.com/docs/git-fetch) and
 [update-ref with an absent-ref check](https://git-scm.com/docs/git-update-ref).
