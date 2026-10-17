@@ -27,7 +27,6 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 
 ### Known limits
-- The PyPI upload and hosted two-person team check are still release gates; this entry describes landed dev changes, not a published beta.
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
 
