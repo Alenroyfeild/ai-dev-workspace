@@ -45,7 +45,8 @@ CORE_TOOLS = ('brief', 'find_task', 'read_task', 'checkpoint', 'remember', 'sear
 
 def listed_tools(root):
     """workspace.json `mcp_tools`: "core" (default), "all", or a list of tool names."""
-    choice = core.config(root).get('mcp_tools', 'core') if root else 'all'
+    if root is None: return ['brief']
+    choice = core.config(root).get('mcp_tools', 'core')
     names = TOOLS if choice == 'all' else choice if isinstance(choice, list) else CORE_TOOLS
     return [name for name in TOOLS if name in names]
 
