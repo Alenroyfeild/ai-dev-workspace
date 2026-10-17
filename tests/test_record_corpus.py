@@ -3,6 +3,7 @@
 tests/fixtures/records/<tag>/ holds the portable records (workspace.json, tasks, learnings, knowledge)
 that the tag's own `ws` wrote from synthetic text; __REPO__ stands for the code checkout path.
 """
+import json
 import re
 import subprocess
 from pathlib import Path
@@ -16,6 +17,11 @@ NEXT = 'Finish the cents conversion in price.py'
 KNOWN_FAILURES = {}
 # Errors the current kit still reports for a tag's records (beta.4's fresh-task error was fixed in #187).
 OWN_VALIDATE_ERRORS = {}
+
+
+def fill(src, repo):
+    where = json.dumps(str(repo))[1:-1] if src.suffix == '.json' else str(repo)  # a Windows path needs JSON escaping
+    return src.read_text(encoding='utf-8').replace('__REPO__', where)
 
 
 class RecordCorpusTests(Base):
@@ -32,7 +38,7 @@ class RecordCorpusTests(Base):
             if src.is_file():
                 dst = root / src.relative_to(CORPUS / tag)
                 dst.parent.mkdir(parents=True, exist_ok=True)
-                dst.write_text(src.read_text(encoding='utf-8').replace('__REPO__', str(repo)), encoding='utf-8')
+                dst.write_text(fill(src, repo), encoding='utf-8')
         return root
 
     def check(self, tag):
@@ -67,6 +73,10 @@ class RecordCorpusTests(Base):
                 if tag in KNOWN_FAILURES:
                     self.skipTest(f'known: {KNOWN_FAILURES[tag]}')
                 self.check(tag)
+
+    def test_json_fixtures_stay_valid_for_a_backslash_repo_path(self):
+        for src in CORPUS.rglob('*.json'):
+            json.loads(fill(src, 'C:\\Users\\x\\repo'))
 
     def test_fixtures_hold_no_absolute_paths_or_claims(self):
         for path in CORPUS.rglob('*'):
