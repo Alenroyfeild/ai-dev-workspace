@@ -98,7 +98,7 @@ def manage(root, action, remote='', apply=False, attest=False, auto_pull=False, 
                     core.atomic_write(manifest, json.dumps(record, indent=2) + '\n')
                 else:
                     try: record = json.loads(core.read_text(manifest, [clone]))
-                    except (OSError, ValueError): raise core.WsError('Remote has no valid team.json; ask the host to initialize it.')
+                    except (OSError, ValueError): raise core.WsError('Remote has no valid team.json. The host must run `ws team init <repo>` and then `ws sync` once to publish it.')
                     if (not isinstance(record, dict) or record.get('kind') != 'ai-dev-workspace-team' or
                             record.get('schema_version') != 1 or not re.fullmatch(r'[a-f0-9]{32}', str(record.get('id', '')))):
                         raise core.WsError('Remote has no valid team manifest.')

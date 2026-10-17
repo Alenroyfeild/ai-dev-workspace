@@ -106,10 +106,13 @@ Setup previews by default (`--dry-run` also works), reporting routing changes, c
 
 ### Link a private team repo
 
-`ws team init <private-remote> --dry-run` previews a local team clone and metadata;
+At a terminal, team previews print a short summary (`+ <category> <text>` per note,
+the destination, then `[y/N]`); piped or scripted runs get the full JSON, and
+`WS_JSON=1` forces it. `ws team init <private-remote> --dry-run` previews a local team clone and metadata;
 repeat without `--dry-run` to confirm. Create the empty private remote yourself;
-init prepares an uncommitted `team.json` in `.ws/team`, never a push. Inspect it,
-then use your normal Git commit/push flow to bootstrap that team repo.
+init prepares an uncommitted `team.json` in `.ws/team`, never a push. Run
+`ws sync` to publish it (it shows what it will push first); teammates can link
+only after that.
 Teammates use `ws team link <private-remote>`; repeat is status-only.
 Privacy uses an installed `gh`/`glab`, or explicit `--attest-private` for that exact
 remote when verification is unavailable. Known public/internal visibility blocks
@@ -219,7 +222,7 @@ team entries, with private hits first. MCP uses these same brief/search paths.
 Unreadable/conflicted team entries warn in the brief; reads never pull or publish.
 
 `ws sync [--dry-run | --yes]` explicitly pulls the linked team branch (fast-forward
-only), then previews one commit built only from exact share-approved file bytes.
+only) and prints a one-line count of notes pulled and published (to stderr), then previews one commit built only from exact share-approved file bytes.
 Dry-run may pull; it never commits or pushes. Unapproved files, staged edits or
 unpublished local commits stop with a manual-resolution hint and remain intact.
 Confirmation rechecks privacy, remote head, approvals and files; no history is
