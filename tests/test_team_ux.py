@@ -49,12 +49,23 @@ class TeamUxTests(unittest.TestCase):
         text = 'Payments API rejects floats ' + 'x' * 80
         code, out, _ = self.run_cli('know', 'add', text, '--category', 'domain', '--team', tty=True)
         self.assertEqual(code, 0)
-        self.assertIn('+ domain Payments API rejects floats ' + 'x' * 42 + '\n', out)  # first 70 characters
+        self.assertIn('+ domain Payments API rejects floats ' + 'x' * 80 + '\n', out)  # the whole published text
         self.assertIn(str(self.remote), out); self.assertLess(len(out.splitlines()), 15)
         for raw in ('"content"', 'artifact_diff', 'source_sha'): self.assertNotIn(raw, out)
         self.assertIn('[y/N]', out)
         code, out, _ = self.run_cli('know', 'add', 'Second note for scripts.', '--team', tty=False)
         self.assertIn('"artifact_diff"', out); self.assertIn('"content"', out)
+
+    def test_text_after_character_100_is_visible_at_consent(self):
+        text = 'Deploy notes ' + 'word ' * 25 + 'hunter2-late-private-detail'
+        self.assertGreater(text.index('hunter2'), 100)
+        code, out, _ = self.run_cli('know', 'add', text, '--team', tty=True)
+        self.assertIn('hunter2-late-private-detail', out)
+        code, out, _ = self.run_cli('know', 'add', 'x' * 700, '--team', tty=True)
+        self.assertIn('x' * 600 + '\u2026 (100 more characters; WS_JSON=1 shows all)', out); self.assertNotIn('x' * 601, out)
+        self.run_cli('know', 'add', text, '--team', '--yes')
+        sync = team_ui.sync({'remote': 'r', 'files': {'entries/' + 'a' * 32 + '.md': '---\ncategory: repo\n---\n' + sharing.HEADER_END + text + '\n'}})
+        self.assertIn('hunter2-late-private-detail', sync)
 
     def test_terminal_unshare_summary_marks_removal(self):
         code, out, _ = self.run_cli('know', 'add', 'Remove me later.', '--team', '--yes', tty=False)

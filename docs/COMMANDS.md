@@ -106,7 +106,7 @@ Setup previews by default (`--dry-run` also works), reporting routing changes, c
 
 ### Link a private team repo
 
-At a terminal, team previews print a short summary (`+ <category> <text>` per note,
+At a terminal, team previews print a short summary (`+ <category> <text>` per note, the full text up to 600 characters,
 the destination, then `[y/N]`); piped or scripted runs get the full JSON, and
 `WS_JSON=1` forces it. `ws team init <private-remote> --dry-run` previews a local team clone and metadata;
 repeat without `--dry-run` to confirm. Create the empty private remote yourself;

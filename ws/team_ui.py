@@ -10,6 +10,12 @@ def _one(text):
     return ' '.join(text.split())[:70]
 
 
+def _full(text):
+    """Everything being published must be visible at consent; only very long notes are cut."""
+    text = ' '.join(text.split())
+    return text if len(text) <= 600 else text[:600] + f'\u2026 ({len(text) - 600} more characters; WS_JSON=1 shows all)'
+
+
 def where(plan):
     folder = plan.get('host') == 'folder' or 'source' in plan
     return ('shared folder ' if folder else 'private repo ') + str(plan.get('remote') or plan.get('source') or '')
@@ -19,7 +25,7 @@ def share(plan):
     if plan['unchanged']: return 'Nothing to change: this note is already shared as written.'
     sign = '-' if plan['unshare'] else '+'
     return '\n'.join([f"{'Will remove from' if plan['unshare'] else 'Will share with'} your team ({where(plan)}):",
-                      f"{sign} {plan['category']} {_one(plan['text'])}".rstrip(),
+                      f"{sign} {plan['category']} {(_one if plan['unshare'] else _full)(plan['text'])}".rstrip(),
                       f"  by {plan['author']}, file {plan['destination']}",
                       'Check the line above for anything private. Nothing is pushed until ws sync.'])
 
@@ -27,7 +33,7 @@ def share(plan):
 def _file(name, text):
     if ENTRY.fullmatch(name):
         category, body = sharing.entry_parts(text) if text is not None else ('', '')
-        return f'+ {category} {_one(body)}'.rstrip() if text is not None else f'- {name} (removed)'
+        return f'+ {category} {_full(body)}'.rstrip() if text is not None else f'- {name} (removed)'
     if name.startswith('status/'):
         try: row = json.loads(text)
         except (TypeError, ValueError): row = {}
