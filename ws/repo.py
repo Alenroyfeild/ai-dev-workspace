@@ -101,7 +101,7 @@ def confirm(yes, dry_run):
     if yes: return True
     print('Apply this setup and previewed private memory imports? [y/N] ', end='', file=sys.stderr)
     try: return input().strip().lower() in ('y', 'yes')
-    except EOFError: raise core.WsError('No confirmation; use ws start --yes or --dry-run.')
+    except EOFError: print(file=sys.stderr); raise core.WsError('No confirmation; use ws start --yes or --dry-run.')  # newline: end the prompt line
 
 
 def codex_files(repo, root):
