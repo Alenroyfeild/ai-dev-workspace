@@ -24,6 +24,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Starter packs for common repo types: `web`, `library` and `ml` (alongside `ios`) add a few rules each, such as using the repo's own scripts, keeping a public API stable, or never committing datasets. The first `ws start` suggests the one that fits the repo; nothing is added unless you run `ws pack add`.
 
 ### Improved
+- The MCP server started outside a ws workspace (as MCP directory sites do to list tools) no longer exits with a Python traceback: it answers `initialize` and `tools/list`, and each tool call returns "No ai-dev-workspace here: run `ws start` in your repo (or pass --workspace-root)." `--workspace-root` is now accepted as an alias of `--root`.
 - A confirmation prompt with no input (for example when an assistant runs `ws sync` or `ws know add --team` without `--yes`) now stops with "No confirmation; use --yes or --dry-run." instead of a Python traceback, and repeating `ws know add`, `ws remember` or `ws lesson add` with `--team` after declining reuses the saved record instead of creating a duplicate.
 - The brief now carries dead ends: approaches saved as "Do not redo" or "Failures" in the task appear on one line, so the next session in any assistant skips them. `/handoff` asks for them.
 - Each session starts lighter: the MCP server lists 7 core memory tools by default instead of 28, about 1,360 fewer tokens of tool descriptions per session. Set `"mcp_tools": "all"` in workspace.json to list everything; other tools still work when called by name.
