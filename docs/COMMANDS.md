@@ -131,7 +131,9 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 - `ws sync --pull-only` refreshes only an unedited mirror; pending local changes stop it and are kept. Reads use the last local snapshot offline.
 - Folder hosts ignore a shared `INDEX.md` and never write it. Link and pull build a private index at `.ws/team-index.md` from validated entry/card pairs; an older imported `.ws/team/INDEX.md` and text outside the managed markers are kept. Git-hosted teams keep their shared index.
 - `ws team init <existing-empty-folder> --folder --attest-private` previews a new manifest and the local link, and never replaces an existing manifest. If linking fails afterwards, both copies stay for manual recovery.
-- Publishing to the folder is a separate step. `ws` never configures, installs or contacts a sync client, so cloud delivery is not guaranteed. Unlink keeps the local mirror and source folder.
+- `ws share` stages only approved portable copies in the local mirror. Preview `ws sync`, then confirm to publish them to the attested folder. Each attempt saves raw source copies in `.ws/backups/folder-*/state.json`; conflicts stop, partial failures keep the backup and local approvals, and a completed publication with a failed local refresh is reported explicitly for retry. Automatic pulls never publish.
+- Folder publication is limited to receipt-owned entry/card files and the publisher's own status file; the shared `INDEX.md` is never written. Two devices publishing the same owner's projection at once can race. Private originals stay intact: reconcile the retained copies, then publish the owner's original again.
+- `ws` never configures, installs or contacts a sync client, so cloud delivery and cross-device atomicity are not guaranteed. Unlink keeps the local mirror and source folder.
 - On Windows, another local process replacing the team folder is outside the trust boundary.
 
 ### Choose what can be shared
