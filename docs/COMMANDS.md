@@ -1,6 +1,6 @@
 # Commands
 
-Run every command from inside a workspace folder, or set `WS_ROOT`. In a terminal, commands print plain lines. Piped output is JSON; `WS_JSON=1` forces JSON.
+Most commands run from inside a workspace folder, or with `WS_ROOT` set. `ws demo`, `ws start`, `ws init`, `ws audit` and `ws doctor` work without one. In a terminal, commands print plain lines. Piped output is JSON; `WS_JSON=1` forces JSON.
 
 Sections: [Daily use](#daily-use), [Tasks and checkpoints](#tasks-and-checkpoints), [Search and lessons](#search-and-lessons), [Team sharing](#team-sharing), [Setup and assistants](#setup-and-assistants), [Packs](#packs), [Maintenance and upgrades](#maintenance-and-upgrades), [Advanced and experimental](#advanced-and-experimental).
 
@@ -251,7 +251,7 @@ Details:
 | `ws route [role] [--text]` | Show the configured binding for a role and whether its CLI or model setting is available. |
 | `ws delegate <task> --role <role> [--run]` | Prepare a redacted brief for a worker and print the exact command to run. |
 | `ws delegate <task> --role reviewer --diff <range> [--run]` | Same, with a diff stat, changed files and bounded hunks. |
-| `ws delegate --selftest [--provider codex\|claude]` | Test that the explorer worker cannot write to disk. |
+| `ws delegate --selftest [--provider codex\|claude]` | Try hostile writes against the explorer worker in a throwaway tree and report whether the disk changed. History, not a security guarantee. |
 | `ws worker prepare <task> --scope S [--base REF] [--dry-run] [--yes]` | Prepare an isolated implementation checkout. `--scope` is required and repeatable; `--base` defaults to `HEAD`. |
 | `ws worker review <id> [--approve] [--yes]` | Show a run's diff, checks and blocking reason, or record your review. |
 | `ws worker accept <id> [--dry-run] [--yes]` | Preview, then create, a `ws/worker/<id>` branch from the reviewed run. |
