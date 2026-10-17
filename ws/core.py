@@ -324,6 +324,10 @@ def pack_add(root, name):
 
 def init(target, name, packs=(), repos=(), clients=None):
     target = Path(target).resolve()
+    # A workspace.json in a shared folder becomes the root for every folder below it (find_root walks up).
+    shared = {Path(target.anchor), Path.home().resolve(), Path(tempfile.gettempdir()).resolve(), Path('/tmp').resolve(), Path('/private/tmp').resolve()}
+    if target in shared:
+        raise WsError(f'Refusing to create a workspace in {target}: every folder below it would use it. Try `ws init ~/work/<name>-ws`, or run `ws start` inside a repo.')
     if (target / 'workspace.json').exists():
         raise WsError(f'{target} is already a workspace.')
     for pack in packs:
@@ -2354,7 +2358,13 @@ def repeat_guard(root):
     return ''
 
 
+def _need_task(root, task_id):
+    if not task_path(root, task_id).is_file():
+        raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
+
+
 def trace(root, task_id):
+    _need_task(root, task_id)
     entries = run_entries(root, task_id)
     lines = [f'# Trace: {task_id}', '', 'Checks and verdicts are reported by the caller; ws does not execute checks.']
     for number, entry in enumerate(entries, 1):
@@ -2370,6 +2380,7 @@ def trace(root, task_id):
 
 
 def run_report(root, task_id=None):
+    if task_id: _need_task(root, task_id)
     files = [vault(root) / 'Runs' / f'{task_id}.jsonl'] if task_id else sorted((vault(root) / 'Runs').glob('*.jsonl'))
     by = {}
     steps = 0
