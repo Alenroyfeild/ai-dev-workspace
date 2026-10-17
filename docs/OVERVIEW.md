@@ -54,6 +54,8 @@ cd ~/code/myapp && ws start
 
 `ws start` creates local memory in this repository, connects detected assistants and claims a task named for your git branch. It previews project files before one confirmation; user files are preserved and conflicts are reported. Repeating it shows status. Use `--dry-run` for preview only or `--yes` for automation. Open this code repo in your assistant and trust project hooks/MCP when asked. Memory is saved by hooks and checkpoints; `/handoff` and `/pickup` (Codex: `$handoff`, `$pickup`) are there when you want to be explicit. No pipx? Clone the repo and put its `bin/` on your PATH. Windows: `python bin/ws <command>`, see [Windows notes](WINDOWS.md). For a separate workspace, use `ws init`; full guide: [SETUP.md](SETUP.md).
 
+Hands-on walkthrough with a throwaway repo: [TUTORIAL.md](TUTORIAL.md).
+
 ## What you get
 
 **Memory that follows the work**
