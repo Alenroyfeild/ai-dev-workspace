@@ -35,7 +35,7 @@ def _remote(clone, remote, branch):
 
 
 def _view(root, pull, read_only=False):
-    if core.config(root).get('team_workspace',{}).get('host')=='folder': raise core.WsError('Folder publication is not available yet; use ws sync --pull-only for read-only updates.')
+    if core.config(root).get('team_workspace',{}).get('host')=='folder': raise core.WsError('Git sync cannot operate on a folder host; use the folder publication path.')
     knowledge._bases(root,'team')  # Validates the linked manifest and all path components.
     cfg_text = sharing._text(sharing._safe(root,root/'workspace.json')); cfg=json.loads(cfg_text)
     link=cfg.get('team_workspace',{}); clone=sharing._safe(root,root/'.ws/team')
@@ -81,10 +81,7 @@ def _view(root, pull, read_only=False):
             if base or text is None or json.loads(text)!=expected: raise core.WsError('Only the linked bootstrap manifest is approved.')
         elif approved.get(name)!= (core.digest_text(text) if text is not None else ''):
             raise core.WsError('File differs from its sharing approval; run ws share again. '+HINT)
-        if text is not None:
-            scan=text.replace(cards.HEAD,'').replace(cards.TAIL,'')
-            if name.endswith('.index.md') or name.startswith('status/'): scan=json.dumps(json.loads(scan),ensure_ascii=False)
-            if sharing.portable(root,scan)!=scan.strip(): raise core.WsError('Nonportable/private shared content blocks sync.')
+        sharing.check_public(root,name,text)
         old=_git(clone,'show',base+':'+name) if base and name in _git(clone,'ls-tree','--name-only',base,'--',name).splitlines() else ''
         files[name]=text
         diff+=''.join(difflib.unified_diff(old.splitlines(True),(text or '').splitlines(True),fromfile=name,tofile='approved/'+name))
@@ -93,10 +90,16 @@ def _view(root, pull, read_only=False):
 
 
 def preview(root):
+    if core.config(root).get('team_workspace',{}).get('host')=='folder':
+        from . import folder_publish
+        return folder_publish.preview(root)
     with core.lock(root): return _view(root,True)
 
 
 def apply(root, plan):
+    if core.config(root).get('team_workspace',{}).get('host')=='folder':
+        from . import folder_publish
+        return folder_publish.apply(root,plan)
     with core.lock(root):
         if _view(root,False)!=plan: raise core.WsError('Source, approvals or remote changed; preview again.')
         if not plan['files']: return {'pushed':False,'unchanged':True}
