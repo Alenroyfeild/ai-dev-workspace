@@ -5,6 +5,9 @@
 ### New
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
+### Fixed
+- Team sync no longer stops when two teammates publish at once: the derived `INDEX.md` is rebuilt after the pull, so both entries are listed, and any remaining pull conflict names the file and the recovery command. A corrupt `team.json` now reports its path, shows in `ws doctor`, and no longer blocks `ws sync --pull-only` from pulling a teammate's fix.
+
 ## 0.1.0-beta.5 (unreleased)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
