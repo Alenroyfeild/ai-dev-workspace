@@ -68,7 +68,7 @@ TOOLS = {
     'import_usage': ('Import Codeburn usage; skip ambiguous matches and duplicates.',
                      S(since=string('YYYY-MM-DD', True), task=string('', True)), lambda r, a: core.import_codeburn(r, a.get('since'), a.get('task'))),
     'search_sessions': ('Search Claude/Codex/Cursor/Gemini transcripts; snippets are redacted.',
-                        S(query=string('')), lambda r, a: core.session_search(a['query'])),
+                        S(query=string('')), lambda r, a: core.session_search(a['query'], hide_private=True)),
     'codebase_map': ('Map configured or supplied repo.',
                      S(repo=string('', True)), lambda r, a: core.codebase_map(r, a.get('repo'))),
     'brief': ('Show local task memory.', S(), lambda r, a: core.brief(r)),
@@ -139,6 +139,9 @@ def rpc_error(mid, code, message):
     return {'jsonrpc': '2.0', 'id': mid, 'error': {'code': code, 'message': message}}
 
 
+MAX_TEXT, MAX_ITEMS = 100_000, 1000  # per string / per array: one call must not bloat the task record or stall later reads
+
+
 def validate_input(value, schema, field='arguments'):
     kind = schema.get('type')
     valid = {'object': isinstance(value, dict), 'array': isinstance(value, list),
@@ -148,6 +151,10 @@ def validate_input(value, schema, field='arguments'):
         raise ValueError(f'{field} must be {kind}')
     if 'enum' in schema and value not in schema['enum']:
         raise ValueError(f'{field} is not an allowed value')
+    if kind == 'string' and len(value) > MAX_TEXT:
+        raise ValueError(f'{field} is longer than {MAX_TEXT} characters')
+    if kind == 'array' and len(value) > MAX_ITEMS:
+        raise ValueError(f'{field} has more than {MAX_ITEMS} items')
     if kind == 'object':
         props = schema.get('properties', {})
         if any(key not in value for key in schema.get('required', [])):
@@ -226,7 +233,7 @@ def _dispatch(root, msg):
             if root is None: raise core.WsError('Run ws start in this repo.')
             value = TOOLS[name][2](root, args)
             result = {'content': [{'type': 'text', 'text': json.dumps(value, ensure_ascii=False, indent=1)}], 'isError': False}
-        except (core.WsError, KeyError, OSError, ValueError, TypeError) as exc:
+        except Exception as exc:  # a tool bug or odd argument must end this call, never the server
             result = {'content': [{'type': 'text', 'text': f'{type(exc).__name__}: {exc}'}], 'isError': True}
     elif method == 'ping':
         result = {}
@@ -285,6 +292,24 @@ def handle(root, msg, legacy=None):
     return reply
 
 
+def serve(root, raw, legacy):
+    """Reply to one stdio line (bytes); nothing a client sends may end the loop."""
+    try:
+        line = raw.decode('utf-8')
+        if not line.strip():
+            return None
+        msg = json.loads(line)
+    except (ValueError, RecursionError):  # bad UTF-8, bad JSON, absurd nesting or number size
+        return rpc_error(None, -32700, 'Parse error')
+    try:
+        return handle(root, msg, legacy)
+    except Exception as exc:
+        mid = msg.get('id') if isinstance(msg, dict) else None
+        if not isinstance(msg, dict) or 'id' not in msg:
+            return None
+        return rpc_error(mid if type(mid) in (str, int) else None, -32603, f'Internal error: {type(exc).__name__}')
+
+
 def main():
     global PLUGIN_INACTIVE
     if os.name == 'nt':
@@ -301,13 +326,8 @@ def main():
         root = core.find_root(args.root)
     PLUGIN_INACTIVE = args.plugin and root is None
     legacy = {}
-    for line in sys.stdin:
-        if not line.strip():
-            continue
-        try:
-            reply = handle(root, json.loads(line), legacy)
-        except json.JSONDecodeError:
-            reply = {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': 'Parse error'}}
+    for raw in sys.stdin.buffer:
+        reply = serve(root, raw, legacy)
         if reply is not None:
             sys.stdout.write(json.dumps(reply) + '\n')
             sys.stdout.flush()

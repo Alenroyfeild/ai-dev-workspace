@@ -42,6 +42,8 @@ Team workspaces can now receive approved shared updates automatically or be read
 - `ws pack add <name>` now takes the workspace lock and writes `workspace.json` atomically, so an interrupted add cannot leave it truncated.
 - `ws pack add --from` and `ws pack remove` no longer garble non-ASCII text in your `AGENTS.md` on systems whose default text encoding is not UTF-8 (for example Windows).
 - On Windows, non-ASCII text (accented names in paths, notes, `AGENTS.md`, git output) is read and written as UTF-8, the pip/pipx `ws` command prints it correctly, Codeburn runs when installed as a `.cmd` shim, `ws upgrade` recognises its own quoted hooks, and the guards pack blocks a home-folder delete written with `/` or different capitalisation.
+- MCP tools now reject odd or hostile arguments with a clear error instead of crashing the server or corrupting the task record: deeply nested or non-UTF-8 requests, huge numbers, text over 100,000 characters, unknown task IDs, and text that tried to start a new section, add task metadata, forge `ws` markers or carry `<private>` spans. `search_sessions` also hides `<private>` text and `#private` messages.
+- An unclosed `<private>` marker now hides the rest of the text everywhere (capture, `ws remember`, export, session search), not only in saved notes.
 
 ### Known limits
 - The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
