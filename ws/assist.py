@@ -90,7 +90,6 @@ def session_task(root, session_id):
 
 
 def feature_suggestions(root, add):
-    cfg = core.config(root)
     if core.upgrade_due(root):
         add('upgrade', 'Kit is newer than this workspace or .ws-new proposals await review', 'ws upgrade --dry-run', 'local-reversible')
     from . import orchestration
