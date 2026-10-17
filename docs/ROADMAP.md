@@ -22,7 +22,7 @@ Compatibility claims stay limited to tested behavior; see the [client table](CLI
 ## Next
 
 - [ ] Install from PyPI (`pipx install ai-dev-workspace`) and list the MCP server in the official registry.
-- [ ] Carry failed approaches into the next session's brief.
+- [ ] Carry failed approaches into the next session's brief, and warn when saved memory names deleted or renamed files or uncommitted work that was reset.
 - [ ] Opt-in guard and discipline hook packs.
 
 - [ ] Test Cursor, Copilot and Gemini CLI in live client sessions.
