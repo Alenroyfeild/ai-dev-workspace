@@ -222,7 +222,8 @@ def ask(prompt=''):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
-                                formatter_class=GroupedHelpFormatter)
+                                formatter_class=GroupedHelpFormatter,
+                                epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
     p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
@@ -303,29 +304,31 @@ def main(argv=None):
     choice.add_argument('--apply', action='store_true', help='apply the previewed preset and project connections')
 
     t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
-    s = t.add_parser('new'); s.add_argument('id'); s.add_argument('title')
-    s.add_argument('--objective', default=''); s.add_argument('--branch', default=''); s.add_argument('--repo', default='')
-    t.add_parser('list')
-    s = t.add_parser('find'); s.add_argument('ref')
-    s = t.add_parser('show'); s.add_argument('id'); s.add_argument('--section', action='append')
+    s = t.add_parser('new', help='create a task record'); s.add_argument('id', help='short ID such as JIRA-123 or fix-login'); s.add_argument('title')
+    s.add_argument('--objective', default='', help='one-line goal'); s.add_argument('--branch', default='', help='Git branch the task belongs to'); s.add_argument('--repo', default='', help='repo path the task belongs to')
+    t.add_parser('list', help='list tasks with status, claim and next action')
+    s = t.add_parser('find', help='find tasks by ID, branch or title'); s.add_argument('ref', help='ID, branch or title text')
+    s = t.add_parser('show', help='print one task record'); s.add_argument('id'); s.add_argument('--section', action='append', help='print only this section; repeat for several')
     s = t.add_parser('depend', help='make a task wait for another'); s.add_argument('id'); s.add_argument('--on', required=True, metavar='OTHER')
     s = t.add_parser('import', help='create tasks from Task Master tasks.json or a Spec Kit tasks.md (preview unless --yes)')
     s.add_argument('file'); s.add_argument('--prefix', default='SPEC'); s.add_argument('--yes', action='store_true', help='write the tasks')
     s = sub.add_parser('next', help='open tasks whose dependencies are done'); s.add_argument('--json', action='store_true')
 
-    s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker')
-    s = sub.add_parser('release', help='release a task claim'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
+    s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker', help='label for this session (default: $USER)')
+    s = sub.add_parser('release', help='release a task claim'); s.add_argument('id')
+    s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
     valid_notes = ', '.join(core.NOTE_SECTIONS)
     s = sub.add_parser('checkpoint', help='save task status and next action',
                        description='Save task status, next action, and optional notes.',
                        epilog='Valid note sections: ' + valid_notes)
-    s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
-    s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
-    s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
+    s.add_argument('id', help='task ID (see ws task list)'); s.add_argument('--status', required=True, choices=core.STATUSES)
+    s.add_argument('--next', required=True, help='exactly what the next person or AI should do')
+    s.add_argument('--expected-sha', help='refuse if the task changed since you read it'); s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
+    s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT', help='save text into a section, e.g. "Handoff=Decision: use Postgres"; repeatable')
 
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
-    s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
-    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
+    s.add_argument('text', help='the decision, e.g. "use Postgres, not SQLite"'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
+    s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s = sub.add_parser('pr-notes', help="print the task's decisions and checks as a PR-description block")
     s.add_argument('id', nargs='?', help='task (default: your only claimed task or the current branch task)')
     s.add_argument('--no-link', action='store_true', help='omit the one-line ai-dev-workspace credit')
@@ -334,32 +337,32 @@ def main(argv=None):
     s.add_argument('--since', default='7d', help='7d (days back) or YYYY-MM-DD; default 7d')
     s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
     k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
-    s = k.add_parser('add')
-    s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
-    s.add_argument('--category', default='other')
-    s = k.add_parser('list'); s.add_argument('--category', default=''); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
-    s = k.add_parser('show'); s.add_argument('id')
+    s = k.add_parser('add', help='save one knowledge entry')
+    s.add_argument('text'); s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
+    s.add_argument('--category', default='other', help='product, feature, domain, repo, runbook or other (default other)')
+    s = k.add_parser('list', help='list knowledge entries'); s.add_argument('--category', default='', help='only this category'); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
+    s = k.add_parser('show', help='print one knowledge entry'); s.add_argument('id', help='ID from ws know list')
 
-    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query'); s.add_argument('--category', default='')
+    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query', help='words to look for (3+ letters)'); s.add_argument('--category', default='', help='only knowledge in this category')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
-    s = sessions.add_parser('search'); s.add_argument('query')
+    s = sessions.add_parser('search', help='search transcripts of earlier assistant sessions'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
     s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
-    s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
-    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
+    s = l.add_parser('add', help='save a lesson: what happened -> rule'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[], help='topic tag; repeatable')
+    s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
-    s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
+    s = l.add_parser('search', help='find saved lessons'); s.add_argument('query', nargs='?', default='', help='words to look for (default: all)')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
-    s = f.add_parser('add'); s.add_argument('text'); s.add_argument('--kind', default='idea'); s.add_argument('--source', default='user')
-    s = f.add_parser('list'); s.add_argument('--all', action='store_true')
+    s = f.add_parser('add', help='record feedback locally'); s.add_argument('text'); s.add_argument('--kind', default='idea', help='idea, bug, praise or friction (default idea)'); s.add_argument('--source', default='user')
+    s = f.add_parser('list', help='list feedback items'); s.add_argument('--all', action='store_true', help='include items already done')
     s = f.add_parser('submit', help='turn item N into a GitHub issue (preview first)'); s.add_argument('n', type=int); s.add_argument('--yes', action='store_true')
     s = f.add_parser('link', help='record the issue URL for item N'); s.add_argument('n', type=int); s.add_argument('url')
     f.add_parser('sync', help='tick items whose issue is closed')
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
-    sub.add_parser('version')
-    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true')
+    sub.add_parser('version', help='print the installed kit version')
+    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true', help='print the changes without writing them')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
     s = sub.add_parser('assist', help='suggest improvements; apply only after explicit permission')
     s.add_argument('action', nargs='?', choices=('apply', 'decide')); s.add_argument('id', nargs='?')
@@ -391,8 +394,11 @@ def main(argv=None):
         p.formatter_class = argparse.HelpFormatter
         p.print_help()
         return 0
-    if args in (['--help'], ['-h']):
+    if args in (['--help'], ['-h'], ['help']):
         p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
+    if args == ['help']:
+        p.print_help()
+        return 0
     a = p.parse_args(argv)
     try:
         if a.cmd == 'demo':
