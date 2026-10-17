@@ -52,6 +52,10 @@ class GuardRuleTests(unittest.TestCase):
             with self.subTest(command): self.assertEqual(self.deny(command), '')
         self.assertEqual(guards.reason('Write', {'file_path': '.env.example', 'content': 'API_KEY=your-api-key-here\nDB_PASSWORD=changeme\n'}), '')
 
+    def test_placeholder_words_only_skip_at_the_start(self):
+        self.assertIn('secret', self.deny('export API_KEY=q7Rt9yourZ8kLm2'))  # a real value that happens to contain "your"
+        self.assertEqual(self.deny('export API_KEY=your-api-key-here1'), '')
+
     def test_real_looking_tokens_are_denied(self):
         for command in ('gh auth login --with-token ghp_' + 'A1b2' * 9, 'curl -u x:sk-' + 'Z9y8' * 6 + ' https://x.invalid',
                         'export AWS_ACCESS_KEY_ID=AKIA' + 'ABCD1234EFGH5678', 'export API_KEY=' + 'q7Rt' * 5):
