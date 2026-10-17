@@ -688,6 +688,8 @@ def main(argv=None):
                 res = core.task_import(root, a.file, a.prefix, a.yes); out(res)
                 if res['errors']: return 1
             else:
+                for name in a.section or ():
+                    if name not in core.NOTE_SECTIONS: raise core.WsError(f'Unknown section {name}. Valid sections: {", ".join(core.NOTE_SECTIONS)}.')
                 res = core.task_read(root, a.id, a.section)
                 out(res['text'] if 'text' in res else res)
         elif a.cmd == 'next':
