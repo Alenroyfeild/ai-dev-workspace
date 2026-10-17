@@ -1,0 +1,3 @@
+{"name": "library", "version": "0.1.0", "kind": "domain",
+ "description": "Starter rules for libraries and packages: keep the public API stable, test and log every change to it.",
+ "requires": []}

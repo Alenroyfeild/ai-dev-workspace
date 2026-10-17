@@ -220,6 +220,22 @@ def hook_packs(root):
     return [p for p in core.HOOK_PACKS if p in core.config(root).get('packs', [])]
 
 
+STARTERS = {'ios': 'an iOS project', 'ml': 'an ML or data project', 'web': 'a web app', 'library': 'a Python package'}
+
+
+def starter(repo, root):
+    """Starter pack that fits this repo's type, for a one-line hint at first setup; '' if none fits or it is on."""
+    names = {p.name for p in repo.iterdir()}
+    def read(name):
+        try: return (repo / name).read_text(encoding='utf-8', errors='replace')[:20000] if name in names else ''
+        except OSError: return ''  # a broken symlink or unreadable file is just no hint
+    deps = ' '.join(read(n) for n in ('requirements.txt', 'pyproject.toml'))
+    kind = ('ios' if re.search(r'\.iOS\b', read('Package.swift')) or any(n.endswith(('.xcodeproj', '.xcworkspace')) for n in names)
+            else 'ml' if any(n.endswith('.ipynb') for n in names) or re.search(r'\b(torch|tensorflow|jax|scikit-learn|keras)\b', deps)
+            else 'web' if 'package.json' in names else 'library' if names & {'pyproject.toml', 'setup.py'} else '')
+    return kind if kind and kind not in core.config(root).get('packs', []) else ''
+
+
 def refresh(repo, root, state, yes, dry_run, keep=()):
     """Rewrite ws-written files still unchanged since ws wrote them, for this kit version; user edits stop it earlier."""
     def before(name):
@@ -327,4 +343,4 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
                 core.atomic_write(target, core.set_meta(core.set_section(text, 'Next action', ''), {'status': 'in_progress'}))
     memory_import.apply(root, repo, task, imports)
     state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
-    return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, codex_status=state['codex_status'])
+    return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, codex_status=state['codex_status'], starter=starter(repo, root))
