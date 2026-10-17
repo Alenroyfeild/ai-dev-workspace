@@ -6,7 +6,8 @@ from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
-LINK = re.compile(r'\[[^\]]*\]\(([^)]*)\)')
+# [text](target "title"): the target may hold one level of balanced parentheses or be wrapped in <...>.
+LINK = re.compile(r'\[[^\]]*\]\(\s*(<[^>]*>|(?:[^()\s]|\([^()\s]*\))*)(?:\s+(?:"[^"]*"|\'[^\']*\'))?\s*\)')
 FENCE = re.compile(r'^\s*(`{3,}|~{3,})(.*)$')
 REFDEF = re.compile(r'^ {0,3}\[([^\]]+)\]:\s*<?([^\s>]+)')
 REFUSE = re.compile(r'\[([^\]]+)\]\[([^\]]*)\]')
@@ -70,7 +71,7 @@ def link_targets(path):
             continue
         clean = re.sub(r'`[^`]*`', '', line)
         for target in LINK.findall(clean):
-            yield number, target
+            yield number, target[1:-1] if target[:1] == '<' else target
         for text, ref in REFUSE.findall(clean):
             if (ref or text).lower() not in defined:
                 yield number, None, ref or text
@@ -119,6 +120,10 @@ class DocLinkTests(unittest.TestCase):
         self.assertEqual(self.problems('[guide][setup]\n\n[setup]: missing.md\n'), ['a.md:3: missing.md'])
         self.assertEqual(self.problems('[guide][nope]\n'), ['a.md:1: [nope] has no definition'])
         self.assertEqual(self.problems('[guide][setup]\n[Setup][]\n\n[setup]: b.md\n', **{'b.md': 'x'}), [])
+
+    def test_inline_link_targets_with_parentheses_and_titles(self):
+        self.assertEqual(self.problems('[x](b_(1).md) [y](b_(1).md "Title")\n', **{'b_(1).md': 'x'}), [])
+        self.assertEqual(self.problems('[x](missing.md "Title") [y](gone.md \'T\')\n'), ['a.md:1: missing.md', 'a.md:1: gone.md'])
 
     def test_fence_closes_only_with_matching_marker(self):
         text = '```\n~~~\n```\n[x](missing.md)\n'
