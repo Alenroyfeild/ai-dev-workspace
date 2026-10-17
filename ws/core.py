@@ -1239,7 +1239,7 @@ PROJECT_URL = 'https://github.com/Alenroyfeild/ai-dev-workspace'
 
 
 def pr_notes(root, task_id=None, link=True):
-    """A PR-description block from one task: goal, explicit decisions, acceptance criteria, checks, open items."""
+    """A PR-description block from one task: goal, explicit decisions, tried-and-rejected approaches, acceptance criteria, checks, open items."""
     task_id = task_id or sole_local_claim(root) or (current_task(root)[0] or {}).get('id')
     if not task_id:
         raise WsError('No current task. Pass one: ws pr-notes <ID>.')
@@ -1249,18 +1249,23 @@ def pr_notes(root, task_id=None, link=True):
 
     def body(name):
         # Captured blocks are unverified guesses; only text the user or assistant saved explicitly goes into a PR.
-        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S).strip()
+        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S)
+        value = re.sub(r'<!-- ws:captured:.*\Z', '', value, flags=re.S).strip()  # an unterminated block is still unverified
         return '' if value == section(template, name) or value.lower().rstrip('.') in ('none', 'none yet') else value
 
     decisions = []
-    for line in body('Handoff').splitlines():
-        line = line.strip()
+    for raw in body('Handoff').splitlines():
+        line = raw.strip()
         if line.startswith('Decision:'): decisions.append('- ' + line[9:].strip())
         elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
+        elif line and decisions and raw[:1] in ' \t':  # an indented line continues the previous Decision/Reason
+            decisions[-1] += ' ' + line
+    rejected = [f'- {l.strip().lstrip("-*").strip()}' for n in ('Failures', 'Do not redo') for l in body(n).splitlines() if l.strip().lstrip('-*').strip()]
+    if len(rejected) > 8: rejected[8:] = [f'(+{len(rejected) - 8} more in the task)']  # keep the PR body short
     title = (re.search(r'^# (.+)$', text, re.M) or [None, task_id])[1].strip()
     parts = [f'### {title}' + ('' if title == task_id else f' ({task_id})')]
     if goal := body('Objective'): parts.append(f'**Goal:** {goal}')
-    for heading, value in (('Decisions', '\n'.join(decisions)), ('Acceptance criteria', body('Acceptance criteria')),
+    for heading, value in (('Decisions', '\n'.join(decisions)), ('Tried and rejected', '\n'.join(rejected)), ('Acceptance criteria', body('Acceptance criteria')),
                            ('Checks', body('Checks')), ('Open items', body('Blockers'))):
         if value: parts.append(f'#### {heading}\n{value}')
     if not decisions and not body('Checks'):
@@ -2207,7 +2212,8 @@ def validate(root):
         for name in REQUIRED:
             if not re.search(rf'^## {re.escape(name)}\s*$', text, re.M):
                 errors.append(f'{path.name}: missing section {name}')
-        if meta.get('status') not in ('done', 'backlog') and not section(text, 'Next action'):
+        # A task ws start just created has no next step until the first checkpoint; the brief already asks for one.
+        if meta.get('status') not in ('done', 'backlog') and meta.get('checkpoint_at') and not section(text, 'Next action'):
             errors.append(f'{path.name}: empty Next action')
     names = {p.stem for p in v.rglob('*.md')} | {p.relative_to(v).as_posix()[:-3] for p in v.rglob('*.md')}
     for path in v.rglob('*.md'):

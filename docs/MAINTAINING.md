@@ -28,7 +28,7 @@ Feedback is redacted before it is shown or sent, and `submit` always previews fi
 Semantic versioning in `kit.json`:
 - patch `0.1.1` – fixes, docs, pack content
 - minor `0.2.0` – new commands, packs or MCP tools (backward compatible)
-- major `1.0.0` – breaking changes to `workspace.json`, task format or commands; ship a migration in `ws/core.py` keyed on `schema_version`
+- major `1.0.0` – breaking changes to `workspace.json`, task format or commands; ship a migration in `ws/upgrade.py` keyed on `schema_version`
 
 ## Cutting a release
 
@@ -37,6 +37,6 @@ Semantic versioning in `kit.json`:
 3. Commit, then `git tag v<version> && git push --tags`. Do not create the GitHub Release by hand.
 4. `.github/workflows/release.yml` checks the tag matches `kit.json`, runs the tests and publishes the GitHub Release as Latest with that CHANGELOG section plus upgrade steps. Users see the summary on their next `ws doctor` / `ws update --check` (checked at most once a day).
 
-## Before publishing the repo
+## Repository setting
 
-Set `repo` in `kit.json` to the real `owner/name`. Until then update checks and issue submission say the repo is not configured.
+`repo` in `kit.json` is the `owner/name` that update checks and issue submission use; the `WS_REPO` environment variable overrides it. If it still starts with `OWNER/`, those commands say no GitHub repo is set.
