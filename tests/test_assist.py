@@ -49,7 +49,7 @@ class AssistTests(Base):
             self.assertIn('tool-codeburn', [item['id'] for item in assist.suggestions(self.root, True)])
 
     def test_filters_cost_findings_and_caps_suggestions(self):
-        names = ['ccd_builtin', 'claude-in-chrome', 'ai-dev-workspace', 'recent', 'graphy-helper', 'idle']
+        names = ['ccd_builtin', 'claude-in-chrome', 'ai-dev-workspace', 'recent', 'idle']
         report = {'findings': [{'id': name, 'title': 'Remove ' + name, 'explanation': name,
                     'estimatedSavingsUSD': 2, 'fix': {'text': 'Remove ' + name}} for name in names]}
         usage = {'mcp': [{'Server': 'recent', 'Calls': 1}]}
