@@ -114,6 +114,7 @@ def text_doctor(report):
     if report.get('team_workspace'):
         pulls = 'enabled (read-only)' if report['team_workspace'].get('auto_pull') is True else 'off (consent required)'
         lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls ' + pulls)
+        if report['team_workspace'].get('problem'): lines.append('Team problem: ' + report['team_workspace']['problem'])
     if report.get('setup'):
         lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
