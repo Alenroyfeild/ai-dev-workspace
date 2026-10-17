@@ -689,11 +689,19 @@ def client_connected(root, client, global_only=False):
     locations = MCP_LOCATIONS
     path, key = (root / locations[client][0], locations[client][1]) if client in locations else (None, None)
     if path is None: return False
-    try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-        return data.get(key, {}).get('ai-dev-workspace') == mcp_command(root)
-    except (OSError, ValueError, AttributeError):
-        return False
+    def has_entry(file):
+        try: return json.loads(file.read_text(encoding='utf-8')).get(key, {}).get('ai-dev-workspace') == mcp_command(root)
+        except (OSError, ValueError, AttributeError): return False
+    if has_entry(path): return True
+    if client != 'claude' or global_only: return False
+    from . import repo  # `ws start` writes Claude's files into the repo, not the private workspace
+    try: repos = read_roots(root)[1:]
+    except WsError: return False
+    for checkout in repos:
+        try: files = repo.load(checkout)['files']
+        except (OSError, ValueError, WsError): continue
+        if {'.mcp.json', '.claude/settings.local.json'} <= set(files) and has_entry(checkout / '.mcp.json'): return True
+    return False
 
 
 def skills_to_link(client, root):
@@ -813,7 +821,7 @@ def _connect_config(root, client, write=False):
     locations = MCP_LOCATIONS
     relative, key = locations[client]
     path = inside(root / relative, [root])
-    if client_connected(root, client):
+    if client_connected(root, client, global_only=True):
         return {'client': client, 'connected': True, 'path': str(path)}
     data = {key: {}}
     if path.exists():

@@ -5,6 +5,7 @@
 ### Fixed
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
+- `ws doctor` no longer reports Claude as not configured in a repo set up by `ws start` (the Claude files live in the repo, not the private workspace). Its text summary now opens with an `OK:` or `Needs attention:` line and no longer prints empty parentheses after `Setup preset`; `ws doctor --json` forces JSON in a terminal (piped output is still JSON).
 
 ### New
 - Team previews at a terminal are a short summary (`+ category text`, destination, `[y/N]`) instead of raw JSON; `ws sync` prints a one-line pulled/published count; `ws know add` keeps a private note's `#private` text and paths as written (sharing it later still strips them) and says clearly when a `--team` note is entirely private; the team docs show the real quick-start order, the `#private`/`<private>` markers and a "rotate pushed secrets" warning.
