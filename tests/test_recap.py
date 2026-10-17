@@ -77,6 +77,13 @@ class RecapTests(Base):
         self.assertIn('  - (+2 more)', result['markdown'])
         self.assertEqual(len(result['tasks'][0]['rejected']), 3)
 
+    def test_literal_flags_and_indented_continuations(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'x', notes={
+            'Failures': '- --force push: lost commits\n- Float rounding: drifted\n  in refunds\n  - with tax'})
+        result = core.recap(self.root)
+        self.assertEqual(result['tasks'][0]['rejected'], ['--force push: lost commits', 'Float rounding: drifted in refunds with tax'])
+        self.assertIn('- --force push: lost commits\n- Float rounding: drifted in refunds with tax', core.pr_notes(self.root, 'T-1')['markdown'])
+
     def test_task_without_rejected_shows_no_such_line(self):
         self.assertNotIn('Rejected', core.recap(self.root)['markdown'])
 
