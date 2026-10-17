@@ -36,6 +36,13 @@ class PromptEofTests(unittest.TestCase):
         for _ in range(2): self.ws('know', 'add', 'Queues stay bounded.', '--category', 'domain', '--team')
         self.assertEqual(1, len(self.sources()))
 
+    def test_rerun_after_declined_remember_or_lesson_reuses_the_record(self):
+        for directory, args in (('Decisions', ('remember', 'A bounded decision remains portable.', '--team')),
+                                ('Lessons', ('lesson', 'add', 'A timeout happened; always bound retries.', '--team'))):
+            for _ in range(2): self.ws(*args)
+            records = [p for p in (self.root / 'vault' / directory).glob('*.md') if p.name != 'INDEX.md' and not p.name.endswith('.index.md')]
+            self.assertEqual(1, len(records), directory)
+
     def test_same_text_in_another_scope_or_category_is_a_new_record(self):
         a = knowledge.add(self.root, 'Queues stay bounded.', 'domain', True)
         self.assertEqual(a, knowledge.add(self.root, 'Queues stay bounded.', 'domain', True))
