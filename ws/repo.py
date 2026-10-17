@@ -135,6 +135,9 @@ def _strings(node):
     elif isinstance(node, list): yield from (s for v in node for s in _strings(v))
 
 
+HOOK_COMMANDS = {'brief', 'nudge', 'paste', 'guard', 'discipline'}
+
+
 def _missing_in_hook(command, root):
     """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
     if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return ''
@@ -144,6 +147,8 @@ def _missing_in_hook(command, root):
         if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
         if '--workspace-root' not in parts: return ''
         interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
+        # Only commands ws wrote: <python> <kit>/bin/ws[-plugin] ... <hook subcommand>; a user's own hook is never judged.
+        if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return ''
     except (ValueError, IndexError): return ''
     for item in (interpreter, kit):
         if not Path(item).exists() and not shutil.which(item): return item
