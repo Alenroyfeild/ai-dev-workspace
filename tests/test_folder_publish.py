@@ -113,3 +113,29 @@ class FolderPublishTests(unittest.TestCase):
         original=index.read_bytes();self.link();self.approved();plan=folder_publish.preview(self.root)
         self.assertNotIn('INDEX.md',plan['files'])
         folder_publish.apply(self.root,plan);self.assertEqual(index.read_bytes(),original)
+
+    def test_sharing_does_not_approve_or_rewrite_teammate_card(self):
+        self.link();card=self.root/'.ws/team/entries'/(self.entry+'.index.md')
+        before=card.read_bytes();self.approved()
+        self.assertEqual(card.read_bytes(),before)
+        state=json.loads((self.root/'.ws/shares.json').read_text())
+        self.assertNotIn('entries/'+card.name,state['_artifacts:'+self.team])
+
+    def test_forged_status_artifact_does_not_grant_ownership(self):
+        from ws import folder_publish
+        self.link();name='status/teammate.json';path=self.root/'.ws/team'/name;path.parent.mkdir()
+        text=json.dumps(dict(author='teammate',task='Receipt',line='Checking',date=core.now()))
+        path.write_text(text);before=self.inventory()
+        (self.root/'.ws/shares.json').write_text(json.dumps({'_artifacts:'+self.team:{name:core.digest_text(text)}}))
+        with self.assertRaises(core.WsError):folder_publish.preview(self.root)
+        self.assertEqual(before,self.inventory())
+
+    def test_owned_status_publish_and_remove(self):
+        from ws import folder_publish,team_status
+        self.link();core.task_new(self.root,'T1','Receipt');core.claim(self.root,'T1','local')
+        team_status.apply(self.root,team_status.preview(self.root,'Checking',author='tester',enable=True))
+        folder_publish.apply(self.root,folder_publish.preview(self.root))
+        self.assertTrue((self.folder/'status/tester.json').exists())
+        team_status.apply(self.root,team_status.preview(self.root,author='tester',disable=True))
+        folder_publish.apply(self.root,folder_publish.preview(self.root))
+        self.assertFalse((self.folder/'status/tester.json').exists())
