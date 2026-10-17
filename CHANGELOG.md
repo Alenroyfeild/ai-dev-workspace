@@ -28,12 +28,14 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Decisions you state in chat (not only corrections) are now saved by the assistant with `remember`, so they reach the next session as saved decisions rather than unverified captures. In a repo set up earlier, run `ws start` again to pick up the new instruction; saved memory is kept.
 - After an upgrade, run `ws start` again in your repo: it refreshes the setup files it wrote (instructions, hooks, MCP config) for the new version, after showing them and asking. Files you edited are left alone and reported; saved memory is kept.
 - The session brief now says when a file named in the saved next action or decisions was deleted or renamed since the checkpoint (`gone since: export.py (now publish.py)`), including deletions not yet committed, so the next session does not chase a file that is no longer there.
+- The brief also warns when uncommitted edits that existed at the last checkpoint are gone (`uncommitted edits gone: export.py (stashed or reset?)`), so a session does not build on work that was stashed or reset away.
 
 ### Fixed
 - `ws validate` and `ws doctor` no longer call a fresh `ws start` setup invalid: a task that has never been checkpointed may have no next action yet.
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 
 ### Known limits
+- The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
 
