@@ -27,6 +27,10 @@ class McpDescriptionTests(Base):
         self.assertEqual(costs['mcp_schema_bytes'], expected)
         self.assertIn('description', costs['mcp_schema_scope'])
 
+    def test_cost_outside_workspace_keeps_the_normal_full_catalog(self):
+        costs = core.tool_costs(usage={})
+        self.assertEqual({item['name'] for item in costs['mcp_tools']}, set(server.TOOLS))
+
     def test_tools_list_keeps_all_tools_and_safety_meaning_with_smaller_payload(self):
         result = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})['result']['tools']
         names = {item['name'] for item in result}

@@ -41,12 +41,13 @@ def S(**props):
 
 # Listed by default: what a session needs to read and save memory. Every other tool stays callable by name.
 CORE_TOOLS = ('brief', 'find_task', 'read_task', 'checkpoint', 'remember', 'search_vault', 'add_lesson')
+PLUGIN_INACTIVE = False
 
 
 def listed_tools(root):
     """workspace.json `mcp_tools`: "core" (default), "all", or a list of tool names."""
-    if root is None: return ['brief']
-    choice = core.config(root).get('mcp_tools', 'core')
+    if root is None and PLUGIN_INACTIVE: return ['brief']
+    choice = core.config(root).get('mcp_tools', 'core') if root else 'all'
     names = TOOLS if choice == 'all' else choice if isinstance(choice, list) else CORE_TOOLS
     return [name for name in TOOLS if name in names]
 
@@ -285,6 +286,7 @@ def handle(root, msg, legacy=None):
 
 
 def main():
+    global PLUGIN_INACTIVE
     if os.name == 'nt':
         for stream in (sys.stdin, sys.stdout, sys.stderr): stream.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser()
@@ -297,6 +299,7 @@ def main():
         except (core.WsError, OSError, ValueError, TypeError, KeyError): root = None
     else:
         root = core.find_root(args.root)
+    PLUGIN_INACTIVE = args.plugin and root is None
     legacy = {}
     for line in sys.stdin:
         if not line.strip():
