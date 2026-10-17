@@ -3,6 +3,7 @@
 ## 0.1.0-beta.6 (unreleased)
 
 ### New
+- The brief now ends with `+N more team notes: ws know list --layer team` when the team has more notes than the cards it shows; it is the first line dropped when the brief is full.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
 ## 0.1.0-beta.5 (unreleased)
