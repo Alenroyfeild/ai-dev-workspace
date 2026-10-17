@@ -120,6 +120,8 @@ class TeamFolderTests(unittest.TestCase):
     def test_snapshot_write_failure_rolls_back_and_normal_sync_only_pulls(self):
         from ws import team_auto,team_sync
         self.link();path=self.root/'.ws/team/entries'/(self.entry+'.md');before=path.read_bytes();self.record('Changed receipt.')
+        source_path=self.folder/'entries'/(self.entry+'.md')
+        source_path.write_bytes(source_path.read_bytes().replace(b'\r\n',b'\n').replace(b'\n',b'\r\n'))
         writer=core.atomic_write
         def fail(target,text):
             if target.name=='folder-base.json':raise OSError('synthetic baseline failure')
@@ -129,7 +131,7 @@ class TeamFolderTests(unittest.TestCase):
         self.assertEqual(path.read_bytes(),before)
         source=(self.folder/'entries'/(self.entry+'.md')).read_bytes()
         self.assertFalse(team_sync.preview(self.root)['files'])
-        self.assertEqual(path.read_bytes(),source)
+        self.assertEqual(path.read_bytes(),source.replace(b'\r\n',b'\n'))
         self.assertEqual((self.folder/'entries'/(self.entry+'.md')).read_bytes(),source)
 
     def test_consent_question_cannot_refresh_an_unshown_folder_preview(self):
