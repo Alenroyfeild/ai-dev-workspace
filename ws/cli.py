@@ -466,7 +466,7 @@ def main(argv=None):
         @core.contextlib.contextmanager
         def saved_locally():  # the record is already saved; say so when sharing it cannot go ahead
             try: yield
-            except core.WsError as exc: raise core.WsError(f'Saved locally, not shared: {exc}') from None
+            except (core.WsError, ValueError, OSError) as exc: raise core.WsError(f'Saved locally, not shared: {exc}') from None
         def share_gate(item, remove=False):
             from . import sharing
             author = getattr(a, 'author', None)
