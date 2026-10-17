@@ -2639,6 +2639,10 @@ def doctor(root=None, mcp=False):
             method = privacy.get('method') if isinstance(privacy, dict) else None
             report['team_workspace'] = {'privacy': method if method in ('gh', 'glab', 'attested') else 'unknown',
                                         'auto_pull': cfg['team_workspace'].get('auto_pull') is True, 'pulls_active': cfg['team_workspace'].get('auto_pull') is True}
+            if cfg['team_workspace'].get('host') != 'folder':
+                from . import knowledge
+                try: knowledge._bases(root, 'team')
+                except (WsError, OSError, ValueError) as exc: report['team_workspace']['problem'] = str(exc)
         report['capture_health'] = capture_health(root)
         from . import native
         report['codex_goals'] = native.codex_goals(root)
