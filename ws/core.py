@@ -1672,6 +1672,11 @@ def brief(root, task_id=None):
     return _brief(root, task_id)[0]
 
 
+def brief_and_summary(root, task_id=None):
+    """Brief text and its one-line summary from one pass, so both describe the same task."""
+    return _brief(root, task_id)
+
+
 def memory_summary(root):
     """One user-facing line saying what the brief remembered; '' when no task is selected."""
     return _brief(root)[1]
