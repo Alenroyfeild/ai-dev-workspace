@@ -1564,12 +1564,35 @@ def _memory_check(root, task_id, meta, next_action):
     """One line when the repo moved on from (or behind) the commit the checkpoint was written at; '' if unknown."""
     saved = meta.get('checkpoint_commit', '')
     head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
-    if not re.fullmatch(r'[0-9a-f]{40,64}', saved) or not head or head == saved: return ''
-    if _task_git(root, task_id, 'rev-list', '-n1', saved, '^' + head).strip():  # saved is not an ancestor of HEAD
+    if not re.fullmatch(r'[0-9a-f]{40,64}', saved) or not head: return ''
+    if head != saved and _task_git(root, task_id, 'rev-list', '-n1', saved, '^' + head).strip():  # saved is not an ancestor of HEAD
         return f'Memory check: code is behind the saved checkpoint ({saved[:7]}); the work it describes may be undone.'
-    names = _task_git(root, task_id, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', saved, '--').split('\0')
-    hit = list(dict.fromkeys(os.path.basename(n) for n in names if n and os.path.basename(n) in next_action))[:5]
-    return f'Memory check: written at {saved[:7]}; changed since: {", ".join(hit)} (verify before acting).' if hit else ''
+    # Against the working tree, so an uncommitted delete counts; -M reports a rename as old -> new.
+    out = _task_git(root, task_id, 'diff', '--no-ext-diff', '--no-textconv', '-M', '--name-status', '-z', saved, '--').split('\0')
+    gone, changed, i = {}, [], 0
+    while i < len(out) and out[i]:
+        status, i = out[i], i + 1
+        if status[:1] in 'RC':
+            old, new, i = out[i], out[i + 1], i + 2
+            if status[0] == 'R': gone[old] = new
+        else:
+            name, i = out[i], i + 1
+            if status == 'D': gone[name] = ''
+            elif head != saved: changed.append(name)  # uncommitted edits alone stay silent, as before
+    present = []
+    def named(path):
+        """The saved text names this path: in full, or by a basename no other current file has."""
+        text = re.sub(r'(?<![\w.-])\./', '', next_action)  # ./src/a.py names src/a.py
+        mentions = lambda name: re.search(r'(?<![\w./-])' + re.escape(name) + r'(?![\w/-]|\.\w)', text)  # a whole path token, not a.py.bak
+        if mentions(path): return True
+        base = os.path.basename(path)
+        if not mentions(base): return False
+        if not present: present.extend(_task_git(root, task_id, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0') or [''])
+        return not any(p != path and os.path.basename(p) == base and p not in gone for p in present)
+    gone = [os.path.basename(n) + (f' (now {gone[n]})' if gone[n] else '') for n in gone if named(n)][:3]
+    changed = list(dict.fromkeys(os.path.basename(n) for n in changed if named(n)))[:5]
+    parts = ([f'gone since: {", ".join(gone)}'] if gone else []) + ([f'changed since: {", ".join(changed)}'] if changed else [])
+    return f'Memory check: written at {saved[:7]}; {"; ".join(parts)} (verify before acting).' if parts else ''
 
 
 def _capture_words(text, limit):
@@ -1736,7 +1759,7 @@ def _brief(root, task_id=None):
                ('Blockers:', record['sections']['Blockers'], 8),
                ('', plan_warning, 11),
                ('Captured next step (unverified):', captured_step, 16),
-               ('', _memory_check(root, task['id'], record['meta'], next_action), 18),
+               ('', _memory_check(root, task['id'], record['meta'], next_action + '\n' + '\n'.join(decisions)), 18),
                ('Claim:', record['claim'], 12)]
     truncated |= len(' '.join(decisions).split()) > 25
     imported = task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory']
