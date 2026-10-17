@@ -35,6 +35,10 @@ Team workspaces can now receive approved shared updates automatically or be read
 - `ws doctor` reports your saved automatic team-pull consent instead of saying pulls are not active yet. [Team setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
 - `ws validate` and `ws doctor` no longer call a fresh `ws start` setup invalid: a task that has never been checkpointed may have no next action yet.
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
+- Two memory updates at the same moment (for example a Stop hook capturing while the assistant saves a decision) no longer reject one of them: a save now waits up to 4 seconds for the other to finish instead of failing at once, so the hook is not reported as an error and the capture is not skipped.
+- A later `Do not redo` or `Failures` note no longer erases the dead ends saved earlier; new ones are added and repeats are not duplicated. Edit the task file to drop one.
+- `ws pack add <name>` now takes the workspace lock and writes `workspace.json` atomically, so an interrupted add cannot leave it truncated.
+- `ws pack add --from` and `ws pack remove` no longer garble non-ASCII text in your `AGENTS.md` on systems whose default text encoding is not UTF-8 (for example Windows).
 
 ### Known limits
 - The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.

@@ -285,12 +285,13 @@ def _install_pack(target, name, collisions, install_rules=True):
 def pack_add(root, name):
     """Plug a pack into an existing workspace; idempotent."""
     manifest = pack_manifest(name)
-    cfg = config(root)
     collisions = []
-    _install_pack(root, name, collisions)
-    if name not in cfg['packs']:
-        cfg['packs'].append(name)
-        (root / 'workspace.json').write_text(json.dumps(cfg, indent=2) + '\n')
+    with lock(root):
+        cfg = config(root)
+        _install_pack(root, name, collisions)
+        if name not in cfg['packs']:
+            cfg['packs'].append(name)
+            atomic_write(root / 'workspace.json', json.dumps(cfg, indent=2) + '\n')
     nxt = [f"run {KIT / 'packs' / name / manifest['setup']}"] if manifest.get('setup') else []
     if manifest.get('selftest'):
         nxt.append(f"verify with {KIT / 'packs' / name / manifest['selftest']}")
@@ -829,16 +830,24 @@ def atomic_write(path, text):
             os.unlink(tmp)
 
 
+# Hooks time out at 10 s, so wait less than that for another update to finish.
+LOCK_WAIT = 4.0
+
+
 @contextlib.contextmanager
 def lock(root):
     inside(root / '.ws', [root]); inside(root / '.ws/lock', [root])
     (root / '.ws').mkdir(exist_ok=True)
     with (root / '.ws' / 'lock').open('a+b') as stream:
-        try:
-            file_lock(stream)
-        except OSError as exc:
-            if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK): raise
-            raise WsError('Another workspace update is running; retry in a moment.')
+        deadline = time.monotonic() + LOCK_WAIT  # hooks and MCP calls overlap; a short wait beats dropping a save
+        while True:
+            try:
+                file_lock(stream); break
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK): raise
+                if time.monotonic() >= deadline:
+                    raise WsError('Another workspace update is running; retry in a moment.')
+                time.sleep(0.05)
         try: yield
         finally: file_lock(stream, release=True)
 
@@ -1209,6 +1218,13 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         for name, body in (notes or {}).items():
             if name not in NOTE_SECTIONS:
                 raise WsError(f'Unknown section {name}. Valid note sections: {", ".join(NOTE_SECTIONS)}.')
+            if name in ('Do not redo', 'Failures'):
+                # Dead ends only accumulate: earlier ones the new text does not repeat are kept (edit the file to drop one).
+                present = {i.lower() for i in _list_items(body)}
+                old = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S)
+                if old.strip() != section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), name) and old.strip().lower().rstrip('.') not in ('none', 'none yet'):
+                    kept = [i for i in _list_items(old) if i.lower() not in present]
+                    body = '\n'.join(['- ' + i for i in kept] + [body.strip()]) if kept else body
             if name == 'Handoff':
                 # Decisions saved with `ws remember` outlive Handoff rewrites; editing the file is how to drop one.
                 outside = lambda s: re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', s, flags=re.S).splitlines()
