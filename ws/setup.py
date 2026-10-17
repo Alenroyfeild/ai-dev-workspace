@@ -50,6 +50,9 @@ def configure(root, assistants, preset=None, dry_run=False):
     if not isinstance(assistants, list) or not assistants or any(not isinstance(name, str) for name in assistants):
         raise core.WsError('Choose assistants with --assistants a,b.')
     assistants = list(dict.fromkeys('copilot' if name == 'vscode' else name for name in assistants))
+    known = json.loads((core.KIT / 'template/routing.json').read_text(encoding='utf-8'))['_ws_managed']['providers']
+    if (bad := [name for name in assistants if name not in known and name != 'vscode']):
+        raise core.WsError(f'Unknown assistant {bad[0]}. Choose from: {", ".join(known)}.')
     preset = preset or (assistants[0] + '-only' if len(assistants) == 1 and assistants[0] != 'ollama' else
                         'claude+codex' if set(assistants) == {'claude', 'codex'} else 'mixed')
     if preset == 'claude+codex': assistants = ['claude', 'codex']

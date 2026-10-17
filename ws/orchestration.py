@@ -57,7 +57,7 @@ def codex_model(family, default):
 
 
 def route(root, role='lead', provider=None):
-    if role not in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'): raise core.WsError('Unknown orchestration role.')
+    if role not in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'): raise core.WsError(f'Unknown role {role}. Choose from: lead, planner, worker, explorer, reviewer, local.')
     try:
         cfg = json.loads(core.read_text(root / 'routing.json', [root])); defaults = cfg['_ws_managed']
         definition = defaults['roles'][role]; override = cfg.get('role_overrides', {}).get(role, {})
