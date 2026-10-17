@@ -233,6 +233,33 @@ class StartTests(unittest.TestCase):
         self.assertRegex(current['id'], r'^feature-synthetic-[0-9a-f]{8}$')
         self.assertEqual(before, core.task_path(root, 'feature-synthetic').read_bytes())
 
+    def test_start_and_session_hook_share_one_task_per_repo_and_branch(self):
+        from ws import repo as repo_mod
+        git = lambda repo, *a: subprocess.run(['git', '-C', str(repo), *a], check=True, capture_output=True)
+        git(self.repo, 'switch', '-q', '-C', 'main')
+        self.assertEqual(self.start('--yes')[0], 0); root = core.find_root(); repo = self.repo.resolve()
+        self.assertEqual(core.task_list(root)[0]['id'], 'main')
+        self.assertEqual(core.session_task(root, str(repo)), 'main')  # hook reuses the task start made
+        self.assertEqual(len(core.task_list(root)), 1)
+        # Branch with characters ID_RE rejects: the hook creates the record, start/brief resolve to it.
+        git(self.repo, 'switch', '-q', '-c', 'feature/login')
+        self.assertIn('Branch feature/login has no task yet: run ws task new feature-login', core.brief(root))
+        hooked = core.session_task(root, str(repo))
+        self.assertEqual(repo_mod.branch_task(root, repo, 'feature/login'), hooked)
+        self.assertEqual(self.start('--yes')[0], 0); self.assertEqual(len(core.task_list(root)), 2)
+        git(self.repo, 'switch', '-q', '-c', 'other'); core.task_new(root, 'T-9', 'Other', branch='other', repo=str(repo))
+        self.assertIn('Branch other has task T-9: run ws claim T-9.', core.brief(root))
+        # Reverse order in a fresh workspace: hook first, then start's resolver.
+        other = Path(self.tmp.name) / 'other'; other.mkdir(); ws2 = Path(self.tmp.name) / 'ws2'
+        subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=other, check=True)
+        git(other, '-c', 'user.name=F', '-c', 'user.email=f@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'x')
+        third = Path(self.tmp.name) / 'third'; third.mkdir(); subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=third, check=True)
+        core.init(ws2, 'synthetic', repos=[str(other.resolve()), str(third.resolve())], clients=[])
+        first = core.session_task(ws2, str(other.resolve()))
+        self.assertEqual(repo_mod.branch_task(ws2, other.resolve(), 'main'), first)
+        # Same branch name in a second repo of one workspace is a different task.
+        self.assertNotEqual(repo_mod.branch_task(ws2, third.resolve(), 'main'), first)
+
     def test_old_hashed_branch_task_keeps_its_id_and_saved_next(self):
         root = self.home / '.ai-dev-workspace/repo'
         core.init(root, 'synthetic', repos=[str(self.repo.resolve())], clients=[])
