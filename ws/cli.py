@@ -581,7 +581,8 @@ def main(argv=None):
             collision_notices(result)
             out(result)
         elif a.cmd in ('brief', 'nudge'):
-            payload = json.load(sys.stdin) if a.hook else {}
+            try: payload = json.load(sys.stdin) if a.hook else {}
+            except ValueError: raise core.WsError('Hook input must be a JSON object; stdin was empty or not JSON.')
             branch_task = None
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
@@ -672,6 +673,8 @@ def main(argv=None):
             out(core.claim(root, a.id, worker))
         elif a.cmd == 'release': out(core.release(root, a.id, a.worker, a.token))
         elif a.cmd == 'checkpoint':
+            if (bad := [n for n in a.note if '=' not in n]):
+                raise core.WsError(f'--note needs SECTION=TEXT, e.g. --note "Handoff=Decision: use Postgres"; got "{bad[0]}".')
             notes = dict(n.split('=', 1) for n in a.note)
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
             if a.status == 'done' and (hint := native.goal_hint(root, a.id)): print(hint, file=sys.stderr)  # stderr keeps stdout JSON clean
