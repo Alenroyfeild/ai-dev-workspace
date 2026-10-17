@@ -2210,7 +2210,8 @@ def validate(root):
         for name in REQUIRED:
             if not re.search(rf'^## {re.escape(name)}\s*$', text, re.M):
                 errors.append(f'{path.name}: missing section {name}')
-        if meta.get('status') not in ('done', 'backlog') and not section(text, 'Next action'):
+        # A task ws start just created has no next step until the first checkpoint; the brief already asks for one.
+        if meta.get('status') not in ('done', 'backlog') and meta.get('checkpoint_at') and not section(text, 'Next action'):
             errors.append(f'{path.name}: empty Next action')
     names = {p.stem for p in v.rglob('*.md')} | {p.relative_to(v).as_posix()[:-3] for p in v.rglob('*.md')}
     for path in v.rglob('*.md'):
