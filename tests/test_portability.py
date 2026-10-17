@@ -68,7 +68,7 @@ class PortabilityTests(Base):
             core.upgrade_workspace(root); self.assertEqual(core.upgrade_workspace(root)['changes'], [])
 
     def test_lock_contends_and_releases_after_exception(self):
-        with self.assertRaisesRegex(RuntimeError, 'synthetic'):
+        with self.assertRaisesRegex(RuntimeError, 'synthetic'), mock.patch.object(core, 'LOCK_WAIT', 0):
             with core.lock(self.root):
                 with self.assertRaisesRegex(core.WsError, 'Another workspace update'):
                     with core.lock(self.root): pass

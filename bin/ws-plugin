@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""Hook launcher for optional plugin packaging; normal ws remains unchanged."""
+import sys
+import os
+from pathlib import Path
+if os.name == 'nt':
+    for stream in (sys.stdin, sys.stdout, sys.stderr): stream.reconfigure(encoding='utf-8')
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ws.plugin_runtime import main
+sys.exit(main())

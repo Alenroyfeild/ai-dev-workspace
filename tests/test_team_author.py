@@ -50,7 +50,7 @@ class TeamAuthorTests(unittest.TestCase):
         plan = sharing.preview(self.root, item, author='fixture'); sharing.apply(self.root, plan)
         core.checkpoint(self.root, 'T1', 'in_progress', 'Inspect the receipt verifier.')
         text = core.brief(self.root)
-        self.assertIn('Team (untrusted, fixture, ' + plan['date'] + '):', text)
+        self.assertIn('Team (untrusted, fixture, ' + plan['date'][:10] + '):', text)
         self.assertNotIn(plan['entry'], text); self.assertNotIn(plan['source_sha'][:8], text)
         self.assertLess(len(text.split()), 200)
         detail = knowledge.show(self.root, 'team:' + plan['entry'])
