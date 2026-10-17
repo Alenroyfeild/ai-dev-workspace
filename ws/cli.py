@@ -117,6 +117,7 @@ def text_doctor(report):
     if report.get('setup'):
         lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
+    for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
@@ -412,6 +413,7 @@ def main(argv=None):
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
             try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import)
+            except core.WsError: raise  # already says what to do; the prefix below is for unexpected file errors
             except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
             if result and result.get('undone'):
                 print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
@@ -420,6 +422,7 @@ def main(argv=None):
                 print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected') + ('; Codex: ' + result.get('codex_status', 'connected')))
                 print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
                 print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
+                if result.get('starter'): print(f"Looks like {repo.STARTERS[result['starter']]}: ws pack add {result['starter']} adds a few starter rules (optional).")
             return 2 if result and result.get('partial') else 0
         if a.cmd == 'setup' and a.detect:
             from . import setup
@@ -610,7 +613,8 @@ def main(argv=None):
             collision_notices(result)
             out(result)
         elif a.cmd in ('brief', 'nudge'):
-            payload = json.load(sys.stdin) if a.hook else {}
+            try: payload = json.load(sys.stdin) if a.hook else {}
+            except ValueError: raise core.WsError('Hook input must be a JSON object; stdin was empty or not JSON.')
             branch_task = None
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
@@ -695,12 +699,14 @@ def main(argv=None):
                 if res['waiting']: lines.append(f"{res['waiting']} waiting on dependencies")
                 out('\n'.join(lines))
         elif a.cmd == 'claim':
-            worker = a.worker or os.environ.get('USER')
+            worker = a.worker or os.environ.get('USER') or os.environ.get('USERNAME')
             if not worker:
-                raise core.WsError('Set USER or pass --worker.')
+                raise core.WsError('Set USER (USERNAME on Windows) or pass --worker.')
             out(core.claim(root, a.id, worker))
         elif a.cmd == 'release': out(core.release(root, a.id, a.worker, a.token))
         elif a.cmd == 'checkpoint':
+            if (bad := [n for n in a.note if '=' not in n]):
+                raise core.WsError(f'--note needs SECTION=TEXT, e.g. --note "Handoff=Decision: use Postgres"; got "{bad[0]}".')
             notes = dict(n.split('=', 1) for n in a.note)
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
             if a.status == 'done' and (hint := native.goal_hint(root, a.id)): print(hint, file=sys.stderr)  # stderr keeps stdout JSON clean

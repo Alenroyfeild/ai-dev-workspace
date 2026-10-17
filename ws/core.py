@@ -161,7 +161,7 @@ def find_root(start=None):
     for candidate in candidates:
         if (candidate / 'workspace.json').is_file():
             return candidate
-    raise WsError('No workspace.json found here or above. Run `ws init <dir>` first, or set WS_ROOT.')
+    raise WsError('No workspace.json found here or above. In a git repo run `ws start`; otherwise `ws init <dir>`, or set WS_ROOT.')
 
 
 def config(root):
@@ -1140,6 +1140,13 @@ def task_find(root, ref):
     return [t for t in task_list(root) if ref in t['id'].lower() or ref == t['branch'].lower() or ref in t['title'].lower()]
 
 
+def existing_task_path(root, task_id):
+    path = task_path(root, task_id)
+    if not path.is_file():
+        raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
+    return path
+
+
 def task_read(root, task_id, sections=None):
     path = task_path(root, task_id)
     if not path.is_file():
@@ -1158,7 +1165,7 @@ def claim(root, task_id, worker):
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', worker):
         raise WsError('Worker is a short label such as claude-main or codex-1.')
     with lock(root):
-        path = task_path(root, task_id)
+        path = existing_task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
@@ -1187,7 +1194,7 @@ def claim(root, task_id, worker):
 def release(root, task_id, worker=None, token=None):
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
-        path = task_path(root, task_id)
+        path = existing_task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
@@ -1205,7 +1212,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         raise WsError('Next action is required: say exactly what the next person or AI should do.')
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
-        path = task_path(root, task_id)
+        path = existing_task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
@@ -1251,6 +1258,7 @@ def remember(root, text, task_id=None):
     if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
         raise WsError('Not saved: the text is marked private.')
     decision = ' '.join(redact(PRIVATE_RE.sub(' ', text)).split()).replace('<!--', '&lt;!--')
+    decision = re.sub(r'^decision:\s*', '', decision, flags=re.I)  # the Handoff line adds the prefix itself
     if not decision:
         raise WsError('Nothing to save: say the decision, e.g. ws remember "use Postgres, not SQLite".')
     with lock(root):
@@ -2660,6 +2668,7 @@ def doctor(root=None, mcp=False):
         from . import repo
         report['codex_manual_pending'] = repo.codex_pending(root)
         if report['codex_manual_pending']: report['codex_status'] = 'manual step pending'
+        report['stale_hooks'] = repo.stale_hooks(root)
         report['configured_clients'] = {client: client_connected(root, client)
                                         for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
         report['protocol_checks'], report['protocol_check_date'] = _protocol_health(

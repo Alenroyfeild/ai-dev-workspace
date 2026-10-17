@@ -17,14 +17,14 @@ Compatibility claims stay limited to tested behavior; see the [client table](CLI
 - [x] Start lighter: 7 core MCP tools listed by default.
 - [x] Refresh repo setup after an upgrade (`ws start` again), keeping your edits.
 - [x] Warn in the brief when files named in the next action changed since the checkpoint, or the code was rolled back past it.
+- [x] Carry dead ends into the brief (`Do not redo:`, from the task's Do not redo and Failures), and warn when saved memory names deleted or renamed files or uncommitted edits that were reset away.
+- [x] Opt-in `guards` (blocks risky shell commands, secrets and skipped tests; `WS_GUARDS=off`) and advisory `discipline` hook packs for Claude Code and Codex.
 - [x] Score a repo's AI assistant setup with `ws audit`, and try remembered decisions offline with `ws demo`.
 
 ## Next
 
 - [ ] Install from PyPI (`pipx install ai-dev-workspace`) and list the MCP server in the official registry.
-- [ ] Carry failed approaches into the next session's brief, and warn when saved memory names deleted or renamed files or uncommitted work that was reset.
-- [ ] Opt-in guard and discipline hook packs.
-
+- [ ] Install the Claude Code plugin (waiting on #183).
 - [ ] Test Cursor, Copilot and Gemini CLI in live client sessions.
 - [ ] Add automatic decision capture only where another client exposes a suitable transcript or equivalent.
 - [ ] Prepare the public v0.2 launch from beta feedback and test results.
