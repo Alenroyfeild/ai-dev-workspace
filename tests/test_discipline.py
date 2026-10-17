@@ -89,3 +89,8 @@ class DisciplineTests(Base):
     def test_codex_silent_repeats_do_not_nudge(self):
         payload = {'hook_event_name': 'PostToolUse', 'session_id': 'q', 'tool_name': 'Bash', 'tool_input': {'command': 'git add -A'}, 'tool_response': '  '}
         self.assertEqual([discipline.hook(self.root, payload) for _ in range(4)], [{}] * 4)
+
+    def test_explicit_success_status_repeats_do_not_nudge(self):
+        payload = lambda response: {'hook_event_name': 'PostToolUse', 'session_id': 'e', 'tool_name': 'Bash', 'tool_input': {'command': 'git status'}, 'tool_response': response}
+        for response in ({'exit_code': 0, 'stdout': 'clean'}, 'Exit code: 0\nclean'):
+            self.assertEqual([discipline.hook(self.root, payload(response)) for _ in range(4)], [{}] * 4)
