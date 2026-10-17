@@ -32,6 +32,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - The brief also warns when uncommitted edits that existed at the last checkpoint are gone (`uncommitted edits gone: export.py (stashed or reset?)`), so a session does not build on work that was stashed or reset away.
 
 ### Fixed
+- `ws doctor` reports your saved automatic team-pull consent instead of saying pulls are not active yet. [Team setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
 - `ws validate` and `ws doctor` no longer call a fresh `ws start` setup invalid: a task that has never been checkpointed may have no next action yet.
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 
