@@ -1717,6 +1717,8 @@ def _brief(root, task_id=None):
                ('', _memory_check(root, task['id'], record['meta'], next_action), 18),
                ('Claim:', record['claim'], 12)]
     truncated |= len(' '.join(decisions).split()) > 25
+    imported = task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory']
+    if imported: fields.append(('Imported context (unverified):', imported, 35))
     fields += [('', line, 18) for line in others_line(task['id'])]
     from . import knowledge
     fields += knowledge.brief_fields(root, task['title'] + ' ' + next_action, '\n'.join(decisions + ([constraints] if captured else [])))
