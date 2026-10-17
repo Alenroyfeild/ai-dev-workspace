@@ -1,6 +1,6 @@
 # Windows validation
 
-The branch uses native nonblocking byte-range locks on Windows and flock on
+The kit uses native nonblocking byte-range locks on Windows and flock on
 macOS/Linux. Generated hooks pass --workspace-root to the CLI and quote paths;
 they use the active Python executable on Windows. CLI/MCP streams and workspace
 text use UTF-8. Relative paths in reports keep forward slashes.

@@ -10,7 +10,7 @@ Gemini patches/rewinds are replayed by the capture adapter; removed/old message
 text is excluded. New clients return conversation text, excluding tool results
 and thoughts. Malformed, unreadable, symlinked and over-50-MB files are skipped.
 Results retain date/tool/session_file/snippet, redaction and the 20-hit limit.
-Cursor's JSONL shape is the X1 fixture adapter, not a guaranteed public schema;
+Cursor's JSONL shape is read by a fixture-tested adapter, not a guaranteed public schema;
 plain-text exports and editor databases are not supported. Live clients remain
 unverified; no sessions are created or modified by search.
 
