@@ -40,5 +40,16 @@ class ErrorHintTests(Base):
             self.assertIn('Saved locally, not shared: Link a private team first: run `ws team link <private-repo>`.', err)
 
 
+    def test_malformed_team_manifest_still_says_saved_locally(self):
+        import json
+        cfg = core.config(self.root); cfg['team_workspace'] = {'path': '.ws/team', 'id': 'a' * 32}
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        (self.root / '.ws/team').mkdir(parents=True, exist_ok=True); (self.root / '.ws/team/team.json').write_text('{not json')
+        code, _, err = self.ws('know', 'add', 'Queues stay bounded.', '--team')
+        self.assertEqual(code, 2)
+        self.assertIn('Saved locally, not shared:', err)
+        self.assertNotIn('Traceback', err)
+
+
 if __name__ == '__main__':
     unittest.main()
