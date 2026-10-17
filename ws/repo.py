@@ -3,6 +3,8 @@ import base64
 import hashlib
 import json
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -117,8 +119,60 @@ def codex_files(repo, root):
 def codex_pending(root, check_global=True):
     global_connected = core.client_connected(root, 'codex', global_only=True)
     if check_global and global_connected: return []
+    def status(p):  # a corrupt start record must not crash doctor; ws start reports it
+        try: return load(p).get('codex_status')
+        except (OSError, ValueError, core.WsError): return None
     return [str(p / '.codex/config.toml') for p in core.read_roots(root)[1:]
-            if (p / LINK).is_file() and load(p).get('codex_status') in (('manual step pending', 'connected via global config') if global_connected else ('manual step pending',))]
+            if (p / LINK).is_file() and status(p) in (('manual step pending', 'connected via global config') if global_connected else ('manual step pending',))]
+
+
+HOOK_FILES = ('.claude/settings.local.json', '.codex/hooks.json', '.cursor/hooks.json', '.github/hooks/ws.json', '.gemini/settings.json')
+
+
+def _strings(node):
+    if isinstance(node, str): yield node
+    elif isinstance(node, dict): yield from (s for v in node.values() for s in _strings(v))
+    elif isinstance(node, list): yield from (s for v in node for s in _strings(v))
+
+
+HOOK_COMMANDS = {'brief', 'nudge', 'paste', 'guard', 'discipline'}
+
+
+def _missing_in_hook(command, root):
+    """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
+    if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return ''
+    try:
+        parts = shlex.split(command, posix=not core.WINDOWS)  # posix splitting eats the backslashes of Windows paths
+        if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
+        if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
+        if '--workspace-root' not in parts: return ''
+        interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
+        # Only commands ws wrote: <python> <kit>/bin/ws[-plugin] ... <hook subcommand>; a user's own hook is never judged.
+        if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return ''
+    except (ValueError, IndexError): return ''
+    for item in (interpreter, kit):
+        if not Path(item).exists() and not shutil.which(item): return item
+    return '' if Path(workspace).resolve() == Path(root).resolve() else workspace  # resolve: /private symlinks on macOS
+
+
+def _stale_here(root, repo):
+    """This repo's ws-written hooks point to a moved kit, so a plain rerun should refresh them."""
+    return any(Path(item['repo']).resolve() == repo.resolve() for item in stale_hooks(root))
+
+
+def stale_hooks(root):
+    """Hook commands that ws start wrote which point to a moved kit or another workspace."""
+    found = []
+    for repo in core.read_roots(root)[1:]:
+        if not (repo / LINK).is_file(): continue
+        try: names = [n for n in load(repo)['files'] if n in HOOK_FILES]
+        except (OSError, ValueError, core.WsError): continue
+        for name in names:
+            try: data = json.loads((repo / name).read_text(encoding='utf-8'))
+            except (OSError, ValueError): continue
+            missing = next(filter(None, (_missing_in_hook(c, root) for c in _strings(data.get('hooks') if isinstance(data, dict) else None))), '')
+            if missing: found.append({'repo': str(repo), 'file': name, 'missing': missing})
+    return found
 
 
 def upgrade_codex(repo, root, state, yes, dry_run):
@@ -282,7 +336,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or _stale_here(root, repo)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None

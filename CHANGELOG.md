@@ -31,6 +31,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - After an upgrade, run `ws start` again in your repo: it refreshes the setup files it wrote (instructions, hooks, MCP config) for the new version, after showing them and asking. Files you edited are left alone and reported; saved memory is kept.
 - The session brief now says when a file named in the saved next action or decisions was deleted or renamed since the checkpoint (`gone since: export.py (now publish.py)`), including deletions not yet committed, so the next session does not chase a file that is no longer there.
 - The brief also warns when uncommitted edits that existed at the last checkpoint are gone (`uncommitted edits gone: export.py (stashed or reset?)`), so a session does not build on work that was stashed or reset away.
+- `ws doctor` reports repo hooks that point to a missing kit, Python or workspace (after a pipx reinstall, deleted checkout or Python upgrade), so a silently memory-less session is caught; running `ws start` again in that repo refreshes them.
 
 ### Fixed
 - `ws doctor` reports your saved automatic team-pull consent instead of saying pulls are not active yet. [Team setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).

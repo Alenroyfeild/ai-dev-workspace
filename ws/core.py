@@ -2643,6 +2643,7 @@ def doctor(root=None, mcp=False):
         from . import repo
         report['codex_manual_pending'] = repo.codex_pending(root)
         if report['codex_manual_pending']: report['codex_status'] = 'manual step pending'
+        report['stale_hooks'] = repo.stale_hooks(root)
         report['configured_clients'] = {client: client_connected(root, client)
                                         for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
         report['protocol_checks'], report['protocol_check_date'] = _protocol_health(
