@@ -12,50 +12,66 @@ from . import core
 def _read(path, base):
     anchor = Path.home() if Path.home() in path.parents else Path(path.anchor)
     if any(p.is_symlink() for p in (path, *path.parents) if p == anchor or anchor in p.parents):
-        raise core.WsError('Symlink memory source skipped.')
+        raise core.WsError('symlink, not followed')
     info = path.stat()
-    if not stat.S_ISREG(info.st_mode) or info.st_size > 16384:
-        raise core.WsError('Memory source must be a regular file under 16 KiB.')
-
+    if not stat.S_ISREG(info.st_mode):
+        raise core.WsError('not a regular file')
+    if info.st_size > 16384:
+        raise core.WsError('larger than 16 KiB')
     return core.read_text(path, [base], errors='strict')
 
 
+def _label(label):
+    return ''.join(c for c in ' '.join(label.split()) if c.isprintable())
 
-def _limited(paths, label):
+
+def _usable(path, base):
+    """(raw, text, '') for an importable source, else (None, None, why it is skipped)."""
+    try: raw = _read(path, base)
+    except core.WsError as error: return None, None, str(error)
+    except (OSError, ValueError): return None, None, 'unreadable or not valid UTF-8'
+    if re.search(r'#private\b', raw, re.I) or raw.lstrip().lower().startswith('/private'): return None, None, 'marked private'
+    text = core.redact(core.PRIVATE_RE.sub('', raw)).replace('<!--', '&lt;!--').strip()
+    return (raw, text, '') if text else (None, None, 'empty')
+
+
+def _skipped(label, why):
+    print(f'Memory import skipped {_label(label)}: {why}', file=sys.stderr)
+
+
+def _limited(paths, label, name):
+    """Usable files only, so the 16-file cap never counts a file that would be skipped anyway."""
     safe = []
     for path in sorted(paths):
-        try: _read(path, path.parent)
-        except (core.WsError, OSError, ValueError):
-            print('Memory import skipped unsafe/unreadable ' + label + ' source.', file=sys.stderr); continue
-        safe.append(path)
-    paths = safe
-    if len(paths) > 16:
-        print(f'Memory import: {len(paths) - 16} {label} file(s) skipped: 16-file limit.', file=sys.stderr)
-    return paths[:16]
+        why = _usable(path, path.parent)[2]
+        if why: _skipped(name(path), why)
+        else: safe.append(path)
+    if len(safe) > 16:
+        print(f'Memory import: {len(safe) - 16} {label} file(s) skipped: 16-file limit.', file=sys.stderr)
+    return safe[:16]
 
 
 def preview(repo, memory_dir=None, dry_run=False):
     paths = [(repo / name, repo, name) for name in ('CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md', '.cursorrules')]
     rules = repo / '.cursor/rules'
     if rules.is_dir() and not rules.is_symlink():
-        paths += [(p, repo, p.relative_to(repo).as_posix()) for p in _limited(rules.glob('*.mdc'), 'Cursor rule')]
+        paths += [(p, repo, p.relative_to(repo).as_posix()) for p in _limited(rules.glob('*.mdc'), 'Cursor rule', lambda p: p.relative_to(repo).as_posix())]
     # Standard Claude project layout; --memory-dir handles custom settings/worktrees.
     home = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser()
     project = os.environ.get('CLAUDE_CODE_PROJECT_DIR_NAME') if os.environ.get('CLAUDE_CONFIG_DIR') else None
     project = project or re.sub(r'[^A-Za-z0-9]', '-', str(repo))
     base = Path(memory_dir).expanduser().absolute() if memory_dir else home / 'projects' / project / 'memory'
     if base.is_dir() and not base.is_symlink() and not any(p.is_symlink() for p in base.parents if p == Path.home() or Path.home() in p.parents):
-        paths += [(p, base, 'Claude memory/' + p.name) for p in _limited(base.glob('*.md'), 'Claude memory')]
+        paths += [(p, base, 'Claude memory/' + p.name) for p in _limited(base.glob('*.md'), 'Claude memory', lambda p: 'Claude memory/' + p.name)]
+    elif memory_dir:
+        _skipped('--memory-dir ' + str(base), 'not a plain directory')
     rows = []; total = 0
     for path, parent, label in paths:
-        label = ''.join(c for c in ' '.join(label.split()) if c.isprintable())
+        label = _label(label)
         if not path.exists() and not path.is_symlink(): continue
-        try: raw = _read(path, parent)
-        except (core.WsError, OSError, ValueError):
-            print('Memory import skipped unsafe/unreadable source: ' + label, file=sys.stderr); continue
-        if re.search(r'#private\b', raw, re.I) or raw.lstrip().lower().startswith('/private'): continue
-        text = core.redact(core.PRIVATE_RE.sub('', raw)).replace('<!--', '&lt;!--').strip()
-        if not text or total + len(text.encode()) > 65536: continue
+        raw, text, why = _usable(path, parent)
+        if not why and total + len(text.encode()) > 65536: why = 'over the 64 KiB import total'
+        if why: _skipped(label, why); continue
         total += len(text.encode())
         rows.append(dict(path=path, base=parent, label=label, sha=core.digest_text(raw), text=text))
         first = json.dumps(text.splitlines()[0][:80], ensure_ascii=False)

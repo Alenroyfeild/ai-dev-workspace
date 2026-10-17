@@ -1798,7 +1798,10 @@ def _brief(root, task_id=None):
     handoff = task_read(root, task['id'], ['Handoff'])['sections']['Handoff']
     capture_pattern = r'(?:<!-- ws:captured:[^\n]* -->\n)?### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->'
     captured = re.findall(capture_pattern, handoff, re.S)
-    explicit = re.sub(capture_pattern, '', handoff, flags=re.S).strip()
+    # `ws import native` blocks are unverified context, never the user's own decisions.
+    native_pattern = r'### Imported [^\n]*\n(.*?)\n<!-- /ws:imported -->'
+    native_lines = [l.removeprefix('- ') for block in re.findall(native_pattern, handoff, re.S) for l in block.splitlines() if l.strip()]
+    explicit = re.sub(native_pattern, '', re.sub(capture_pattern, '', handoff, flags=re.S), flags=re.S).strip()
     placeholder = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Handoff')
     explicit = explicit if explicit != placeholder else ''
     decisions, prose = [], []
@@ -1831,7 +1834,7 @@ def _brief(root, task_id=None):
                ('', _memory_check(root, task['id'], record['meta'], next_action + '\n' + '\n'.join(decisions)), 18),
                ('Claim:', record['claim'], 12)]
     truncated |= len(' '.join(decisions).split()) > 25
-    imported = task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory']
+    imported = '\n'.join(filter(None, [task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory'], *native_lines]))
     if imported: fields.append(('Imported context (unverified):', imported, 35))
     fields += [('', line, 18) for line in others_line(task['id'])]
     from . import knowledge

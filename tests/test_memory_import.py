@@ -134,6 +134,34 @@ class MemoryImportTests(unittest.TestCase):
         code, _, preview = self.start('--dry-run')
         self.assertEqual(code, 0); self.assertIn('1 Cursor rule file(s) skipped: 16-file limit', preview)
 
+    def test_unusable_files_do_not_consume_the_cap_and_skips_say_why(self):
+        rules = self.repo / '.cursor/rules'; rules.mkdir(parents=True)
+        for i in range(16):
+            (rules / f'{i:02}.mdc').write_text('   \n' if i % 2 else 'mine #private\n')
+        (rules / '50-big.mdc').write_text('x' * 17000)
+        (rules / '99-valid.mdc').write_text('VALID_LATE_SENTINEL')
+        (self.repo / 'CLAUDE.md').write_text('x' * 17000)
+        code, _, preview = self.start('--dry-run')
+        self.assertEqual(code, 0); self.assertIn('VALID_LATE_SENTINEL', preview)
+        for reason in ('50-big.mdc: larger than 16 KiB', '00.mdc: marked private', '01.mdc: empty', 'CLAUDE.md: larger than 16 KiB'):
+            self.assertIn(reason, preview)
+        self.assertNotIn('16-file limit', preview)
+
+    @unittest.skipIf(os.name == 'nt', 'Windows symlink fixture needs developer mode')
+    def test_symlink_skip_names_the_file_and_reason(self):
+        (self.repo / 'real.md').write_text('real')
+        (self.repo / 'AGENTS.md').unlink(missing_ok=True); (self.repo / 'AGENTS.md').symlink_to(self.repo / 'real.md')
+        _, _, preview = self.start('--dry-run')
+        self.assertIn('AGENTS.md: symlink, not followed', preview)
+
+    def test_total_size_skip_is_reported(self):
+        for name in ('CLAUDE.md', 'AGENTS.md', '.cursorrules'): (self.repo / name).write_text(('word ' * 3000))
+        (self.repo / '.claude').mkdir(); (self.repo / '.claude/CLAUDE.md').write_text('word ' * 3000)
+        rules = self.repo / '.cursor/rules'; rules.mkdir(parents=True)
+        for i in range(3): (rules / f'{i}.mdc').write_text('word ' * 3000)
+        _, _, preview = self.start('--dry-run')
+        self.assertIn('64 KiB import total', preview)
+
     @unittest.skipIf(os.name == 'nt', 'Windows symlink fixture needs developer mode')
     def test_unsafe_sources_do_not_consume_the_file_limit(self):
         for folder, suffix, flag in ((self.repo / '.cursor/rules', '.mdc', ()),
