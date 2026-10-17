@@ -19,7 +19,9 @@ def secret_values(text):
     found = set(TOKENS.findall(text)) | set(re.findall(r'-----BEGIN [^-]*PRIVATE KEY-----.*?(?:-----END [^-]*PRIVATE KEY-----|\Z)', text, re.S))
     for match in list(core.SECRET_RE.finditer(text)) + list(core.URL_CREDENTIALS_RE.finditer(text)):
         hit = match[0].rsplit(':', 1)[-1].rstrip('@') if match.re is core.URL_CREDENTIALS_RE else match[0]
-        value = re.split(r'[\s:=]+', hit.strip())[-1].strip('"\'')
+        hit = hit.strip()
+        if not re.match(r'(?i)bearer\b', hit): hit = re.split(r'\s*[:=]\s*', hit, 1)[-1]  # the first : or = only; base64 padding keeps its =
+        value = (hit.split() or [''])[-1].strip('"\'')
         if value[:1] in '$<{' or re.search(r'(?i)example|changeme|your|placeholder|dummy|xxx', value): continue
         if len(value) >= 12 and re.search(r'\d', value) and re.search(r'[A-Za-z]', value): found.add(value)
     return found

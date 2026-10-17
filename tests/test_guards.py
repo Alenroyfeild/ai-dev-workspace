@@ -58,6 +58,12 @@ class GuardRuleTests(unittest.TestCase):
             with self.subTest(command): self.assertIn('secret', self.deny(command))
         self.assertTrue(guards.reason('Write', {'file_path': 'k.pem', 'content': '-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----\n'}))
 
+    def test_padded_bearer_and_authorization_values_are_denied(self):
+        value = 'Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MA=='
+        for text in ('Authorization: Bearer ' + value, 'curl -H "Authorization: Bearer ' + value + '" https://x.invalid', 'Bearer ' + value):
+            with self.subTest(text): self.assertIn('secret', self.deny(text))
+        self.assertTrue(guards.reason('Edit', {'old_string': 'x', 'new_string': 'Authorization: Bearer ' + value}))
+
     def test_newly_skipped_tests_are_denied(self):
         self.assertTrue(guards.reason('Edit', {'file_path': 't.py', 'old_string': 'def test_a():', 'new_string': '@unittest.skip("x")\ndef test_a():'}))
         self.assertTrue(guards.reason('Edit', {'old_string': "it('works'", 'new_string': "it.only('works'"}))
