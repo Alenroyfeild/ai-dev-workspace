@@ -214,6 +214,12 @@ def mcp_main():
     server.main()
 
 
+def ask(prompt=''):
+    """y/N answer; a closed stdin is "no confirmation", not a traceback."""
+    try: return input(prompt).strip().lower() in ('y', 'yes')
+    except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
                                 formatter_class=GroupedHelpFormatter)
@@ -245,6 +251,7 @@ def main(argv=None):
         s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
@@ -441,6 +448,10 @@ def main(argv=None):
                 root = None
             report = core.doctor(root, a.mcp)
             out(text_doctor(report) if a.text or human() else report); return 0
+        if a.cmd == 'audit':
+            from . import audit
+            report = audit.audit(a.repo)
+            out(audit.text(report) if a.text or human() else report); return 0
         if a.cmd == 'sessions':
             roots = None
             if a.root:
@@ -460,7 +471,7 @@ def main(argv=None):
             if getattr(a, 'dry_run', False) or plan['unchanged']: return
             if not a.yes:
                 print('Apply this exact local team preview? [y/N]')
-                if input().strip().lower() not in ('y', 'yes'): return
+                if not ask(): return
             out(sharing.apply(root, plan))
         if a.cmd in ('share', 'unshare'):
             share_gate(a.item, a.cmd == 'unshare'); return 0
@@ -475,12 +486,12 @@ def main(argv=None):
                 out(team_auto.pull(root, a.automatic)); return 0
             if a.daily:
                 plan = team_auto.schedule(root, a.daily); out(plan)
-                if not a.dry_run and plan['supported'] and (a.yes or input('Activate this exact daily read-only job? [y/N] ').strip().lower() in ('y', 'yes')):
+                if not a.dry_run and plan['supported'] and (a.yes or ask('Activate this exact daily read-only job? [y/N] ')):
                     out(team_auto.schedule(root, a.daily, True, plan))
                 return 0
             plan = team_sync.preview(root); out(plan)
             if a.dry_run or not plan['files']: return 0
-            if a.yes or input('Publish this exact team sync preview? [y/N] ').strip().lower() in ('y', 'yes'):
+            if a.yes or ask('Publish this exact team sync preview? [y/N] '):
                 out(team_sync.apply(root, plan))
             return 0
         if a.cmd == 'team':
@@ -489,7 +500,7 @@ def main(argv=None):
                 if not a.remote and not a.disable_status:
                     out(team_status.list_entries(root)); return 0
                 plan = team_status.preview(root, a.remote, a.author, a.publish_status, a.disable_status); out(plan)
-                if not a.dry_run and (a.yes or input('Save this exact local status preview? [y/N] ').strip().lower() in ('y', 'yes')):
+                if not a.dry_run and (a.yes or ask('Save this exact local status preview? [y/N] ')):
                     out(team_status.apply(root, plan))
                 return 0
             if a.folder:
@@ -497,10 +508,10 @@ def main(argv=None):
                 if a.action not in ('init','link'): raise core.WsError('--folder supports init/link; unlink uses ws team unlink.')
                 handler = team_folder.initialize if a.action=='init' else team_folder.link
                 plan = handler(root, a.remote, attest=a.attest_private, auto_pull=bool(a.auto_pull)); out(plan)
-                if not a.dry_run and not plan.get('already') and (a.yes or input('Link this exact private folder snapshot? [y/N] ').strip().lower() in ('y','yes')):
+                if not a.dry_run and not plan.get('already') and (a.yes or ask('Link this exact private folder snapshot? [y/N] ')):
                     pulls = a.auto_pull
                     if pulls is None and not a.yes:
-                        pulls = input('Keep team knowledge updated automatically (read-only pulls)? [y/N] ').strip().lower() in ('y','yes')
+                        pulls = ask('Keep team knowledge updated automatically (read-only pulls)? [y/N] ')
                         plan['auto_pull'] = bool(pulls)
                     out(handler(root, a.remote, True, a.attest_private, bool(pulls), plan))
                 return 0
@@ -510,11 +521,11 @@ def main(argv=None):
             if a.dry_run or plan.get('already'): return 0
             if not a.yes:
                 print('Apply this team preview? [y/N]')
-                if input().strip().lower() not in ('y', 'yes'): return 0
+                if not ask(): return 0
             pulls = a.auto_pull
             if pulls is None and not a.yes and a.action != 'unlink':
                 print('Keep team knowledge updated automatically (pull at session start and daily)? [y/N]')
-                pulls = input().strip().lower() in ('y', 'yes')
+                pulls = ask()
             out(team.manage(root, a.action, a.remote, True, a.attest_private, bool(pulls), a.verify_with, plan['sha']))
             return 0
         if a.cmd == 'setup':
@@ -537,8 +548,7 @@ def main(argv=None):
             def confirm(plan):
                 print(json.dumps(plan, indent=2), file=sys.stderr)
                 print('Apply this worker ' + a.action + ' action? [y/N] ', end='', file=sys.stderr)
-                try: return input().strip().lower() in ('y', 'yes')
-                except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
+                return ask()
             approval = None if a.yes else confirm
             if a.action == 'review': out(workers.review(root, a.id, a.approve, approval))
             elif a.action in ('accept', 'discard'): out(getattr(workers, a.action)(root, a.id, apply=not a.dry_run, confirm=approval))

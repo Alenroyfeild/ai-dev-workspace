@@ -162,12 +162,24 @@ def own_projection(root, state, team_id, paths, owner):
     for name in paths: owners[name] = owner
 
 
+def _same_source(root, kind, body, scope_name, category):
+    folder = core.vault(root) / scope.DIRECTORIES[kind]
+    for path in sorted(folder.glob('*.md')) if folder.is_dir() else []:
+        if path.is_symlink() or path.name.endswith('.index.md') or not core.ID_RE.fullmatch(path.stem): continue
+        try: head, _, text = path.read_text(encoding='utf-8').partition('\n---\n\n')
+        except (OSError, UnicodeDecodeError): continue
+        lines = head.splitlines()
+        if text == body + '\n' and 'scope: ' + scope_name in lines and (kind != 'knowledge' or 'category: ' + category in lines): return path.stem
+
+
 def standalone(root, kind, text, team_scope=True, category='other'):
     """Only the explicitly selected sentence becomes a separate sharing source."""
     body = portable(root, text)
     if not body: raise core.WsError('Nothing portable to save.')
-    identifier = uuid.uuid4().hex
+    scope_name = 'team' if team_scope else 'private'
     with core.lock(root):
+        if (found := _same_source(root, kind, body, scope_name, category)): return kind + ':' + found  # a rerun after declining reuses it
+        identifier = uuid.uuid4().hex
         path = _safe(root, core.vault(root) / scope.DIRECTORIES[kind] / (identifier + '.md'))
         metadata = ('category: ' + category + '\ncreated: ' + core.now() + '\n') if kind == 'knowledge' else ''
         core.atomic_write(path, f'---\nid: {identifier}\nscope: {"team" if team_scope else "private"}\n' + metadata + '---\n\n' + body + '\n')
