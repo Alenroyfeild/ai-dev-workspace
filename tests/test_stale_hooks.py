@@ -2,6 +2,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
@@ -20,10 +21,22 @@ class StaleHookTests(Base):
         finally: os.chdir(cwd)
         return repo, core.find_root(repo)
 
+    def swap(self, file, old, new):  # hook files are JSON, so Windows backslashes are stored doubled
+        esc = lambda v: json.dumps(str(v))[1:-1]
+        file.write_text(file.read_text().replace(esc(old), esc(new)))
+
     def move_kit(self, repo, name='.claude/settings.local.json'):
         file = repo / name
-        file.write_text(file.read_text().replace(str(core.KIT), str(repo.parent / 'gone-kit')))
+        self.swap(file, core.KIT, repo.parent / 'gone-kit')
         return file
+
+    def test_windows_built_commands_are_parsed_and_dead_paths_found(self):
+        repo, root = self.started()
+        with mock.patch.object(core, 'WINDOWS', True):
+            live = core.command_line([sys.executable, str(core.KIT / 'bin/ws'), '--workspace-root', str(root)]) + ' brief --hook'
+            dead = core.command_line([sys.executable, str(repo.parent / 'gone kit' / 'bin' / 'ws'), '--workspace-root', str(root)]) + ' brief --hook'
+            self.assertEqual(repo_setup._missing_in_hook(live, root), '')
+            self.assertEqual(repo_setup._missing_in_hook(dead, root), str(repo.parent / 'gone kit' / 'bin' / 'ws'))
 
     def test_healthy_setup_reports_nothing(self):
         repo, root = self.started()
@@ -32,15 +45,16 @@ class StaleHookTests(Base):
 
     def test_deleted_kit_is_reported_in_doctor(self):
         repo, root = self.started(); self.move_kit(repo)
-        gone = str(repo.parent / 'gone-kit' / 'bin/ws')
-        self.assertEqual(repo_setup.stale_hooks(root), [{'repo': str(repo.resolve()), 'file': '.claude/settings.local.json', 'missing': gone}])
+        gone = str(repo.parent / 'gone-kit' / 'bin' / 'ws')
+        found = repo_setup.stale_hooks(root)  # repo may differ by 8.3 short names or case on Windows
+        self.assertEqual([(Path(i['repo']).resolve(), i['file'], i['missing']) for i in found], [(repo.resolve(), '.claude/settings.local.json', gone)])
         text = cli.text_doctor(core.doctor(root))
         self.assertIn('Hooks point to a missing kit or workspace', text); self.assertIn(gone, text); self.assertIn('run ws start again in that repo', text)
 
     def test_missing_interpreter_and_other_workspace_are_reported(self):
         repo, root = self.started()
-        file = repo / '.codex/hooks.json'; file.write_text(file.read_text().replace(core.python_command(), str(repo.parent / 'no-python'), 1))
-        other = repo / '.claude/settings.local.json'; other.write_text(other.read_text().replace(str(root), str(repo.parent / 'other-ws')))
+        file = repo / '.codex/hooks.json'; self.swap(file, core.python_command(), repo.parent / 'no-python')
+        self.swap(repo / '.claude/settings.local.json', root, repo.parent / 'other-ws')
         found = {i['file']: i['missing'] for i in repo_setup.stale_hooks(root)}
         self.assertEqual(found['.codex/hooks.json'], str(repo.parent / 'no-python'))
         self.assertEqual(found['.claude/settings.local.json'], str(repo.parent / 'other-ws'))
@@ -69,7 +83,7 @@ class StaleHookTests(Base):
                 repo_setup.start(yes=True)
         finally: os.chdir(cwd)
         self.assertEqual(repo_setup.stale_hooks(root), [])
-        self.assertIn(str(core.KIT), file.read_text())
+        self.assertIn(json.dumps(str(core.KIT))[1:-1], file.read_text())
 
     def test_corrupt_start_record_does_not_crash_doctor(self):
         repo, root = self.started()
