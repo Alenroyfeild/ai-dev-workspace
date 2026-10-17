@@ -1,8 +1,8 @@
-# O3: parallel worker plans and reviewed unit branches
+# Parallel worker plans and reviewed unit branches
 
-Status: approved design, trimmed per Claude review. No parallel execution is enabled.
-O2c (#123) and the real Codex/all-tools O2d gate must land before implementation.
-O2c rendering integrity is checked against the immutable collected tree. Claude
+Status: design note for an unreleased feature. No parallel execution is enabled, and no `ws worker plan` command exists in this version.
+Rendering-integrity checks (#123) and a passing live Codex isolation check must land before implementation.
+Rendering integrity is checked against the immutable collected tree. Claude
 workers stay preparation-only until Claude completes the matching native-sandbox probe.
 Known limit: Codex 0.155.1 sandbox permits /tmp writes; worker launch stays disabled.
 
@@ -22,7 +22,7 @@ leave the user's checkout, branch, index and dirty files untouched.
 - Independent units in one wave; no dependency graph or automatic task generation.
   Dependent work becomes a new plan after the preceding result is integrated.
 - Default concurrency two, bounded to one through four; no nested worker spawning.
-- Codex only where O2d has passed. No provider fallback or installation to make a run work.
+- Codex only where the live isolation check has passed. No provider fallback or installation to make a run work.
 - Reuse O2 preparation, native permission profiles, collection, review, acceptance,
   process-group cancellation and owned-path cleanup; do not extend route/delegate.
 - Lead proposals and worker output are untrusted data. They cannot grant paths,
@@ -108,7 +108,7 @@ Reviewed integration clone: later, if users need it.
    failed admission, crash-surviving groups, start-time mismatch on cancel and
    restart without paid resume. A fixture changes a collected
    tree after passing checks and verifies acceptance requires collection and checks
-   again on the new tree. No launch until O2d passes.
+   again on the new tree. No launch until the live isolation check passes.
 4. One live Codex sample task: two independent edits/checks, reviewed branches,
    per-unit checks, lead confirmation and clean undo. Hostile attempts
    against source/workspace/HOME/Git/sibling/escape paths remain denied. Claude runs
@@ -129,5 +129,4 @@ checks for conservative branch creation.
 [noninteractive execution](https://learn.chatgpt.com/docs/non-interactive-mode)
 define the native boundary and execution receipts; they do not replace live proof.
 
-Claude review needed: Claude-worker probe. The v1 design and this trim were
-approved in the 2026-10-14 15:40 note; implementation still waits for O2d.
+Still needed: a Claude-worker probe. Implementation waits for the live Codex isolation check.

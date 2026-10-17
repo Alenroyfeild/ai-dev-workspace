@@ -39,7 +39,7 @@ def _view(root, pull, read_only=False):
     knowledge._bases(root,'team')  # Validates the linked manifest and all path components.
     cfg_text = sharing._text(sharing._safe(root,root/'workspace.json')); cfg=json.loads(cfg_text)
     link=cfg.get('team_workspace',{}); clone=sharing._safe(root,root/'.ws/team')
-    if not link or link.get('path')!='.ws/team': raise core.WsError('Link a team first.')
+    if not link or link.get('path')!='.ws/team': raise core.WsError('Link a team first: run `ws team link <private-repo>`, or `ws team init <private-repo>` to create one.')
     metadata=sharing._safe(root,clone/'.git')
     if not metadata.is_dir(): raise core.WsError('Team clone requires its own Git directory; retain files and link again.')
     common=Path(_git(clone,'rev-parse','--git-common-dir').strip())

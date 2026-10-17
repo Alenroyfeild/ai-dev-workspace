@@ -20,8 +20,8 @@ mkdir "$DEMO/home"
 demo() { env -i PATH=/usr/bin:/bin HOME="$DEMO/home" PYTHONDONTWRITEBYTECODE=1 \
   WS_OFFLINE=1 LANGSMITH_TRACING=false LANGGRAPH_CLI_NO_ANALYTICS=1 OTEL_SDK_DISABLED=true "$@"; }
 demo python3 "$KIT/bin/ws" init "$DEMO/memory" --name Fixture
-demo python3 "$KIT/bin/ws" --workspace "$DEMO/memory" task new MEM-1 "Migration fixture"
-demo python3 "$KIT/bin/ws" --workspace "$DEMO/memory" claim MEM-1 --worker fixture
+demo python3 "$KIT/bin/ws" --workspace-root "$DEMO/memory" task new MEM-1 "Migration fixture"
+demo python3 "$KIT/bin/ws" --workspace-root "$DEMO/memory" claim MEM-1 --worker fixture
 demo "$ADK_PY" "$KIT/docs/examples/frameworks/adk_agent.py" "$DEMO/memory" write \
   --decision "Keep the old index; verify rollback marker violet before retrying."
 demo "$GRAPH_PY" "$KIT/docs/examples/frameworks/langgraph_agent.py" "$DEMO/memory" resume
