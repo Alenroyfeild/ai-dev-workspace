@@ -2774,12 +2774,17 @@ def recap(root, since='7d'):
         raise WsError('Use --since 7d (days) or --since YYYY-MM-DD.')
     tasks = []
     for item in task_list(root):
-        record = task_read(root, item['id'], ['Handoff'])
+        record = task_read(root, item['id'], ['Handoff', 'Failures', 'Do not redo'])
         updated = str(record.get('meta', {}).get('updated', ''))[:10]
         if updated < cutoff: continue
-        handoff = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections']['Handoff'], flags=re.S)
+        # Captured blocks (also unterminated ones) are unverified guesses; placeholders and bullets are dropped as in pr_notes.
+        explicit = lambda name: re.sub(r'<!-- ws:captured:.*\Z', '', re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections'][name], flags=re.S), flags=re.S)
+        handoff = explicit('Handoff')
+        rejected = [l.strip().lstrip('-*').strip() for n in ('Failures', 'Do not redo') for l in explicit(n).splitlines()]
+        rejected = [r for r in rejected if r and r.lower().rstrip('.') not in ('none', 'none yet')]
         tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
                       'decisions': [l.strip()[9:].strip() for l in handoff.splitlines() if l.strip().startswith('Decision:')],
+                      'rejected': rejected[:3], 'rejected_more': max(0, len(rejected) - 3),  # a summary: the task holds the rest
                       'next': '' if item['status'] == 'done' else (item['next'].splitlines() or [''])[0]})  # first line, before cleaning joins lines
     rank = {s: i for i, s in enumerate(RECAP_ORDER)}
     tasks.sort(key=lambda t: t['updated'], reverse=True)  # newest first within each status group
@@ -2812,6 +2817,8 @@ def recap(root, since='7d'):
         ident = '' if t['title'] == t['id'] else f"{t['id']}, "
         lines.append(f"- **{t['title']}** ({ident}{t['status'].replace('_', ' ')}, {t['updated']})")
         lines += [f'  - Decision: {d}' for d in t['decisions']]
+        lines += [f'  - Rejected: {r}' for r in t['rejected']]
+        if t['rejected_more']: lines.append(f"  - (+{t['rejected_more']} more)")
         if t['next']: lines.append(f"  - Next: {t['next']}")
     if not tasks: lines.append('- No task changes in this period.')
     if team or status:

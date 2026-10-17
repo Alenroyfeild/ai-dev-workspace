@@ -9,7 +9,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
 - `ws pr-notes` prints the task's saved decisions, reasons, tried-and-rejected approaches, acceptance criteria and checks as a pull request description, so reviewers see why the code changed. Example: `gh pr create --body "$(ws pr-notes)"`.
-- `ws recap` lists the tasks you changed this week with their decisions and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
+- `ws recap` lists the tasks you changed this week with their decisions, tried-and-rejected approaches and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
 - `ws audit` scores a repo's AI assistant setup (instructions and their size, broken file references, memory, hooks, MCP server count, stale tasks) and lists the top 3 fixes. Read-only and offline; the text output is safe to paste.
 
