@@ -83,3 +83,9 @@ class PluginDuplicateTests(Base):
                 cli.main(['start', '--yes'])
         finally: os.chdir(cwd)
         self.assertIn('Claude Code plugin is also enabled, so Claude gets two briefs per session', err.getvalue())
+
+    def test_corrupt_start_record_is_skipped(self):
+        repo, root = self.started_repo()
+        self.enable(Path.home() / '.claude/settings.json')
+        (repo / '.ws-start.json').write_text('{not json')
+        self.assertEqual(repo_setup.plugin_duplicates(root), [])
