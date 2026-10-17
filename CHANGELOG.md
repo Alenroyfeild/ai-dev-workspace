@@ -2,6 +2,9 @@
 
 ## 0.1.0-beta.6 (unreleased)
 
+### Fixed
+- Native memory imports stay labelled unverified and no longer suppress first-task team context. Imported brief excerpts keep whole items and source IDs together.
+
 ### New
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
