@@ -1537,7 +1537,8 @@ def _memory_check(root, task_id, meta, next_action):
     present = []
     def named(path):
         """The saved text names this path: in full, or by a basename no other current file has."""
-        mentions = lambda name: re.search(r'(?<![\w./-])' + re.escape(name) + r'(?![\w/-])', next_action)  # a whole path token
+        text = re.sub(r'(?<![\w.-])\./', '', next_action)  # ./src/a.py names src/a.py
+        mentions = lambda name: re.search(r'(?<![\w./-])' + re.escape(name) + r'(?![\w/-]|\.\w)', text)  # a whole path token, not a.py.bak
         if mentions(path): return True
         base = os.path.basename(path)
         if not mentions(base): return False

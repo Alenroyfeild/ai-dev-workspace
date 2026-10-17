@@ -100,3 +100,10 @@ class BriefStalenessTests(Base):
         self.assertNotIn('gone since', core.brief(self.root))
         self.git(repo, 'rm', '-q', 'src/export.py'); self.git(repo, 'commit', '-qm', 'drop src')
         self.assertIn('gone since: export.py', core.brief(self.root))  # the named full path is gone
+
+    def test_backup_name_is_not_a_mention_but_dot_slash_path_is(self):
+        repo = self.repo('Delete export.py.bak later.')
+        (repo / 'export.py').unlink()
+        self.assertNotIn('gone since', core.brief(self.root))
+        core.checkpoint(self.root, 'ST-1', 'in_progress', 'Review ./export.py output.')
+        self.assertIn('gone since: export.py', core.brief(self.root))
