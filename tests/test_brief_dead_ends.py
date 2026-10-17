@@ -52,6 +52,7 @@ class DeadEndTests(Base):
         self.assertNotIn('[…]', line)
         self.assertNotIn('streaming client', line)
         self.assertTrue(line.strip().startswith('Short one: fails too (+1 more in the task'), line)
-        core.checkpoint(self.root, 'T-1', 'in_progress', 'Fix the upload.', notes={'Do not redo': long_item, 'Failures': ''})
-        line = core.brief(self.root).split('Do not redo:')[1].split('\n')[0]
+        core.task_new(self.root, 'T-2', 'Other upload', 'Synthetic')  # dead ends accumulate, so a lone item needs a fresh task
+        core.checkpoint(self.root, 'T-2', 'in_progress', 'Fix the upload.', notes={'Do not redo': long_item, 'Failures': ''})
+        line = core.brief(self.root, 'T-2').split('Do not redo:')[1].split('\n')[0]
         self.assertIn("1 saved; read the task's Do not redo/Failures before retrying", line)

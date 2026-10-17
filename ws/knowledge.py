@@ -155,7 +155,7 @@ def brief_fields(root, query, private):
         if not overlap: continue
         if len(words(private) & terms) * 2 > len(terms):
             omitted += 1; continue
-        prefix = f'Team (untrusted, {row["author"]}, {row["date"]}):'
+        prefix = f'Team (untrusted, {row["author"]}, {row["date"][:10]}):'
         relevant.append((overlap, prefix, summary))
     fields = []
     if listing['warnings']: fields.append(('Team warning:', 'Unreadable, unsafe or conflicted entries excluded; use ws know list.', 12))
