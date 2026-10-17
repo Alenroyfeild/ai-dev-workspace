@@ -1258,6 +1258,7 @@ def remember(root, text, task_id=None):
     if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
         raise WsError('Not saved: the text is marked private.')
     decision = ' '.join(redact(PRIVATE_RE.sub(' ', text)).split()).replace('<!--', '&lt;!--')
+    decision = re.sub(r'^decision:\s*', '', decision, flags=re.I)  # the Handoff line adds the prefix itself
     if not decision:
         raise WsError('Nothing to save: say the decision, e.g. ws remember "use Postgres, not SQLite".')
     with lock(root):
