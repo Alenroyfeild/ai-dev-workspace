@@ -463,6 +463,10 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        @core.contextlib.contextmanager
+        def saved_locally():  # the record is already saved; say so when sharing it cannot go ahead
+            try: yield
+            except core.WsError as exc: raise core.WsError(f'Saved locally, not shared: {exc}') from None
         def share_gate(item, remove=False):
             from . import sharing
             author = getattr(a, 'author', None)
@@ -680,7 +684,7 @@ def main(argv=None):
             out(f"Remembered in {result['task']}: {result['remembered']}" if human() else result)
             if a.team:
                 from . import sharing
-                share_gate(sharing.standalone(root, 'decision', a.text))
+                with saved_locally(): share_gate(sharing.standalone(root, 'decision', a.text))
         elif a.cmd == 'pr-notes':
             result = core.pr_notes(root, a.id, link=not a.no_link)
             print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
@@ -691,7 +695,8 @@ def main(argv=None):
             from . import knowledge
             if a.action == 'add':
                 item = knowledge.add(root, a.text, a.category, a.team); out({'saved': item})
-                if a.team: share_gate(item)
+                if a.team:
+                    with saved_locally(): share_gate(item)
             elif a.action == 'list': out(knowledge.list_entries(root, a.category, a.layer))
             else: out(knowledge.show(root, a.id))
         elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
@@ -700,7 +705,7 @@ def main(argv=None):
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
             if a.action == 'add' and a.team:
                 from . import sharing
-                share_gate(sharing.standalone(root, 'lesson', a.text))
+                with saved_locally(): share_gate(sharing.standalone(root, 'lesson', a.text))
         elif a.cmd == 'feedback':
             if a.action == 'add': out(core.feedback_add(root, a.text, a.kind, a.source))
             elif a.action == 'submit': out(core.feedback_submit(root, a.n, a.yes))
@@ -765,7 +770,7 @@ def main(argv=None):
     except (core.WsError, FileNotFoundError, json.JSONDecodeError) as exc:
         message = str(exc)
         if isinstance(exc, core.WsError) and not any(hint in message.lower() for hint in ('`ws ', 'run ws ', 'see ws ', 'next:')):
-            message += ' Next: run `ws --help` for the relevant command.'
+            message += ('' if message.endswith(('.', '!', '?', ':')) else '.') + f' Next: run `ws {a.cmd} --help`.'
         print(f'ws: {message}', file=sys.stderr)
         if not isinstance(exc, core.WsError):
             print('If this looks like a bug in ws, record it: ws feedback add "<what you ran and saw>" --kind bug', file=sys.stderr)

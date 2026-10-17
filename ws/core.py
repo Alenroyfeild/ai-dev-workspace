@@ -2589,7 +2589,7 @@ def _get_json(url):
 
 
 def _offline(action):
-    return {'offline': True, 'message': f'Offline mode: {action} is disabled while WS_OFFLINE=1.'}
+    return {'offline': True, 'message': f'Offline mode: {action} skipped while WS_OFFLINE=1.'}
 
 
 def check_update(force=False):
