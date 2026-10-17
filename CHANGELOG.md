@@ -18,6 +18,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - `ws recap` lists the tasks you changed this week with their decisions and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
 - `ws audit` scores a repo's AI assistant setup (instructions and their size, broken file references, memory, hooks, MCP server count, stale tasks) and lists the top 3 fixes. Read-only and offline; the text output is safe to paste.
+- Opt-in `guards` pack: `ws pack add guards`, then `ws start` again in your repo. Claude Code and Codex are then stopped before `rm -rf` on your home or the filesystem root, `git reset --hard`, force push, `git clean -f`, commands or file edits containing what looks like a secret, and edits that newly skip or narrow tests. Start the assistant with `WS_GUARDS=off` to turn it off for one session; `ws pack remove guards` and `ws start` remove the hook.
 
 ### Improved
 - A confirmation prompt with no input (for example when an assistant runs `ws sync` or `ws know add --team` without `--yes`) now stops with "No confirmation; use --yes or --dry-run." instead of a Python traceback, and repeating `ws know add`, `ws remember` or `ws lesson add` with `--team` after declining reuses the saved record instead of creating a duplicate.
