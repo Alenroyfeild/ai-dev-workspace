@@ -139,9 +139,9 @@ def _missing_in_hook(command, root):
     """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
     if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return ''
     try:
-        parts = shlex.split(command)
+        parts = shlex.split(command, posix=not core.WINDOWS)  # posix splitting eats the backslashes of Windows paths
+        if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
         if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
-        elif core.WINDOWS: return ''  # quoted Windows paths do not survive posix splitting
         if '--workspace-root' not in parts: return ''
         interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
     except (ValueError, IndexError): return ''
