@@ -89,3 +89,26 @@ class PluginDuplicateTests(Base):
         self.enable(Path.home() / '.claude/settings.json')
         (repo / '.ws-start.json').write_text('{not json')
         self.assertEqual(repo_setup.plugin_duplicates(root), [])
+
+    def start_here(self, repo, *args):
+        cwd = os.getcwd(); os.chdir(repo)
+        try:
+            with mock.patch('ws.setup.detect', return_value=[]), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                return cli.main(['start', '--yes', *args])
+        finally: os.chdir(cwd)
+
+    def test_plugin_start_keeps_opted_in_pack_hooks_but_not_memory_hooks(self):
+        repo, root = self.started_repo()
+        core.pack_add(root, 'guards'); core.pack_add(root, 'discipline')
+        self.assertEqual(self.start_here(repo, '--undo'), 0)
+        self.enable(Path.home() / '.claude/settings.json')
+        self.assertEqual(self.start_here(repo), 0)
+        state = json.loads((repo / '.ws-start.json').read_text())
+        self.assertIn('.claude/settings.local.json', state['files'])
+        self.assertNotIn('.mcp.json', state['files'])  # the plugin brings the MCP server
+        hooks = json.loads((repo / '.claude/settings.local.json').read_text())['hooks']
+        self.assertEqual(sorted(hooks), ['PostToolUseFailure', 'PreToolUse'])  # no duplicated brief/nudge/paste hooks
+        self.assertEqual(repo_setup.plugin_duplicates(root), [])
+        self.assertEqual(repo_setup.stale_hooks(root), [])
+        self.assertEqual(self.start_here(repo, '--undo'), 0)
+        self.assertFalse((repo / '.claude/settings.local.json').exists())
