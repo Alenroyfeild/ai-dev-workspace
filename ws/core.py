@@ -294,6 +294,7 @@ def pack_add(root, name):
     nxt = [f"run {KIT / 'packs' / name / manifest['setup']}"] if manifest.get('setup') else []
     if manifest.get('selftest'):
         nxt.append(f"verify with {KIT / 'packs' / name / manifest['selftest']}")
+    nxt += [line for line in manifest.get('next', []) if isinstance(line, str)]
     return {'pack': name, 'installed': True, 'collisions': collisions, 'next': nxt or ['nothing else needed'],
             'missing': [r for r in requirement_status(manifest) if not r['ok']]}
 
@@ -456,6 +457,24 @@ def memory_hooks(root, client='claude'):
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
                 'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][prompt_event] = [hook if client == 'cursor' else {'hooks': [hook]}]
+    return result
+
+
+HOOK_PACKS = ('guards', 'discipline')  # packs that add repo hooks; ws start refreshes when this set changes
+
+
+def pack_hooks(root, client):
+    """Hooks for the opt-in guards and discipline packs (repo setup only, so the kit fingerprint stays config-free)."""
+    if client not in ('claude', 'codex') or not (Path(root) / 'workspace.json').is_file(): return {}
+    packs = config(root).get('packs', [])
+    def hook(*suffix):
+        arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root), *suffix, '--hook', '--client', client]
+        return {'type': 'command', 'timeout': 10, 'command': encoded_hook_command(arguments) if WINDOWS and any('%' in a for a in arguments) else command_line(arguments)}
+    result = {}
+    if 'guards' in packs:  # Codex: every tool; the guard allows tools it cannot read
+        result['PreToolUse'] = [{'matcher': 'Bash|PowerShell|Write|Edit|MultiEdit', 'hooks': [hook('guard')]} if client == 'claude' else {'hooks': [hook('guard')]}]
+    if 'discipline' in packs:  # Claude reports failed commands separately; Codex reports every Bash call
+        result['PostToolUseFailure' if client == 'claude' else 'PostToolUse'] = [{'matcher': 'Bash', 'hooks': [hook('discipline')]}]
     return result
 def install_memory_hooks(root, collisions, clients=None):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
@@ -1183,6 +1202,8 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         values = {'status': status, 'updated': now(), 'checkpoint_at': now(), 'checkpoint_count': int(meta.get('checkpoint_count', 0)) + 1}
         head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
         if re.fullmatch(r'[0-9a-f]{40,64}', head): values['checkpoint_commit'] = head  # lets brief spot stale memory
+        if 'checkpoint_commit' in values:  # uncommitted edits at checkpoint, so brief can tell when they vanish
+            values['checkpoint_dirty'] = json.dumps([n for n in _task_git(root, task_id, 'diff', '--name-only', '-z', 'HEAD', '--').split('\0') if n][:20])
         text = set_meta(text, values)
         text = set_section(text, 'Next action', redact(next_action))
         for name, body in (notes or {}).items():
@@ -1238,6 +1259,17 @@ def remember(root, text, task_id=None):
 PROJECT_URL = 'https://github.com/Alenroyfeild/ai-dev-workspace'
 
 
+def _list_items(text):
+    """Entries of a Failures/Do not redo section: a leading "- " or "* " marker is dropped (a literal --flag keeps its dashes) and indented lines continue the entry above."""
+    items = []
+    for raw in text.splitlines():
+        line = re.sub(r'^[-*](?:\s+|$)', '', raw.strip())
+        if not line: continue
+        if raw[:1] in ' \t' and items: items[-1] += ' ' + line
+        else: items.append(line)
+    return items
+
+
 def pr_notes(root, task_id=None, link=True):
     """A PR-description block from one task: goal, explicit decisions, tried-and-rejected approaches, acceptance criteria, checks, open items."""
     task_id = task_id or sole_local_claim(root) or (current_task(root)[0] or {}).get('id')
@@ -1260,7 +1292,7 @@ def pr_notes(root, task_id=None, link=True):
         elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
         elif line and decisions and raw[:1] in ' \t':  # an indented line continues the previous Decision/Reason
             decisions[-1] += ' ' + line
-    rejected = [f'- {l.strip().lstrip("-*").strip()}' for n in ('Failures', 'Do not redo') for l in body(n).splitlines() if l.strip().lstrip('-*').strip()]
+    rejected = [f'- {item}' for n in ('Failures', 'Do not redo') for item in _list_items(body(n))]
     if len(rejected) > 8: rejected[8:] = [f'(+{len(rejected) - 8} more in the task)']  # keep the PR body short
     title = (re.search(r'^# (.+)$', text, re.M) or [None, task_id])[1].strip()
     parts = [f'### {title}' + ('' if title == task_id else f' ({task_id})')]
@@ -1545,12 +1577,40 @@ def _memory_check(root, task_id, meta, next_action):
     """One line when the repo moved on from (or behind) the commit the checkpoint was written at; '' if unknown."""
     saved = meta.get('checkpoint_commit', '')
     head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
-    if not re.fullmatch(r'[0-9a-f]{40,64}', saved) or not head or head == saved: return ''
-    if _task_git(root, task_id, 'rev-list', '-n1', saved, '^' + head).strip():  # saved is not an ancestor of HEAD
+    if not re.fullmatch(r'[0-9a-f]{40,64}', saved) or not head: return ''
+    if head != saved and _task_git(root, task_id, 'rev-list', '-n1', saved, '^' + head).strip():  # saved is not an ancestor of HEAD
         return f'Memory check: code is behind the saved checkpoint ({saved[:7]}); the work it describes may be undone.'
-    names = _task_git(root, task_id, 'diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', saved, '--').split('\0')
-    hit = list(dict.fromkeys(os.path.basename(n) for n in names if n and os.path.basename(n) in next_action))[:5]
-    return f'Memory check: written at {saved[:7]}; changed since: {", ".join(hit)} (verify before acting).' if hit else ''
+    # Against the working tree, so an uncommitted delete counts; -M reports a rename as old -> new.
+    out = _task_git(root, task_id, 'diff', '--no-ext-diff', '--no-textconv', '-M', '--name-status', '-z', saved, '--').split('\0')
+    gone, changed, seen, i = {}, [], set(), 0
+    while i < len(out) and out[i]:
+        status, i = out[i], i + 1
+        if status[:1] in 'RC':
+            old, new, i = out[i], out[i + 1], i + 2
+            seen.update((old, new))
+            if status[0] == 'R': gone[old] = new
+        else:
+            name, i = out[i], i + 1
+            seen.add(name)
+            if status == 'D': gone[name] = ''
+            elif head != saved: changed.append(name)  # uncommitted edits alone stay silent, as before
+    present = []
+    def named(path):
+        """The saved text names this path: in full, or by a basename no other current file has."""
+        text = re.sub(r'(?<![\w.-])\./', '', next_action)  # ./src/a.py names src/a.py
+        mentions = lambda name: re.search(r'(?<![\w./-])' + re.escape(name) + r'(?![\w/-]|\.\w)', text)  # a whole path token, not a.py.bak
+        if mentions(path): return True
+        base = os.path.basename(path)
+        if not mentions(base): return False
+        if not present: present.extend(_task_git(root, task_id, 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0') or [''])
+        return not any(p != path and os.path.basename(p) == base and p not in gone for p in present)
+    try: dirty = [p for p in json.loads(meta.get('checkpoint_dirty') or '[]') if isinstance(p, str)]
+    except (ValueError, TypeError): dirty = []
+    lost = [os.path.basename(p) for p in dirty if p not in seen][:3]  # back to the checkpoint commit's version
+    gone = [os.path.basename(n) + (f' (now {gone[n]})' if gone[n] else '') for n in gone if named(n)][:3]
+    changed = list(dict.fromkeys(os.path.basename(n) for n in changed if named(n)))[:5]
+    parts = ([f'uncommitted edits gone: {", ".join(lost)} (stashed or reset?)'] if lost else []) + ([f'gone since: {", ".join(gone)}'] if gone else []) + ([f'changed since: {", ".join(changed)}'] if changed else [])
+    return f'Memory check: written at {saved[:7]}; {"; ".join(parts)} (verify before acting).' if parts else ''
 
 
 def _capture_words(text, limit):
@@ -1603,8 +1663,29 @@ def _bounded_brief(fields, truncated=False):
     return '\n'.join(bounded)
 
 
+def _dead_ends(root, task_id, template):
+    """Approaches already tried and rejected, so the next session (any assistant) does not retry them."""
+    sections = task_read(root, task_id, ['Do not redo', 'Failures'])['sections']
+    lines = []
+    for name, body in sections.items():
+        body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', body, flags=re.S).strip()
+        if body and body != section(template, name).strip():
+            lines += [l.strip().lstrip('-* ').strip() for l in body.splitlines() if l.strip()]
+    kept, words = [], 0
+    for line in lines:  # whole items only, so a dead end is never cut mid-sentence; one too long for the budget is counted
+        if words + len(line.split()) <= 24: kept.append(line); words += len(line.split())
+    if not kept and lines: return f"{len(lines)} saved; read the task's Do not redo/Failures before retrying"
+    more = len(lines) - len(kept)
+    return '; '.join(kept) + (f' (+{more} more in the task\'s Do not redo/Failures)' if more else '')
+
+
 def brief(root, task_id=None):
     return _brief(root, task_id)[0]
+
+
+def brief_and_summary(root, task_id=None):
+    """Brief text and its one-line summary from one pass, so both describe the same task."""
+    return _brief(root, task_id)
 
 
 def memory_summary(root):
@@ -1715,9 +1796,10 @@ def _brief(root, task_id=None):
     fields += [('Explicit Handoff (saved task record):', _constraint_budget(reversed(decisions), 25), 25),
                ('Next action:', next_action if saved_next else 'Not saved yet. Choose the next step before continuing.', 25),
                ('Blockers:', record['sections']['Blockers'], 8),
+               ('Do not redo:', _dead_ends(root, task['id'], template), 32),
                ('', plan_warning, 11),
                ('Captured next step (unverified):', captured_step, 16),
-               ('', _memory_check(root, task['id'], record['meta'], next_action), 18),
+               ('', _memory_check(root, task['id'], record['meta'], next_action + '\n' + '\n'.join(decisions)), 18),
                ('Claim:', record['claim'], 12)]
     truncated |= len(' '.join(decisions).split()) > 25
     imported = task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory']
@@ -2782,12 +2864,17 @@ def recap(root, since='7d'):
         raise WsError('Use --since 7d (days) or --since YYYY-MM-DD.')
     tasks = []
     for item in task_list(root):
-        record = task_read(root, item['id'], ['Handoff'])
+        record = task_read(root, item['id'], ['Handoff', 'Failures', 'Do not redo'])
         updated = str(record.get('meta', {}).get('updated', ''))[:10]
         if updated < cutoff: continue
-        handoff = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections']['Handoff'], flags=re.S)
+        # Captured blocks (also unterminated ones) are unverified guesses; placeholders and bullets are dropped as in pr_notes.
+        explicit = lambda name: re.sub(r'<!-- ws:captured:.*\Z', '', re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections'][name], flags=re.S), flags=re.S)
+        handoff = explicit('Handoff')
+        rejected = [item for n in ('Failures', 'Do not redo') for item in _list_items(explicit(n))]
+        rejected = [r for r in rejected if r and r.lower().rstrip('.') not in ('none', 'none yet')]
         tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
                       'decisions': [l.strip()[9:].strip() for l in handoff.splitlines() if l.strip().startswith('Decision:')],
+                      'rejected': rejected[:3], 'rejected_more': max(0, len(rejected) - 3),  # a summary: the task holds the rest
                       'next': '' if item['status'] == 'done' else (item['next'].splitlines() or [''])[0]})  # first line, before cleaning joins lines
     rank = {s: i for i, s in enumerate(RECAP_ORDER)}
     tasks.sort(key=lambda t: t['updated'], reverse=True)  # newest first within each status group
@@ -2820,6 +2907,8 @@ def recap(root, since='7d'):
         ident = '' if t['title'] == t['id'] else f"{t['id']}, "
         lines.append(f"- **{t['title']}** ({ident}{t['status'].replace('_', ' ')}, {t['updated']})")
         lines += [f'  - Decision: {d}' for d in t['decisions']]
+        lines += [f'  - Rejected: {r}' for r in t['rejected']]
+        if t['rejected_more']: lines.append(f"  - (+{t['rejected_more']} more)")
         if t['next']: lines.append(f"  - Next: {t['next']}")
     if not tasks: lines.append('- No task changes in this period.')
     if team or status:

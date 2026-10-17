@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Privacy and what ws stores
+    url: https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/PRINCIPLES.md
+    about: Your notes stay local and nothing is sent without a yes. Read this before filing.
+  - name: Overview and setup docs
+    url: https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/OVERVIEW.md
+    about: Check the docs first; many questions are answered there.
