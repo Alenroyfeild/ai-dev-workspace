@@ -22,7 +22,7 @@ def secret_values(text):
         hit = hit.strip()
         if not re.match(r'(?i)bearer\b', hit): hit = re.split(r'\s*[:=]\s*', hit, 1)[-1]  # the first : or = only; base64 padding keeps its =
         value = (hit.split() or [''])[-1].strip('"\'')
-        if value[:1] in '$<{' or re.search(r'(?i)example|changeme|your|placeholder|dummy|xxx', value): continue
+        if value[:1] in '$<{' or re.search(r'(?i)^(your|change|replace|insert|todo)|example|placeholder|dummy|xxx', value): continue
         if len(value) >= 12 and re.search(r'\d', value) and re.search(r'[A-Za-z]', value): found.add(value)
     return found
 
