@@ -73,7 +73,7 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
     if folder_host:
         from . import team_folder
         team_folder.source(root)
-    if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Link a private team with ws team link first.')
+    if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Link a private team first: run `ws team link <private-repo>`.')
     clone = _safe(root, root / '.ws/team'); manifest = json.loads(_text(_safe(root, clone / 'team.json')))
     privacy = link.get('privacy', {})
     if not isinstance(manifest, dict) or not isinstance(privacy, dict): raise core.WsError('Invalid team identity or privacy record.')
