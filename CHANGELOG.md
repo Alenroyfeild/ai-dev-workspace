@@ -3,6 +3,7 @@
 ## 0.1.0-beta.6 (unreleased)
 
 ### New
+- Friendlier first-run errors: `ws undo`, `ws uninstall` and `ws remove` point to `ws start --undo`, "no task" errors name `ws task list` and `ws task new`, `ws checkpoint` defaults to your only claimed task like `ws remember`, and the start, checkpoint, task and lesson help show examples. `ws demo` is in the short `ws --help` list, and the tutorial has a "Remove it" section.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
 ## 0.1.0-beta.5 (unreleased)
