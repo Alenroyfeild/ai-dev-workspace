@@ -72,7 +72,7 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
     return row, body
 
 
-def list_entries(root, value='', layer='all', _index=False, _all=False):
+def list_entries(root, value='', layer='all', _index=False, _all=False, limit=100):
     if value: category(value)
     rows, warnings = [], []
     for name, base, team_id in _bases(root, layer):
@@ -80,7 +80,7 @@ def list_entries(root, value='', layer='all', _index=False, _all=False):
         for path in sorted(base.glob('*.md')):
             if path.name == 'INDEX.md' or path.name.endswith('.index.md') or path.stem.endswith('.local'): continue
             if not core.ID_RE.fullmatch(path.stem): continue
-            if scanned >= 100: warnings.append('Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'); break
+            if limit and scanned >= limit: warnings.append('Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'); break
             scanned += 1
             try: row, _ = _read(root, path, name, team_id, summary=True, include_all=_all)
             except (core.WsError, OSError, ValueError):
@@ -123,7 +123,7 @@ def search(root, query, value='', layer='all', include_all=False):
 def onboarding_fields(root):
     """A small orientation until the teammate has saved task-specific memory."""
     if not core.config(root).get('team_workspace'): return []
-    try: listing = list_entries(root, layer='team')
+    try: listing = list_entries(root, layer='team', limit=0)  # Newest per category needs every valid card, not the first 100 files.
     except (core.WsError, OSError, ValueError, TypeError):
         return [('Team warning:', 'Unavailable or invalid team link; private memory retained.', 12)]
     fields = []

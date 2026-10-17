@@ -42,6 +42,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - `ws pack add <name>` now takes the workspace lock and writes `workspace.json` atomically, so an interrupted add cannot leave it truncated.
 - `ws pack add --from` and `ws pack remove` no longer garble non-ASCII text in your `AGENTS.md` on systems whose default text encoding is not UTF-8 (for example Windows).
 - On Windows, non-ASCII text (accented names in paths, notes, `AGENTS.md`, git output) is read and written as UTF-8, the pip/pipx `ws` command prints it correctly, Codeburn runs when installed as a `.cmd` shim, `ws upgrade` recognises its own quoted hooks, and the guards pack blocks a home-folder delete written with `/` or different capitalisation.
+- A team folder file that is not valid UTF-8 now stops `ws team link --folder` and `ws sync --pull-only` with a message naming the file instead of a Python traceback; the local mirror is left unchanged. A new branch's first brief now shows team onboarding like any fresh task, and with more than 100 team entries it shows the newest product, domain and repo notes without a false "unreadable entries" warning.
 
 ### Known limits
 - The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
