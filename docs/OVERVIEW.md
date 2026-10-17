@@ -57,7 +57,7 @@ cd ~/code/myapp && ws start
 ## What you get
 
 **Memory that follows the work**
-- One Markdown record per task: objective, evidence, blockers, next action, handoff. Claude and Codex hooks capture conversation decisions automatically; a short brief (under 200 words) is injected at every session start.
+- One Markdown record per task: objective, evidence, blockers, next action, handoff. Hooks for Claude, Codex, Cursor, Gemini CLI and VS Code Copilot capture conversation decisions automatically (see Client compatibility for what is proven); a short brief (under 200 words) is injected at every session start.
 - **Stale-memory check**: the brief warns when files named in the next action changed since it was written, or when the code was rolled back past the checkpoint.
 - **Lessons** ("what happened → rule"), ranked by the files you are changing, so a mistake made once is not repeated.
 - Search vault notes, lessons and past Claude, Codex, Cursor and Gemini sessions (`ws sessions search`).

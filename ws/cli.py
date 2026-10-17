@@ -140,6 +140,9 @@ def text_doctor(report):
         rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"
                     for name, value in routes.items() if isinstance(value, dict) and 'provider' in value]
         lines.append('Routes: ' + (', '.join(rendered) or routes.get('error', 'unavailable')))
+    if report.get('mcp_tools'):
+        tools = report['mcp_tools']
+        lines.append(f"MCP tools listed: {tools['listed']} ({tools['profile']}; set \"mcp_tools\": \"all\" in workspace.json to list every tool)")
     missing = [item['name'] for item in report.get('toolbox', [])]
     lines.append('Missing recommended tools: ' + (', '.join(missing) or 'none'))
     if 'mcp' in report:
@@ -202,12 +205,28 @@ def unrecorded_work(root, uses):
             f'(done if the task is finished). Skip only if these edits were unrelated to {task}.') if task else ''
 
 
+def mcp_main():
+    """Console script `ai-dev-workspace`: the stdio MCP server, for uvx and MCP registry launchers."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('ws_mcp_server', core.KIT / 'mcp' / 'server.py')
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)  # by path: a top-level 'mcp' import could pick up the unrelated MCP SDK
+    server.main()
+
+
+def ask(prompt=''):
+    """y/N answer; a closed stdin is "no confirmation", not a traceback."""
+    try: return input(prompt).strip().lower() in ('y', 'yes')
+    except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
                                 formatter_class=GroupedHelpFormatter)
     p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
+    sub.add_parser('demo', help='try remembered decisions offline in a disposable workspace')
 
     s = sub.add_parser('init', help='create a workspace')
     s.add_argument('dir'); s.add_argument('--name')
@@ -232,6 +251,7 @@ def main(argv=None):
         s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
@@ -302,6 +322,13 @@ def main(argv=None):
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
     s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
     s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
+    s = sub.add_parser('pr-notes', help="print the task's decisions and checks as a PR-description block")
+    s.add_argument('id', nargs='?', help='task (default: your only claimed task or the current branch task)')
+    s.add_argument('--no-link', action='store_true', help='omit the one-line ai-dev-workspace credit')
+    s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
+    s = sub.add_parser('recap', help='tasks, decisions and team notes since a date (for standups and handoffs)')
+    s.add_argument('--since', default='7d', help='7d (days back) or YYYY-MM-DD; default 7d')
+    s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
     k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
     s = k.add_parser('add')
     s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
@@ -364,6 +391,10 @@ def main(argv=None):
         p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
     a = p.parse_args(argv)
     try:
+        if a.cmd == 'demo':
+            from . import demo
+            if a.workspace_root: raise core.WsError('ws demo uses its own disposable workspace; omit --workspace-root.')
+            out(demo.run()); return 0
         if a.cmd == 'start':
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
@@ -417,6 +448,10 @@ def main(argv=None):
                 root = None
             report = core.doctor(root, a.mcp)
             out(text_doctor(report) if a.text or human() else report); return 0
+        if a.cmd == 'audit':
+            from . import audit
+            report = audit.audit(a.repo)
+            out(audit.text(report) if a.text or human() else report); return 0
         if a.cmd == 'sessions':
             roots = None
             if a.root:
@@ -436,7 +471,7 @@ def main(argv=None):
             if getattr(a, 'dry_run', False) or plan['unchanged']: return
             if not a.yes:
                 print('Apply this exact local team preview? [y/N]')
-                if input().strip().lower() not in ('y', 'yes'): return
+                if not ask(): return
             out(sharing.apply(root, plan))
         if a.cmd in ('share', 'unshare'):
             share_gate(a.item, a.cmd == 'unshare'); return 0
@@ -451,12 +486,12 @@ def main(argv=None):
                 out(team_auto.pull(root, a.automatic)); return 0
             if a.daily:
                 plan = team_auto.schedule(root, a.daily); out(plan)
-                if not a.dry_run and plan['supported'] and (a.yes or input('Activate this exact daily read-only job? [y/N] ').strip().lower() in ('y', 'yes')):
+                if not a.dry_run and plan['supported'] and (a.yes or ask('Activate this exact daily read-only job? [y/N] ')):
                     out(team_auto.schedule(root, a.daily, True, plan))
                 return 0
             plan = team_sync.preview(root); out(plan)
             if a.dry_run or not plan['files']: return 0
-            if a.yes or input('Publish this exact team sync preview? [y/N] ').strip().lower() in ('y', 'yes'):
+            if a.yes or ask('Publish this exact team sync preview? [y/N] '):
                 out(team_sync.apply(root, plan))
             return 0
         if a.cmd == 'team':
@@ -465,7 +500,7 @@ def main(argv=None):
                 if not a.remote and not a.disable_status:
                     out(team_status.list_entries(root)); return 0
                 plan = team_status.preview(root, a.remote, a.author, a.publish_status, a.disable_status); out(plan)
-                if not a.dry_run and (a.yes or input('Save this exact local status preview? [y/N] ').strip().lower() in ('y', 'yes')):
+                if not a.dry_run and (a.yes or ask('Save this exact local status preview? [y/N] ')):
                     out(team_status.apply(root, plan))
                 return 0
             if a.folder:
@@ -473,10 +508,10 @@ def main(argv=None):
                 if a.action not in ('init','link'): raise core.WsError('--folder supports init/link; unlink uses ws team unlink.')
                 handler = team_folder.initialize if a.action=='init' else team_folder.link
                 plan = handler(root, a.remote, attest=a.attest_private, auto_pull=bool(a.auto_pull)); out(plan)
-                if not a.dry_run and not plan.get('already') and (a.yes or input('Link this exact private folder snapshot? [y/N] ').strip().lower() in ('y','yes')):
+                if not a.dry_run and not plan.get('already') and (a.yes or ask('Link this exact private folder snapshot? [y/N] ')):
                     pulls = a.auto_pull
                     if pulls is None and not a.yes:
-                        pulls = input('Keep team knowledge updated automatically (read-only pulls)? [y/N] ').strip().lower() in ('y','yes')
+                        pulls = ask('Keep team knowledge updated automatically (read-only pulls)? [y/N] ')
                         plan['auto_pull'] = bool(pulls)
                     out(handler(root, a.remote, True, a.attest_private, bool(pulls), plan))
                 return 0
@@ -486,11 +521,11 @@ def main(argv=None):
             if a.dry_run or plan.get('already'): return 0
             if not a.yes:
                 print('Apply this team preview? [y/N]')
-                if input().strip().lower() not in ('y', 'yes'): return 0
+                if not ask(): return 0
             pulls = a.auto_pull
             if pulls is None and not a.yes and a.action != 'unlink':
                 print('Keep team knowledge updated automatically (pull at session start and daily)? [y/N]')
-                pulls = input().strip().lower() in ('y', 'yes')
+                pulls = ask()
             out(team.manage(root, a.action, a.remote, True, a.attest_private, bool(pulls), a.verify_with, plan['sha']))
             return 0
         if a.cmd == 'setup':
@@ -513,8 +548,7 @@ def main(argv=None):
             def confirm(plan):
                 print(json.dumps(plan, indent=2), file=sys.stderr)
                 print('Apply this worker ' + a.action + ' action? [y/N] ', end='', file=sys.stderr)
-                try: return input().strip().lower() in ('y', 'yes')
-                except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
+                return ask()
             approval = None if a.yes else confirm
             if a.action == 'review': out(workers.review(root, a.id, a.approve, approval))
             elif a.action in ('accept', 'discard'): out(getattr(workers, a.action)(root, a.id, apply=not a.dry_run, confirm=approval))
@@ -647,6 +681,12 @@ def main(argv=None):
             if a.team:
                 from . import sharing
                 share_gate(sharing.standalone(root, 'decision', a.text))
+        elif a.cmd == 'pr-notes':
+            result = core.pr_notes(root, a.id, link=not a.no_link)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
+        elif a.cmd == 'recap':
+            result = core.recap(root, a.since)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
         elif a.cmd == 'know':
             from . import knowledge
             if a.action == 'add':
