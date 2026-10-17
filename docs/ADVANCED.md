@@ -54,8 +54,8 @@ The generated `routing.json` records `preset`, `assistants` and `delegation_mode
 
 Existing ADK or LangGraph users can opt into the [stub-model-tested MCP examples](examples/frameworks/README.md). They use four native-adapter tools and disposable memory, add no core dependencies, and distinguish saved task memory from framework execution state. Hosted models are untested.
 
-O2b adds internal Codex launch/collection for the O2d probe. Public `workers.launch` and `ws worker launch <run-id>`
-refuse execution with the O2d gate reason; no passing real-client gate is claimed.
+Internal Codex launch and collection exist only for the isolation probe. Public `workers.launch` and `ws worker launch <run-id>`
+refuse to run and say why; no live client has passed the isolation check yet.
 The run owns `worker.config.toml` and scratch, selects `worker-private` via CLI
 config overrides, ignores user/project configuration and rules, disables hooks,
 apps/plugins and approvals, and uses no legacy sandbox flag. Native tool access is
@@ -66,4 +66,4 @@ controls are passed. The real-client gate must verify this policy too.
 Collection includes ignored/untracked files and deletions in a private Git index,
 records an immutable tree/diff digest and completed command evidence, and blocks
 scope, metadata, symlink, secret, binary-scan, diff-check or claim failures. Output
-remains unverified; review/accept/discard arrive in O2c. [Official permission profiles](https://learn.chatgpt.com/docs/permissions).
+remains unverified; review, accept and discard come in a later change. [Official permission profiles](https://learn.chatgpt.com/docs/permissions).
