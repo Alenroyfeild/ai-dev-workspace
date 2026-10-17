@@ -6,7 +6,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from . import core, setup, upgrade
+from . import core, setup, upgrade, memory_import
 
 LINK = '.ws-start.json'
 FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.codex/config.toml.ws-backup', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md')
@@ -99,7 +99,7 @@ def undo(repo, state):
 def confirm(yes, dry_run):
     if dry_run: return False
     if yes: return True
-    print('Apply these local files? [y/N] ', end='', file=sys.stderr)
+    print('Apply this setup and previewed private memory imports? [y/N] ', end='', file=sys.stderr)
     try: return input().strip().lower() in ('y', 'yes')
     except EOFError: raise core.WsError('No confirmation; use ws start --yes or --dry-run.')
 
@@ -239,7 +239,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
     return sorted(changes)
 
 
-def start(yes=False, dry_run=False, workspace=None, remove=False):
+def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=None, no_import=False):
     if remove and dry_run: raise core.WsError('Use --undo or --dry-run separately.')
     try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError) as exc: raise core.WsError('Cannot inspect this Git repo; check git and retry ws start: ' + str(exc))
@@ -290,7 +290,9 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
     else:  # the private files are ws's own; --dry-run lists each one
         print(f'  plus {len(outside)} private workspace files (ws start --dry-run lists them)', file=sys.stderr)
+    imports = [] if no_import else memory_import.preview(repo, memory_dir, dry_run=dry_run)
     if not confirm(yes, dry_run): return None
+    memory_import.verify(imports)
     if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
@@ -317,5 +319,6 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
             if (core._local_claim_matches(root, task, meta) and meta.get('status') == 'ready'
                     and not meta.get('checkpoint_at') and core.section(text, 'Next action') == template):
                 core.atomic_write(target, core.set_meta(core.set_section(text, 'Next action', ''), {'status': 'in_progress'}))
+    memory_import.apply(root, repo, task, imports)
     state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, codex_status=state['codex_status'])

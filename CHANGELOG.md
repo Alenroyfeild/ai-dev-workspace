@@ -1,10 +1,16 @@
 # Changelog
 
+## 0.1.0-beta.6 (unreleased)
+
+### New
+- `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
+
 ## 0.1.0-beta.5 (unreleased)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
 
 ### New
+- Start with team context: a new teammate's brief shows recent product, domain and repo knowledge cards before task-specific memory exists, within the usual brief budget and labelled untrusted. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#daily-loop).
 - Try remembered decisions with `ws demo`: an offline, disposable walkthrough that saves a decision and reads it back in a fresh process, without starting an assistant. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 - Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
