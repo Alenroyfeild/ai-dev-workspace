@@ -910,9 +910,14 @@ def digest_text(text):
 
 # --- tasks -----------------------------------------------------------------------
 
+RESERVED_RE = re.compile(r'(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?')  # Windows device names cannot be file names
+
+
 def task_path(root, task_id):
     if not ID_RE.fullmatch(task_id or ''):
         raise WsError('Task IDs use letters, digits, dot, dash or underscore (e.g. JIRA-123, fix-login).')
+    if RESERVED_RE.fullmatch(task_id):
+        raise WsError(f'{task_id} is a reserved device name on Windows; choose another task ID (e.g. {task_id}-1).')
     return inside(vault(root) / 'Tasks' / f'{task_id}.md', [root])
 
 
