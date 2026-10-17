@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 from test_ws import Base
-from ws import cli
+from ws import cli, core
 
 
 class CliErrorTests(Base):
@@ -39,6 +39,29 @@ class CliErrorTests(Base):
             self.assertEqual(code, 0)  # fail open: exit 2 would block the client
             self.assertIn('Hook input must be a JSON object', err)
             self.assertNotIn('bug in ws', err)
+
+    def test_undo_guesses_point_to_start_undo(self):
+        for word, hint in (('undo', '`ws start --undo`'), ('uninstall', '`ws start --undo`'), ('remove', '`ws start --undo`')):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as raised:
+                cli.main([word])
+            self.assertEqual(raised.exception.code, 2)
+            self.assertIn(hint, err.getvalue())
+            self.assertLess(len(err.getvalue().splitlines()), 6, err.getvalue())  # not the 49-command list
+
+    def test_no_claimed_task_errors_say_how_to_get_an_id(self):
+        code, err = self.ws('remember', 'use Postgres')
+        self.assertEqual(code, 2)
+        for text in ('ws task list', 'ws task new <id> "<title>"'): self.assertIn(text, err)
+        self.assertIn('ws task new <id> "<title>"', core.brief(self.root))
+
+    def test_checkpoint_defaults_the_id_to_the_only_claimed_task(self):
+        code, err = self.ws('checkpoint', '--status', 'in_progress', '--next', 'x')
+        self.assertEqual(code, 2); self.assertIn('ws task list', err)  # nothing claimed: same hint as remember
+        core.claim(self.root, 'T-1', 'synthetic')
+        code, err = self.ws('checkpoint', '--status', 'in_progress', '--next', 'Write the schema.')
+        self.assertEqual((code, err), (0, ''))
+        self.assertEqual(core.task_read(self.root, 'T-1', ['Next action'])['sections']['Next action'], 'Write the schema.')
 
 
 if __name__ == '__main__':
