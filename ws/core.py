@@ -1238,6 +1238,17 @@ def remember(root, text, task_id=None):
 PROJECT_URL = 'https://github.com/Alenroyfeild/ai-dev-workspace'
 
 
+def _list_items(text):
+    """Entries of a Failures/Do not redo section: a leading "- " or "* " marker is dropped (a literal --flag keeps its dashes) and indented lines continue the entry above."""
+    items = []
+    for raw in text.splitlines():
+        line = re.sub(r'^[-*](?:\s+|$)', '', raw.strip())
+        if not line: continue
+        if raw[:1] in ' \t' and items: items[-1] += ' ' + line
+        else: items.append(line)
+    return items
+
+
 def pr_notes(root, task_id=None, link=True):
     """A PR-description block from one task: goal, explicit decisions, tried-and-rejected approaches, acceptance criteria, checks, open items."""
     task_id = task_id or sole_local_claim(root) or (current_task(root)[0] or {}).get('id')
@@ -1260,7 +1271,7 @@ def pr_notes(root, task_id=None, link=True):
         elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
         elif line and decisions and raw[:1] in ' \t':  # an indented line continues the previous Decision/Reason
             decisions[-1] += ' ' + line
-    rejected = [f'- {l.strip().lstrip("-*").strip()}' for n in ('Failures', 'Do not redo') for l in body(n).splitlines() if l.strip().lstrip('-*').strip()]
+    rejected = [f'- {item}' for n in ('Failures', 'Do not redo') for item in _list_items(body(n))]
     if len(rejected) > 8: rejected[8:] = [f'(+{len(rejected) - 8} more in the task)']  # keep the PR body short
     title = (re.search(r'^# (.+)$', text, re.M) or [None, task_id])[1].strip()
     parts = [f'### {title}' + ('' if title == task_id else f' ({task_id})')]
@@ -2780,7 +2791,7 @@ def recap(root, since='7d'):
         # Captured blocks (also unterminated ones) are unverified guesses; placeholders and bullets are dropped as in pr_notes.
         explicit = lambda name: re.sub(r'<!-- ws:captured:.*\Z', '', re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections'][name], flags=re.S), flags=re.S)
         handoff = explicit('Handoff')
-        rejected = [l.strip().lstrip('-*').strip() for n in ('Failures', 'Do not redo') for l in explicit(n).splitlines()]
+        rejected = [item for n in ('Failures', 'Do not redo') for item in _list_items(explicit(n))]
         rejected = [r for r in rejected if r and r.lower().rstrip('.') not in ('none', 'none yet')]
         tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
                       'decisions': [l.strip()[9:].strip() for l in handoff.splitlines() if l.strip().startswith('Decision:')],
