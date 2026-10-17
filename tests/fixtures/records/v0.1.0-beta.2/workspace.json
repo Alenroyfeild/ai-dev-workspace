@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "kit_version": "0.1.0-beta.2",
+  "content_version": "8a24895584e6d986546cc49abc26d3a49c3183d64d3450649a9a5f8b816305a0",
+  "upgrade_pending": [],
+  "name": "ws",
+  "vault": "vault",
+  "packs": [],
+  "repos": [
+    "__REPO__"
+  ],
+  "created": "2026-10-16T17:09:17+00:00"
+}

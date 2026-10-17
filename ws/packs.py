@@ -79,7 +79,14 @@ def remove(root, name):
     with core.lock(root):
         cfg = core.config(root)
         entry = cfg.get('local_packs', {}).get(name)
-        if entry is None: raise core.WsError(f'No private pack {name}. Check workspace.json; ws pack remove supports private packs.')
+        if entry is None and name in cfg['packs'] and not (core.KIT / 'packs' / name / 'vault').exists():
+            # A built-in pack with no vault files (guards): drop its rules and config entry, nothing else to delete.
+            path = safe(root, 'AGENTS.md'); text = path.read_text(); rules = core.pack_rules('', name).strip(); kept = []
+            if rules and rules in text: core.atomic_write(path, text.replace(rules, '', 1).rstrip('\n') + '\n')
+            elif rules: kept.append('AGENTS.md')
+            cfg['packs'].remove(name); core.atomic_write(safe(root, 'workspace.json'), json.dumps(cfg, indent=2) + '\n')
+            return {'pack': name, 'removed': True, 'kept': kept, 'next': ['run ws start again in each connected repo to apply the change'] if name == 'guards' else []}
+        if entry is None: raise core.WsError(f'No private pack {name}. Check workspace.json; ws pack remove supports private packs and built-in packs without vault files.')
         paths = {p: safe(root, p) for p in [*entry['files'], 'AGENTS.md', 'workspace.json']}
         kept = []
         for relative, digest in entry['files'].items():

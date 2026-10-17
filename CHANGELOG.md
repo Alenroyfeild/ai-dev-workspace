@@ -15,17 +15,23 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
 - `ws pr-notes` prints the task's saved decisions, reasons, tried-and-rejected approaches, acceptance criteria and checks as a pull request description, so reviewers see why the code changed. Example: `gh pr create --body "$(ws pr-notes)"`.
-- `ws recap` lists the tasks you changed this week with their decisions and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
+- `ws recap` lists the tasks you changed this week with their decisions, tried-and-rejected approaches and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
 - Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
 - Team notes can show a chosen author alias and short label, so teammates can recognize who shared them.
 - `ws audit` scores a repo's AI assistant setup (instructions and their size, broken file references, memory, hooks, MCP server count, stale tasks) and lists the top 3 fixes. Read-only and offline; the text output is safe to paste.
+- Opt-in `guards` pack: `ws pack add guards`, then `ws start` again in your repo. Claude Code and Codex are then stopped before `rm -rf` on your home or the filesystem root, `git reset --hard`, force push, `git clean -f`, commands or file edits containing what looks like a secret, and edits that newly skip or narrow tests. Start the assistant with `WS_GUARDS=off` to turn it off for one session; `ws pack remove guards` and `ws start` remove the hook.
+- Opt-in `guards` pack: `ws pack add guards`, then `ws start` again in your repo. Claude Code and Codex are then stopped (Windows PowerShell commands included) before `rm -rf` or `Remove-Item -Recurse -Force` on your home or the filesystem root, `git reset --hard`, force push, `git clean -f`, commands or file edits containing what looks like a secret, and edits that newly skip or narrow tests. Start the assistant with `WS_GUARDS=off` to turn it off for one session; `ws pack remove guards` and `ws start` remove the hook.
+- Opt-in `discipline` pack (advisory, never blocks): after the same shell command fails 3 times in a session (on Codex, which sends no exit code: returns the same output 3 times), the assistant is told to stop retrying, form one hypothesis and save the dead end with `--note "Do not redo=…"`. `ws pack add discipline`, then `ws start` again in your repo.
 
 ### Improved
 - A confirmation prompt with no input (for example when an assistant runs `ws sync` or `ws know add --team` without `--yes`) now stops with "No confirmation; use --yes or --dry-run." instead of a Python traceback, and repeating `ws know add`, `ws remember` or `ws lesson add` with `--team` after declining reuses the saved record instead of creating a duplicate.
+- The brief now carries dead ends: approaches saved as "Do not redo" or "Failures" in the task appear on one line, so the next session in any assistant skips them. `/handoff` asks for them.
 - Each session starts lighter: the MCP server lists 7 core memory tools by default instead of 28, about 1,360 fewer tokens of tool descriptions per session. Set `"mcp_tools": "all"` in workspace.json to list everything; other tools still work when called by name.
 - Decisions you state in chat (not only corrections) are now saved by the assistant with `remember`, so they reach the next session as saved decisions rather than unverified captures. In a repo set up earlier, run `ws start` again to pick up the new instruction; saved memory is kept.
 - After an upgrade, run `ws start` again in your repo: it refreshes the setup files it wrote (instructions, hooks, MCP config) for the new version, after showing them and asking. Files you edited are left alone and reported; saved memory is kept.
 - The first-run preview is shorter: it lists the files to be created and asks once before setup.
+- The session brief now says when a file named in the saved next action or decisions was deleted or renamed since the checkpoint (`gone since: export.py (now publish.py)`), including deletions not yet committed, so the next session does not chase a file that is no longer there.
+- The brief also warns when uncommitted edits that existed at the last checkpoint are gone (`uncommitted edits gone: export.py (stashed or reset?)`), so a session does not build on work that was stashed or reset away.
 
 ### Fixed
 - Source builds and installed CLI/MCP entry points work from the packaged kit, including builds through pip.
@@ -33,6 +39,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 
 ### Known limits
+- The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
 
