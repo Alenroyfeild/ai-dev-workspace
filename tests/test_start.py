@@ -127,6 +127,56 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 0)
         self.assertIn(b'remember', (self.repo / 'AGENTS.override.md').read_bytes())
 
+    def test_claude_permissions_edit_does_not_freeze_hooks_and_undo_start_rewires(self):
+        """Audit blocker: Claude Code writes `permissions` into settings.local.json; ws must merge, not give up."""
+        self.assertEqual(self.start('--yes')[0], 0)
+        settings = self.repo / '.claude/settings.local.json'
+        data = json.loads(settings.read_text()); data['permissions'] = {'allow': ['Bash(ls)']}
+        data['hooks'].setdefault('SessionStart', []).append({'hooks': [{'type': 'command', 'command': 'echo mine'}]})
+        settings.write_text(json.dumps(data))
+        core.pack_add(core.find_root(self.repo), 'guards')
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0, err); self.assertNotIn('Kept your edits', err)
+        data = json.loads(settings.read_text())
+        self.assertIn('PreToolUse', data['hooks']); self.assertEqual(data['permissions'], {'allow': ['Bash(ls)']})
+        commands = [h['command'] for e in data['hooks']['SessionStart'] for h in e['hooks']]
+        self.assertEqual(commands.count('echo mine'), 1); self.assertEqual(len(commands), 2)  # one ws hook, not duplicated
+        state = json.loads((self.repo / '.ws-start.json').read_text())
+        self.assertEqual(state['files']['.claude/settings.local.json']['sha'], hashlib.sha256(settings.read_bytes()).hexdigest())
+        self.assertEqual(self.start('--yes')[1].count('Already'), 1)  # settled: nothing left pending
+        self.assertEqual(self.start('--undo')[0], 0)
+        data = json.loads(settings.read_text())
+        self.assertEqual(data, {'permissions': {'allow': ['Bash(ls)']}, 'hooks': {'SessionStart': [{'hooks': [{'type': 'command', 'command': 'echo mine'}]}]}})
+        for name in ('CLAUDE.local.md', 'AGENTS.override.md', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.ws-start.json'):
+            self.assertFalse((self.repo / name).exists(), name)
+        exclude = (self.repo / '.git/info/exclude').read_text()
+        self.assertNotIn('ws:start', exclude)
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0, err)
+        for name in ('CLAUDE.local.md', 'AGENTS.override.md', '.codex/hooks.json', '.mcp.json', '.codex/config.toml'):
+            self.assertTrue((self.repo / name).is_file(), name)
+        self.assertIn('PreToolUse', json.loads(settings.read_text())['hooks'])
+        self.assertEqual((self.repo / '.git/info/exclude').read_text().count('# ws:start:'), 1)
+
+    def test_refresh_and_undo_keep_other_mcp_servers_and_delete_ws_only_files(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        mcp = self.repo / '.mcp.json'
+        data = json.loads(mcp.read_text()); data['mcpServers']['other'] = {'command': 'x'}; mcp.write_text(json.dumps(data))
+        self.age_setup('CLAUDE.local.md', b'old instruction\n')
+        self.assertEqual(self.start('--yes')[0], 0)
+        servers = json.loads(mcp.read_text())['mcpServers']
+        self.assertEqual(sorted(servers), ['ai-dev-workspace', 'other'])
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(json.loads(mcp.read_text()), {'mcpServers': {'other': {'command': 'x'}}})
+
+    def test_undo_deletes_edited_ws_created_json_when_only_ws_entries_remain(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        hooks = self.repo / '.codex/hooks.json'
+        data = json.loads(hooks.read_text()); data['note'] = 'x'; hooks.write_text(json.dumps(data))
+        data.pop('note'); hooks.write_text(json.dumps(data, indent=4))  # reformatted, same content: sha differs
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertFalse(hooks.exists())
+
     def test_rerun_with_an_older_kit_never_downgrades_newer_setup(self):
         self.assertEqual(self.start('--yes')[0], 0)
         self.age_setup('CLAUDE.local.md', b'newer instruction\n')
@@ -287,6 +337,17 @@ class StartTests(unittest.TestCase):
         local = self.repo / 'CLAUDE.local.md'; local.write_text('User changed this file\n')
         self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_text(), 'User changed this file\n')
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_start_after_undo_that_kept_a_file_never_reports_already_set_up(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        (self.repo / 'CLAUDE.local.md').write_text('User changed this file\n')
+        self.assertEqual(self.start('--undo')[0], 2)
+        code, out, err = self.start('--yes')
+        self.assertNotEqual(code, 0); self.assertIn('incomplete', err)
+        (self.repo / 'CLAUDE.local.md').unlink()
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual((self.repo / '.git/info/exclude').read_text().count('# ws:start:'), 1)
 
     def test_interrupted_setup_reports_partial_and_can_be_undone(self):
         with mock.patch('ws.repo.record_file', side_effect=OSError('fixture interrupted write')):

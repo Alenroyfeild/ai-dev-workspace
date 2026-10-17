@@ -33,7 +33,7 @@ def record_file(repo, state, name, data):
     target = path(repo, name)
     previous = target.read_bytes() if target.exists() else None
     entry = state['files'].get(name)
-    if entry and hashlib.sha256(previous or b'').hexdigest() != entry['sha']:
+    if entry and name not in JSON_FILES and hashlib.sha256(previous or b'').hexdigest() != entry['sha']:  # JSON files are merged from their current bytes
         raise core.WsError('Local file changed; review it before ws start: ' + name)
     if entry is None:
         entry = dict(before=base64.b64encode(previous).decode() if previous is not None else None)
@@ -81,14 +81,22 @@ def undo(repo, state):
         target = path(repo, name)
         old = base64.b64decode(entry['before']) if entry['before'] is not None else None
         current = target.read_bytes() if target.exists() else None
+        if name in JSON_FILES and current is not None:  # the sha cannot tell: refresh records merged bytes, so always take out only ws's entries
+            rest = stripped(name, current)
+            if rest is None: kept.append(name); continue
+            if old is None and _ws_only(rest): target.unlink(missing_ok=True)
+            elif old is not None and rest == stripped(name, old): core.atomic_write(target, old)  # no user additions: byte-exact restore
+            else: core.atomic_write(target, (json.dumps(rest, indent=2) + '\n').encode())
+            del state['files'][name]; continue
         if (current is None and old is not None) or (current is not None and current != old and hashlib.sha256(current).hexdigest() != entry['sha']):
             kept.append(name); continue
         if old is None: target.unlink(missing_ok=True)
         else: core.atomic_write(target, old)
         del state['files'][name]
     if kept:
+        state['complete'] = False  # the files undo removed are gone: a later ws start must not say "Already set up"
         core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
-        print('Kept edited local files: ' + ', '.join(kept), file=sys.stderr)
+        print('Kept edited local files: ' + ', '.join(kept) + '; restore or delete them, then run ws start --undo again.', file=sys.stderr)
     else:
         if exclude.exists(): core.atomic_write(exclude, exclude.read_bytes().replace(block, b'', 1))
         path(repo, LINK).unlink()
@@ -138,21 +146,72 @@ def _strings(node):
 HOOK_COMMANDS = {'brief', 'nudge', 'paste', 'guard', 'discipline'}
 
 
-def _missing_in_hook(command, root):
-    """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
-    if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return ''
+def _ws_hook_parts(command):
+    """argv of a hook command ws wrote (<python> <kit>/bin/ws[-plugin] --workspace-root <root> ... <hook subcommand>), else None; a user's own hook is never matched."""
+    if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return None
     try:
         parts = shlex.split(command, posix=not core.WINDOWS)  # posix splitting eats the backslashes of Windows paths
         if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
         if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
-        if '--workspace-root' not in parts: return ''
-        interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
-        # Only commands ws wrote: <python> <kit>/bin/ws[-plugin] ... <hook subcommand>; a user's own hook is never judged.
-        if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return ''
-    except (ValueError, IndexError): return ''
+        if '--workspace-root' not in parts: return None
+        kit = parts[1]
+        if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return None
+    except (ValueError, IndexError): return None
+    return parts
+
+
+def _missing_in_hook(command, root):
+    """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
+    parts = _ws_hook_parts(command)
+    if not parts: return ''
+    interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
     for item in (interpreter, kit):
         if not Path(item).exists() and not shutil.which(item): return item
     return '' if Path(workspace).resolve() == Path(root).resolve() else workspace  # resolve: /private symlinks on macOS
+
+
+JSON_FILES = HOOK_FILES + ('.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json')  # merged into, so ws owns only its entries
+MCP_KEYS = {n: k for n, k in core.MCP_LOCATIONS.values()}
+
+
+def _is_ws_hook(hook):
+    return isinstance(hook, dict) and isinstance(hook.get('command'), str) and _ws_hook_parts(hook['command']) is not None
+
+
+def _user_entries(entries):
+    """Hook entries without ws's own hooks; an entry that mixed ws and user hooks keeps the user's."""
+    out = []
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get('hooks'), list):
+            inner = [h for h in entry['hooks'] if not _is_ws_hook(h)]
+            if len(inner) != len(entry['hooks']):
+                if inner: out.append({**entry, 'hooks': inner})
+                continue
+        elif _is_ws_hook(entry): continue
+        out.append(entry)
+    return out
+
+
+def stripped(name, raw):
+    """The JSON file's data without the hooks and MCP server ws wrote (user keys stay); None if it is not a JSON object."""
+    try: data = json.loads(raw)
+    except ValueError: return None
+    if not isinstance(data, dict): return None
+    hooks = data.get('hooks')
+    if isinstance(hooks, dict):
+        for event in list(hooks):
+            if isinstance(hooks[event], list): hooks[event] = _user_entries(hooks[event])
+            if not hooks[event]: del hooks[event]
+        if not hooks: del data['hooks']
+    servers = data.get(MCP_KEYS.get(name))
+    if isinstance(servers, dict):
+        servers.pop('ai-dev-workspace', None)
+        if not servers: del data[MCP_KEYS[name]]
+    return data
+
+
+def _ws_only(data):
+    return not [k for k in data if k != 'version']  # cursor's hooks.json carries a version key ws adds
 
 
 def _stale_here(root, repo):
@@ -293,6 +352,9 @@ def starter(repo, root):
 def refresh(repo, root, state, yes, dry_run, keep=()):
     """Rewrite ws-written files still unchanged since ws wrote them, for this kit version; user edits stop it earlier."""
     def before(name):
+        if name in JSON_FILES and path(repo, name).is_file():  # rebuild from the current file minus ws's entries, so user keys survive
+            data = stripped(name, path(repo, name).read_bytes())
+            if data is not None: return json.dumps(data).encode()
         entry = state['files'].get(name)
         return base64.b64decode(entry['before']) if entry and entry.get('before') else None
     desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before)
@@ -330,7 +392,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         task = branch_task(root, repo, current)
         if not core.task_path(root, task).exists(): task = ''
         incomplete = state.get('complete') is False or any(not path(repo, n).is_file() for n in state['files'])
-        edited = [n for n, e in state['files'].items() if path(repo, n).is_file() and hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha']]
+        edited = [n for n, e in state['files'].items() if path(repo, n).is_file() and hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha']
+                  and not (n in JSON_FILES and stripped(n, path(repo, n).read_bytes()) is not None)]  # valid JSON is merged, not kept
         partial = incomplete or bool(edited)
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
