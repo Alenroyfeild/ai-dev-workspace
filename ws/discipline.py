@@ -18,12 +18,18 @@ def failed(payload):
     if payload.get('hook_event_name') == 'PostToolUseFailure':  # Claude: the error starts with "Exit code N"
         match = re.match(r'\s*Exit code (\d+)', str(payload.get('error', '')))
         return bool(match) and match[1] != '0'
+    code = exit_code(payload)
+    return code not in (None, 0)
+
+
+def exit_code(payload):
+    """The exit code a PostToolUse response states (dict field or wording), else None."""
     response = payload.get('tool_response')
     code = response.get('exit_code', response.get('exitCode')) if isinstance(response, dict) else None
     if code is None:  # ponytail: Codex sends a plain string; the exit-code wording is matched loosely until a live check pins it
         match = re.search(r'(?i)\bexit(?:ed with)?(?: code|_code)\b\W{0,3}(-?\d+)', str(response)[:2000])
-        code = int(match[1]) if match else 0
-    return isinstance(code, int) and code != 0
+        code = int(match[1]) if match else None
+    return code if isinstance(code, int) else None
 
 
 def hook(root, payload):
@@ -35,7 +41,7 @@ def hook(root, payload):
     except ValueError: tokens = command.strip()
     nudge, extra = NUDGE, ''
     if not failed(payload):
-        if payload.get('hook_event_name') != 'PostToolUse': return {}
+        if payload.get('hook_event_name') != 'PostToolUse' or exit_code(payload) is not None: return {}  # an explicit status (0) is not a repeat failure
         response = payload.get('tool_response')  # Codex: bare output, so count identical command + output instead
         nudge, extra = REPEAT, (json.dumps(response, sort_keys=True) if isinstance(response, dict) else str(response)).rstrip()
         if not extra or extra in ('{}', 'None'): return {}  # silent commands (git add, mkdir -p) repeat legitimately
