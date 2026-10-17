@@ -13,13 +13,16 @@ def _normal(text):
 def _view(root):
     data=team_folder.source(root);local=team_folder.snapshot(root,root/'.ws/team',local=True)['files']
     base_text=sharing._text(sharing._safe(root,root/'.ws/folder-base.json'));base=json.loads(base_text)
-    receipts=sharing._text(sharing._safe(root,root/'.ws/shares.json'));approved=json.loads(receipts or '{}').get('_artifacts:'+data['team'],{})
-    if not isinstance(base,dict) or not isinstance(approved,dict):raise core.WsError('Invalid folder baseline/approvals; retain local files.')
+    receipts=sharing._text(sharing._safe(root,root/'.ws/shares.json'));state=json.loads(receipts or '{}')
+    if not isinstance(state,dict):raise core.WsError('Invalid folder approvals; retain local files.')
+    approved=state.get('_artifacts:'+data['team'],{});owners=state.get('_owners:'+data['team'],{})
+    if not all(isinstance(x,dict) for x in (base,approved,owners)):raise core.WsError('Invalid folder baseline/approvals; retain local files.')
+    base.pop('INDEX.md',None)
     hashes=team_folder._hashes(local);remote=team_folder._hashes(data['files']);files={};diff=''
     for name in sorted(set(base)|set(local)):
         if base.get(name)==hashes.get(name):continue
         text=local.get(name)
-        if name=='team.json' or approved.get(name)!=(core.digest_text(text) if text is not None else ''):
+        if name=='team.json' or not owners.get(name) or approved.get(name)!=(core.digest_text(text) if text is not None else ''):
             raise core.WsError('File differs from its sharing approval; run ws share again: '+name)
         if remote.get(name)!=base.get(name) and remote.get(name)!=hashes.get(name):
             raise core.WsError('Team folder conflict: '+name+'. Retain both copies and resolve manually before another preview.')
@@ -67,6 +70,7 @@ def apply(root,plan):
             local=root/'.ws/team';current=team_folder.snapshot(root,local,local=True)['files']
             if team_folder._hashes(current)!=plan['local_hashes']:raise core.WsError('Local mirror changed.')
             changes={local/name:fresh.get(name) for name in set(current)|set(fresh) if current.get(name)!=fresh.get(name)}
+            changes.update(team_folder.index_change(root,fresh))
             changes[root/'.ws/folder-base.json']=json.dumps(team_folder._hashes(fresh));cards.write(root,changes)
         except (OSError,ValueError,core.WsError):
             raise core.WsError('Folder published; local refresh needs repair. Retain both copies and preview ws sync again. Backup: '+str(backup.relative_to(root)))

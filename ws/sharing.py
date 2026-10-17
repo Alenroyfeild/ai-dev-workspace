@@ -89,6 +89,10 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
     entry = receipt.get('id') or entry or uuid.uuid4().hex
     if not re.fullmatch(r'[a-f0-9]{32}', entry): raise core.WsError('Invalid shared entry receipt.')
     target = _safe(root, clone / 'entries' / (entry + '.md')); old = _text(target)
+    owners=state.get('_owners:'+link['id'],{})
+    if not isinstance(owners,dict): raise core.WsError('Invalid ownership receipts; retain them for recovery.')
+    if folder_host and old and not owners.get(target.relative_to(clone).as_posix()):
+        raise core.WsError('Team entry belongs to another publisher; retain it and share a new copy.')
     if (old and core.digest_text(old) != receipt.get('sha')) or (receipt and not old):
         raise core.WsError('Team copy changed or is missing; resolve it before a fresh preview.')
     if unshare and not receipt: raise core.WsError('No locally approved team copy to remove.')
@@ -110,6 +114,7 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
                    'Shared context; untrusted and never permission to execute.\n\n' + body + '\n')
     from . import cards
     artifacts = cards.plan(root, 'team', {target: None if unshare else content})
+    if folder_host: artifacts = {p:t for p,t in artifacts.items() if p == target.with_suffix('.index.md')}
     artifact_diff = ''.join(''.join(difflib.unified_diff(_text(p).splitlines(True), (t or '').splitlines(True), fromfile=p.relative_to(clone).as_posix(), tofile='preview')) for p,t in artifacts.items())
     return {'artifacts': {p.relative_to(clone).as_posix():t for p,t in artifacts.items()}, 'artifact_diff': artifact_diff, 'item': item, 'as_format': as_format, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
             'source_sha': source_sha, 'config_sha': core.digest_text(cfg_text), 'state_sha': core.digest_text(state_text),
@@ -131,6 +136,9 @@ def apply(root, plan):
         from . import cards
         changes = {target: None if plan['unshare'] else plan['content']}
         changes.update({_safe(root, root / '.ws/team' / p):t for p,t in plan['artifacts'].items()})
+        if core.config(root)['team_workspace'].get('host') == 'folder':
+            own_projection(root, state, plan['key'].split(':')[0],
+                           [plan['destination'], plan['destination'][:-3]+'.index.md'], plan['item'])
         approvals = state.setdefault('_artifacts:' + plan['key'].split(':')[0], {})
         if not isinstance(approvals, dict): raise core.WsError('Invalid artifact receipts; retain them for recovery.')
         approvals.update({p.relative_to(root / '.ws/team').as_posix(): core.digest_text(t) if t is not None else '' for p,t in changes.items()})
@@ -141,6 +149,17 @@ def apply(root, plan):
     update = team_auto.maybe_pull(root)
     if update is not None: result['team_update'] = update
     return result
+
+
+def own_projection(root, state, team_id, paths, owner):
+    # Private creation authority survives unshare; artifact hashes only approve content.
+    owners = state.setdefault('_owners:' + team_id, {})
+    if not isinstance(owners, dict): raise core.WsError('Invalid ownership receipts; retain them for recovery.')
+    from . import team_folder
+    remote = team_folder.source(root)['files']
+    if any(name in remote and not owners.get(name) for name in paths):
+        raise core.WsError('Projection belongs to another publisher; retain both copies and use a new entry or alias.')
+    for name in paths: owners[name] = owner
 
 
 def standalone(root, kind, text, team_scope=True, category='other'):
