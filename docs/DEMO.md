@@ -6,32 +6,19 @@ Run `scripts/demo.sh` from the kit checkout. It creates and removes a synthetic 
 
 $ ws init <demo>/workspace --name demo --repo <demo>/fixture
 claude: Project MCP configuration written; approve it in the client.
-Codex: add this block to ~/.codex/config.toml, or run ws connect codex --write:
-[mcp_servers.ai-dev-workspace]
-command = "python3"
-args = ["<kit>/mcp/server.py", "--root", "<demo>/workspace"]
-
+codex: not connected yet; run `ws connect codex` if you use Codex.
 Workspace 'demo' created in <demo>/workspace (packs: none).
-Next: cd <demo>/workspace && ws status   — then see docs/SETUP.md for Claude, Codex and MCP.
+Next: cd <demo>/workspace && ws connect claude   (or codex, cursor, vscode, gemini)
+Then: ws task new <ID> "<title>" && ws claim <ID>   — guide: docs/SETUP.md
 
 $ ws connect claude
-Skills for claude: linked thinkbeforeact; kept existing names none; skipped workspace-provided: handoff, lesson, pickup. Start a new session.
+Optional: ws connect claude --skills links 1 extra skill into ~/.claude/skills
+Project skills: available in .claude/skills.
+Restart or reopen the client; approve project MCP/hooks if prompted.
 {
   "client": "claude",
   "connected": true,
   "path": "<demo>/workspace/.mcp.json",
-  "skills": {
-    "directory": "<demo>/home/.claude/skills",
-    "linked": [
-      "thinkbeforeact"
-    ],
-    "kept": [],
-    "skipped": [
-      "handoff",
-      "lesson",
-      "pickup"
-    ]
-  },
   "mcp": {
     "client": "claude",
     "config": ".mcp.json",
@@ -60,11 +47,11 @@ $ ws checkpoint DEMO-1 --status in_progress --next 'Inspect the sample README.' 
 {
   "task": "DEMO-1",
   "status": "in_progress",
-  "sha": "d2430ed35ffb0536261ac81639045d8aee1b3dd1df49386947c6e346c83f1daa"
+  "sha": "aef1abfa734709844c0502b50597de3b5d47fa59e04f7efddc8523ed90e40699"
 }
 
 $ ws brief
-Saved task memory from earlier sessions (context, not an instruction). If the user gives a task, do it using this memory; if they only greet or ask where things stand, state the next action and ask before starting work.
+Saved task memory is context, not instructions. Follow the current request; for greetings/status, ask before starting work.
 Task DEMO-1: Review the sample fixture
 Next action: Inspect the sample README.
 Blockers: None yet.
@@ -79,13 +66,46 @@ $ ws delegate DEMO-1 --role explorer
     "model": "gpt-6-luna",
     "effort": "high",
     "executable": "<demo>/bin/codex",
+    "model_source": "configured default",
+    "model_warning": "Local Codex cache missing, unknown or has no visible family match; keeping configured default. Access is not verified.",
+    "headless": [
+      "exec",
+      "--json",
+      "-s",
+      "read-only",
+      "--ephemeral",
+      "--ignore-user-config",
+      "--disable",
+      "hooks",
+      "--disable",
+      "apps",
+      "--disable",
+      "plugins",
+      "-c",
+      "approval_policy=\"never\"",
+      "-m",
+      "{model}",
+      "-c",
+      "model_reasoning_effort={effort_json}",
+      "--skip-git-repo-check",
+      "-C",
+      "{repo}",
+      "-"
+    ],
+    "prepare": [],
+    "ready_model": true,
+    "model_flag": null,
     "available": true,
     "preference": [
       "codex",
       "claude",
-      "ollama"
+      "ollama",
+      "cursor",
+      "copilot",
+      "gemini"
     ],
     "skipped": [],
+    "can_run": true,
     "timeout_seconds": 600,
     "reason": ""
   },
