@@ -667,11 +667,20 @@ def client_connected(root, client, global_only=False):
     locations = MCP_LOCATIONS
     path, key = (root / locations[client][0], locations[client][1]) if client in locations else (None, None)
     if path is None: return False
-    try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-        return data.get(key, {}).get('ai-dev-workspace') == mcp_command(root)
-    except (OSError, ValueError, AttributeError):
-        return False
+    def has_entry(file):
+        try: return json.loads(file.read_text(encoding='utf-8')).get(key, {}).get('ai-dev-workspace') == mcp_command(root)
+        except (OSError, ValueError, AttributeError): return False
+    if has_entry(path): return True
+    if client != 'claude' or global_only: return False
+    from . import repo  # `ws start` writes Claude's files into the repo, not the private workspace
+    try: repos = read_roots(root)[1:]
+    except WsError: return False
+    for checkout in repos:
+        try: state = repo.load(checkout); files = state['files']
+        except (OSError, ValueError, WsError): continue
+        if state.get('plugin') is True: return True  # Claude Code plugin mode: the plugin brings the MCP server
+        if {'.mcp.json', '.claude/settings.local.json'} <= set(files) and has_entry(checkout / '.mcp.json'): return True
+    return False
 
 
 def skills_to_link(client, root):
@@ -791,7 +800,7 @@ def _connect_config(root, client, write=False):
     locations = MCP_LOCATIONS
     relative, key = locations[client]
     path = inside(root / relative, [root])
-    if client_connected(root, client):
+    if client_connected(root, client, global_only=True):
         return {'client': client, 'connected': True, 'path': str(path)}
     data = {key: {}}
     if path.exists():
@@ -2645,6 +2654,7 @@ def doctor(root=None, mcp=False):
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
+        report['upgrade_due'] = upgrade_due(root)
         report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
         team = _team_checks(root)
         if team is not None: report['team'] = team
@@ -2684,6 +2694,13 @@ def doctor(root=None, mcp=False):
 
 def kit_meta():
     return json.loads((KIT / 'kit.json').read_text(encoding='utf-8'))
+
+
+def upgrade_due(root):
+    """Kit is newer than the workspace, or .ws-new proposals await review (shared by ws assist and ws doctor)."""
+    cfg = config(root)
+    pending = cfg.get('upgrade_pending') or any(p.is_file() for p in root.rglob('*.ws-new*'))
+    return bool(_vtuple(kit_meta()['version']) > _vtuple(cfg.get('kit_version', '0')) or pending)
 
 
 def _vtuple(v):

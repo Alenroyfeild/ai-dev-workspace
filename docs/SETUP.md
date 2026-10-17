@@ -1,6 +1,6 @@
 # Setup guide
 
-Every step after 2 is optional. `ws doctor` tells you what is missing and how to install it.
+Every step after 2 is optional. `ws doctor` tells you what is missing and how to install it: a short text summary in a terminal, JSON when piped or with `--json`.
 
 ## 1. Install the kit
 
@@ -102,6 +102,13 @@ The model only sees the deterministic digest, and its answer is checked against 
 The GitHub release workflow publishes GitHub release notes only. For a PyPI release, build `dist/` from the release tag with `python3 setup.py sdist bdist_wheel`, then upload those artifacts using the maintainer's configured PyPI publishing tool. Keep publishing credentials outside the repository; maintainers handle the upload.
 
 The assistant can check `ws notices` at session start. `ws tools` lists optional tools; nothing installs automatically. `ws assist` offers local workspace suggestions and asks before applying. Optional routing, tool profiles and cost controls are in [Advanced settings](ADVANCED.md).
+
+## Upgrading
+
+1. `pipx upgrade ai-dev-workspace` (or `pip install -U ai-dev-workspace` in a venv install).
+2. `ws upgrade` in the workspace; `ws upgrade --dry-run` previews it.
+3. `ws start` in each repo to refresh its hooks.
+4. `ws doctor` to confirm; it says `Next: ws upgrade` while the workspace is older than the kit.
 
 ## Daily loop
 

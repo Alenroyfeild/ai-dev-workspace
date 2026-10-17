@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -5,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -76,6 +79,40 @@ class CliPolishTests(unittest.TestCase):
             self.assertIn('Core:', doctor_text.stdout)
             route_text = self.run_ws('route', '--text', env=env)
             self.assertIn('Role:', route_text.stdout)
+
+    def test_doctor_verdict_json_flag_and_empty_preset_parentheses(self):
+        from ws import cli
+        good = {'core': {'python3': True, 'git': True}, 'workspace': '/w', 'valid': True,
+                'setup': {'preset': 'not selected', 'assistants': []}, 'configured_clients': {'claude': True, 'codex': True, 'cursor': False}}
+        lines = cli.text_doctor(good).splitlines()
+        self.assertEqual(lines[0], 'OK: workspace valid; Claude connected; Codex connected')
+        self.assertIn('Setup preset: not selected', lines); self.assertNotIn('()', '\n'.join(lines))
+        bad = cli.text_doctor(dict(good, configured_clients={'claude': False})).splitlines()[0]
+        self.assertTrue(bad.startswith('Needs attention: no assistant connected'), bad); self.assertIn('ws start', bad)
+        self.assertTrue(cli.text_doctor(dict(good, valid=False)).startswith('Needs attention: workspace invalid'))
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / 'home'; home.mkdir(); workspace = Path(temporary) / 'workspace'
+            env = dict(os.environ, HOME=str(home), USER='demo', WS_ROOT=str(workspace))
+            self.assertEqual(self.run_ws('init', str(workspace), '--name', 'v', env=env).returncode, 0)
+            with mock.patch.object(cli, 'human', return_value=True), contextlib.redirect_stdout(io.StringIO()) as stream:
+                self.assertEqual(cli.main(['--workspace-root', str(workspace), 'doctor', '--json']), 0)
+            self.assertIsInstance(json.loads(stream.getvalue()), dict)  # --json beats a terminal
+            with mock.patch.object(cli, 'human', return_value=True), contextlib.redirect_stdout(io.StringIO()) as stream:
+                cli.main(['--workspace-root', str(workspace), 'doctor'])
+            self.assertTrue(stream.getvalue().startswith(('OK:', 'Needs attention:')), stream.getvalue()[:80])  # terminal default is text
+
+    def test_doctor_verdict_asks_for_ws_upgrade_when_workspace_is_older(self):
+        from ws import cli, core
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / 'workspace'
+            env = dict(os.environ, HOME=temporary)
+            self.assertEqual(self.run_ws('init', str(workspace), '--name', 'u', env=env).returncode, 0)
+            self.assertFalse(core.doctor(workspace)['upgrade_due'])
+            cfg = core.config(workspace); cfg['kit_version'] = '0.0.1'
+            (workspace / 'workspace.json').write_text(json.dumps(cfg))
+            report = core.doctor(workspace)
+            self.assertTrue(report['upgrade_due'])
+            self.assertTrue(cli.text_doctor(report).startswith('Needs attention: workspace was written by an older kit. Next: ws upgrade --dry-run'))
 
     def test_ws_error_includes_next_command(self):
         with tempfile.TemporaryDirectory() as temporary:
