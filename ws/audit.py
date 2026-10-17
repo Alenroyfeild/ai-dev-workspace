@@ -10,6 +10,7 @@ from . import core
 INSTRUCTIONS = ('CLAUDE.md', 'AGENTS.md', '.github/copilot-instructions.md', 'GEMINI.md')
 BIG = 2000  # words loaded into every session before the user types anything
 MCP_SERVERS = 5
+EXTENSIONLESS = {'Makefile', 'Dockerfile', 'Justfile', 'Procfile', 'Gemfile', 'Rakefile', 'Brewfile', 'Vagrantfile', 'LICENSE', 'CODEOWNERS'}  # @Name is a person otherwise
 STALE_DAYS = 14
 
 
@@ -26,7 +27,7 @@ def _refs(text):
     """Files an instruction file points at: @imports, Markdown links and backticked relative paths."""
     imports = [r.rstrip('.') for r in re.findall(r'(?m)(?:^|\s)@([\w.-]+(?:/[\w.-]+)*)', text)]
     # @AGENTS.md is a file import; @openai/agents (no extension, with a slash) is a package name; @Makefile (capitalised, no slash) is a file.
-    found = ([r for r in imports if re.search(r'\.\w{1,8}$', r) or re.fullmatch(r'[A-Z][\w-]*', r)] + re.findall(r'\]\(([^)#\s]+)', text)
+    found = ([r for r in imports if re.search(r'\.\w{1,8}$', r) or r.split('/')[-1] in EXTENSIONLESS] + re.findall(r'\]\(([^)#\s]+)', text)
              + re.findall(r'`((?:[\w.-]+/)+[\w.-]+\.\w{1,8}|[\w-]+\.(?:md|py|json|toml|ya?ml|sh|js|ts))`', text))
     return [r for r in dict.fromkeys(found) if '://' not in r and '*' not in r and not r.startswith(('mailto:', '/', '~', '$'))]
 
