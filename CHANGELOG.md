@@ -55,6 +55,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 
 ### New
 - Team previews at a terminal are a short summary (`+ category text`, destination, `[y/N]`) instead of raw JSON; `ws sync` prints a one-line pulled/published count; `ws know add` keeps a private note's `#private` text and paths as written (sharing it later still strips them) and says clearly when a `--team` note is entirely private; the team docs show the real quick-start order, the `#private`/`<private>` markers and a "rotate pushed secrets" warning.
+- Friendlier first-run errors: `ws undo`, `ws uninstall` and `ws remove` point to `ws start --undo`, "no task" errors name `ws task list` and `ws task new`, `ws checkpoint` defaults to your only claimed task like `ws remember`, and the start, checkpoint, task and lesson help show examples. `ws demo` is in the short `ws --help` list, and the tutorial has a "Remove it" section.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
 - Start with team context: a new teammate's brief shows recent product, domain and repo knowledge cards before task-specific memory exists, within the usual brief budget and labelled untrusted. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#daily-loop).

@@ -99,7 +99,7 @@ class OnboardingTests(unittest.TestCase):
         with self.home('peer'):
             plain = self.base / 'plain'
             core.init(plain, 'plain', clients=[])
-            self.assertEqual(core.brief(plain), 'No in-progress task. Find or create the task before working.')
+            self.assertTrue(core.brief(plain).startswith('No in-progress task. Find or create the task before working'))
 
     def test_hook_created_branch_task_gets_orientation_until_something_is_saved(self):
         import subprocess

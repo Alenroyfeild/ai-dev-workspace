@@ -36,7 +36,7 @@ def _block_prompt(client, reason):
     return 0
 
 
-DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
+DAILY_COMMANDS = ('demo', 'start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
@@ -248,11 +248,17 @@ def ask(prompt=''):
     except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
 
 
+UNDO_GUESSES = ('undo', 'uninstall', 'remove')  # not commands; `ws start --undo` is the way back
+
+
 class WsParser(argparse.ArgumentParser):
     """Subparsers inherit this class: a mistyped command gets a short hint, not argparse's list of every name."""
     def error(self, message):
         bad = re.search(r"invalid choice: '(.*?)' \(choose from (.*)\)$", message)
         if not bad: return super().error(message)
+        if self.prog == 'ws' and bad[1] in UNDO_GUESSES:
+            self.print_usage(sys.stderr)
+            self.exit(2, f"ws: unknown command '{bad[1]}'. To remove ws from a repo run `ws start --undo`. Run ws --help\n")
         choices = [c.strip("'") for c in bad[2].split(', ')]
         import difflib  # lazy: only for mistyped commands
         near = difflib.get_close_matches(bad[1], choices, n=3)
@@ -304,7 +310,9 @@ def main(argv=None):
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
     s.add_argument('--skills', action='store_true', help='also link the kit skills into your global ~/.claude/skills or ~/.agents/skills')
-    s = sub.add_parser('start', help='connect this repo to private memory outside the checkout')
+    s = sub.add_parser('start', help='connect this repo to private memory outside the checkout', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       description='Connect this repo to private task memory kept outside the checkout.\nShows a preview first; nothing is written until you confirm.',
+                       epilog='Examples:\n  ws start --dry-run   preview only\n  ws start             preview, then confirm\n  ws start --undo      remove the repo wiring again')
     s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
@@ -347,7 +355,8 @@ def main(argv=None):
     choice.add_argument('--dry-run', action='store_true', help='preview only (default)')
     choice.add_argument('--apply', action='store_true', help='apply the previewed preset and project connections')
 
-    t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
+    t = sub.add_parser('task', help='task records', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws task new fix-login "Fix login redirect"\n  ws task list\n  ws task show fix-login').add_subparsers(dest='action', required=True)
     s = t.add_parser('new', help='create a task record'); s.add_argument('id', help='short ID such as JIRA-123 or fix-login'); s.add_argument('title')
     s.add_argument('--objective', default='', help='one-line goal'); s.add_argument('--branch', default='', help='Git branch the task belongs to'); s.add_argument('--repo', default='', help='repo path the task belongs to')
     t.add_parser('list', help='list tasks with status, claim and next action')
@@ -363,9 +372,11 @@ def main(argv=None):
     s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
     valid_notes = ', '.join(core.NOTE_SECTIONS)
     s = sub.add_parser('checkpoint', help='save task status and next action',
-                       description='Save task status, next action, and optional notes.',
-                       epilog='Valid note sections: ' + valid_notes)
-    s.add_argument('id', help='task ID (see ws task list)'); s.add_argument('--status', required=True, choices=core.STATUSES)
+                       description='Save task status, next action, and optional notes.', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws checkpoint --status in_progress --next "Write the migration"\n'
+                              '  ws checkpoint fix-login --status done --next "Open the PR" --note "Do not redo=Session cookies break mobile"\n\n'
+                              'Valid note sections: ' + valid_notes)
+    s.add_argument('id', nargs='?', help='task ID (default: your only claimed task; see ws task list)'); s.add_argument('--status', required=True, choices=core.STATUSES)
     s.add_argument('--next', required=True, help='exactly what the next person or AI should do')
     s.add_argument('--expected-sha', help='refuse if the task changed since you read it'); s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT', help='save text into a section, e.g. "Handoff=Decision: use Postgres"; repeatable')
@@ -393,7 +404,8 @@ def main(argv=None):
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
     s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
-    l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
+    l = sub.add_parser('lesson', help='add or search reusable lessons', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws lesson add "Mocked DB hid a bad migration; run migrations in tests" --tag testing\n  ws lesson search migration').add_subparsers(dest='action', required=True)
     s = l.add_parser('add', help='save a lesson: what happened -> rule'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[], help='topic tag; repeatable')
     s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')

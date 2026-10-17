@@ -1419,6 +1419,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     if not next_action.strip():
         raise WsError('Next action is required: say exactly what the next person or AI should do.')
     with lock(root):
+        task_id = claimed_task_id(root, task_id)
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = existing_task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
@@ -1461,6 +1462,17 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     return result
 
 
+NEW_TASK_STEP = '`ws task list` to see task IDs, or `ws task new <id> "<title>"` to create one'
+
+
+def claimed_task_id(root, task_id=None):
+    """The given task ID, else the one claimed task; the error says how to get an ID."""
+    task_id = task_id or sole_local_claim(root)
+    if not task_id:
+        raise WsError(f'No single claimed task. Run {NEW_TASK_STEP}, then `ws claim <id>` (or pass --task <id>).')
+    return task_id
+
+
 def remember(root, text, task_id=None):
     """Save one explicit decision in the task's Handoff, where the brief lists decisions (before captured blocks)."""
     if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
@@ -1470,9 +1482,7 @@ def remember(root, text, task_id=None):
     if not decision:
         raise WsError('Nothing to save: say the decision, e.g. ws remember "use Postgres, not SQLite".')
     with lock(root):
-        task_id = task_id or sole_local_claim(root)
-        if not task_id:
-            raise WsError('No single claimed task. Run `ws claim <ID>` or pass --task <ID>.')
+        task_id = claimed_task_id(root, task_id)
         path = task_path(root, task_id)
         if not path.is_file():
             raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
@@ -2063,7 +2073,7 @@ def _brief_once(root, task_id=None):
         return ['Others working: ' + ', '.join(shown)] if shown else []
     if not task:
         from . import knowledge
-        fields = [('', guard or ('No in-progress task. ' + (_branch_hint(root) or 'Find or create the task before working.')), 194)]
+        fields = [('', guard or ('No in-progress task. ' + (_branch_hint(root) or f'Find or create the task before working: {NEW_TASK_STEP}.')), 194)]
         fields += [('', line, 18) for line in others_line()]
         return _bounded_brief(fields + knowledge.onboarding_fields(root)), ''
     record = task_read(root, task['id'], ['Next action', 'Blockers'])

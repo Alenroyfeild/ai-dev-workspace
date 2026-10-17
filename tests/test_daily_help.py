@@ -34,6 +34,17 @@ class DailyHelpTests(unittest.TestCase):
                 line = next(l for l in text.splitlines() if l.startswith(f'    {name} '))
                 self.assertGreater(len(line.split(None, 1)[1].strip()), 8, (group, name))
 
+    def test_start_checkpoint_task_lesson_help_show_examples(self):
+        for args, example in ((('start',), 'ws start --undo'), (('checkpoint',), 'ws checkpoint --status'),
+                              (('task',), 'ws task new'), (('lesson',), 'ws lesson add')):
+            text = ws(*args, '--help').stdout
+            self.assertIn('Examples:', text, args); self.assertIn(example, text, args)
+        self.assertIn('Valid note sections', ws('checkpoint', '--help').stdout)
+        self.assertIn('private', ws('start', '--help').stdout.split('Examples:')[0])  # has a description
+
+    def test_short_help_lists_demo(self):
+        self.assertIn('demo', ws('--help').stdout.split('Daily:')[1])
+
 
 if __name__ == '__main__':
     unittest.main()
