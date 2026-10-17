@@ -10,8 +10,16 @@ WORDS, MAX_ITEMS, ITEM_CHARS = 150, 20, 200
 CLIENTS = ('claude', 'codex', 'gemini')
 
 
+def _private(text):
+    """The same markers `ws remember` refuses: #private anywhere, or a /private first line."""
+    return bool(re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'))
+
+
 def _line(text, limit=ITEM_CHARS):
-    text = ' '.join(core.redact(str(text)).replace('<!--', '').split())
+    text = str(text)
+    if _private(text): return ''
+    text = ''.join(c for c in core.PRIVATE_RE.sub(' ', text) if c.isprintable() or c.isspace())  # no ESC/OSC/bidi/NUL
+    text = ' '.join(core.redact(text).replace('<!--', '').split())
     return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
 
 
@@ -55,6 +63,8 @@ def _claude(root):
                     continue
                 try: text = path.read_text(encoding='utf-8', errors='replace')[:20000]
                 except OSError: continue
+                if _private(text): continue
+                text = core.PRIVATE_RE.sub(' ', text)
                 head = re.match(r'---\n(.*?)\n---\n?(.*)', text, re.S)
                 meta = {k: v.strip('"\' ') for k, v in re.findall(r'^(name|description):[ \t]*(.*)$', head[1], re.M)} if head else {}
                 body = next((l for l in (head[2] if head else text).splitlines() if l.strip()), '')
@@ -80,6 +90,7 @@ def _gemini(root):
     path = Path.home() / '.gemini/GEMINI.md'
     try: text = path.read_text(encoding='utf-8', errors='replace')[:200000]
     except OSError: return []
+    text = core.PRIVATE_RE.sub(' ', text)
     found = re.search(r'^## Gemini Added Memories[ \t]*\n(.*?)(?=^## |\Z)', text, re.M | re.S)
     return [{'client': 'gemini', 'source': 'gemini:GEMINI.md', 'text': _line(l[2:])}
             for l in (found[1].splitlines() if found else []) if l.startswith('- ') and l[2:].strip()]

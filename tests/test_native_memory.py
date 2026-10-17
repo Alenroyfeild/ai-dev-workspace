@@ -86,6 +86,34 @@ class ImportTests(NativeBase):
         again = native.import_native(self.root, 'claude', yes=True)
         self.assertEqual(again['written'], []); self.assertEqual(self.handoff().count('### Imported'), 1)
 
+    def test_imported_memory_is_unverified_in_brief_and_not_saved_context(self):
+        self.memory(self.claude_dir(self.repo), 'repo-rule', 'IMPORTED_SENTINEL rule')
+        native.import_native(self.root, 'claude', yes=True)
+        text, summary = core._brief(self.root)
+        self.assertRegex(text, r'Imported context \(unverified\):.*IMPORTED_SENTINEL')
+        self.assertNotRegex(text, r'Explicit Handoff[^\n]*IMPORTED_SENTINEL')
+        self.assertNotIn('Remembered: saved context', summary)
+        core.remember(self.root, 'Decision text', 'T-1')
+        text, _ = core._brief(self.root)
+        self.assertIn('Decision text', text.split('Imported context')[0])
+
+    def test_private_markers_are_not_imported(self):
+        d = self.claude_dir(self.repo)
+        (d / 'a.md').write_text('---\nname: a\ndescription: "plan #private"\n---\nbody\n')
+        (d / 'b.md').write_text('/private\nsecret b\n')
+        (d / 'c.md').write_text('---\nname: c\ndescription: "public <private>HIDDEN_C</private> rest"\n---\n')
+        (self.home / '.gemini').mkdir()
+        (self.home / '.gemini/GEMINI.md').write_text('## Gemini Added Memories\n- keep #private\n- ok <private>HIDDEN_G</private> line\n')
+        text = json.dumps(native.collect(self.root))
+        for hidden in ('plan', 'secret b', 'HIDDEN_C', 'keep', 'HIDDEN_G'): self.assertNotIn(hidden, text)
+        self.assertIn('public', text); self.assertIn('ok', text)
+
+    def test_control_characters_are_stripped(self):
+        self.memory(self.claude_dir(self.repo), 'ctl', 'Hello \x1b[31mRED\x07 \u202eevil \x00nul')
+        native.import_native(self.root, 'claude', yes=True)
+        for bad in ('\x1b', '\x07', '\u202e', '\x00'): self.assertNotIn(bad, self.handoff())
+        self.assertIn('Hello', self.handoff())
+
     def test_word_cap_per_client_and_max_20_preview(self):
         d = self.claude_dir(self.repo)
         for n in range(30): self.memory(d, f'm{n:02d}', ' '.join(f'w{n}x{k}' for k in range(30)))
