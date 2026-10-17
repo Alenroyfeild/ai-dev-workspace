@@ -14,8 +14,8 @@ DECISION = 'Prices are integer cents'
 NEXT = 'Finish the cents conversion in price.py'
 # Tags whose records fail with the current kit: tag -> reason (the subTest is then skipped).
 KNOWN_FAILURES = {}
-# Errors the tag's own `ws validate` already reported on its own fresh workspace (not a compatibility break).
-OWN_VALIDATE_ERRORS = {'v0.1.0-beta.4': ['main.md: empty Next action']}
+# Errors the current kit still reports for a tag's records (beta.4's fresh-task error was fixed in #187).
+OWN_VALIDATE_ERRORS = {}
 
 
 class RecordCorpusTests(Base):
