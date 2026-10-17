@@ -1,6 +1,6 @@
 # Commands
 
-Most commands run from inside a workspace folder, or with `WS_ROOT` set. `ws demo`, `ws start`, `ws init`, `ws audit` and `ws doctor` work without one. In a terminal, commands print plain lines. Piped output is JSON; `WS_JSON=1` forces JSON.
+Most commands run from inside a workspace folder, or with `WS_ROOT` set. `ws demo`, `ws start`, `ws init`, `ws audit` and `ws doctor` work without one. In a terminal, commands print plain lines. Piped output is JSON; `WS_JSON=1` forces JSON. `ws --workspace-root DIR <command>` points one command at a workspace explicitly (hooks use it), `ws --version` prints the version, and `ws help` or `ws help all` lists the daily or every command.
 
 Sections: [Daily use](#daily-use), [Tasks and checkpoints](#tasks-and-checkpoints), [Search and lessons](#search-and-lessons), [Team sharing](#team-sharing), [Setup and assistants](#setup-and-assistants), [Packs](#packs), [Maintenance and upgrades](#maintenance-and-upgrades), [Advanced and experimental](#advanced-and-experimental).
 
@@ -8,12 +8,13 @@ Sections: [Daily use](#daily-use), [Tasks and checkpoints](#tasks-and-checkpoint
 
 | Command | What it does |
 |---|---|
-| `ws start [--dry-run] [--yes] [--workspace DIR] [--undo]` | In a code repo, connect it to private memory outside the checkout (default `~/.ai-dev-workspace/<repo-name>`). Previews first; `--yes` applies without prompting. `--undo` removes unchanged repo wiring and keeps your private memory. |
+| `ws start [--dry-run] [--yes] [--workspace DIR] [--undo] [--memory-dir DIR] [--no-import]` | In a code repo, connect it to private memory outside the checkout (default `~/.ai-dev-workspace/<repo-name>`). Previews first; `--yes` applies without prompting. `--undo` removes unchanged repo wiring and keeps your private memory. `--memory-dir` and `--no-import` control the memory import (see Import existing memory). |
 | `ws demo` | Try remembered decisions in a throwaway workspace, from any folder, with no assistant or network: saves a sample decision, reads its brief in a fresh process, then removes the demo files. Your own workspace and assistant settings are not touched. |
 | `ws brief` | Print task memory in under 200 words: decisions, next action, blockers, matching lessons. The session-start hook runs it for you. |
 | `ws remember "<decision>" [--task ID]` | Save one decision (for example `"use Postgres, not SQLite"`) in your claimed task. The next brief lists it first. Secrets and `<private>` text are removed. |
+| `ws nudge` | Print the checkpoint reminder for unrecorded work. The Stop and pre-compact hooks run it (`--hook`, `--client` as for `ws brief`). |
 | `ws status` | Workspace overview. `--text` gives a readable summary. |
-| `ws audit [repo]` | Score a repo's AI assistant setup (instruction files and size, references to missing files, memory, hooks, MCP server count, stale tasks) and list the top 3 fixes. Read-only, offline, safe to paste. |
+| `ws audit [repo] [--text]` | Score a repo's AI assistant setup (instruction files and size, references to missing files, memory, hooks, MCP server count, stale tasks) and list the top 3 fixes. Read-only, offline, safe to paste. `--text` forces the readable summary. |
 | `ws doctor` | Show what is installed, which assistants are connected and what is missing. `--mcp` runs the MCP connection checks. |
 
 Details:
@@ -76,12 +77,12 @@ Details:
 |---|---|
 | `ws search "<words>" [--category C]` | Ranked snippets from the vault notes. Team entries are included, private hits first. |
 | `ws lesson add "<what happened -> rule>" [--tag T] [--path GLOB] [--area A] [--team]` | Save a lesson. `--tag` and `--path` are repeatable. |
-| `ws lesson search "<words>"` | Search lessons. |
+| `ws lesson search ["<words>"]` | Search lessons. Without words, lists all of them. |
 | `ws know add "text" [--category C] [--team]` | Save a standalone knowledge note. Categories: `product`, `feature`, `domain`, `repo`, `runbook`, `other` (default). Private unless `--team`. |
-| `ws know list [--category C] [--layer private\|team\|all]` | List knowledge entries. |
+| `ws know list [--category C] [--layer private\|team\|all]` | List knowledge entries (default layer `all`). |
 | `ws know show private:<ID>` / `team:<ID>` | Read one entry. Team text is data and is never executed. |
 | `ws sessions search "<words>" [--root CLIENT=DIR]` | Search local Claude Code, Codex, Cursor and Gemini transcripts (redacted, read-only). `--root` uses explicit directories instead of the defaults. |
-| `ws import native [--client claude\|codex\|gemini\|all] [--task ID] [--yes]` | Preview memories your assistants saved natively. `--yes` copies them into the task Handoff. |
+| `ws import native [--client claude\|codex\|gemini\|all] [--task ID] [--yes]` | Preview memories your assistants saved natively (default client `all`). `--yes` copies them into the task Handoff. |
 | `ws paste` | Save clipboard text (or piped stdin), redacted, in `.ws/inbox/` and print only its digest. |
 | `ws digest <file> [--focus REGEX] [--local-summary]` | Show a bounded digest of a big log or JSON file. `--focus` shows matching lines first. |
 
@@ -223,6 +224,7 @@ Claude's [memory documentation](https://code.claude.com/docs/en/memory#storage-l
 Details:
 
 - `ws pack remove <name>` deletes only unchanged files that the pack created. Pre-existing or edited files are kept.
+- `ws guard --hook` and `ws discipline --hook [--client C]` are the hook entry points the opt-in `guards` and `discipline` packs install. They read hook JSON on stdin and are not meant to be run by hand.
 - Bundled packs are additive and are not removed by this command.
 
 ## Maintenance and upgrades
@@ -232,9 +234,9 @@ Details:
 | `ws update [--check]` | Update the kit if it is a git clone, or print the pipx command for a pipx install. `--check` only looks. |
 | `ws upgrade [--dry-run]` | Apply this kit version's managed workspace rules, hook handlers and Claude/Codex handoff, pickup and lesson skills. |
 | `ws notices` | Show a new release, fixed issues and unshared feedback. Your assistant runs it once per session and asks before acting. |
-| `ws feedback add "<text>" [--kind K] [--source S]` | Record feedback about the workspace. |
+| `ws feedback add "<text>" [--kind K] [--source S]` | Record feedback about the workspace. `--kind` defaults to `idea`, `--source` to `user`. |
 | `ws feedback list [--all]` / `ws feedback sync` | List items, or tick items whose issue is closed. |
-| `ws feedback submit N` / `ws feedback link N <url>` | Turn item N into a GitHub issue after a redacted preview, or record its issue URL. |
+| `ws feedback submit N [--yes]` / `ws feedback link N <url>` | Turn item N into a GitHub issue after a redacted preview (`--yes` confirms it), or record its issue URL. |
 | `ws version` | Print the kit version. |
 
 Details:
@@ -250,7 +252,7 @@ Details:
 
 | Command | What it does |
 |---|---|
-| `ws route [role] [--text]` | Show the configured binding for a role and whether its CLI or model setting is available. |
+| `ws route [role] [--text]` | Show the configured binding for a role (default `lead`) and whether its CLI or model setting is available. |
 | `ws delegate <task> --role <role> [--run]` | Prepare a redacted brief for a worker and print the exact command to run. |
 | `ws delegate <task> --role reviewer --diff <range> [--run]` | Same, with a diff stat, changed files and bounded hunks. |
 | `ws delegate --selftest [--provider codex\|claude]` | Try hostile writes against the explorer worker in a throwaway tree and report whether the disk changed. History, not a security guarantee. |
@@ -264,7 +266,7 @@ Details:
 | `ws run import codeburn [--since YYYY-MM-DD] [--task ID]` | Import local usage records from CodeBurn. |
 | `ws trace <task>` | Print a read-only Markdown timeline with reported checks, verdicts and total tokens. Redirect stdout to save it. |
 
-`ws assist` offers up to two local workspace suggestions and asks before applying. Use `ws assist apply` or `ws assist decide <id> accepted|declined|snoozed|always [--until DATE]` to act on one. Tool installation suggestions come only from the explicit `ws tools` catalog.
+`ws assist` offers up to two local workspace suggestions and asks before applying. Use `ws assist apply <id>` or `ws assist decide <id> accepted|declined|snoozed|always [--until YYYY-MM-DD]` to act on one. Tool installation suggestions come only from the explicit `ws tools` catalog.
 
 `ws run import codeburn` re-imports a grown session into its existing entry. Run logs omit raw exports and project paths. CodeBurn defaults to 30 days; `--since` widens it.
 
