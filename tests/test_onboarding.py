@@ -100,3 +100,13 @@ class OnboardingTests(unittest.TestCase):
             plain = self.base / 'plain'
             core.init(plain, 'plain', clients=[])
             self.assertEqual(core.brief(plain), 'No in-progress task. Find or create the task before working.')
+
+    def test_hook_created_branch_task_gets_orientation_until_something_is_saved(self):
+        import subprocess
+        subprocess.run(['git', '-C', str(self.peer), 'init', '-q', '-b', 'GR-88-feature'], check=True, capture_output=True)
+        with self.home('peer'):
+            task = core.session_task(self.peer, str(self.peer))
+            self.assertIn('household budgets', core.brief(self.peer))
+            core.remember(self.peer, 'Store totals as integer units.')
+            self.assertNotIn('household budgets', core.brief(self.peer))
+        self.assertTrue(task.startswith('BR-'))

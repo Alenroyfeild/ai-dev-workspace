@@ -17,12 +17,12 @@ class TeamFolderTests(unittest.TestCase):
         (self.folder/'team.json').write_text(json.dumps({'kind':'ai-dev-workspace-team','schema_version':1,'id':self.team}))
         self.record('Receipt checksum is CEDAR41.')
 
-    def record(self, body):
-        directory=self.folder/'entries';directory.mkdir(exist_ok=True)
-        text='---\nid: '+self.entry+'\nteam: '+self.team+'\nsource: knowledge:K1\ncategory: repo\nauthor: tester\nsource_sha: '+'c'*64+'\ndate: 2026-10-14T00:00:00Z\n---\n'+body+'\n'
-        path=self.root/'.ws/team/entries'/(self.entry+'.md');row,_=knowledge._read(self.root,path,'team',self.team,raw=text)
+    def record(self, body, entry=None, category='repo', date='2026-10-14T00:00:00Z'):
+        entry=entry or self.entry;directory=self.folder/'entries';directory.mkdir(exist_ok=True)
+        text='---\nid: '+entry+'\nteam: '+self.team+'\nsource: knowledge:K1\ncategory: '+category+'\nauthor: tester\nsource_sha: '+'c'*64+'\ndate: '+date+'\n---\n'+body+'\n'
+        path=self.root/'.ws/team/entries'/(entry+'.md');row,_=knowledge._read(self.root,path,'team',self.team,raw=text)
         (directory/path.name).write_text(text)
-        (directory/(self.entry+'.index.md')).write_text(cards.HEAD+'\n'+json.dumps({'schema':1,'source_bytes':len(text.encode()),'row':row,'counts':{'receipt':1}})+'\n'+cards.TAIL+'\n')
+        (directory/(entry+'.index.md')).write_text(cards.HEAD+'\n'+json.dumps({'schema':1,'source_bytes':len(text.encode()),'row':row,'counts':{'receipt':1}})+'\n'+cards.TAIL+'\n')
 
     def link(self, root=None):
         from ws import team_folder
@@ -172,3 +172,22 @@ class TeamFolderTests(unittest.TestCase):
                 finally:
                     if old is None:path.unlink()
                     else:path.write_bytes(old)
+
+    def test_invalid_utf8_names_the_file_and_keeps_the_mirror(self):
+        from ws import team_auto,team_folder
+        bad=self.folder/'entries'/(self.entry+'.md');bad.write_bytes(bad.read_bytes()+b'\xff\xfe')
+        with self.assertRaises(core.WsError) as caught:team_folder.link(self.root,str(self.folder),attest=True)
+        self.assertIn('entries/'+self.entry+'.md',str(caught.exception));self.assertIn('UTF-8',str(caught.exception))
+        bad.write_bytes(bad.read_bytes()[:-2]);self.link()
+        mirror=lambda:{str(p):p.read_bytes() for p in (self.root/'.ws/team').rglob('*') if p.is_file()}
+        before=mirror();bad.write_bytes(bad.read_bytes()+b'\xff\xfe')
+        with self.assertRaises(core.WsError) as caught:team_auto.pull(self.root)
+        self.assertIn(self.entry,str(caught.exception));self.assertEqual(before,mirror())
+
+    def test_onboarding_picks_newest_of_over_100_entries_without_false_warning(self):
+        self.record('Old product note.','0'*31+'1','product','2026-02-01T00:00:00Z')
+        for i in range(2,122):self.record('Filler repo note %d.'%i,format(i,'032x'),'repo','2026-10-01T00:00:00Z')
+        self.record('Newest product note.','f'*32,'product','2026-10-16T00:00:00Z')
+        self.link();core.task_new(self.root,'T1','Unrelated work');core.claim(self.root,'T1','synthetic')
+        text=core.brief(self.root)
+        self.assertIn('Newest product note.',text);self.assertNotIn('Old product note.',text);self.assertNotIn('Unreadable',text)
