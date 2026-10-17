@@ -34,7 +34,7 @@ def record_file(repo, state, name, data):
     target = path(repo, name)
     previous = target.read_bytes() if target.exists() else None
     entry = state['files'].get(name)
-    if entry and hashlib.sha256(previous or b'').hexdigest() != entry['sha']:
+    if entry and name not in JSON_FILES and hashlib.sha256(previous or b'').hexdigest() != entry['sha']:  # JSON files are merged from their current bytes
         raise core.WsError('Local file changed; review it before ws start: ' + name)
     if entry is None:
         entry = dict(before=base64.b64encode(previous).decode() if previous is not None else None)
@@ -93,6 +93,17 @@ def restore_file(repo, state, name):
     target = path(repo, name)
     old = base64.b64decode(entry['before']) if entry['before'] is not None else None
     current = target.read_bytes() if target.exists() else None
+    if name in JSON_FILES and current is not None:  # the sha cannot tell: refresh records merged bytes, so always take out only ws's entries
+        rest = stripped(name, current, old)
+        if rest is not None and target.read_bytes() != current: current = target.read_bytes(); rest = stripped(name, current, old)  # an edit just landed: strip ws's entries from the new bytes
+        if rest is None: return False
+        base = stripped(name, old) if old is not None else {}
+        if name == '.cursor/hooks.json' and rest.get('version') == WS_CURSOR_VERSION and 'version' not in (base or {}): del rest['version']  # ws added it; a different value is the user's
+        if old is None and not rest: target.unlink(missing_ok=True)
+        elif old is not None and rest == base: core.atomic_write(target, old)  # no user additions: byte-exact restore
+        else: core.atomic_write(target, (json.dumps(rest, indent=2) + '\n').encode())
+        del state['files'][name]
+        return True
     if (current is None and old is not None) or (current is not None and current != old and hashlib.sha256(current).hexdigest() != entry['sha']): return False
     if old is None: target.unlink(missing_ok=True)
     else: core.atomic_write(target, old)
@@ -114,8 +125,9 @@ def undo(repo, state):
     for name in list(state['files']):
         if name not in kept and not restore_file(repo, state, name): kept.append(name)
     if kept:
+        state['complete'] = False  # the files undo removed are gone: a later ws start must not say "Already set up"
         core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
-        print('Kept edited local files: ' + ', '.join(kept), file=sys.stderr)
+        print('Kept edited local files: ' + ', '.join(kept) + '; restore or delete them, then run ws start --undo again.', file=sys.stderr)
     else:
         if exclude.exists(): core.atomic_write(exclude, exclude.read_bytes().replace(block, b'', 1))
         path(repo, LINK).unlink()
@@ -202,21 +214,76 @@ def _strings(node):
 HOOK_COMMANDS = {'brief', 'nudge', 'paste', 'guard', 'discipline'}
 
 
-def _missing_in_hook(command, root):
-    """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
-    if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return ''
+def _ws_hook_parts(command):
+    """argv of a hook command ws wrote (<python> <kit>/bin/ws[-plugin] --workspace-root <root> ... <hook subcommand>), else None; a user's own hook is never matched."""
+    if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return None
     try:
         parts = shlex.split(command, posix=not core.WINDOWS)  # posix splitting eats the backslashes of Windows paths
         if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
         if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
-        if '--workspace-root' not in parts: return ''
-        interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
-        # Only commands ws wrote: <python> <kit>/bin/ws[-plugin] ... <hook subcommand>; a user's own hook is never judged.
-        if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return ''
-    except (ValueError, IndexError): return ''
+        if '--workspace-root' not in parts: return None
+        kit = parts[1]
+        if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return None
+    except (ValueError, IndexError): return None
+    return parts
+
+
+def _missing_in_hook(command, root):
+    """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
+    parts = _ws_hook_parts(command)
+    if not parts: return ''
+    interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
     for item in (interpreter, kit):
         if not Path(item).exists() and not shutil.which(item): return item
     return '' if Path(workspace).resolve() == Path(root).resolve() else workspace  # resolve: /private symlinks on macOS
+
+
+JSON_FILES = HOOK_FILES + ('.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json')  # merged into, so ws owns only its entries
+WS_CURSOR_VERSION = 1  # the `version` key core.memory_hooks writes into cursor's hooks.json
+MCP_KEYS = {n: k for n, k in core.MCP_LOCATIONS.values()}
+
+
+def _is_ws_hook(hook):
+    return isinstance(hook, dict) and isinstance(hook.get('command'), str) and _ws_hook_parts(hook['command']) is not None
+
+
+def _user_entries(entries):
+    """Hook entries without ws's own hooks; an entry that mixed ws and user hooks keeps the user's."""
+    out = []
+    for entry in entries:
+        if isinstance(entry, dict) and isinstance(entry.get('hooks'), list):
+            inner = [h for h in entry['hooks'] if not _is_ws_hook(h)]
+            if len(inner) != len(entry['hooks']):
+                if inner: out.append({**entry, 'hooks': inner})
+                continue
+        elif _is_ws_hook(entry): continue
+        out.append(entry)
+    return out
+
+
+def stripped(name, raw, before=None):
+    """The JSON file's data without the hooks and MCP server ws wrote (user keys stay); None if it is not a JSON object.
+    `before` is the file as it was before ws: an event or container the user already had stays even when ws's removal empties it."""
+    try: data = json.loads(raw)
+    except ValueError: return None
+    if not isinstance(data, dict): return None
+    try: had = json.loads(before) if before else {}
+    except ValueError: had = {}
+    had = had if isinstance(had, dict) else {}
+    had_hooks = had.get('hooks') if isinstance(had.get('hooks'), dict) else {}
+    hooks = data.get('hooks')
+    if isinstance(hooks, dict):
+        touched = False  # only what ws's removal emptied goes; a list or container the user left empty stays
+        for event in list(hooks):
+            if not isinstance(hooks[event], list): continue
+            user = _user_entries(hooks[event])
+            if user == hooks[event]: continue
+            touched = True; hooks[event] = user
+            if not user and event not in had_hooks: del hooks[event]
+        if touched and not hooks and 'hooks' not in had: del data['hooks']
+    servers = data.get(MCP_KEYS.get(name))
+    if isinstance(servers, dict) and servers.pop('ai-dev-workspace', None) is not None and not servers and MCP_KEYS[name] not in had: del data[MCP_KEYS[name]]
+    return data
 
 
 def _stale_here(root, repo):
@@ -413,14 +480,28 @@ WITHOUT_PLUGIN = ('.claude/settings.local.json', '.mcp.json')  # Claude files th
 def refresh(repo, root, state, yes, dry_run, keep=()):
     """Bring ws-written files in line with this kit version, packs and Claude plugin: rewrite those still unchanged since ws wrote them, create ones now needed, restore ones no longer needed."""
     plugin = claude_plugin_enabled(repo)
+    basis = {}  # the exact bytes (None: no file) each merged JSON file was built from
     def before(name):
+        if name in JSON_FILES: basis.setdefault(name, path(repo, name).read_bytes() if path(repo, name).is_file() else None)
         entry = state['files'].get(name)
         if entry is None: return path(repo, name).read_bytes() if path(repo, name).exists() else None  # not written by ws yet: start from what is there, like start()
+        if name in JSON_FILES and basis[name] is not None:  # rebuild from the current file minus ws's entries, so user keys survive
+            data = stripped(name, basis[name], base64.b64decode(entry['before']) if entry.get('before') else None)
+            if data is not None: return json.dumps(data).encode()
         return base64.b64decode(entry['before']) if entry.get('before') else None
     off = bool(state.get('plugin')) and not plugin  # the plugin was switched off since ws start: its Claude files must come back
     hint = ' The Claude plugin is no longer enabled, so ws must restore its Claude hooks and MCP entry: enable the plugin again, or move your file aside (or run ws start --undo) and rerun ws start.'
-    try: desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before, plugin)
+    clients = state.get('assistants', ['claude', 'codex'])
+    try: desired = render(repo, root, clients, before, plugin)
     except core.WsError as exc: raise core.WsError(str(exc) + (hint if off else ''))
+    def merged(name):
+        """The merge for a JSON file, rebuilt from its bytes now if it changed while the preview was open (a user edit is kept)."""
+        for _ in range(3):
+            raw = path(repo, name).read_bytes() if path(repo, name).exists() else None
+            if raw == basis.get(name): return desired[name]
+            if raw is not None and stripped(name, raw) is None: break
+            basis.clear(); desired[name] = render(repo, root, clients, before, plugin)[name]
+        raise core.WsError('Local file changed during confirmation; rerun ws start: ' + name)
     codex = state['files'].get('.codex/config.toml')
     if codex and codex.get('before') is None: desired['.codex/config.toml'] = core.codex_mcp_config(root).encode()
     new = {n: before(n) for n in desired if n not in state['files']}  # what render() saw, to catch an edit while confirming
@@ -435,9 +516,9 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
         if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', ') + (hint if off and set(WITHOUT_PLUGIN) & set(tracked.splitlines()) else ''))  # same rule as first setup
         if dry_run: return sorted({*changes, *gone})
         if not confirm(yes, dry_run): return None
-        if any(before(n) != data for n, data in new.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
+        if any(before(n) != data for n, data in new.items() if n not in JSON_FILES): raise core.WsError('Local config changed during confirmation; review it before retrying.')
         if new: extend_exclude(repo, state, list(new))
-        for name, data in changes.items(): record_file(repo, state, name, data)  # refuses a file changed meanwhile
+        for name, data in changes.items(): record_file(repo, state, name, merged(name) if name in JSON_FILES else data)  # refuses a file changed meanwhile
         for name in gone:
             if not restore_file(repo, state, name): raise core.WsError('Local file changed; review it before ws start: ' + name)
             core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
@@ -472,7 +553,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         task = branch_task(root, repo, current)
         if not core.task_path(root, task).exists(): task = ''
         incomplete = state.get('complete') is False or any(not path(repo, n).is_file() for n in state['files'])
-        edited = [n for n, e in state['files'].items() if path(repo, n).is_file() and hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha']]
+        edited = [n for n, e in state['files'].items() if path(repo, n).is_file() and hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha']
+                  and not (n in JSON_FILES and stripped(n, path(repo, n).read_bytes()) is not None)]  # valid JSON is merged, not kept
         partial = incomplete or bool(edited)
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
