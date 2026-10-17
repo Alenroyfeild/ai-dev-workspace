@@ -73,3 +73,13 @@ class PluginDuplicateTests(Base):
                 cli.main(['start', '--yes'])
         finally: os.chdir(cwd)
         self.assertIn('assistants: codex, claude (plugin)', out.getvalue())
+
+    def test_rerunning_start_after_enabling_the_plugin_warns_about_two_briefs(self):
+        repo, root = self.started_repo()  # set up before the plugin existed, so ws start's Claude hooks are in place
+        self.enable(Path.home() / '.claude/settings.json')
+        cwd = os.getcwd(); os.chdir(repo); err = io.StringIO()
+        try:
+            with mock.patch('ws.setup.detect', return_value=[]), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                cli.main(['start', '--yes'])
+        finally: os.chdir(cwd)
+        self.assertIn('Claude Code plugin is also enabled, so Claude gets two briefs per session', err.getvalue())
