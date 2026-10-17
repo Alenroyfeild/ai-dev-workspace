@@ -59,7 +59,7 @@ class RememberTests(Base):
         self.assertNotIn('Friday', self.handoff())
 
     def test_no_claim_or_several_claims_explain_what_to_do(self):
-        with self.assertRaisesRegex(core.WsError, r'ws claim <ID>.*--task'):
+        with self.assertRaisesRegex(core.WsError, r'ws task list.*ws claim <id>.*--task'):
             core.remember(self.root, 'use Postgres')
         core.task_new(self.root, 'T-2', 'Other')
         self.claim(); self.claim('T-2')
