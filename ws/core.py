@@ -407,7 +407,7 @@ def codebase_map(root, repo=None, allow_external=False):
         if len(parts) > 1:
             folders[parts[0]] = folders.get(parts[0], 0) + 1
     changed = {}
-    run = subprocess.run(['git', '-C', str(repo), 'log', '--since=90.days', '--name-only', '--format='], capture_output=True, text=True, check=False)
+    run = subprocess.run(['git', '-C', str(repo), 'log', '--since=90.days', '--name-only', '--format='], capture_output=True, encoding='utf-8', errors='replace', check=False)
     for name in run.stdout.splitlines():
         if name: changed[name] = changed.get(name, 0) + 1
     readme = next((p for p in repo.glob('README*') if p.is_file()), None)
@@ -1532,7 +1532,7 @@ def session_task(root, cwd=None):
     location = repos[0] if (not cwd or Path(cwd).resolve() == root.resolve()) and isinstance(repos, list) and len(repos) == 1 else cwd or root
     location = inside(root / Path(location), read_roots(root))
     try:
-        result = subprocess.run(['git', '-C', str(location), 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=2)
+        result = subprocess.run(['git', '-C', str(location), 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=2)
     except (OSError, subprocess.SubprocessError): return None
     if result.returncode: return None
     repo = inside(Path(result.stdout.strip()), read_roots(root))
@@ -2323,7 +2323,7 @@ def validate(root):
             errors.append(f'{path.name}: empty Next action')
     names = {p.stem for p in v.rglob('*.md')} | {p.relative_to(v).as_posix()[:-3] for p in v.rglob('*.md')}
     for path in v.rglob('*.md'):
-        text = path.read_text(errors='replace')
+        text = path.read_text(encoding='utf-8', errors='replace')
         if redact(text) != text:
             warnings.append(f'{path.relative_to(root)}: looks like it contains a secret; remove it')
         for target in re.findall(r'\[\[([^\]|#]+)', text):
@@ -2481,7 +2481,7 @@ def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
             continue
         try:
             run = subprocess.run(command, input=''.join(json.dumps(message) + '\n' for message in messages),
-                                 capture_output=True, text=True, timeout=10)
+                                 capture_output=True, encoding='utf-8', errors='replace', timeout=10)
         except OSError as exc:
             report.update(step='launch', stderr=str(exc)[-400:])
             checks.append(report)
@@ -2724,7 +2724,7 @@ def check_update(force=False):
     except (OSError, KeyError, ValueError, WsError) as exc:
         return {'current': meta['version'], 'update_available': False, 'error': str(exc)}
     cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(json.dumps({'checked': time.time(), 'result': result}))
+    cache.write_text(json.dumps({'checked': time.time(), 'result': result}), encoding='utf-8')
     return result
 
 
@@ -2738,10 +2738,10 @@ def update_kit():
         return _offline('kit updates')
     if not (KIT / '.git').exists():
         raise WsError(f'{KIT} is not a git clone; download the new release from GitHub instead.')
-    dirty = subprocess.run(['git', '-C', str(KIT), 'status', '--porcelain'], capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(['git', '-C', str(KIT), 'status', '--porcelain'], capture_output=True, encoding='utf-8', errors='replace').stdout.strip()
     if dirty:
         raise WsError('The kit has local changes; commit or stash them first. Nothing was changed.')
-    run = subprocess.run(['git', '-C', str(KIT), 'pull', '--ff-only'], capture_output=True, text=True)
+    run = subprocess.run(['git', '-C', str(KIT), 'pull', '--ff-only'], capture_output=True, encoding='utf-8', errors='replace')
     if run.returncode:
         raise WsError('git pull failed: ' + run.stderr.strip())
     return {'updated_to': kit_meta()['version'], 'git': run.stdout.strip()[-300:]}
@@ -2786,7 +2786,7 @@ def feedback_submit(root, n, yes=False, use_gh=None):
     gh = shutil.which('gh') if use_gh is None else use_gh
     if gh:
         run = subprocess.run([gh, 'issue', 'create', '-R', repo, '-t', title, '-b', body, '-l', f'feedback,{item["kind"]}'],
-                             capture_output=True, text=True)
+                             capture_output=True, encoding='utf-8', errors='replace')
         if run.returncode:
             raise WsError('gh issue create failed: ' + run.stderr.strip())
         url = run.stdout.strip().splitlines()[-1]
@@ -2852,7 +2852,7 @@ def notices(root):
         last = json.loads(stamp.read_text(encoding='utf-8')).get('at', 0) if stamp.is_file() else 0
         if linked and time.time() - last > 86400:
             (root / '.ws').mkdir(exist_ok=True)
-            stamp.write_text(json.dumps({'at': time.time()}))
+            stamp.write_text(json.dumps({'at': time.time()}), encoding='utf-8')
             for url in feedback_sync(root)['closed']:
                 out.append({'kind': 'fixed', 'message': f'Your reported issue was closed: {url}. Update to get the fix if it is released.',
                             'suggest': 'ws update --check'})

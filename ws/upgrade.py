@@ -3,7 +3,7 @@ import difflib
 import json
 import re
 import shlex
-from pathlib import Path
+from pathlib import Path, PurePath, PureWindowsPath
 from . import core
 
 
@@ -44,14 +44,16 @@ def managed_command(command):
     """Our hook command, in the old `env WS_ROOT=<dir> python bin/ws ...` form or the portable
     `python bin/ws --workspace-root <dir> ...` form (Windows-safe)."""
     try:
-        parts = shlex.split(command)
+        parts = shlex.split(command, posix=not core.WINDOWS)  # posix splitting eats the backslashes of Windows paths
+        if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
         if parts[:1] == ['powershell.exe']: parts = core.encoded_hook_args(parts)
     except ValueError: return False
+    path = PureWindowsPath if core.WINDOWS else PurePath  # Path() on a posix host would not split Windows separators
     if len(parts) >= 2 and parts[0] == 'env' and parts[1].startswith('WS_ROOT='):
         parts = parts[2:]
-    if len(parts) < 4 or re.fullmatch(r'python(?:\d+(?:\.\d+)?)?(?:\.exe)?', Path(parts[0]).name) is None:
+    if len(parts) < 4 or re.fullmatch(r'python(?:\d+(?:\.\d+)?)?(?:\.exe)?', path(parts[0]).name) is None:
         return False
-    if Path(parts[1]).name != 'ws' or Path(parts[1]).parent.name != 'bin':
+    if path(parts[1]).name != 'ws' or path(parts[1]).parent.name != 'bin':
         return False
     rest = parts[2:]
     if rest[:1] == ['--workspace-root']:

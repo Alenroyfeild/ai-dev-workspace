@@ -41,7 +41,7 @@ def privacy(remote, attest=False, verifier=''):
         command = ['gh', 'repo', 'view', f'https://{host}/{slug}', '--json', 'visibility'] if tool == 'gh' else [
             'glab', 'api', 'projects/' + quote(slug, safe=''), '--hostname', host, '--method', 'GET']
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            result = subprocess.run(command, capture_output=True, encoding='utf-8', errors='replace', timeout=15)
             if result.returncode == 0: visibility = json.loads(result.stdout).get('visibility', '').lower()
         except (OSError, ValueError, AttributeError, subprocess.TimeoutExpired): pass
         if visibility and visibility != 'private': raise core.WsError('Team remote is not private; linking is blocked.')
@@ -55,7 +55,7 @@ def privacy(remote, attest=False, verifier=''):
 def _git(path, *args):
     try:
         return subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-C', str(path), *args],
-                              check=True, capture_output=True, text=True, timeout=30).stdout
+                              check=True, capture_output=True, encoding='utf-8', errors='replace', timeout=30).stdout
     except (OSError, subprocess.SubprocessError):
         raise core.WsError('Git team operation failed; review the remote and retained local files before retrying.')
 
