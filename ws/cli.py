@@ -403,6 +403,7 @@ def main(argv=None):
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
             try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import)
+            except core.WsError: raise  # already says what to do; the prefix below is for unexpected file errors
             except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
             if result and result.get('undone'):
                 print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])

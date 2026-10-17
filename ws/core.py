@@ -161,7 +161,7 @@ def find_root(start=None):
     for candidate in candidates:
         if (candidate / 'workspace.json').is_file():
             return candidate
-    raise WsError('No workspace.json found here or above. Run `ws init <dir>` first, or set WS_ROOT.')
+    raise WsError('No workspace.json found here or above. In a git repo run `ws start`; otherwise `ws init <dir>`, or set WS_ROOT.')
 
 
 def config(root):
