@@ -1,6 +1,7 @@
 # AI Dev Workspace
 
-Your assistant remembers work between sessions in Markdown you own.
+Switch between Claude Code and Codex without re-explaining your decisions. Your assistant remembers work between sessions in Markdown you own.
+It keeps decisions, the next step and what not to retry, and warns when files it names changed or disappeared. Try it before connecting a repo: `ws demo` · [5-minute tutorial](docs/TUTORIAL.md)
 <!-- Demo GIF -->
 ## Quick start
 
@@ -26,8 +27,7 @@ You: “Yes, continue.”
 | Codex → Codex | 0/3 | **3/3** |
 
 ## Team sharing
-Your notes stay private. Share only what you approve, and your teammates' assistants start with it:
-`ws team init <private-repo>` · `ws know add "Payments API rejects floats" --category domain --team` · `ws sync`. A teammate runs `ws team link <private-repo>`; their next brief shows the note, labelled as shared team context, and their own decisions still win. [Team quick start](docs/TEAM-WORKSPACE.md#quick-start)
+Your notes stay private. Share only what you approve, and your teammates' assistants start with it: `ws team init <private-repo>` · `ws know add "Payments API rejects floats" --category domain --team` · `ws sync`. A teammate runs `ws team link <private-repo>`; their next brief shows the note, labelled as shared team context, and their own decisions still win. [Team quick start](docs/TEAM-WORKSPACE.md#quick-start)
 ## Compatibility
 | Client | macOS | Linux/Windows |
 |---|---|---|
