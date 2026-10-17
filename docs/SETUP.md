@@ -1,5 +1,7 @@
 # Setup guide
 
+Quick path: `ws start` ([README](../README.md), [tutorial](TUTORIAL.md)). This page is the advanced, manual path: `ws init` then `ws connect`.
+
 Every step after 2 is optional. `ws doctor` tells you what is missing and how to install it.
 
 ## 1. Install the kit
