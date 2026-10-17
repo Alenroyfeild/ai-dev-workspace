@@ -1,5 +1,7 @@
 # Sharing one workspace through Git
 
+**This page is the whole-workspace-in-Git mode: one shared vault of tasks and notes for a small team. For personal workspaces that share only approved notes (the usual choice), see [Team workspace](TEAM-WORKSPACE.md).**
+
 A small team can keep one shared Markdown workspace in a private Git repository.
 This suits teams that need the same tasks and notes. For personal workspaces with
 selected team sharing, see [Team workspace](TEAM-WORKSPACE.md).

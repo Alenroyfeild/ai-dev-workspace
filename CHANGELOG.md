@@ -3,6 +3,7 @@
 ## 0.1.0-beta.6 (unreleased)
 
 ### New
+- Team previews at a terminal are a short summary (`+ category text`, destination, `[y/N]`) instead of raw JSON; `ws sync` prints a one-line pulled/published count; `ws know add` keeps a private note's `#private` text and paths as written (sharing it later still strips them) and says clearly when a `--team` note is entirely private; the team docs show the real quick-start order, the `#private`/`<private>` markers and a "rotate pushed secrets" warning.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
 ## 0.1.0-beta.5 (unreleased)
