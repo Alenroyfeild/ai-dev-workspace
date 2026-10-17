@@ -26,4 +26,4 @@ class BriefOnceTests(Base):
                 calls, data = self.run_hook(client)
                 self.assertEqual(len(calls), 1)
                 self.assertIn('Finish the export.', data['hookSpecificOutput']['additionalContext'])
-                self.assertIn('Remembered', data.get('systemMessage', 'Remembered'))
+                self.assertIn('Remembered', data['systemMessage'])
