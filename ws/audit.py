@@ -25,8 +25,8 @@ def _repo(path):
 def _refs(text):
     """Files an instruction file points at: @imports, Markdown links and backticked relative paths."""
     imports = [r.rstrip('.') for r in re.findall(r'(?m)(?:^|\s)@([\w.-]+(?:/[\w.-]+)*)', text)]
-    # @AGENTS.md is a file import; @openai/agents (no extension) is a package name.
-    found = ([r for r in imports if re.search(r'\.\w{1,8}$', r)] + re.findall(r'\]\(([^)#\s]+)', text)
+    # @AGENTS.md is a file import; @openai/agents (no extension, with a slash) is a package name; @Makefile (capitalised, no slash) is a file.
+    found = ([r for r in imports if re.search(r'\.\w{1,8}$', r) or re.fullmatch(r'[A-Z][\w-]*', r)] + re.findall(r'\]\(([^)#\s]+)', text)
              + re.findall(r'`((?:[\w.-]+/)+[\w.-]+\.\w{1,8}|[\w-]+\.(?:md|py|json|toml|ya?ml|sh|js|ts))`', text))
     return [r for r in dict.fromkeys(found) if '://' not in r and '*' not in r and not r.startswith(('mailto:', '/', '~', '$'))]
 
