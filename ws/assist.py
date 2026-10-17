@@ -170,7 +170,7 @@ def suggestions(root, include_hidden=False):
     pinned = [name.lower() for name, value in core.config(root).get('tool_overrides', {}).items() if value == 'on']
     for finding in report.get('findings', []):
         text = json.dumps(finding).lower()
-        if any(name in text for name in ['ccd_', 'claude-in-chrome', 'ai-dev-workspace', 'workspace', 'graphy', 'graphif', *used, *pinned]):
+        if any(name in text for name in ['ccd_', 'claude-in-chrome', 'ai-dev-workspace', 'workspace', *used, *pinned]):
             continue
         if 'mcp' in text and 'mcp' not in usage:
             continue  # Missing usage evidence: fail closed for connector advice.
