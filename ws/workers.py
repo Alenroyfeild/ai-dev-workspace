@@ -251,7 +251,8 @@ def _profile(directory, executable=None):
     runtime = Path(core.sys.base_prefix).resolve()
     if runtime == Path(runtime.anchor) or runtime == Path.home().resolve() or runtime in Path.home().resolve().parents:
         raise core.WsError('Python runtime root would expose HOME; no worker launched.')
-    rules = {':minimal': 'read', str(runtime): 'read',
+    rules = {':root': 'deny', ':tmpdir': 'deny', ':slash_tmp': 'deny',
+             ':minimal': 'read', str(runtime): 'read',
              str(directory / 'source.git'): 'read', str(scratch): 'write',
              ':workspace_roots': {'.': 'write', '.git': 'read', '.codex': 'read', '.claude': 'read'}}
     if executable:
