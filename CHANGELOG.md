@@ -5,7 +5,6 @@
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
 
 ### New
-- Try remembered decisions with `ws demo`: an offline, disposable walkthrough that saves a decision and reads it back in a fresh process, without starting an assistant. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 - Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
 - `ws pr-notes` prints the task's saved decisions, reasons, tried-and-rejected approaches, acceptance criteria and checks as a pull request description, so reviewers see why the code changed. Example: `gh pr create --body "$(ws pr-notes)"`.
