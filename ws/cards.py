@@ -44,6 +44,13 @@ def load(root, path, layer, team_id):
     except (KeyError, ValueError, TypeError, RecursionError, core.WsError): return None
 
 
+def index_body(rows, public, prefix=None):
+    prefix = ('entries/' if public else '') if prefix is None else prefix
+    lines = ['# Shared memory index' if public else '# Private knowledge index']
+    lines += [f'- [{r["id"]}]({prefix}{r["id"]}.md) ({r["category"]}; {r["author"]}) {r["summary"]}'.replace('<!--','&lt;!--') for r in rows]
+    return '\n'.join(lines)
+
+
 def plan(root, layer, replacements=None):
     from . import knowledge
     overrides = replacements or {}; changes = {}; public = layer == 'team'
@@ -71,9 +78,7 @@ def plan(root, layer, replacements=None):
                 text = managed(root, card, encoded, public)
             if text != (sharing._text(card) if card.exists() else None): changes[card] = text
         index = base.parent/'INDEX.md' if public else base/'INDEX.md'
-        lines = ['# Shared memory index' if public else '# Private knowledge index']
-        lines += [f'- [{r["id"]}]({"entries/" if public else ""}{r["id"]}.md) ({r["category"]}; {r["author"]}) {r["summary"]}'.replace('<!--','&lt;!--') for r in rows]
-        text = managed(root, index, '\n'.join(lines), public)
+        text = managed(root, index, index_body(rows, public), public)
         if text != (sharing._text(index) if index.exists() else None): changes[index] = text
     return changes
 

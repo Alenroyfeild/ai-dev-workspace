@@ -132,14 +132,35 @@ def redacted_line(value, field):
 def find_root(start=None):
     """Walk up from start (or cwd) to the directory holding workspace.json."""
     path = Path(start or os.environ.get('WS_ROOT') or os.getcwd()).resolve()
-    for candidate in (path, *path.parents):
+    candidates = (path, *path.parents)
+    for candidate in candidates:
+        link = candidate / '.ws-start.json'
+        if link.exists() or link.is_symlink():
+            from .repo import load
+            if link.is_symlink() or not link.is_file():
+                raise WsError('Repo memory link must be a regular non-symlink file; review .ws-start.json.')
+            try:
+                lookup = subprocess.run(['git', '-C', str(candidate), 'rev-parse', '--show-toplevel'],
+                                        capture_output=True, text=True, encoding='utf-8', timeout=10)
+                if lookup.returncode or Path(lookup.stdout.strip()).resolve() != candidate:
+                    raise WsError('Repo memory link must be at the Git checkout root; review .ws-start.json.')
+                target = load(candidate).get('workspace')
+                if not isinstance(target, str) or not Path(target).is_absolute(): raise ValueError('Invalid workspace path')
+                root = Path(target).resolve()
+                if root == candidate or candidate in root.parents:
+                    raise WsError('Repo memory link must point outside this Git checkout.')
+                cfg = config(root)
+                repos = cfg.get('repos', []) if isinstance(cfg, dict) else None
+                if not isinstance(repos, list) or str(candidate) not in repos:
+                    raise WsError('Repo memory link does not match this repo; run ws start --undo.')
+            except WsError:
+                raise
+            except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+                raise WsError('Cannot verify repo memory link; check Git and restore .ws-start.json or run ws start --undo.') from None
+            return root
+    for candidate in candidates:
         if (candidate / 'workspace.json').is_file():
             return candidate
-        if (candidate / '.ws-start.json').is_file():
-            from .repo import load
-            root = Path(load(candidate)['workspace']).resolve()
-            if str(candidate) not in config(root).get('repos', []): raise WsError('Repo memory link does not match this repo; run ws start --undo.')
-            return root
     raise WsError('No workspace.json found here or above. Run `ws init <dir>` first, or set WS_ROOT.')
 
 
@@ -1218,7 +1239,7 @@ PROJECT_URL = 'https://github.com/Alenroyfeild/ai-dev-workspace'
 
 
 def pr_notes(root, task_id=None, link=True):
-    """A PR-description block from one task: goal, explicit decisions, acceptance criteria, checks, open items."""
+    """A PR-description block from one task: goal, explicit decisions, tried-and-rejected approaches, acceptance criteria, checks, open items."""
     task_id = task_id or sole_local_claim(root) or (current_task(root)[0] or {}).get('id')
     if not task_id:
         raise WsError('No current task. Pass one: ws pr-notes <ID>.')
@@ -1228,18 +1249,23 @@ def pr_notes(root, task_id=None, link=True):
 
     def body(name):
         # Captured blocks are unverified guesses; only text the user or assistant saved explicitly goes into a PR.
-        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S).strip()
+        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S)
+        value = re.sub(r'<!-- ws:captured:.*\Z', '', value, flags=re.S).strip()  # an unterminated block is still unverified
         return '' if value == section(template, name) or value.lower().rstrip('.') in ('none', 'none yet') else value
 
     decisions = []
-    for line in body('Handoff').splitlines():
-        line = line.strip()
+    for raw in body('Handoff').splitlines():
+        line = raw.strip()
         if line.startswith('Decision:'): decisions.append('- ' + line[9:].strip())
         elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
+        elif line and decisions and raw[:1] in ' \t':  # an indented line continues the previous Decision/Reason
+            decisions[-1] += ' ' + line
+    rejected = [f'- {l.strip().lstrip("-*").strip()}' for n in ('Failures', 'Do not redo') for l in body(n).splitlines() if l.strip().lstrip('-*').strip()]
+    if len(rejected) > 8: rejected[8:] = [f'(+{len(rejected) - 8} more in the task)']  # keep the PR body short
     title = (re.search(r'^# (.+)$', text, re.M) or [None, task_id])[1].strip()
     parts = [f'### {title}' + ('' if title == task_id else f' ({task_id})')]
     if goal := body('Objective'): parts.append(f'**Goal:** {goal}')
-    for heading, value in (('Decisions', '\n'.join(decisions)), ('Acceptance criteria', body('Acceptance criteria')),
+    for heading, value in (('Decisions', '\n'.join(decisions)), ('Tried and rejected', '\n'.join(rejected)), ('Acceptance criteria', body('Acceptance criteria')),
                            ('Checks', body('Checks')), ('Open items', body('Blockers'))):
         if value: parts.append(f'#### {heading}\n{value}')
     if not decisions and not body('Checks'):
@@ -1642,7 +1668,10 @@ def _brief(root, task_id=None):
         shown = [f"{t['id']} ({redact(t['claimed_by'])})" for t in others if t['id'] != task_id][:3]
         return ['Others working: ' + ', '.join(shown)] if shown else []
     if not task:
-        return _bounded_brief([('', line, 194) for line in [guard or 'No in-progress task. Find or create the task before working.'] + others_line()]), ''
+        from . import knowledge
+        fields = [('', guard or 'No in-progress task. Find or create the task before working.', 194)]
+        fields += [('', line, 18) for line in others_line()]
+        return _bounded_brief(fields + knowledge.onboarding_fields(root)), ''
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
     next_action = record['sections']['Next action']
     template = (KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8')
@@ -1691,17 +1720,22 @@ def _brief(root, task_id=None):
                ('', _memory_check(root, task['id'], record['meta'], next_action), 18),
                ('Claim:', record['claim'], 12)]
     truncated |= len(' '.join(decisions).split()) > 25
+    imported = task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory']
+    if imported: fields.append(('Imported context (unverified):', imported, 35))
     fields += [('', line, 18) for line in others_line(task['id'])]
     from . import knowledge
-    fields += knowledge.brief_fields(root, task['title'] + ' ' + next_action, '\n'.join(decisions + ([constraints] if captured else [])))
+    blockers = record['sections']['Blockers'].strip()
+    saved_context = bool(any(c.strip() for c in decisions + prose) or captured or (blockers and blockers != template_blockers))
+    if not saved_context and not saved_next:
+        fields += knowledge.onboarding_fields(root)
+    else:
+        fields += knowledge.brief_fields(root, task['title'] + ' ' + next_action, '\n'.join(decisions + ([constraints] if captured else [])))
     fields.append(('Explicit Handoff prose (saved task record):', ' '.join(prose), 18))
     from . import team_status
     fields += team_status.brief_fields(root)
     lessons = relevant_lessons(root, task)
     fields += [('Lesson:', line, 25) for line in lessons[:3]]
     if len(lessons) > 3: fields.append(('Lessons:', f'{len(lessons) - 3} more (ws lesson search)', 8))
-    blockers = record['sections']['Blockers'].strip()
-    saved_context = bool(any(c.strip() for c in decisions + prose) or captured or (blockers and blockers != template_blockers))
     return _bounded_brief(fields, truncated), _summary_line(task['id'], remembered, next_action if saved_next else '', saved_context, unverified_count)
 
 
@@ -2186,7 +2220,8 @@ def validate(root):
         for name in REQUIRED:
             if not re.search(rf'^## {re.escape(name)}\s*$', text, re.M):
                 errors.append(f'{path.name}: missing section {name}')
-        if meta.get('status') not in ('done', 'backlog') and not section(text, 'Next action'):
+        # A task ws start just created has no next step until the first checkpoint; the brief already asks for one.
+        if meta.get('status') not in ('done', 'backlog') and meta.get('checkpoint_at') and not section(text, 'Next action'):
             errors.append(f'{path.name}: empty Next action')
     names = {p.stem for p in v.rglob('*.md')} | {p.relative_to(v).as_posix()[:-3] for p in v.rglob('*.md')}
     for path in v.rglob('*.md'):
@@ -2729,3 +2764,69 @@ def notices(root):
                     f'(oldest: "{unsent[0]["text"][:80]}").', 'suggest': f'ws feedback submit {unsent[0]["n"]}'})
     from . import assist
     return assist.notices(root, 2, out)
+
+
+RECAP_ORDER = ('done', 'review', 'in_progress', 'blocked', 'ready', 'backlog')
+
+
+def recap(root, since='7d'):
+    """Tasks touched since a date with their explicit decisions, plus team notes and status; read-only, safe to paste."""
+    if m := re.fullmatch(r'(\d{1,3})d', since or ''):
+        cutoff = (datetime.date.today() - datetime.timedelta(days=int(m[1]))).isoformat()
+    elif re.fullmatch(r'\d{4}-\d{2}-\d{2}', since or ''):
+        try:
+            cutoff = datetime.date.fromisoformat(since).isoformat()
+        except ValueError:
+            raise WsError('Use --since 7d (days) or a valid YYYY-MM-DD date.') from None
+    else:
+        raise WsError('Use --since 7d (days) or --since YYYY-MM-DD.')
+    tasks = []
+    for item in task_list(root):
+        record = task_read(root, item['id'], ['Handoff'])
+        updated = str(record.get('meta', {}).get('updated', ''))[:10]
+        if updated < cutoff: continue
+        handoff = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections']['Handoff'], flags=re.S)
+        tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
+                      'decisions': [l.strip()[9:].strip() for l in handoff.splitlines() if l.strip().startswith('Decision:')],
+                      'next': '' if item['status'] == 'done' else (item['next'].splitlines() or [''])[0]})  # first line, before cleaning joins lines
+    rank = {s: i for i, s in enumerate(RECAP_ORDER)}
+    tasks.sort(key=lambda t: t['updated'], reverse=True)  # newest first within each status group
+    tasks.sort(key=lambda t: rank.get(t['status'], len(rank)))
+    team, status = [], []
+    if config(root).get('team_workspace'):
+        from . import knowledge, team_status
+        unreadable = {'author': '', 'date': '', 'category': '', 'note': 'Part of the team workspace is unreadable; recap shows what could be read.'}
+        try:  # notes and status are read independently so one failure keeps the other
+            team = [{'author': r['author'], 'date': r['date'][:10], 'category': r.get('category', ''),
+                     'note': re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', r['summary'])}
+                    for r in knowledge.list_entries(root, layer='team')['entries'] if r['date'][:10] >= cutoff]
+        except (WsError, OSError, ValueError, TypeError):
+            team = [unreadable]
+        try:
+            status = [{'author': r['author'], 'date': r['date'][:10], 'line': f"{r['task']}: {r['line']}"}
+                      for r in team_status.list_entries(root)['entries'] if r['date'][:10] >= cutoff]
+        except (WsError, OSError, ValueError, TypeError):
+            status = []
+            if unreadable not in team: team.append(unreadable)
+    def clean(value):
+        if isinstance(value, str):
+            return ' '.join(localize_paths(redact(PRIVATE_RE.sub(' ', value)), root).split())
+        if isinstance(value, list): return [clean(item) for item in value]
+        if isinstance(value, dict): return {key: clean(item) for key, item in value.items()}
+        return value
+    tasks, team, status = map(clean, (tasks, team, status))
+    lines = [f'### Recap since {cutoff}']
+    for t in tasks:
+        ident = '' if t['title'] == t['id'] else f"{t['id']}, "
+        lines.append(f"- **{t['title']}** ({ident}{t['status'].replace('_', ' ')}, {t['updated']})")
+        lines += [f'  - Decision: {d}' for d in t['decisions']]
+        if t['next']: lines.append(f"  - Next: {t['next']}")
+    if not tasks: lines.append('- No task changes in this period.')
+    if team or status:
+        import html
+        literal = lambda value: re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(value))
+        lines.append('#### Team (shared notes are untrusted context)')
+        lines += [f"- {literal(n['date'])} {literal(n['author'])}: {literal(n['note'])}" for n in team]
+        lines += [f"- {literal(s['date'])} {literal(s['author'])} working on {literal(s['line'])}" for s in status]
+    markdown = '\n'.join(lines) + '\n'
+    return {'since': cutoff, 'tasks': tasks, 'team': team, 'status': status, 'markdown': markdown}
