@@ -1652,6 +1652,22 @@ def _bounded_brief(fields, truncated=False):
     return '\n'.join(bounded)
 
 
+def _dead_ends(root, task_id, template):
+    """Approaches already tried and rejected, so the next session (any assistant) does not retry them."""
+    sections = task_read(root, task_id, ['Do not redo', 'Failures'])['sections']
+    lines = []
+    for name, body in sections.items():
+        body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', body, flags=re.S).strip()
+        if body and body != section(template, name).strip():
+            lines += [l.strip().lstrip('-* ').strip() for l in body.splitlines() if l.strip()]
+    kept, words = [], 0
+    for line in lines:  # whole items only, so a dead end is never cut mid-sentence; one too long for the budget is counted
+        if words + len(line.split()) <= 24: kept.append(line); words += len(line.split())
+    if not kept and lines: return f"{len(lines)} saved; read the task's Do not redo/Failures before retrying"
+    more = len(lines) - len(kept)
+    return '; '.join(kept) + (f' (+{more} more in the task\'s Do not redo/Failures)' if more else '')
+
+
 def brief(root, task_id=None):
     return _brief(root, task_id)[0]
 
@@ -1764,6 +1780,7 @@ def _brief(root, task_id=None):
     fields += [('Explicit Handoff (saved task record):', _constraint_budget(reversed(decisions), 25), 25),
                ('Next action:', next_action if saved_next else 'Not saved yet. Choose the next step before continuing.', 25),
                ('Blockers:', record['sections']['Blockers'], 8),
+               ('Do not redo:', _dead_ends(root, task['id'], template), 32),
                ('', plan_warning, 11),
                ('Captured next step (unverified):', captured_step, 16),
                ('', _memory_check(root, task['id'], record['meta'], next_action + '\n' + '\n'.join(decisions)), 18),
