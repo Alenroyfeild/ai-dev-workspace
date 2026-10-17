@@ -85,6 +85,8 @@ class TeamFolderTests(unittest.TestCase):
         alias.unlink();self.assertFalse(team_auto.pull(self.root)['updated'])
         (self.folder/'Icon\r').symlink_to(self.home,target_is_directory=True)
         with self.assertRaises(core.WsError):team_auto.pull(self.root)
+        (self.folder/'Icon\r').unlink();(self.folder/'.ws-symlink').symlink_to(self.home,target_is_directory=True)
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
 
     def test_sync_client_metadata_is_skipped_without_copying_it(self):
         from ws import team_auto
@@ -96,6 +98,16 @@ class TeamFolderTests(unittest.TestCase):
                 else:(folder/name).write_text('Sync metadata.')
         self.assertFalse(team_auto.pull(self.root)['updated'])
         self.assertFalse((self.root/'.ws/team/.dropbox').exists())
+
+    def test_pending_writer_temporaries_are_ignored_without_copying_or_deleting(self):
+        from ws import team_auto
+        self.link();(self.folder/'status').mkdir()
+        for directory in (self.folder,self.folder/'entries',self.folder/'status'):
+            (directory/'.ws-0123456789abcdef').write_text('Incomplete write {')
+        before={p:p.read_bytes() for p in self.folder.rglob('*') if p.is_file()}
+        self.assertFalse(team_auto.pull(self.root)['updated'])
+        self.assertEqual(before,{p:p.read_bytes() for p in self.folder.rglob('*') if p.is_file()})
+        self.assertEqual(list((self.root/'.ws/team').rglob('.ws-*')),[])
 
     def test_icloud_placeholder_has_download_hint_and_retains_snapshot(self):
         from ws import team_auto

@@ -6,7 +6,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from . import core, setup, upgrade
+from . import core, setup, upgrade, memory_import
 
 LINK = '.ws-start.json'
 FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.codex/config.toml.ws-backup', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md')
@@ -99,7 +99,7 @@ def undo(repo, state):
 def confirm(yes, dry_run):
     if dry_run: return False
     if yes: return True
-    print('Apply these local files? [y/N] ', end='', file=sys.stderr)
+    print('Apply this setup and previewed private memory imports? [y/N] ', end='', file=sys.stderr)
     try: return input().strip().lower() in ('y', 'yes')
     except EOFError: raise core.WsError('No confirmation; use ws start --yes or --dry-run.')
 
@@ -177,7 +177,69 @@ def branch_task(root, repo, branch):
     return name
 
 
-def start(yes=False, dry_run=False, workspace=None, remove=False):
+def render(repo, root, clients, prior):
+    """Repo wiring for this kit, built on each file's bytes from before ws (prior(name) -> bytes or None)."""
+    command = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'), '--workspace-root', str(root)])
+    instructions = f'Private task memory: {root}\nAt session start, run `{command} brief` unless saved task memory is already in context. Follow the current request. Save verified decisions and next actions with `{command} checkpoint`.\n'
+    instructions += 'When the user states a decision or corrects an earlier one, call the MCP `remember` tool with it; for a correction, say what it replaces.\n'
+    desired = {}
+    for name, prefix in (('CLAUDE.local.md', '@AGENTS.md\n' if (repo / 'AGENTS.md').is_file() else ''), ('AGENTS.override.md', 'Read AGENTS.md for repo rules when it exists.\n')):
+        desired[name] = (prior(name) or b'') + ('\n' + prefix + instructions).encode()
+    for client, name in (('cursor', '.cursor/rules/ws-current-task.mdc'), ('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md')):
+        if client not in clients: continue
+        if subprocess.check_output(['git', 'ls-files', '--', name], text=True).strip():
+            print('Keeping tracked instructions: ' + name, file=sys.stderr); continue
+        prefix = '---\nalwaysApply: true\n---\n' if client == 'cursor' else ''
+        previous = prior(name) or b''
+        desired[name] = previous + (('\n' if previous else prefix) + instructions).encode()
+    for client, name in (('claude', '.claude/settings.local.json'), ('codex', '.codex/hooks.json'), ('cursor', '.cursor/hooks.json'), ('copilot', '.github/hooks/ws.json'), ('gemini', '.gemini/settings.json')):
+        if client not in clients: continue
+        data = json.loads(prior(name) or b'{}')
+        if not isinstance(data, dict) or not isinstance(data.get('hooks', {}), dict): raise core.WsError('Invalid local hook settings: ' + name)
+        hooks = data.setdefault('hooks', {})
+        generated = core.memory_hooks(root, 'vscode' if client == 'copilot' else client)
+        if 'version' in generated: data.setdefault('version', generated['version'])
+        for event, entries in generated['hooks'].items():
+            if not isinstance(hooks.get(event, []), list): raise core.WsError('Invalid local hook event: ' + name)
+            hooks[event] = hooks.get(event, []) + entries
+        desired[name] = (json.dumps(data, indent=2) + '\n').encode()
+    for client in clients:
+        if client == 'codex': continue
+        name, key = core.MCP_LOCATIONS['vscode' if client == 'copilot' else client]
+        data = json.loads(desired[name] if name in desired else prior(name) or b'{}')
+        if not isinstance(data, dict) or not isinstance(data.get(key, {}), dict): raise core.WsError('Invalid MCP settings: ' + name)
+        servers = data.setdefault(key, {})
+        if 'ai-dev-workspace' in servers: raise core.WsError('Existing workspace MCP entry; review it before ws start.')
+        servers['ai-dev-workspace'] = core.mcp_command(root); desired[name] = (json.dumps(data, indent=2) + '\n').encode()
+    return desired
+
+
+def refresh(repo, root, state, yes, dry_run, keep=()):
+    """Rewrite ws-written files still unchanged since ws wrote them, for this kit version; user edits stop it earlier."""
+    def before(name):
+        entry = state['files'].get(name)
+        return base64.b64decode(entry['before']) if entry and entry.get('before') else None
+    desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before)
+    codex = state['files'].get('.codex/config.toml')
+    if codex and codex.get('before') is None: desired['.codex/config.toml'] = core.codex_mcp_config(root).encode()
+    changes = {n: data for n, data in desired.items() if n in state['files'] and n not in keep and path(repo, n).read_bytes() != data}
+    for name in keep: print('Kept your edits, not refreshed: ' + str(repo / name), file=sys.stderr)
+    if changes:
+        print('Refresh repo setup for this ai-dev-workspace version (saved memory is kept):', file=sys.stderr)
+        for name in changes: print('  ' + str(repo / name), file=sys.stderr)
+        tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes], capture_output=True, text=True, check=True).stdout.strip()
+        if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))  # same rule as first setup
+        if dry_run: return sorted(changes)
+        if not confirm(yes, dry_run): return None
+        for name, data in changes.items(): record_file(repo, state, name, data)  # refuses a file changed meanwhile
+    if dry_run: return sorted(changes)
+    # Kept (user-edited) files stay pending: the version moves only once every recorded file is current.
+    if not keep: state['kit_version'] = core.kit_meta()['version']
+    core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+    return sorted(changes)
+
+
+def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=None, no_import=False):
     if remove and dry_run: raise core.WsError('Use --undo or --dry-run separately.')
     try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError) as exc: raise core.WsError('Cannot inspect this Git repo; check git and retry ws start: ' + str(exc))
@@ -191,51 +253,26 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
         if str(repo) not in core.config(root).get('repos', []): raise core.WsError('Linked workspace belongs elsewhere; review .ws-start.json or undo this repo setup.')
         task = branch_task(root, repo, current)
         if not core.task_path(root, task).exists(): task = ''
-        partial = state.get('complete') is False or any(not path(repo, n).is_file() or hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha'] for n, e in state['files'].items())
+        incomplete = state.get('complete') is False or any(not path(repo, n).is_file() for n in state['files'])
+        edited = [n for n, e in state['files'].items() if path(repo, n).is_file() and hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha']]
+        partial = incomplete or bool(edited)
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
-        if not partial and '.codex/config.toml' not in state['files']:
+        newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
+        if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
+        # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and state.get('kit_version') != core.kit_meta()['version'] else []
+        if refreshed is None: return None
+        if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
-        return dict(root=str(root), already=True, partial=partial, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current, codex_status=state.get('codex_status', 'connected'))
+        return dict(root=str(root), already=True, partial=partial, refreshed=refreshed, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current, codex_status=state.get('codex_status', 'connected'))
     if remove: raise core.WsError('No repo setup to undo; run ws start first.')
     root = Path(workspace).expanduser().resolve() if workspace else (Path.home() / '.ai-dev-workspace' / repo.name).resolve()
     if root == repo or repo in root.parents: raise core.WsError('Choose a workspace outside the repo with ws start --workspace <dir>.')
     if root.exists() and (not (root / 'workspace.json').is_file() or str(repo) not in core.config(root).get('repos', [])):
         raise core.WsError('Workspace belongs elsewhere or is not a workspace; choose ws start --workspace <dir>.')
     task = branch_task(root, repo, current)
-    command = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'), '--workspace-root', str(root)])
-    instructions = f'Private task memory: {root}\nAt session start, run `{command} brief` unless saved task memory is already in context. Follow the current request. Save verified decisions and next actions with `{command} checkpoint`.\n'
-    instructions += 'When the user corrects an earlier decision, call the MCP `remember` tool with the corrected decision, saying what it replaces.\n'
-    desired = {}
     clients = ['claude', 'codex'] + [d['assistant'] for d in setup.detect() if d['assistant'] in ('cursor', 'copilot', 'gemini') and (d['cli_available'] or d['apps'])]
-    for name, prefix in (('CLAUDE.local.md', '@AGENTS.md\n' if (repo / 'AGENTS.md').is_file() else ''), ('AGENTS.override.md', 'Read AGENTS.md for repo rules when it exists.\n')):
-        target = path(repo, name)
-        desired[name] = (target.read_bytes() if target.exists() else b'') + ('\n' + prefix + instructions).encode()
-    for client, name in (('cursor', '.cursor/rules/ws-current-task.mdc'), ('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md')):
-        if client not in clients: continue
-        if subprocess.check_output(['git', 'ls-files', '--', name], text=True).strip():
-            print('Keeping tracked instructions: ' + name, file=sys.stderr); continue
-        prefix = '---\nalwaysApply: true\n---\n' if client == 'cursor' else ''
-        target = path(repo, name); previous = target.read_bytes() if target.exists() else b''
-        desired[name] = previous + (('\n' if previous else prefix) + instructions).encode()
-    for client, name in (('claude', '.claude/settings.local.json'), ('codex', '.codex/hooks.json'), ('cursor', '.cursor/hooks.json'), ('copilot', '.github/hooks/ws.json'), ('gemini', '.gemini/settings.json')):
-        if client not in clients: continue
-        target = path(repo, name); data = json.loads(target.read_text()) if target.exists() else {}
-        if not isinstance(data, dict) or not isinstance(data.get('hooks', {}), dict): raise core.WsError('Invalid local hook settings: ' + name)
-        hooks = data.setdefault('hooks', {})
-        generated = core.memory_hooks(root, 'vscode' if client == 'copilot' else client)
-        if 'version' in generated: data.setdefault('version', generated['version'])
-        for event, entries in generated['hooks'].items():
-            if not isinstance(hooks.get(event, []), list): raise core.WsError('Invalid local hook event: ' + name)
-            hooks[event] = hooks.get(event, []) + entries
-        desired[name] = (json.dumps(data, indent=2) + '\n').encode()
-    for client in clients:
-        if client == 'codex': continue
-        name, key = core.MCP_LOCATIONS['vscode' if client == 'copilot' else client]
-        target = path(repo, name); data = json.loads(desired[name] if name in desired else target.read_bytes() if target.exists() else b'{}')
-        if not isinstance(data, dict) or not isinstance(data.get(key, {}), dict): raise core.WsError('Invalid MCP settings: ' + name)
-        servers = data.setdefault(key, {})
-        if 'ai-dev-workspace' in servers: raise core.WsError('Existing workspace MCP entry; review it before ws start.')
-        servers['ai-dev-workspace'] = core.mcp_command(root); desired[name] = (json.dumps(data, indent=2) + '\n').encode()
+    desired = render(repo, root, clients, lambda n: path(repo, n).read_bytes() if path(repo, n).exists() else None)
     desired.update(codex_files(repo, root))
     tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
@@ -249,8 +286,13 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     print('  ' + str(exclude) + ' (local exclusions)', file=sys.stderr)
     outside = {'.ws/lock', '.ws/claims/' + task + '.json', 'vault/Tasks/' + task + '.md'}
     if not root.exists(): outside |= {p.relative_to(core.KIT / 'template').as_posix() for p in (core.KIT / 'template').rglob('*') if p.is_file()} - {'routing-presets.json'} | set(upgrade.skills()) | set(upgrade.pointer_files()) | {'workspace.json', 'routing.json', 'vault/Project/Codebase map.md'}
-    for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
+    if dry_run:
+        for name in sorted(outside): print('  ' + str(root / name), file=sys.stderr)
+    else:  # the private files are ws's own; --dry-run lists each one
+        print(f'  plus {len(outside)} private workspace files (ws start --dry-run lists them)', file=sys.stderr)
+    imports = [] if no_import else memory_import.preview(repo, memory_dir, dry_run=dry_run)
     if not confirm(yes, dry_run): return None
+    memory_import.verify(imports)
     if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
@@ -260,7 +302,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
     previous_exclude = exclude.read_bytes() if exclude.exists() else b''
-    state = dict(codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    state = dict(kit_version=core.kit_meta()['version'], codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
@@ -277,5 +319,6 @@ def start(yes=False, dry_run=False, workspace=None, remove=False):
             if (core._local_claim_matches(root, task, meta) and meta.get('status') == 'ready'
                     and not meta.get('checkpoint_at') and core.section(text, 'Next action') == template):
                 core.atomic_write(target, core.set_meta(core.set_section(text, 'Next action', ''), {'status': 'in_progress'}))
+    memory_import.apply(root, repo, task, imports)
     state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, codex_status=state['codex_status'])
