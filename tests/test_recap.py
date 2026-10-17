@@ -52,6 +52,43 @@ class RecapTests(Base):
         for leaked in (secret, '/Users/alice', 'internal host'):
             self.assertNotIn(leaked, dumped)
 
+    def test_shows_tried_and_rejected_from_failures_and_do_not_redo(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Open the PR.', notes={
+            'Failures': '- Float rounding: drifted in refunds\n* Banker rounding: broke the tax table',
+            'Do not redo': 'Do not retry the vendor SDK upgrade'})
+        md = core.recap(self.root)['markdown']
+        self.assertIn('  - Rejected: Float rounding: drifted in refunds\n  - Rejected: Banker rounding: broke the tax table\n'
+                      '  - Rejected: Do not retry the vendor SDK upgrade\n', md)
+        self.assertLess(md.index('Rejected:'), md.index('Next:'))
+
+    def test_rejected_skips_captured_and_placeholder_text(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'x', notes={
+            'Failures': 'None yet.\n<!-- ws:captured:x -->\n- guessed failure\n<!-- /ws:captured -->',
+            'Do not redo': '<!-- ws:captured:x -->\n- unterminated guess'})
+        md = core.recap(self.root)['markdown']
+        self.assertNotIn('Rejected', md)
+        self.assertNotIn('guess', md)
+
+    def test_rejected_is_capped_at_three_per_task(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'x', notes={'Failures': '\n'.join(f'- approach {i}' for i in range(5))})
+        result = core.recap(self.root)
+        self.assertIn('Rejected: approach 2', result['markdown'])
+        self.assertNotIn('approach 3', result['markdown'])
+        self.assertIn('  - (+2 more)', result['markdown'])
+        self.assertEqual(len(result['tasks'][0]['rejected']), 3)
+
+    def test_task_without_rejected_shows_no_such_line(self):
+        self.assertNotIn('Rejected', core.recap(self.root)['markdown'])
+
+    def test_rejected_is_redacted_and_localized(self):
+        secret = 'ghp_' + 'd' * 36
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'x', notes={
+            'Do not redo': f'Ran /Users/alice/app/run.sh with token={secret} <private>internal host</private>'})
+        result = core.recap(self.root)
+        self.assertIn('Rejected: Ran', result['markdown'])
+        for leaked in (secret, '/Users/alice', 'internal host'):
+            self.assertNotIn(leaked, json.dumps(result))
+
     def test_rejects_unclear_since(self):
         for bad in ('last week', '7', '2026/10/01', '2026-02-30', '2026-13-01'):
             with self.assertRaisesRegex(core.WsError, '--since 7d'):
