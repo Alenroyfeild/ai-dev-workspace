@@ -112,10 +112,25 @@ def text_route(report):
     return '\n'.join(lines)
 
 
+def doctor_verdict(report):
+    """One line first: OK, or what needs attention and the next step."""
+    if report.get('workspace_error'): return 'Needs attention: ' + report['workspace_error']
+    core = report.get('core', {})
+    names = {'claude': 'Claude', 'codex': 'Codex', 'cursor': 'Cursor', 'vscode': 'VS Code', 'gemini': 'Gemini'}
+    connected = [names.get(n, n) for n, ok in report.get('configured_clients', {}).items() if ok]
+    for key, label in (('python3', 'Python 3'), ('git', 'Git')):
+        if key in core and not core[key]: return f'Needs attention: {label} is missing. Next: install it, then run ws doctor again.'
+    if not report.get('workspace'): return 'Needs attention: no workspace found. Next: in a git repo run ws start; otherwise ws init <dir>.'
+    if not report.get('valid'): return 'Needs attention: workspace invalid. Next: run ws validate.'
+    if report.get('codex_manual_pending'): return 'Needs attention: Codex needs a manual step. Next: paste the printed Codex config block (see below).'
+    if report.get('stale_hooks'): return 'Needs attention: repo hooks point to something missing. Next: run ws start again in that repo.'
+    if not connected: return 'Needs attention: no assistant connected. Next: run ws start in your repo, or ws connect claude.'
+    return 'OK: workspace valid; ' + '; '.join(n + ' connected' for n in connected)
+
+
 def text_doctor(report):
     core = report.get('core', {})
-    lines = ['Needs attention: ' + report['workspace_error']] if report.get('workspace_error') else []
-    lines += [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
+    lines = [doctor_verdict(report), f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
     if report.get('team_workspace'):
@@ -279,7 +294,7 @@ def main(argv=None):
     for action in ('accept', 'discard'):
         s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
-    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary (default in a terminal)'); s.add_argument('--json', action='store_true', help='print JSON even in a terminal')
     s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('guard', help='guards pack: PreToolUse check that denies destructive commands, secrets and muted tests'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('discipline', help='discipline pack: advisory nudge after the same command fails 3 times'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
@@ -501,7 +516,9 @@ def main(argv=None):
                 problem = f'workspace.json is unreadable ({exc}); fix or restore it, or run ws start --undo in a started repo.'
                 report = core.doctor(None, a.mcp)
             if problem: report['workspace_error'] = problem
-            out(text_doctor(report) if a.text or human() else report); return 0
+            if a.json and not a.text: print(json.dumps(report, indent=2, ensure_ascii=False))
+            else: out(text_doctor(report) if a.text or human() else report)
+            return 0
         if a.cmd == 'audit':
             from . import audit
             report = audit.audit(a.repo)

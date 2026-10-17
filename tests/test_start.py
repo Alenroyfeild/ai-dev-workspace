@@ -700,6 +700,15 @@ class StartTests(unittest.TestCase):
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
         with mock.patch('ws.setup.detect', return_value=detected): self.assertEqual(self.start('--yes', '--undo', '--dry-run')[0], 2)
 
+    def test_doctor_sees_claude_connected_in_a_started_repo(self):
+        self.assertEqual(self.start('--yes')[0], 0); root = core.find_root()
+        self.assertTrue(core.client_connected(root, 'claude'))
+        self.assertTrue(core.doctor(root)['configured_clients']['claude'])
+        self.assertFalse(core.client_connected(root, 'claude', global_only=True))  # ws connect still writes the workspace file
+        (self.repo / '.mcp.json').write_text('{}')
+        self.assertFalse(core.client_connected(root, 'claude'))  # recorded file no longer carries the entry
+        (self.repo / '.mcp.json').unlink(); self.assertFalse(core.client_connected(root, 'claude'))
+
     def test_global_codex_connection_skips_manual_paste_and_project_creation(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir(); original = b'not TOML: \xff'; config.write_bytes(original)
         self.assertEqual(self.start('--yes')[0], 0); root = core.find_root()
