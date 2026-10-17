@@ -1,7 +1,9 @@
 """`ws` command line. Every command prints JSON or plain text and exits non-zero on error."""
 import argparse
+import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -115,12 +117,13 @@ def text_doctor(report):
         pulls = 'enabled (read-only)' if report['team_workspace'].get('auto_pull') is True else 'off (consent required)'
         lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls ' + pulls)
     if report.get('setup'):
-        lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
+        assistants = ', '.join(report['setup']['assistants'])
+        lines.append('Setup preset: ' + report['setup']['preset'] + (f' ({assistants})' if assistants else ''))
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
     for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
     clients = report.get('configured_clients', {})
     if clients:
-        lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
+        lines.append('Workspace-level connections: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
     goals = report.get('codex_goals')
     if goals:
         lines.append(f"Codex goals: {goals['active']} active, {goals['complete']} complete" if 'active' in goals
@@ -129,8 +132,9 @@ def text_doctor(report):
     lines.extend(f'Team: {warning}' for warning in report.get('team', {}).get('warnings', []))
     health = report.get('capture_health')
     if health:
-        lines.append(f"Last capture outcome: {health.get('outcome', 'unknown')} "
-                     f"({health.get('client', 'unknown')}, {health.get('date', 'unknown')}; {health.get('reason', 'unknown')})")
+        outcome = health.get('outcome', 'unknown')
+        detail = [health[k] for k in ('client', 'date') if health.get(k)] + ([health['reason']] if health.get('reason') not in (None, outcome) else [])
+        lines.append('Last capture: not run yet' if outcome == 'not_run' else f'Last capture outcome: {outcome}' + (f" ({', '.join(detail)})" if detail else ''))
     checks = report.get('protocol_checks', {})
     if checks:
         rendered = [f"{name}={value['status']}" + (f" ({value['step']})" if value.get('step') else '')
@@ -222,12 +226,25 @@ def ask(prompt=''):
     except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
 
 
+class WsParser(argparse.ArgumentParser):
+    """Subparsers inherit this class: a mistyped command gets a short hint, not argparse's list of every name."""
+    def error(self, message):
+        bad = re.search(r"invalid choice: '(.*?)' \(choose from (.*)\)$", message)
+        if not bad: return super().error(message)
+        choices = [c.strip("'") for c in bad[2].split(', ')]
+        near = difflib.get_close_matches(bad[1], choices, n=3)
+        top = self.prog == 'ws'
+        hint = f'; did you mean: {", ".join(near)}?' if near else ('. Run ws --help' if top else f'. Choose from: {", ".join(choices)}')
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{self.prog}: unknown {'command' if top else 'choice'} '{bad[1]}'{hint}" + (' Run ws --help' if top and near else '') + '\n')
+
+
 def main(argv=None):
     if core.WINDOWS:  # the pip/pipx `ws` script skips bin/ws, whose cp1252 pipes cannot carry non-ASCII text
         for stream in (sys.stdin, sys.stdout, sys.stderr): getattr(stream, 'reconfigure', lambda **_: None)(encoding='utf-8')
-    p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
-                                formatter_class=GroupedHelpFormatter,
-                                epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
+    p = WsParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
+                 formatter_class=GroupedHelpFormatter,
+                 epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
     p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
@@ -535,6 +552,8 @@ def main(argv=None):
                 if not a.dry_run and (a.yes or ask('Save this exact local status preview? [y/N] ')):
                     out(team_status.apply(root, plan))
                 return 0
+            if a.action in ('init', 'link') and not a.remote:
+                raise core.WsError(f'The remote is missing: run `ws team {a.action} <private-repo>`' + (' (or a folder path with --folder).' if a.folder else '.'))
             if a.folder:
                 from . import team_folder
                 if a.action not in ('init','link'): raise core.WsError('--folder supports init/link; unlink uses ws team unlink.')
