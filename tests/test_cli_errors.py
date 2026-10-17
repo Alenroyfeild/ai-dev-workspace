@@ -33,10 +33,10 @@ class CliErrorTests(Base):
         self.assertEqual(code, 2)
         self.assertIn('--note needs SECTION=TEXT', err); self.assertIn('"nosplit"', err)
 
-    def test_hook_with_empty_or_broken_stdin_is_a_clear_error_not_a_json_message(self):
+    def test_hook_with_empty_or_broken_stdin_fails_open_with_a_clear_note(self):
         for stdin in ('', '{bad'):
             code, err = self.ws('brief', '--hook', stdin=stdin)
-            self.assertEqual(code, 2)
+            self.assertEqual(code, 0)  # fail open: exit 2 would block the client
             self.assertIn('Hook input must be a JSON object', err)
             self.assertNotIn('bug in ws', err)
 
