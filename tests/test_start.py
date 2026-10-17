@@ -667,6 +667,8 @@ class StartTests(unittest.TestCase):
         (self.repo / '.mcp.json').write_text('{}')
         self.assertFalse(core.client_connected(root, 'claude'))  # recorded file no longer carries the entry
         (self.repo / '.mcp.json').unlink(); self.assertFalse(core.client_connected(root, 'claude'))
+        record = self.repo / '.ws-start.json'; state = json.loads(record.read_text()); state['plugin'] = True
+        record.write_text(json.dumps(state)); self.assertTrue(core.client_connected(root, 'claude'))  # the plugin brings the MCP server
 
     def test_global_codex_connection_skips_manual_paste_and_project_creation(self):
         config = self.repo / '.codex/config.toml'; config.parent.mkdir(); original = b'not TOML: \xff'; config.write_bytes(original)
