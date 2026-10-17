@@ -24,8 +24,9 @@ def snapshot(root, folder, local=False, allow_empty=False):
         if directory.resolve()!=directory or not directory.is_dir(): raise core.WsError(HINT)
         for path in directory.iterdir():
             name=path.relative_to(folder).as_posix()
+            if name=='INDEX.md':continue  # Derived locally; never read a shared index.
             if name in ('entries','status') and path.is_dir() and not path.is_symlink(): continue
-            if path.name in ('.DS_Store','Icon\r','.dropbox','.dropbox.attr') and not path.is_symlink(): continue
+            if (path.name in ('.DS_Store','Icon\r','.dropbox','.dropbox.attr') or path.name.startswith('.ws-')) and not path.is_symlink(): continue
             if path.name.startswith('.') and path.name.endswith('.icloud'):
                 raise core.WsError(path.name[1:-7]+' is not downloaded yet; open the folder in Finder or choose Keep Downloaded, then retry.')
             if not re.fullmatch(r'team\.json|INDEX\.md|entries/[a-f0-9]{32}(?:\.index)?\.md|status/[A-Za-z0-9][A-Za-z0-9_.-]{0,39}\.json',name):
@@ -59,6 +60,14 @@ def _hashes(files):
     return {name:core.digest_text(text) for name,text in files.items()}
 
 
+def index_change(root, files):
+    rows=[_decode(text.split(cards.HEAD)[1].split(cards.TAIL)[0])['row']
+          for name,text in sorted(files.items()) if name.startswith('entries/') and name.endswith('.index.md')]
+    path=sharing._safe(root,root/'.ws/team-index.md')
+    text=cards.managed(root,path,cards.index_body(rows,True,'team/entries/'))
+    return {path:text} if text!=sharing._text(path) else {}
+
+
 def link(root, folder, apply=False, attest=False, auto_pull=False, expected=None):
     root=Path(root).resolve(); cfg_path=sharing._safe(root,root/'workspace.json');original=sharing._text(cfg_path);cfg=json.loads(original)
     folder=Path(folder).expanduser().resolve()
@@ -78,6 +87,7 @@ def link(root, folder, apply=False, attest=False, auto_pull=False, expected=None
         privacy={'method':'attested','remote':data['source'],'identity':data['identity'],'manifest_sha':core.digest_text(data['files']['team.json']),'date':core.now()}
         cfg['team_workspace']={'id':data['team'],'host':'folder','path':'.ws/team','remote':data['source'],'privacy':privacy,'auto_pull':bool(auto_pull)}
         changes={target/name:text for name,text in data['files'].items()}
+        changes.update(index_change(root,data['files']))
         changes.update({root/'.ws/folder-base.json':json.dumps(_hashes(data['files'])),cfg_path:json.dumps(cfg,indent=2)+'\n'})
         cards.write(root,changes)
     return {**plan,'applied':True}
@@ -93,11 +103,13 @@ def source(root):
 def pull(root):
     link=core.config(root)['team_workspace'];data=source(root)
     base=sharing._safe(root,root/'.ws/folder-base.json');saved=json.loads(sharing._text(base));local=root/'.ws/team'
+    if isinstance(saved,dict):saved.pop('INDEX.md',None)
     # Local snapshots use the same strict inventory; never discard pending edits.
     current=snapshot(root,local,local=True)['files']
     if _hashes(current)!=saved: raise core.WsError(HINT)
     if snapshot(root,link['remote'])!=data: raise core.WsError('Folder changed during read. '+HINT)
     changes={local/name:data['files'].get(name) for name in set(current)|set(data['files']) if current.get(name)!=data['files'].get(name)}
+    changes.update(index_change(root,data['files']))
     updated=bool(changes)
     if changes:
         changes[base]=json.dumps(_hashes(data['files']));cards.write(root,changes)

@@ -86,6 +86,7 @@ def read(folder, identity, name):
 
 
 def replace(folder, identity, name, text, expected):
+    # Single-owner projections only; same-owner/device races are an accepted limit.
     import uuid
     with parent(folder,identity,name,True) as (fd,leaf):
         if _read(fd,leaf)!=expected:raise core.WsError('Shared file changed; retain both copies and preview again: '+name)
