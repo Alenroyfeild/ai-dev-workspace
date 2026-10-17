@@ -119,7 +119,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 
 ### Link a private team repo
 
-- Create the empty private remote yourself. `ws team init <private-remote> --dry-run` previews; repeat without `--dry-run` to confirm. Init prepares an uncommitted `team.json` in `.ws/team` and never pushes. Run `ws sync` to publish it (it shows what it will push first); teammates can link only after that. At a terminal, team previews print a short summary (`+ <category> <text>` per note, the destination, then `[y/N]`); piped or scripted runs get the full JSON, and `WS_JSON=1` forces it.
+- Create the empty private remote yourself. `ws team init <private-remote> --dry-run` previews; repeat without `--dry-run` to confirm. Init prepares an uncommitted `team.json` in `.ws/team` and never pushes. Run `ws sync` to publish it (it shows what it will push first); teammates can link only after that. At a terminal, team previews print a short summary (`+ <category> <text>` per note, the full text up to 600 characters, the destination, then `[y/N]`); piped or scripted runs get the full JSON, and `WS_JSON=1` forces it.
 - Teammates run `ws team link <private-remote>`.
 - Privacy is checked with an installed `gh` or `glab`, or with `--attest-private` for that exact remote when verification is unavailable. A remote known to be public or internal blocks linking. `--verify-with gh|glab` picks the verifier for a self-hosted remote. Doctor shows verified versus attested privacy.
 - `--yes` confirms the printed preview. `--auto-pull` or `--no-auto-pull` records the pull preference without prompting. Pull consent never authorizes publishing.
