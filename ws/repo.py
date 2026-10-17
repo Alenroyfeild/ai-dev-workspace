@@ -198,7 +198,7 @@ def render(repo, root, clients, prior):
         if not isinstance(data, dict) or not isinstance(data.get('hooks', {}), dict): raise core.WsError('Invalid local hook settings: ' + name)
         hooks = data.setdefault('hooks', {})
         generated = core.memory_hooks(root, 'vscode' if client == 'copilot' else client)
-        generated['hooks'].update(core.guard_hooks(root, client))
+        generated['hooks'].update(core.pack_hooks(root, client))
         if 'version' in generated: data.setdefault('version', generated['version'])
         for event, entries in generated['hooks'].items():
             if not isinstance(hooks.get(event, []), list): raise core.WsError('Invalid local hook event: ' + name)
@@ -215,9 +215,9 @@ def render(repo, root, clients, prior):
     return desired
 
 
-def guards_on(root):
-    """The guards pack adds a PreToolUse hook, so turning it on or off is a reason to refresh the repo setup."""
-    return 'guards' in core.config(root).get('packs', [])
+def hook_packs(root):
+    """Packs that add repo hooks (guards, discipline); turning one on or off is a reason to refresh the repo setup."""
+    return [p for p in core.HOOK_PACKS if p in core.config(root).get('packs', [])]
 
 
 def refresh(repo, root, state, yes, dry_run, keep=()):
@@ -240,7 +240,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
         for name, data in changes.items(): record_file(repo, state, name, data)  # refuses a file changed meanwhile
     if dry_run: return sorted(changes)
     # Kept (user-edited) files stay pending: the version moves only once every recorded file is current.
-    if not keep: state['kit_version'] = core.kit_meta()['version']; state['guards'] = guards_on(root)
+    if not keep: state['kit_version'] = core.kit_meta()['version']; state['hook_packs'] = hook_packs(root)
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return sorted(changes)
 
@@ -266,7 +266,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('guards', False) != guards_on(root)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
@@ -308,7 +308,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
     previous_exclude = exclude.read_bytes() if exclude.exists() else b''
-    state = dict(kit_version=core.kit_meta()['version'], guards=guards_on(root), codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    state = dict(kit_version=core.kit_meta()['version'], hook_packs=hook_packs(root), codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
