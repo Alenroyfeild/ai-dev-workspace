@@ -119,8 +119,11 @@ def codex_files(repo, root):
 def codex_pending(root, check_global=True):
     global_connected = core.client_connected(root, 'codex', global_only=True)
     if check_global and global_connected: return []
+    def status(p):  # a corrupt start record must not crash doctor; ws start reports it
+        try: return load(p).get('codex_status')
+        except (OSError, ValueError, core.WsError): return None
     return [str(p / '.codex/config.toml') for p in core.read_roots(root)[1:]
-            if (p / LINK).is_file() and load(p).get('codex_status') in (('manual step pending', 'connected via global config') if global_connected else ('manual step pending',))]
+            if (p / LINK).is_file() and status(p) in (('manual step pending', 'connected via global config') if global_connected else ('manual step pending',))]
 
 
 HOOK_FILES = ('.claude/settings.local.json', '.codex/hooks.json', '.cursor/hooks.json', '.github/hooks/ws.json', '.gemini/settings.json')
@@ -145,6 +148,11 @@ def _missing_in_hook(command, root):
     for item in (interpreter, kit):
         if not Path(item).exists() and not shutil.which(item): return item
     return '' if Path(workspace).resolve() == Path(root).resolve() else workspace  # resolve: /private symlinks on macOS
+
+
+def _stale_here(root, repo):
+    """This repo's ws-written hooks point to a moved kit, so a plain rerun should refresh them."""
+    return any(Path(item['repo']).resolve() == repo.resolve() for item in stale_hooks(root))
 
 
 def stale_hooks(root):
@@ -307,7 +315,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or _stale_here(root, repo)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None

@@ -35,7 +35,7 @@ class StaleHookTests(Base):
         gone = str(repo.parent / 'gone-kit' / 'bin/ws')
         self.assertEqual(repo_setup.stale_hooks(root), [{'repo': str(repo.resolve()), 'file': '.claude/settings.local.json', 'missing': gone}])
         text = cli.text_doctor(core.doctor(root))
-        self.assertIn('Hooks point to a missing kit or workspace', text); self.assertIn(gone, text); self.assertIn('ws start --undo', text)
+        self.assertIn('Hooks point to a missing kit or workspace', text); self.assertIn(gone, text); self.assertIn('run ws start again in that repo', text)
 
     def test_missing_interpreter_and_other_workspace_are_reported(self):
         repo, root = self.started()
@@ -57,3 +57,22 @@ class StaleHookTests(Base):
         (repo / '.codex/hooks.json').write_text('{not json')
         report = core.doctor(root)
         self.assertEqual([i['file'] for i in report['stale_hooks']], ['.claude/settings.local.json'])
+
+    def test_plain_rerun_refreshes_hooks_from_a_moved_kit(self):
+        import hashlib
+        repo, root = self.started(); file = self.move_kit(repo)
+        link = repo / '.ws-start.json'; state = json.loads(link.read_text())  # as if the old kit wrote these bytes
+        state['files']['.claude/settings.local.json']['sha'] = hashlib.sha256(file.read_bytes()).hexdigest(); link.write_text(json.dumps(state))
+        cwd = os.getcwd(); os.chdir(repo)
+        try:
+            with mock.patch('ws.setup.detect', return_value=[]), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                repo_setup.start(yes=True)
+        finally: os.chdir(cwd)
+        self.assertEqual(repo_setup.stale_hooks(root), [])
+        self.assertIn(str(core.KIT), file.read_text())
+
+    def test_corrupt_start_record_does_not_crash_doctor(self):
+        repo, root = self.started()
+        (repo / '.ws-start.json').write_text('{not json')
+        report = core.doctor(root)
+        self.assertEqual((report['stale_hooks'], report['codex_manual_pending']), ([], []))
