@@ -116,6 +116,33 @@ def codex_files(repo, root):
     return {'.codex/config.toml': block.encode()}
 
 
+PLUGIN = 'ai-dev-workspace@ai-dev-workspace'
+
+
+def claude_plugin_enabled(repo):
+    """enabledPlugins for this kit's Claude Code plugin; local beats project beats user, like Claude Code."""
+    value = None
+    for settings in (Path.home() / '.claude/settings.json', repo / '.claude/settings.json', repo / '.claude/settings.local.json'):
+        try: plugins = json.loads(settings.read_text(encoding='utf-8')).get('enabledPlugins')
+        except (OSError, ValueError, AttributeError): continue
+        if isinstance(plugins, dict) and isinstance(plugins.get(PLUGIN), bool): value = plugins[PLUGIN]
+    return value is True
+
+
+def plugin_state(p):
+    try: return load(p).get('plugin', False)
+    except (OSError, ValueError, core.WsError): return False
+
+
+def plugin_duplicates(root):
+    """Started repos where the Claude Code plugin and ws start's own Claude hooks would both run."""
+    def files(p):  # a corrupt start record must not crash doctor; ws start reports it
+        try: return load(p).get('files', {})
+        except (OSError, ValueError, core.WsError): return {}
+    return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file()
+            and '.claude/settings.local.json' in files(p) and not plugin_state(p) and claude_plugin_enabled(p)]
+
+
 def codex_pending(root, check_global=True):
     global_connected = core.client_connected(root, 'codex', global_only=True)
     if check_global and global_connected: return []
@@ -231,7 +258,7 @@ def branch_task(root, repo, branch):
     return name
 
 
-def render(repo, root, clients, prior):
+def render(repo, root, clients, prior, plugin=False):
     """Repo wiring for this kit, built on each file's bytes from before ws (prior(name) -> bytes or None)."""
     command = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'), '--workspace-root', str(root)])
     instructions = f'Private task memory: {root}\nAt session start, run `{command} brief` unless saved task memory is already in context. Follow the current request. Save verified decisions and next actions with `{command} checkpoint`.\n'
@@ -251,15 +278,16 @@ def render(repo, root, clients, prior):
         data = json.loads(prior(name) or b'{}')
         if not isinstance(data, dict) or not isinstance(data.get('hooks', {}), dict): raise core.WsError('Invalid local hook settings: ' + name)
         hooks = data.setdefault('hooks', {})
-        generated = core.memory_hooks(root, 'vscode' if client == 'copilot' else client)
+        generated = {'hooks': {}} if plugin and client == 'claude' else core.memory_hooks(root, 'vscode' if client == 'copilot' else client)  # the plugin has the memory hooks
         generated['hooks'].update(core.pack_hooks(root, client))
+        if not generated['hooks']: continue
         if 'version' in generated: data.setdefault('version', generated['version'])
         for event, entries in generated['hooks'].items():
             if not isinstance(hooks.get(event, []), list): raise core.WsError('Invalid local hook event: ' + name)
             hooks[event] = hooks.get(event, []) + entries
         desired[name] = (json.dumps(data, indent=2) + '\n').encode()
     for client in clients:
-        if client == 'codex': continue
+        if client == 'codex' or plugin and client == 'claude': continue  # the plugin brings the MCP server
         name, key = core.MCP_LOCATIONS['vscode' if client == 'copilot' else client]
         data = json.loads(desired[name] if name in desired else prior(name) or b'{}')
         if not isinstance(data, dict) or not isinstance(data.get(key, {}), dict): raise core.WsError('Invalid MCP settings: ' + name)
@@ -295,7 +323,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
     def before(name):
         entry = state['files'].get(name)
         return base64.b64decode(entry['before']) if entry and entry.get('before') else None
-    desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before)
+    desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before, state.get('plugin', False))
     codex = state['files'].get('.codex/config.toml')
     if codex and codex.get('before') is None: desired['.codex/config.toml'] = core.codex_mcp_config(root).encode()
     changes = {n: data for n, data in desired.items() if n in state['files'] and n not in keep and path(repo, n).read_bytes() != data}
@@ -348,7 +376,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         raise core.WsError('Workspace belongs elsewhere or is not a workspace; choose ws start --workspace <dir>.')
     task = branch_task(root, repo, current)
     clients = ['claude', 'codex'] + [d['assistant'] for d in setup.detect() if d['assistant'] in ('cursor', 'copilot', 'gemini') and (d['cli_available'] or d['apps'])]
-    desired = render(repo, root, clients, lambda n: path(repo, n).read_bytes() if path(repo, n).exists() else None)
+    plugin = claude_plugin_enabled(repo)  # the plugin brings Claude's memory hooks and MCP server; pack hooks stay
+    desired = render(repo, root, clients, lambda n: path(repo, n).read_bytes() if path(repo, n).exists() else None, plugin)
     desired.update(codex_files(repo, root))
     tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
@@ -378,7 +407,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
     previous_exclude = exclude.read_bytes() if exclude.exists() else b''
-    state = dict(kit_version=core.kit_meta()['version'], hook_packs=hook_packs(root), codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    state = dict(kit_version=core.kit_meta()['version'], hook_packs=hook_packs(root), plugin=plugin, codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
@@ -397,4 +426,4 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
                 core.atomic_write(target, core.set_meta(core.set_section(text, 'Next action', ''), {'status': 'in_progress'}))
     memory_import.apply(root, repo, task, imports)
     state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
-    return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, codex_status=state['codex_status'], starter=starter(repo, root))
+    return dict(root=str(root), already=False, assistants=[c for c in clients if not (plugin and c == 'claude')] + (['claude (plugin)'] if plugin else []), task=task, branch=current, codex_status=state['codex_status'], starter=starter(repo, root))

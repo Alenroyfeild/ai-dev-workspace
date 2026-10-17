@@ -91,4 +91,4 @@ The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires 
 /plugin install ai-dev-workspace@ai-dev-workspace
 ```
 
-Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. Needs `python3` on PATH; Windows is untested.
+Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. Needs `python3` on PATH; Windows is untested.
