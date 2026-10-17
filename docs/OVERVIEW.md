@@ -70,10 +70,16 @@ cd ~/code/myapp && ws start
 **Task flow**
 - Claims so two sessions do not edit the same task; a session that changed files without updating its task is asked once to checkpoint.
 - `ws next` shows work that is not blocked; `ws task depend` and `ws task import` (Spec Kit `tasks.md`, Task Master `tasks.json`).
+- `ws pr-notes` prints a task's decisions, reasons, tried-and-rejected approaches and checks as a PR description; `ws recap` lists the week's tasks and decisions.
+
+**Try and check**
+- `ws demo` saves a sample decision in a disposable workspace and reads it back in a fresh process, offline, without starting an assistant.
+- `ws audit` scores a repo's AI setup (instructions and their size, broken file references, memory, hooks, MCP server count, stale tasks) and lists up to 3 fixes. Read-only and offline.
 
 **Trust**
 - Plain files you can read, diff, commit and share. Existing files are never overwritten; proposals go beside them as `.ws-new`.
 - Captures are redacted (keys, tokens, credential URLs), home paths become `~`, `<private>` text is never stored, and `"capture": false` turns capture off.
+- A confirmation prompt with no input (an assistant running `ws sync` without `--yes`) stops with a message instead of a traceback.
 - Big pastes go to a local inbox instead of your context (`ws paste`, `ws digest --focus`).
 
 All commands: [docs/COMMANDS.md](COMMANDS.md). Plain-language guide: [docs/CONCEPTS.md](CONCEPTS.md).
@@ -113,7 +119,7 @@ Use it with them, not instead: `ws import native` reads built-in memories, `ws t
 
 **Does it cost tokens?** The brief is under 200 words. In the benchmark a completion session cost about $0.05 more with the workspace; the gain is correctness across sessions, not lower spend.
 
-**Can a team share it?** The workspace is plain files: commit it to a private repo. Claims show who is working on which task. See [docs/TEAM.md](TEAM.md).
+**Can a team share it?** The workspace is plain files: commit it to a private repo. Claims show who is working on which task. A team can also link a synced folder and read its shared notes, read-only (`ws team link --folder`). See [docs/TEAM.md](TEAM.md).
 
 ## Optional packs
 
