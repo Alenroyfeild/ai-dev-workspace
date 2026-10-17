@@ -66,4 +66,4 @@ controls are passed. The real-client gate must verify this policy too.
 Collection includes ignored/untracked files and deletions in a private Git index,
 records an immutable tree/diff digest and completed command evidence, and blocks
 scope, metadata, symlink, secret, binary-scan, diff-check or claim failures. Output
-remains unverified; review, accept and discard come in a later change. [Official permission profiles](https://learn.chatgpt.com/docs/permissions).
+remains unverified; review it with `ws worker review`, `accept` or `discard` ([details](COMMANDS.md#worker-review-and-acceptance)). [Official permission profiles](https://learn.chatgpt.com/docs/permissions).
