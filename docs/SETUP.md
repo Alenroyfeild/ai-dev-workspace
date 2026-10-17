@@ -103,6 +103,13 @@ The GitHub release workflow publishes GitHub release notes only. For a PyPI rele
 
 The assistant can check `ws notices` at session start. `ws tools` lists optional tools; nothing installs automatically. `ws assist` offers local workspace suggestions and asks before applying. Optional routing, tool profiles and cost controls are in [Advanced settings](ADVANCED.md).
 
+## Upgrading
+
+1. `pipx upgrade ai-dev-workspace` (or `pip install -U ai-dev-workspace` in a venv install).
+2. `ws upgrade` in the workspace; `ws upgrade --dry-run` previews it.
+3. `ws start` in each repo to refresh its hooks.
+4. `ws doctor` to confirm; it says `Next: ws upgrade` while the workspace is older than the kit.
+
 ## Daily loop
 
 `ws connect claude` or `ws connect codex` never writes to your global folders by default; the project skills `/handoff`, `/pickup` and `/lesson` are already in the workspace. To also link the extra kit skills (such as `/thinkbeforeact`) globally, run it once with `--skills`: `~/.claude/skills` for Claude, `~/.agents/skills` for Codex. Existing names are kept; check the command's notice. Restart the client after connecting. With `ws` on PATH, Claude's `/handoff` saves the current task's next action, evidence and blockers, `/pickup` reads that task memory in a new session, and `/lesson` records a requested rule. In Codex, use `$handoff`, `$pickup`, and `$lesson` (or select them with `/skills`). These skills use the CLI without MCP. Init and MCP connection calls do not install global skill links.

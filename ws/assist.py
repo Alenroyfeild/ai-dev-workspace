@@ -91,8 +91,7 @@ def session_task(root, session_id):
 
 def feature_suggestions(root, add):
     cfg = core.config(root)
-    pending = cfg.get('upgrade_pending') or any(p.is_file() for p in root.rglob('*.ws-new*'))
-    if core._vtuple(core.kit_meta()['version']) > core._vtuple(cfg.get('kit_version', '0')) or pending:
+    if core.upgrade_due(root):
         add('upgrade', 'Kit is newer than this workspace or .ws-new proposals await review', 'ws upgrade --dry-run', 'local-reversible')
     from . import orchestration
     path = root / '.ws/delegate-selftests.json'
