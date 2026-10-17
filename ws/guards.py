@@ -72,6 +72,37 @@ def command_reason(command):
     return ''
 
 
+PS_REMOVE = {'remove-item', 'rm', 'ri', 'del', 'erase', 'rd', 'rmdir'}
+
+
+def _ps_flag(arg, full):
+    """True when arg is -Name or an abbreviation of it (PowerShell accepts unambiguous prefixes), e.g. -r, -fo, -Recurse:$true; -Force:$false is off."""
+    name, _, value = arg[1:].partition(':')
+    return arg[:1] == '-' and bool(name) and full.startswith(name.lower()) and value.lower() not in ('$false', 'false', '0')
+
+
+def _ps_home_or_root(a):
+    target = re.sub(r'[\\/]\*$', '', a.lower()).rstrip('\\/')
+    return not a.startswith('-') and (target in ('', '~', '$home', '${home}', '$env:userprofile') or bool(re.fullmatch(r'[a-z]:', target)) or a.rstrip('\\/') == os.path.expanduser('~'))
+
+
+def powershell_reason(command):
+    """Remove-Item (and aliases) -Recurse -Force on home or a drive root, also when piped in; git and secrets go through command_reason."""
+    previous = []  # words of the pipeline stage before this one, whose output may be Remove-Item's target
+    for part in re.split(r'&&|\|\||[;|\n]', command):
+        words = [w.strip('"\'') for w in re.findall(r'"[^"]*"|\'[^\']*\'|\S+', part)]
+        while words and words[0] == '&': words = words[1:]
+        before, previous = previous, words
+        if not words or words[0].lower() not in PS_REMOVE: continue
+        args = words[1:]
+        if not (any(_ps_flag(a, 'recurse') for a in args) and any(_ps_flag(a, 'force') for a in args)): continue
+        piped = [] if any(not a.startswith('-') for a in args) else before[1:] if len(before) > 1 else before
+        for a in args + piped:
+            if _ps_home_or_root(a):
+                return f'Remove-Item -Recurse -Force on {a} would delete your home folder or a drive root.'
+    return ''
+
+
 def _added(tool_input, cwd):
     """(new text, removed text) a file edit would introduce, for Claude Write/Edit/MultiEdit and Codex apply_patch."""
     if 'edits' in tool_input and isinstance(tool_input['edits'], list):
@@ -96,7 +127,7 @@ def reason(tool_name, tool_input, cwd=None):
         lines = command.splitlines()
         new = '\n'.join(l[1:] for l in lines if l.startswith('+')); old = '\n'.join(l[1:] for l in lines if l.startswith('-'))
     elif command:
-        return command_reason(command)
+        return command_reason(command) or (powershell_reason(command) if tool_name == 'PowerShell' else '')
     else:
         new, old = _added(tool_input, cwd)
     if len(MUTED.findall(new)) > len(MUTED.findall(old)): return 'This edit skips or narrows tests (skip/only); fix the test or ask the user first.'
