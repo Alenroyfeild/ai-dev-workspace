@@ -112,7 +112,7 @@ Claim: claimed in this workspace: continue; ws claim resumes it
 The hook form also prints a one-line summary to you:
 
 ```bash
-echo '{"hook_event_name":"SessionStart","cwd":"'$PWD'"}' | ws brief --hook
+python3 -c 'import json, os; print(json.dumps({"hook_event_name": "SessionStart", "cwd": os.getcwd()}))' | ws brief --hook
 ```
 
 ```text
