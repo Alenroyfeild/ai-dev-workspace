@@ -226,7 +226,6 @@ def main(argv=None):
     p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
-    sub.add_parser('demo', help='try remembered decisions offline in a disposable workspace')
 
     s = sub.add_parser('init', help='create a workspace')
     s.add_argument('dir'); s.add_argument('--name')
@@ -391,10 +390,6 @@ def main(argv=None):
         p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
     a = p.parse_args(argv)
     try:
-        if a.cmd == 'demo':
-            from . import demo
-            if a.workspace_root: raise core.WsError('ws demo uses its own disposable workspace; omit --workspace-root.')
-            out(demo.run()); return 0
         if a.cmd == 'start':
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
