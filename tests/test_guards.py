@@ -45,13 +45,15 @@ class GuardRuleTests(unittest.TestCase):
                         'rmdir ~/* -r -f', 'Remove-Item -Recurse:$true -Force -Path ~\\*', 'cd x; Remove-Item -Recurse -Force D:\\',
                         'git reset --hard', 'git -C sample push -f', 'git clean -fdx', 'Get-Date; git push --force origin main',
                         'git status && git reset --hard HEAD~1', 'git log | git clean -f', 'git status\ngit push -f',
+                        'Get-Item ~ | Remove-Item -Recurse -Force', '"~" | Remove-Item -Recurse -Force',
                         'echo ' + 'ghp_' + 'A1b2' * 9, '$env:API_KEY = "' + 'q7Rt' * 5 + '"'):
             with self.subTest(command): self.assertTrue(guards.reason('PowerShell', {'command': command}))
 
     def test_powershell_everyday_commands_are_allowed(self):
         for command in ('Remove-Item -Recurse -Force .\\build', 'rm -r -fo dist', 'Remove-Item ~', 'Remove-Item -Recurse $HOME\\old',
                         'Remove-Item C:\\temp\\x -Recurse -Force', 'Remove-Item -Force C:\\', 'Get-ChildItem ~', 'git status', 'git reset --soft HEAD~1',
-                        'git push --force-with-lease', 'Write-Output "Remove-Item -Recurse -Force ~"', '$env:API_KEY = $env:OTHER'):
+                        'git push --force-with-lease', 'Write-Output "Remove-Item -Recurse -Force ~"', '$env:API_KEY = $env:OTHER',
+                        'Remove-Item ~ -Recurse -Force:$false', 'Remove-Item ~ -Recurse:$false -Force', 'Get-ChildItem .\\build | Remove-Item -Recurse -Force'):
             with self.subTest(command): self.assertEqual(guards.reason('PowerShell', {'command': command}), '')
 
     def test_powershell_rules_do_not_apply_to_other_tools(self):
