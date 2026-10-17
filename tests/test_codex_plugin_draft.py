@@ -19,9 +19,14 @@ class CodexPluginDraftTests(unittest.TestCase):
         self.assertNotIn('mcpServers', manifest)
         self.assertFalse((KIT / '.agents/plugins/marketplace.json').exists())
 
+    def test_manifest_version_matches_kit_version(self):
+        manifest = json.loads((KIT / '.codex-plugin/plugin.json').read_text())
+        kit = json.loads((KIT / 'kit.json').read_text())
+        self.assertEqual(manifest['version'], kit['version'])
+
     def test_hook_commands_isolate_imports_and_preserve_root_cwd_payload(self):
         hooks = json.loads((KIT / 'hooks/codex-hooks.json').read_text())['hooks']
-        self.assertEqual(set(hooks), {'SessionStart', 'Stop'})
+        self.assertEqual(set(hooks), {'SessionStart', 'PreCompact', 'UserPromptSubmit', 'Stop'})
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             plugin = base / "plugin root ' $ % & ü"; (plugin / 'bin').mkdir(parents=True)
