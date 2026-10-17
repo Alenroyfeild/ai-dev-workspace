@@ -110,6 +110,19 @@ class CliPolishTests(unittest.TestCase):
                 cli.main(['--workspace-root', str(workspace), 'doctor'])
             self.assertTrue(stream.getvalue().startswith(('OK:', 'Needs attention:')), stream.getvalue()[:80])  # terminal default is text
 
+    def test_doctor_verdict_asks_for_ws_upgrade_when_workspace_is_older(self):
+        from ws import cli, core
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / 'workspace'
+            env = dict(os.environ, HOME=temporary)
+            self.assertEqual(self.run_ws('init', str(workspace), '--name', 'u', env=env).returncode, 0)
+            self.assertFalse(core.doctor(workspace)['upgrade_due'])
+            cfg = core.config(workspace); cfg['kit_version'] = '0.0.1'
+            (workspace / 'workspace.json').write_text(json.dumps(cfg))
+            report = core.doctor(workspace)
+            self.assertTrue(report['upgrade_due'])
+            self.assertTrue(cli.text_doctor(report).startswith('Needs attention: workspace was written by an older kit. Next: ws upgrade --dry-run'))
+
     def test_ws_error_includes_next_command(self):
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary) / 'workspace'

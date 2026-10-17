@@ -2946,6 +2946,7 @@ def doctor(root=None, mcp=False):
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
+        report['upgrade_due'] = upgrade_due(root)
         report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
         team = _team_checks(root)
         if team is not None: report['team'] = team
@@ -2985,6 +2986,13 @@ def doctor(root=None, mcp=False):
 
 def kit_meta():
     return json.loads((KIT / 'kit.json').read_text(encoding='utf-8'))
+
+
+def upgrade_due(root):
+    """Kit is newer than the workspace, or .ws-new proposals await review (shared by ws assist and ws doctor)."""
+    cfg = config(root)
+    pending = cfg.get('upgrade_pending') or any(p.is_file() for p in root.rglob('*.ws-new*'))
+    return bool(_vtuple(kit_meta()['version']) > _vtuple(cfg.get('kit_version', '0')) or pending)
 
 
 def _vtuple(v):

@@ -122,6 +122,7 @@ def doctor_verdict(report):
         if key in core and not core[key]: return f'Needs attention: {label} is missing. Next: install it, then run ws doctor again.'
     if not report.get('workspace'): return 'Needs attention: no workspace found. Next: in a git repo run ws start; otherwise ws init <dir>.'
     if not report.get('valid'): return 'Needs attention: workspace invalid. Next: run ws validate.'
+    if report.get('upgrade_due'): return 'Needs attention: workspace was written by an older kit. Next: ws upgrade --dry-run to preview, then ws upgrade.'
     if report.get('codex_manual_pending'): return 'Needs attention: Codex needs a manual step. Next: paste the printed Codex config block (see below).'
     if report.get('stale_hooks'): return 'Needs attention: repo hooks point to something missing. Next: run ws start again in that repo.'
     if not connected: return 'Needs attention: no assistant connected. Next: run ws start in your repo, or ws connect claude.'
