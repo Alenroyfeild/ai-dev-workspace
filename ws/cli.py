@@ -221,6 +221,8 @@ def ask(prompt=''):
 
 
 def main(argv=None):
+    if core.WINDOWS:  # the pip/pipx `ws` script skips bin/ws, whose cp1252 pipes cannot carry non-ASCII text
+        for stream in (sys.stdin, sys.stdout, sys.stderr): getattr(stream, 'reconfigure', lambda **_: None)(encoding='utf-8')
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
                                 formatter_class=GroupedHelpFormatter,
                                 epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
@@ -736,8 +738,8 @@ def main(argv=None):
             digest = core.digest_file(a.file, focus=a.focus)
             if a.local_summary:
                 try:
-                    result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file],
-                                            capture_output=True, text=True, timeout=180)
+                    result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file], env={**os.environ, 'PYTHONUTF8': '1'},  # the child prints UTF-8 too
+                                            capture_output=True, encoding='utf-8', errors='replace', timeout=180)
                 except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(core.redact(f'Local summary failed: {exc}'))
                 if result.returncode: raise core.WsError(core.redact(result.stderr.strip()) or 'Local summary failed.')
                 digest['local_summary'] = core.redact(result.stdout)

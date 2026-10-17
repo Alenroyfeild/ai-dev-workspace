@@ -17,7 +17,7 @@ STALE_DAYS = 14
 def _repo(path):
     path = Path(path or '.').resolve()
     try:
-        top = subprocess.run(['git', '-C', str(path), 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=5)
+        top = subprocess.run(['git', '-C', str(path), 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=5)
         return Path(top.stdout.strip()).resolve() if top.returncode == 0 else path
     except (OSError, subprocess.SubprocessError):
         return path
