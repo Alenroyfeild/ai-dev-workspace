@@ -294,6 +294,7 @@ def pack_add(root, name):
     nxt = [f"run {KIT / 'packs' / name / manifest['setup']}"] if manifest.get('setup') else []
     if manifest.get('selftest'):
         nxt.append(f"verify with {KIT / 'packs' / name / manifest['selftest']}")
+    nxt += [line for line in manifest.get('next', []) if isinstance(line, str)]
     return {'pack': name, 'installed': True, 'collisions': collisions, 'next': nxt or ['nothing else needed'],
             'missing': [r for r in requirement_status(manifest) if not r['ok']]}
 
@@ -456,6 +457,24 @@ def memory_hooks(root, client='claude'):
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
                 'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][prompt_event] = [hook if client == 'cursor' else {'hooks': [hook]}]
+    return result
+
+
+HOOK_PACKS = ('guards', 'discipline')  # packs that add repo hooks; ws start refreshes when this set changes
+
+
+def pack_hooks(root, client):
+    """Hooks for the opt-in guards and discipline packs (repo setup only, so the kit fingerprint stays config-free)."""
+    if client not in ('claude', 'codex') or not (Path(root) / 'workspace.json').is_file(): return {}
+    packs = config(root).get('packs', [])
+    def hook(*suffix):
+        arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root), *suffix, '--hook', '--client', client]
+        return {'type': 'command', 'timeout': 10, 'command': encoded_hook_command(arguments) if WINDOWS and any('%' in a for a in arguments) else command_line(arguments)}
+    result = {}
+    if 'guards' in packs:  # Codex: every tool; the guard allows tools it cannot read
+        result['PreToolUse'] = [{'matcher': 'Bash|PowerShell|Write|Edit|MultiEdit', 'hooks': [hook('guard')]} if client == 'claude' else {'hooks': [hook('guard')]}]
+    if 'discipline' in packs:  # Claude reports failed commands separately; Codex reports every Bash call
+        result['PostToolUseFailure' if client == 'claude' else 'PostToolUse'] = [{'matcher': 'Bash', 'hooks': [hook('discipline')]}]
     return result
 def install_memory_hooks(root, collisions, clients=None):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):

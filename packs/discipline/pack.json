@@ -1,0 +1,4 @@
+{"name": "discipline", "version": "0.1.0", "kind": "guard",
+ "description": "Opt-in, advisory only: after the same shell command fails 3 times in a session, Claude Code and Codex are told to stop retrying, form one hypothesis, and save the dead end.",
+ "requires": [],
+ "next": ["run ws start again in each connected repo to add the hook (it previews the change first)"]}
