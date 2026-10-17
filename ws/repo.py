@@ -152,8 +152,11 @@ def claude_plugin_enabled(repo):
 
 def plugin_duplicates(root):
     """Started repos where the Claude Code plugin and ws start's own Claude hooks would both run."""
+    def files(p):  # a corrupt start record must not crash doctor; ws start reports it
+        try: return load(p).get('files', {})
+        except (OSError, ValueError, core.WsError): return {}
     return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file()
-            and '.claude/settings.local.json' in load(p).get('files', {}) and claude_plugin_enabled(p)]
+            and '.claude/settings.local.json' in files(p) and claude_plugin_enabled(p)]
 
 
 def codex_pending(root, check_global=True):
