@@ -107,3 +107,24 @@ class BriefStalenessTests(Base):
         self.assertNotIn('gone since', core.brief(self.root))
         core.checkpoint(self.root, 'ST-1', 'in_progress', 'Review ./export.py output.')
         self.assertIn('gone since: export.py', core.brief(self.root))
+
+    def dirty_checkpoint(self):
+        repo = self.repo()
+        (repo / 'export.py').write_text('half done\n')
+        core.checkpoint(self.root, 'ST-1', 'in_progress', 'Finish the output.')
+        return repo
+
+    def test_checkpoint_records_uncommitted_paths(self):
+        self.dirty_checkpoint()
+        self.assertEqual(core.task_read(self.root, 'ST-1', ['Objective'])['meta']['checkpoint_dirty'], '["export.py"]')
+
+    def test_discarded_uncommitted_edits_warn(self):
+        repo = self.dirty_checkpoint()
+        self.git(repo, 'checkout', '--', 'export.py')
+        self.assertIn('uncommitted edits gone: export.py (stashed or reset?)', core.brief(self.root))
+
+    def test_kept_or_committed_edits_are_silent(self):
+        repo = self.dirty_checkpoint()
+        self.assertNotIn('Memory check', core.brief(self.root))
+        self.git(repo, 'commit', '-qam', 'finish export')
+        self.assertNotIn('gone', core.brief(self.root))
