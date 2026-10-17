@@ -4,8 +4,8 @@ on:
     branches: [dev, main]  # feature branches are tested through their pull request, once per commit
   pull_request:
   workflow_dispatch:
-concurrency:  # a newer commit on a PR cancels its older run; dev/main runs always finish (post-merge CI)
-  group: test-${{ github.event.pull_request.number || github.ref }}
+concurrency:  # a newer commit on a PR cancels its older run; push runs get their own group (run_id), so no dev/main run is ever replaced
+  group: test-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:
