@@ -1,5 +1,7 @@
 # O2: write-capable workers
 
+This is a design note for experimental, unreleased work. Write workers cannot be launched in this version; only the preparation and review commands exist.
+
 Status: approved with Claude's 2026-10-13 decisions below. No write worker is enabled by this document.
 
 ## User result and scope
