@@ -86,7 +86,7 @@ class CliPolishTests(unittest.TestCase):
             env['WS_ROOT'] = str(workspace)
             result = self.run_ws('search', 'x', env=env)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn('Next: run `ws --help`', result.stderr)
+            self.assertIn('Next: run `ws search --help`', result.stderr)  # names the failing command
 
     def test_connect_codex_explains_preview_and_project_skills(self):
         with tempfile.TemporaryDirectory() as temporary:
