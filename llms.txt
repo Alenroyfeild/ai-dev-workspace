@@ -22,5 +22,6 @@ Measured with a reproducible benchmark (bench/): when product decisions were giv
 - Connect a repo: `cd ~/code/myapp && ws start` (private memory outside the repo, nothing added to git status; `ws start --undo` removes it)
 - Keep a decision: `ws remember "Prices are integer cents"`; the next session's brief starts with it
 - Save progress: `ws checkpoint <task> --status in_progress --next "<next step>"`
+- Dead ends from earlier sessions appear in the brief as `Do not redo:`; opt-in `guards` and `discipline` packs: `ws pack add guards`
 - PR text and standups: `ws pr-notes`, `ws recap`
 - Team (preview): `ws team init <private-repo>`, teammates `ws team link <private-repo>`; sharing always shows a preview first
