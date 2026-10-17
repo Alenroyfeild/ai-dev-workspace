@@ -90,3 +90,11 @@ class StaleHookTests(Base):
         (repo / '.ws-start.json').write_text('{not json')
         report = core.doctor(root)
         self.assertEqual((report['stale_hooks'], report['codex_manual_pending']), ([], []))
+
+    def test_a_users_lint_hook_with_similar_flags_is_ignored(self):
+        repo, root = self.started()
+        file = repo / '.claude/settings.local.json'; data = json.loads(file.read_text())
+        data['hooks']['PostToolUse'] = [{'hooks': [{'type': 'command', 'command': '/opt/lint/bin/ws-lint --workspace-root /nowhere --fix'}]},
+                                        {'hooks': [{'type': 'command', 'command': 'node /gone/bin/ws.js --workspace-root /nowhere check'}]}]
+        file.write_text(json.dumps(data))
+        self.assertEqual(repo_setup.stale_hooks(root), [])
