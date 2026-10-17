@@ -785,8 +785,9 @@ def client_connected(root, client, global_only=False):
     try: repos = read_roots(root)[1:]
     except WsError: return False
     for checkout in repos:
-        try: files = repo.load(checkout)['files']
+        try: state = repo.load(checkout); files = state['files']
         except (OSError, ValueError, WsError): continue
+        if state.get('plugin') is True: return True  # Claude Code plugin mode: the plugin brings the MCP server
         if {'.mcp.json', '.claude/settings.local.json'} <= set(files) and has_entry(checkout / '.mcp.json'): return True
     return False
 
