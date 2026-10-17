@@ -56,6 +56,10 @@ class PackagingTests(unittest.TestCase):
                 names = archive.namelist()
                 metadata = archive.read(next(name for name in names if name.endswith('.dist-info/METADATA'))).decode()
                 self.assertIn('Version: 0.1.0b5\n', metadata)
+                self.assertNotIn('](docs/', metadata)  # relative README links break on the PyPI page
+                self.assertIn('](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/', metadata)
+                self.assertIn('Project-URL: Changelog, ', metadata)
+                self.assertIn('Classifier: Programming Language :: Python :: 3.12', metadata)
                 self.assertIn('ws/cli.py', names)
                 self.assertIn('ws/template/AGENTS.md', names)
             with tarfile.open(source, 'r:gz') as archive:
