@@ -5,6 +5,9 @@
 ### New
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
+### Fixed
+- `ws start` now merges only its own hooks and MCP entry into JSON files such as `.claude/settings.local.json`, so a Claude Code "always allow" edit no longer freezes hook refreshes. `ws start --undo` removes only ws's entries, keeps your keys, and always leaves a state where the next `ws start` sets up again.
+
 ## 0.1.0-beta.5 (unreleased)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
