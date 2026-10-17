@@ -2,6 +2,9 @@
 
 ## 0.1.0-beta.6 (unreleased)
 
+### Fixed
+- `ws doctor` no longer reports Claude as not configured in a repo set up by `ws start` (the Claude files live in the repo, not the private workspace). Its text summary now opens with an `OK:` or `Needs attention:` line and no longer prints empty parentheses after `Setup preset`; `ws doctor --json` forces JSON in a terminal (piped output is still JSON).
+
 ### New
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 

@@ -1,6 +1,6 @@
 # Setup guide
 
-Every step after 2 is optional. `ws doctor` tells you what is missing and how to install it.
+Every step after 2 is optional. `ws doctor` tells you what is missing and how to install it: a short text summary in a terminal, JSON when piped or with `--json`.
 
 ## 1. Install the kit
 
