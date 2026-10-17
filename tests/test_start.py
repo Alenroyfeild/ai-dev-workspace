@@ -1,3 +1,4 @@
+import hashlib
 import contextlib
 import base64
 import io
@@ -30,6 +31,81 @@ class StartTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(preview): result = cli.main(['start', *args])
         return result, output.getvalue(), preview.getvalue().replace(os.sep, '/')
 
+    def test_confirmed_start_summarizes_private_files_and_dry_run_lists_them(self):
+        listed = self.start('--dry-run')[2]
+        self.assertIn('vault/Templates/Task.md', listed)
+        code, _, preview = self.start('--yes')
+        self.assertEqual(code, 0)
+        self.assertNotIn('vault/Templates/Task.md', preview)
+        self.assertRegex(preview, r'plus \d+ private workspace files')
+        self.assertIn('CLAUDE.local.md', preview)
+    def age_setup(self, name, old):
+        """Pretend an older kit wrote `old` into name: file bytes and recorded sha agree, kit_version is old."""
+        link = self.repo / '.ws-start.json'
+        state = json.loads(link.read_text())
+        (self.repo / name).write_bytes(old)
+        state['files'][name]['sha'] = hashlib.sha256(old).hexdigest(); state['kit_version'] = '0.0.1'
+        link.write_text(json.dumps(state))
+
+    def test_rerun_on_newer_kit_refreshes_unchanged_wiring_and_undo_still_restores(self):
+        (self.repo / 'CLAUDE.local.md').write_bytes(b'Private Claude notes.\n')
+        self.assertEqual(self.start('--yes')[0], 0)
+        fresh = (self.repo / 'CLAUDE.local.md').read_bytes()
+        self.age_setup('CLAUDE.local.md', b'Private Claude notes.\n\nold instruction\n')
+        code, _, err = self.start('--dry-run')
+        self.assertEqual(code, 0); self.assertIn('Refresh repo setup', err)
+        self.assertIn(b'old instruction', (self.repo / 'CLAUDE.local.md').read_bytes())  # dry run writes nothing
+        self.assertEqual(json.loads((self.repo / '.ws-start.json').read_text())['kit_version'], '0.0.1')
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), fresh)
+        self.assertNotEqual(json.loads((self.repo / '.ws-start.json').read_text())['kit_version'], '0.0.1')
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), b'Private Claude notes.\n')
+
+    def test_refresh_refuses_a_setup_file_committed_to_git(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.age_setup('CLAUDE.local.md', b'old instruction\n')
+        subprocess.run(['git', '-C', str(self.repo), 'add', '-f', 'CLAUDE.local.md'], check=True)
+        code, _, err = self.start('--yes')
+        self.assertNotEqual(code, 0); self.assertIn('tracked local files', err)
+        self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), b'old instruction\n')
+
+    def test_user_edited_wiring_is_kept_and_the_rest_still_refreshes(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        fresh = (self.repo / 'CLAUDE.local.md').read_bytes()
+        self.age_setup('CLAUDE.local.md', b'old claude instruction\n')
+        self.age_setup('AGENTS.override.md', b'old instruction\n')
+        (self.repo / 'AGENTS.override.md').write_bytes(b'old instruction\nmy own edit\n')
+        code, _, err = self.start('--yes')
+        self.assertNotEqual(code, 0); self.assertIn('local files changed', err)  # existing partial-setup exit
+        self.assertIn('Kept your edits, not refreshed', err)
+        self.assertEqual((self.repo / 'AGENTS.override.md').read_bytes(), b'old instruction\nmy own edit\n')
+        self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), fresh)
+        # Sol-1's reproduction: once the user restores the skipped file, a rerun refreshes it too.
+        (self.repo / 'AGENTS.override.md').write_bytes(b'old instruction\n')
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn(b'remember', (self.repo / 'AGENTS.override.md').read_bytes())
+
+    def test_rerun_with_an_older_kit_never_downgrades_newer_setup(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.age_setup('CLAUDE.local.md', b'newer instruction\n')
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text())
+        state['kit_version'] = '99.0.0'; link.write_text(json.dumps(state))
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0); self.assertIn('newer ai-dev-workspace version', err)
+        self.assertEqual((self.repo / 'CLAUDE.local.md').read_bytes(), b'newer instruction\n')
+
+    def test_newer_setup_without_codex_config_is_left_unchanged(self):
+        # Luna's reproduction: a newer record missing the Codex config must not get one created by an older kit.
+        self.assertEqual(self.start('--yes')[0], 0)
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text())
+        state['files'].pop('.codex/config.toml', None); (self.repo / '.codex/config.toml').unlink()
+        state['kit_version'] = '99.0.0'; link.write_text(json.dumps(state)); before = link.read_bytes()
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0); self.assertIn('newer ai-dev-workspace version', err)
+        self.assertFalse((self.repo / '.codex/config.toml').exists())
+        self.assertEqual(link.read_bytes(), before)
+
     def test_preview_confirmation_external_memory_repeat_and_undo(self):
         before = (self.repo / '.git/info/exclude').read_bytes()
         code, _, preview = self.start('--dry-run')
@@ -61,8 +137,8 @@ class StartTests(unittest.TestCase):
         self.assertIn('Continue the saved next action', core.task_read(workspace, task['id'])['text'])
 
     def test_correction_instruction_is_written_and_undo_restores_user_text(self):
-        instruction = ('When the user corrects an earlier decision, call the MCP `remember` tool '
-                       'with the corrected decision, saying what it replaces.')
+        instruction = ('When the user states a decision or corrects an earlier one, call the MCP `remember` tool '
+                       'with it; for a correction, say what it replaces.')
         originals = {'CLAUDE.local.md': b'Private Claude notes.\n',
                      'AGENTS.override.md': b'Private Codex notes.\n'}
         for name, content in originals.items():
