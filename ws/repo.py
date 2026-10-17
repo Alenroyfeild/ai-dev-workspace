@@ -43,7 +43,7 @@ def record_file(repo, state, name, data):
 
 def exclusions(repo, state):
     exclude = Path(state['exclude'])
-    expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], text=True).strip())
+    expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip())
     if not expected.is_absolute(): expected = repo / expected
     if exclude.resolve() != expected.resolve(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
     if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
@@ -133,12 +133,12 @@ def upgrade_codex(repo, root, state, yes, dry_run):
         if not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
         state['codex_status'] = 'manual step pending'
         if not dry_run:
-            if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK], text=True).strip(): raise core.WsError('Start will not change its tracked setup record.')
+            if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK], encoding='utf-8', errors='replace').strip(): raise core.WsError('Start will not change its tracked setup record.')
             core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
         return True
     exclude, block = exclusions(repo, state)
     record = path(repo, LINK); record_before = record.read_bytes()
-    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
+    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], encoding='utf-8', errors='replace').strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
     before = {n: path(repo, n).read_bytes() if path(repo, n).exists() else None for n in desired}
     print('Create Codex MCP locally; no global config writes:', file=sys.stderr)
     for name in (LINK, *desired): print('  ' + str(repo / name), file=sys.stderr)
@@ -146,7 +146,7 @@ def upgrade_codex(repo, root, state, yes, dry_run):
     if not confirm(yes, dry_run): return False
     if not record.is_file() or record.read_bytes() != record_before: raise core.WsError('Setup record changed during confirmation; review it before retrying ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
-    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
+    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], encoding='utf-8', errors='replace').strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
     exclude, block = exclusions(repo, state)
     updated = block.replace(b'# /ws:start', ('\n'.join('/' + n for n in desired) + '\n# /ws:start').encode())
     state['files'].update({n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()})
@@ -187,7 +187,7 @@ def render(repo, root, clients, prior):
         desired[name] = (prior(name) or b'') + ('\n' + prefix + instructions).encode()
     for client, name in (('cursor', '.cursor/rules/ws-current-task.mdc'), ('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md')):
         if client not in clients: continue
-        if subprocess.check_output(['git', 'ls-files', '--', name], text=True).strip():
+        if subprocess.check_output(['git', 'ls-files', '--', name], encoding='utf-8', errors='replace').strip():
             print('Keeping tracked instructions: ' + name, file=sys.stderr); continue
         prefix = '---\nalwaysApply: true\n---\n' if client == 'cursor' else ''
         previous = prior(name) or b''
@@ -233,7 +233,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
     if changes:
         print('Refresh repo setup for this ai-dev-workspace version (saved memory is kept):', file=sys.stderr)
         for name in changes: print('  ' + str(repo / name), file=sys.stderr)
-        tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes], capture_output=True, text=True, check=True).stdout.strip()
+        tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
         if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))  # same rule as first setup
         if dry_run: return sorted(changes)
         if not confirm(yes, dry_run): return None
@@ -247,7 +247,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
 
 def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=None, no_import=False):
     if remove and dry_run: raise core.WsError('Use --undo or --dry-run separately.')
-    try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=10)
+    try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError) as exc: raise core.WsError('Cannot inspect this Git repo; check git and retry ws start: ' + str(exc))
     if result.returncode: raise core.WsError('Run ws start inside a git code repository.')
     repo = Path(result.stdout.strip()).resolve(); current = setup.branch(repo)
@@ -280,9 +280,9 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     clients = ['claude', 'codex'] + [d['assistant'] for d in setup.detect() if d['assistant'] in ('cursor', 'copilot', 'gemini') and (d['cli_available'] or d['apps'])]
     desired = render(repo, root, clients, lambda n: path(repo, n).read_bytes() if path(repo, n).exists() else None)
     desired.update(codex_files(repo, root))
-    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
+    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
-    exclude = Path(subprocess.check_output(['git', 'rev-parse', '--git-path', 'info/exclude'], text=True).strip()).absolute()
+    exclude = Path(subprocess.check_output(['git', 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip()).absolute()
     if exclude.is_symlink(): raise core.WsError('Start refuses a symlinked Git exclude file.')
     block = ('\n# ws:start:' + core.digest_text(str(repo))[:12] + '\n' + '\n'.join('/' + n for n in (LINK, *desired)) + '\n# /ws:start\n').encode()
     before = {n: path(repo, n).read_bytes() if path(repo, n).exists() else None for n in desired}
@@ -302,7 +302,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
-    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
+    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
