@@ -120,13 +120,18 @@ def search(root, query, value='', layer='all', include_all=False):
     return sorted(hits, key=lambda h: (h['layer'] == 'team', -h['score']))[:20]
 
 
+def _more_note(hidden):
+    # core._bounded_brief fills this last, so it is the first line dropped when the brief is full.
+    return [(f'+{hidden} more team notes:', 'ws know list --layer team', 12)] if hidden > 0 else []
+
+
 def onboarding_fields(root):
     """A small orientation until the teammate has saved task-specific memory."""
     if not core.config(root).get('team_workspace'): return []
     try: listing = list_entries(root, layer='team', limit=0)  # Newest per category needs every valid card, not the first 100 files.
     except (core.WsError, OSError, ValueError, TypeError):
         return [('Team warning:', 'Unavailable or invalid team link; private memory retained.', 12)]
-    fields = []
+    fields, cards = [], 0
     if listing['warnings']: fields.append(('Team warning:', 'Unreadable, unsafe or conflicted entries excluded; use ws know list.', 12))
     for value in ('product', 'domain', 'repo'):
         rows = [row for row in listing['entries'] if row['category'] == value]
@@ -135,8 +140,8 @@ def onboarding_fields(root):
         summary = re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', row['summary'])
         author = ' '.join(row['author'].split()[:3])
         prefix = f'Team {value} (untrusted, {author}, {row["date"][:10]}):'
-        fields.append((prefix, summary, 20))
-    return fields
+        fields.append((prefix, summary, 20)); cards += 1
+    return fields + _more_note(len(listing['entries']) - cards)
 
 
 def brief_fields(root, query, private):
@@ -160,5 +165,7 @@ def brief_fields(root, query, private):
     fields = []
     if listing['warnings']: fields.append(('Team warning:', 'Unreadable, unsafe or conflicted entries excluded; use ws know list.', 12))
     if omitted: fields.append(('Team overlap:', f'{omitted} potentially conflicting summaries omitted; private memory wins.', 12))
-    fields += [(prefix, text, 20) for _,prefix,text in sorted(relevant, key=lambda r:-r[0])[:2]]
-    return fields
+    shown = sorted(relevant, key=lambda r:-r[0])[:2]
+    fields += [(prefix, text, 20) for _,prefix,text in shown]
+    known = [r for r in listing['entries'] if r['source'].startswith('knowledge:') or (r['category'] == 'runbook' and r['source'].startswith('task:'))]
+    return fields + _more_note(len(known) - len(shown))

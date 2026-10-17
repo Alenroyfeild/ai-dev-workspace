@@ -193,3 +193,16 @@ class TeamFolderTests(unittest.TestCase):
         self.link();core.task_new(self.root,'T1','Unrelated work');core.claim(self.root,'T1','synthetic')
         text=core.brief(self.root)
         self.assertIn('Newest product note.',text);self.assertNotIn('Old product note.',text);self.assertNotIn('Unreadable',text)
+
+    def brief_with_team(self):
+        self.link();core.task_new(self.root,'T1','Unrelated work');core.claim(self.root,'T1','synthetic')
+        return core.brief(self.root)
+
+    def test_brief_has_no_more_notes_hint_when_every_team_note_is_shown(self):
+        self.assertNotIn('more team notes',self.brief_with_team())
+
+    def test_brief_hints_at_hidden_team_notes(self):
+        self.record('Older repo note.','1'*32,'repo','2026-09-01T00:00:00Z');self.record('Other repo note.','2'*32,'repo','2026-09-02T00:00:00Z')
+        text=self.brief_with_team()
+        self.assertTrue(text.endswith('+2 more team notes: ws know list --layer team'),text)
+        self.assertLessEqual(len(text.split()),200)
