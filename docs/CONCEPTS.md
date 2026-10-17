@@ -17,6 +17,8 @@ An AI Dev Workspace is a local folder that keeps useful project context between 
 | PR notes | A task's decisions, reasons, tried-and-rejected approaches and checks as a pull request description. | `ws pr-notes APP-1` |
 | Audit | A read-only scorecard of a repo's AI assistant setup with the top fixes. | `ws audit` |
 | Demo | An offline, disposable run that saves a decision and reads it back in a fresh process. | `ws demo` |
+| Dead ends | Approaches that failed, listed in the brief as `Do not redo:` so the next session skips them. | `ws brief` |
+| Hook packs | Opt-in `guards` (deny risky commands) and `discipline` (advise after repeated failures) hooks. | `ws pack add guards` |
 | Pack | An optional set of domain-specific files and tools. | `ws packs` |
 
 Claims prevent overlapping edits to one task record. A checkpoint gives the next session a concrete next step. Delegation only prepares work unless you explicitly choose a supported run option; the lead still reviews any worker output.
