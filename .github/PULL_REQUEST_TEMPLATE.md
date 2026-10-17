@@ -4,7 +4,7 @@
 
 ## Checklist
 
-- [ ] Tests pass: `python3 -m unittest discover -s tests`
+- [ ] Focused tests for this change pass locally (name the command); full CI is green
 - [ ] Standard library only in `ws/` and `mcp/`
 - [ ] CHANGELOG line added for user-visible changes
 - [ ] No private details (paths, company or customer names, secrets)
