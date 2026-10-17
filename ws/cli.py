@@ -667,9 +667,9 @@ def main(argv=None):
                 if res['waiting']: lines.append(f"{res['waiting']} waiting on dependencies")
                 out('\n'.join(lines))
         elif a.cmd == 'claim':
-            worker = a.worker or os.environ.get('USER')
+            worker = a.worker or os.environ.get('USER') or os.environ.get('USERNAME')
             if not worker:
-                raise core.WsError('Set USER or pass --worker.')
+                raise core.WsError('Set USER (USERNAME on Windows) or pass --worker.')
             out(core.claim(root, a.id, worker))
         elif a.cmd == 'release': out(core.release(root, a.id, a.worker, a.token))
         elif a.cmd == 'checkpoint':
