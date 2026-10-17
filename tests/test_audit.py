@@ -79,3 +79,9 @@ class AuditTests(Base):
         repo = self.make_repo(**{'.codex/hooks.json': json.dumps(hooks), '.claude/settings.json': 'not json'})
         check = self.checks(audit.audit(repo))['Session hooks']
         self.assertEqual((check['ok'], check['detail']), (True, 'Codex'))
+
+    def test_extensionless_file_imports_are_checked(self):
+        repo = self.make_repo(**{'AGENTS.md': 'Follow @Makefile for build steps; ask @alice or @Bob, use @openai/agents.\n'})
+        self.assertEqual(self.checks(audit.audit(repo))['References']['detail'], 'AGENTS.md: Makefile')
+        (repo / 'Makefile').write_text('all:\n')
+        self.assertTrue(self.checks(audit.audit(repo))['References']['ok'])
