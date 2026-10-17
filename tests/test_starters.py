@@ -20,6 +20,15 @@ class StarterPackTests(Base):
         self.assertEqual(self.kind(**{'App.xcodeproj': None, 'package.json': '{}'}), 'ios')
         self.assertEqual(self.kind(**{'README.md': 'x'}), '')
 
+    def test_unreadable_files_and_plain_swift_packages(self):
+        target = self.root.parent / 'broken'; target.mkdir()
+        (target / 'requirements.txt').symlink_to(target / 'missing.txt')
+        (target / 'pyproject.toml').write_text('[project]\nname = "x"\n')
+        self.assertEqual(repo.starter(target, self.root), 'library')  # no crash, no ml hint
+        cfg = core.config(self.root); cfg['packs'].remove('ios'); (self.root / 'workspace.json').write_text(__import__('json').dumps(cfg))
+        self.assertEqual(self.kind(**{'Package.swift': '// swift-tools-version:5.9\nlet p = Package(name: "x", platforms: [.macOS(.v13), .linux])\n'}), '')
+        self.assertEqual(self.kind(**{'Package.swift': 'let p = Package(name: "x", platforms: [.iOS(.v16)])\n'}), 'ios')
+
     def test_no_hint_once_the_pack_is_on(self):
         core.pack_add(self.root, 'web')
         self.assertEqual(self.kind(**{'package.json': '{}'}), '')

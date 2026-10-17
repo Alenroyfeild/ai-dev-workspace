@@ -226,8 +226,11 @@ STARTERS = {'ios': 'an iOS project', 'ml': 'an ML or data project', 'web': 'a we
 def starter(repo, root):
     """Starter pack that fits this repo's type, for a one-line hint at first setup; '' if none fits or it is on."""
     names = {p.name for p in repo.iterdir()}
-    deps = ' '.join((repo / n).read_text(encoding='utf-8', errors='replace')[:20000] for n in ('requirements.txt', 'pyproject.toml') if n in names)
-    kind = ('ios' if 'Package.swift' in names or any(n.endswith(('.xcodeproj', '.xcworkspace')) for n in names)
+    def read(name):
+        try: return (repo / name).read_text(encoding='utf-8', errors='replace')[:20000] if name in names else ''
+        except OSError: return ''  # a broken symlink or unreadable file is just no hint
+    deps = ' '.join(read(n) for n in ('requirements.txt', 'pyproject.toml'))
+    kind = ('ios' if re.search(r'\.iOS\b', read('Package.swift')) or any(n.endswith(('.xcodeproj', '.xcworkspace')) for n in names)
             else 'ml' if any(n.endswith('.ipynb') for n in names) or re.search(r'\b(torch|tensorflow|jax|scikit-learn|keras)\b', deps)
             else 'web' if 'package.json' in names else 'library' if names & {'pyproject.toml', 'setup.py'} else '')
     return kind if kind and kind not in core.config(root).get('packs', []) else ''
