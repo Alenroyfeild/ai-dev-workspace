@@ -117,6 +117,7 @@ def text_doctor(report):
     if report.get('setup'):
         lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
+    for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
