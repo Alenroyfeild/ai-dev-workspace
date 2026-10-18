@@ -1,32 +1,27 @@
-# Codex plugin draft: integration pending
+# Codex plugin: review pending
 
-Do not install this draft. It packages SessionStart, PreCompact,
-UserPromptSubmit and Stop hook declarations for Sol-1's
-`bin/ws-plugin --client codex` runtime; that entrypoint is not on dev yet.
-The fixture tests verify metadata and actual shell command execution with a
-stand-in launcher. They do not prove native plugin loading or memory delivery.
+The compatibility manifest `.codex-plugin/plugin.json` declares SessionStart,
+PreCompact, UserPromptSubmit and Stop hooks plus the stdio MCP entry in
+`mcp/codex-plugin.json`. It reuses the approved plugin runtime on dev.
+`--plugin` resolves memory from the session repo; no MCP cwd override points at
+the plugin cache. Outside a started repo, only the inactive `brief` tool is listed.
 
-The compatibility manifest lives in `.codex-plugin/plugin.json`. No repo catalog
-advertises this draft while its runtime is missing.
-Commands read `CLAUDE_PLUGIN_ROOT` through Python so paths never become shell code.
-Isolated Python startup excludes repo and `PYTHONPATH` modules from bootstrap imports.
-Codex still requires the user to review and trust the installed hook definitions.
-See [official OpenAI plugin packaging guidance](https://developers.openai.com/plugins/build/plugins).
-The [OpenAI hook reference](https://learn.chatgpt.com/docs/hooks) documents these
-events and how matching hooks from multiple sources run together.
-Hook-bearing packages are currently ineligible for the universal public directory;
-this draft targets a repo marketplace, not a public-directory submission.
+Python startup is isolated for both hooks and MCP. Hook commands read
+`CLAUDE_PLUGIN_ROOT` through Python so paths never become shell code.
+Codex requires review and trust of installed hook definitions. Native loading
+and memory delivery must pass before this draft is enabled for distribution.
 
-Before enabling this package, integrate the approved runtime and verify native
-MCP startup preserves the session's repo working directory. No MCP server is
-declared here: assuming the plugin installation directory is the user's repo
-would disconnect memory. Existing repo-local wiring remains required until
-Sol-1 implements and tests plugin detection and avoiding duplicate wiring.
+Use the plugin or `ws start`'s Codex repo wiring, not both: duplicate hooks can
+produce duplicate briefs and captures. This change does not remove repo wiring
+or infer plugin enablement. Codex records local plugin state under
+`plugins."plugin-name@marketplace-name".enabled`; that alone is not a ws receipt.
+No source marketplace advertises this package yet.
 
-Use the plugin or `ws start`'s repo hooks, not both. Enabling both sources can
-produce duplicate briefs and captures until the wiring follow-up deduplicates
-them. This draft does not remove or change existing repo hooks.
-
-Then run native Codex installation/hook-trust/memory/clean-undo proof in a
-throwaway HOME. Claude runs the corresponding Claude half. No real client
-configuration or installs are needed for the draft's fixture tests.
+[OpenAI packaging guidance](https://developers.openai.com/plugins/build/plugins)
+covers compatibility manifests, local marketplaces and plugin trust.
+[Bundled MCP configuration](https://developers.openai.com/api/docs/guides/agents-api/tools/plugins)
+uses the compatibility manifest's `mcpServers` path.
+[Hook documentation](https://learn.chatgpt.com/docs/hooks) describes the events
+and additive hook sources. Hook packages target local distribution rather than
+the universal public directory. Prove the Codex half in a disposable HOME;
+Claude runs the Claude half.
