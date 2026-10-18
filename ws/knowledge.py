@@ -161,11 +161,12 @@ def brief_fields(root, query, private):
         if len(words(private) & terms) * 2 > len(terms):
             omitted += 1; continue
         prefix = f'Team (untrusted, {row["author"]}, {row["date"][:10]}):'
-        relevant.append((overlap, prefix, summary))
+        relevant.append((overlap, prefix, summary, row))
     fields = []
     if listing['warnings']: fields.append(('Team warning:', 'Unreadable, unsafe or conflicted entries excluded; use ws know list.', 12))
     if omitted: fields.append(('Team overlap:', f'{omitted} potentially conflicting summaries omitted; private memory wins.', 12))
     shown = sorted(relevant, key=lambda r:-r[0])[:2]
-    fields += [(prefix, text, 20) for _,prefix,text in shown]
-    known = [r for r in listing['entries'] if r['source'].startswith('knowledge:') or (r['category'] == 'runbook' and r['source'].startswith('task:'))]
-    return fields + _more_note(len(known) - len(shown))
+    fields += [(prefix, text, 20) for _,prefix,text,_ in shown]
+    def is_known(r): return r['source'].startswith('knowledge:') or (r['category'] == 'runbook' and r['source'].startswith('task:'))
+    # Decisions and lessons in the list are not knowledge entries, so only shown knowledge/runbook rows count as displayed.
+    return fields + _more_note(sum(map(is_known, listing['entries'])) - sum(is_known(r[3]) for r in shown))
