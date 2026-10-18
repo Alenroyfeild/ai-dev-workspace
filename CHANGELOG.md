@@ -5,6 +5,7 @@
 ### Fixed
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws upgrade --dry-run` now prints one line per file (new or changed, and why a new hook file is added) instead of hundreds of diff lines; `--diff` shows the full diff.
+- `ws upgrade` now shows the summary and asks `Apply this upgrade? [y/N]` before writing, like `ws start`; `--yes` skips the question and a script with no terminal must pass it.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 
 ## 0.1.0-beta.5 (2026-10-19)
