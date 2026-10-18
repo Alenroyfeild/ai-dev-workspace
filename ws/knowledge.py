@@ -104,7 +104,7 @@ def show(root, key):
 
 
 def search(root, query, value='', layer='all', include_all=False):
-    words = re.findall(r'\w{3,}', query.lower())
+    words = list(dict.fromkeys(re.findall(r'\w{3,}', query.lower())))[:core.MAX_QUERY_WORDS]
     if not words: raise core.WsError('Search needs a word of 3+ letters.')
     hits = []
     for row in list_entries(root, value, layer, _index=True, _all=include_all)['entries']:
