@@ -1,33 +1,22 @@
 # Changelog
 
-## 0.1.0-beta.6 (unreleased)
+## 0.1.0-beta.5 (2026-10-19)
 
-### Fixed
-- Imported brief excerpts keep whole items and source IDs together.
-- `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
+Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
 
 ### New
 - Team previews at a terminal are a short summary (`+ category text`, destination, `[y/N]`) instead of raw JSON; `ws sync` prints a one-line pulled/published count; `ws know add` keeps a private note's `#private` text and paths as written (sharing it later still strips them) and says clearly when a `--team` note is entirely private; the team docs show the real quick-start order, the `#private`/`<private>` markers and a "rotate pushed secrets" warning.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
-### Fixed
-- Team sync no longer stops when two teammates publish at once: the derived `INDEX.md` is rebuilt after the pull, so both entries are listed, and any remaining pull conflict names the file and the recovery command. A corrupt `team.json` now reports its path, shows in `ws doctor`, and no longer blocks `ws sync --pull-only` from pulling a teammate's fix.
-
-## 0.1.0-beta.5 (unreleased)
-
-Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
-
-### New
 - Start with team context: a new teammate's brief shows recent product, domain and repo knowledge cards before task-specific memory exists, within the usual brief budget and labelled untrusted. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#daily-loop).
 - Try remembered decisions with `ws demo`: an offline, disposable walkthrough that saves a decision and reads it back in a fresh process, without starting an assistant. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 - Consent to read-only team pulls at session start and after local shares or checkpoints. Publishing still uses the existing preview and approval flow.
 - Schedule a confirmed daily team pull on macOS. Other platforms show setup suggestions without installing a scheduler.
 - `ws pr-notes` prints the task's saved decisions, reasons, tried-and-rejected approaches, acceptance criteria and checks as a pull request description, so reviewers see why the code changed. Example: `gh pr create --body "$(ws pr-notes)"`.
 - `ws recap` lists the tasks you changed this week with their decisions, tried-and-rejected approaches and next steps, plus teammates' shared notes, ready to paste into a standup or handoff. `--since 14d` or a date changes the period.
-- Link an attested folder in a synced service and read a validated local snapshot offline. Folder links are read-only; publishing from them is not available yet.
+- Link an attested folder in a synced service and read a validated local snapshot offline. Publishing to the folder goes through `ws sync` preview and approval.
 - Team notes can show a chosen author alias and short label, so teammates can recognize who shared them.
 - `ws audit` scores a repo's AI assistant setup (instructions and their size, broken file references, memory, hooks, MCP server count, stale tasks) and lists the top 3 fixes. Read-only and offline; the text output is safe to paste.
-- Opt-in `guards` pack: `ws pack add guards`, then `ws start` again in your repo. Claude Code and Codex are then stopped before `rm -rf` on your home or the filesystem root, `git reset --hard`, force push, `git clean -f`, commands or file edits containing what looks like a secret, and edits that newly skip or narrow tests. Start the assistant with `WS_GUARDS=off` to turn it off for one session; `ws pack remove guards` and `ws start` remove the hook.
 - Opt-in `guards` pack: `ws pack add guards`, then `ws start` again in your repo. Claude Code and Codex are then stopped (Windows PowerShell commands included) before `rm -rf` or `Remove-Item -Recurse -Force` on your home or the filesystem root, `git reset --hard`, force push, `git clean -f`, commands or file edits containing what looks like a secret, and edits that newly skip or narrow tests. Start the assistant with `WS_GUARDS=off` to turn it off for one session; `ws pack remove guards` and `ws start` remove the hook.
 - Opt-in `discipline` pack (advisory, never blocks): after the same shell command fails 3 times in a session (on Codex, which sends no exit code: returns the same output 3 times), the assistant is told to stop retrying, form one hypothesis and save the dead end with `--note "Do not redo=…"`. `ws pack add discipline`, then `ws start` again in your repo.
 - Starter packs for common repo types: `web`, `library` and `ml` (alongside `ios`) add a few rules each, such as using the repo's own scripts, keeping a public API stable, or never committing datasets. The first `ws start` suggests the one that fits the repo; nothing is added unless you run `ws pack add`.
@@ -47,6 +36,9 @@ Team workspaces can now receive approved shared updates automatically or be read
 - `ws doctor` reports repo hooks that point to a missing kit, Python or workspace (after a pipx reinstall, deleted checkout or Python upgrade), so a silently memory-less session is caught; running `ws start` again in that repo refreshes them.
 
 ### Fixed
+- Imported brief excerpts keep whole items and source IDs together.
+- `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
+- Team sync no longer stops when two teammates publish at once: the derived `INDEX.md` is rebuilt after the pull, so both entries are listed, and any remaining pull conflict names the file and the recovery command. A corrupt `team.json` now reports its path, shows in `ws doctor`, and no longer blocks `ws sync --pull-only` from pulling a teammate's fix.
 - Source builds and installed CLI/MCP entry points work from the packaged kit, including builds through pip.
 - `ws doctor` reports your saved automatic team-pull consent instead of saying pulls are not active yet. [Team setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
 - Assistant hooks (`ws brief`, `ws nudge`, `ws paste`, and the opt-in guard and discipline hooks) no longer exit 2, print a traceback or block a prompt or session end when their input is malformed, the workspace is missing or corrupt, or a transcript is unreadable; they allow the action and print `{}`. A bad `cwd` no longer hides the session brief. A large prompt is still saved and blocked.
