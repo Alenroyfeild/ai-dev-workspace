@@ -63,6 +63,14 @@ class CliErrorTests(Base):
         self.assertEqual((code, err), (0, ''))
         self.assertEqual(core.task_read(self.root, 'T-1', ['Next action'])['sections']['Next action'], 'Write the schema.')
 
+    def test_ambiguous_claims_hint_matches_each_commands_own_syntax(self):
+        core.task_new(self.root, 'T-2', 'Second')
+        for task in ('T-1', 'T-2'): core.claim(self.root, task, 'synthetic')
+        code, err = self.ws('checkpoint', '--status', 'in_progress', '--next', 'Continue')
+        self.assertEqual(code, 2); self.assertIn('ws checkpoint <id>', err); self.assertNotIn('--task', err)
+        code, err = self.ws('remember', 'use Postgres')
+        self.assertEqual(code, 2); self.assertIn('--task <id>', err)
+
 
 if __name__ == '__main__':
     unittest.main()
