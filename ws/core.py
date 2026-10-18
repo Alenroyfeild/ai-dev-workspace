@@ -209,6 +209,7 @@ def read_text(path, roots=None, errors='replace', preserve_newlines=False):
     try:
         path = (inside(path, roots) if roots is not None else Path(path).expanduser()).resolve()
         info = path.stat()
+        if stat.S_ISDIR(info.st_mode): raise WsError(f'{path} is a directory; pass a file.')
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_READ_BYTES: raise WsError('Read requires a regular file under 50 MB; run ws digest on a smaller file.')
         fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_NOFOLLOW', 0))
         with os.fdopen(fd, 'rb') as source:
