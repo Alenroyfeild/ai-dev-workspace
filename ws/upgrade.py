@@ -107,6 +107,41 @@ def routing(old, new):
     except (ValueError, KeyError, TypeError): return None
 
 
+REASONS = {'routing.json': 'managed routing defaults', '.claude/settings.json': 'hooks for Claude Code', '.codex/hooks.json': 'hooks for Codex', '.cursor/hooks.json': 'hooks for Cursor',
+           '.gemini/settings.json': 'hooks for Gemini', '.github/hooks/ai-dev-workspace.json': 'hooks for VS Code',
+           '.github/copilot-instructions.md': 'pointer to AGENTS.md for Copilot', 'GEMINI.md': 'pointer to AGENTS.md for Gemini'}
+
+
+def flat(value, prefix=''):
+    if isinstance(value, dict):
+        return {k: v for key, item in value.items() for k, v in flat(item, f'{prefix}{key}.').items()} or {prefix.rstrip('.'): {}}
+    return {prefix.rstrip('.'): value}
+
+
+def json_keys(old, new):
+    """'+N -N ~N' key counts for a changed JSON object file, or '' when either side is not one."""
+    try:
+        a, b = flat(json.loads(old)), flat(json.loads(new))
+    except ValueError: return ''
+    counts = (len(b.keys() - a.keys()), len(a.keys() - b.keys()), sum(1 for k in a.keys() & b.keys() if a[k] != b[k]))
+    return ' '.join(f'{sign}{n}' for sign, n in zip('+-~', counts) if n)
+
+
+def summary(changes):
+    """One line per file plus totals; the full diff stays behind --diff."""
+    lines, added, edited = [], 0, 0
+    for c in changes:
+        path = c['path']
+        if c['new']:
+            added += 1; reason = REASONS.get(path) or ('skill for ' + ('Claude Code' if path.startswith('.claude') else 'Codex') if '/skills/' in path else 'proposal to review; your ' + path[:path.index('.ws-new')] + ' is kept' if '.ws-new' in path else '')
+            lines.append(f'+ {path} (new{": " + reason if reason else ""})')
+        else:
+            n = sum(1 for l in c['diff'].splitlines() if l.startswith(('+', '-')) and not l.startswith(('+++', '---')))
+            edited += 1; lines.append(f'~ {path} (changed, {n} lines{"; keys " + c["keys"] if c.get("keys") else ""})')
+    lines.append(f'{added} new, {edited} changed. `ws upgrade --dry-run --diff` shows the full diff.')
+    return '\n'.join(lines)
+
+
 def upgrade(root, dry_run=False):
     root = Path(root).resolve()
     def safe(path):
@@ -163,7 +198,7 @@ def upgrade(root, dry_run=False):
         before = path.read_bytes(); after = (json.dumps(cfg, indent=2) + '\n').encode()
         if before != after: operations.append((path, before, after))
         claims = root / '.ws/claims'; safe(claims)
-        changes = [dict(path=p.relative_to(root).as_posix(), action='write', diff=''.join(difflib.unified_diff(
+        changes = [dict(path=p.relative_to(root).as_posix(), action='write', new=not old, keys=json_keys(old, new), diff=''.join(difflib.unified_diff(
             old.decode(errors='replace').splitlines(True), new.decode(errors='replace').splitlines(True),
             fromfile=p.relative_to(root).as_posix(), tofile=p.relative_to(root).as_posix()))) for p, old, new in operations]
         backups = []
