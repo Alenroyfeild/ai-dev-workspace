@@ -45,11 +45,12 @@ def record_file(repo, state, name, data):
 
 
 def moved(repo, state):
-    """True when the record was written for another path of a repo this workspace knows (folder moved or copied)."""
+    """The listed repo path this record was written for when the folder moved or copied; '' otherwise."""
     try: repos = core.config(Path(state['workspace'])).get('repos', [])
-    except (OSError, ValueError, TypeError, KeyError): return False
+    except (OSError, ValueError, TypeError, KeyError): return ''
     old = os.path.abspath(state['exclude'])
-    return str(repo) not in repos and any(isinstance(r, str) and old == os.path.join(os.path.abspath(r), '.git', 'info', 'exclude') for r in repos)
+    if str(repo) in repos: return ''
+    return next((r for r in repos if isinstance(r, str) and old == os.path.join(os.path.abspath(r), '.git', 'info', 'exclude')), '')
 
 
 def exclusions(repo, state):
@@ -227,6 +228,7 @@ def upgrade_codex(repo, root, state, yes, dry_run):
 def rehome(repo, root, state, yes, dry_run):
     """The repo folder was moved or copied: link this path to its workspace (memory and hooks stay as they are)."""
     if not (root / 'workspace.json').is_file(): raise core.WsError('Linked workspace is missing; run ws start --undo here, then ws start.')
+    old = moved(repo, state)
     exclude, _ = exclusions(repo, state)
     print(f'This repo was moved or copied. Link {repo} to private workspace {root}:', file=sys.stderr)
     print('  ' + str(root / 'workspace.json') + ' (repo list)', file=sys.stderr)
@@ -234,7 +236,8 @@ def rehome(repo, root, state, yes, dry_run):
     if not confirm(yes, dry_run): return False
     with core.lock(root):
         cfg = core.config(root)
-        cfg['repos'] = [r for r in cfg.get('repos', []) if Path(r).is_dir()] + [str(repo)]  # a moved repo's old path is gone
+        # Only the path this repo moved from is dropped, and only when it is gone; other entries (unmounted drives) stay.
+        cfg['repos'] = [r for r in cfg.get('repos', []) if r != old or Path(r).is_dir()] + [str(repo)]
         core.atomic_write(root / 'workspace.json', json.dumps(cfg, indent=2) + '\n')
     state['exclude'] = str(exclude)
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')

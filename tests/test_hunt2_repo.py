@@ -66,3 +66,12 @@ class Hunt2RepoTests(unittest.TestCase):
             self.assertEqual(code, 2); self.assertIn('line break', err)
             self.assertFalse((self.repo / '.ws-start.json').exists())
             self.assertFalse((self.repo / 'CLAUDE.local.md').exists())
+
+    def test_relink_drops_only_the_moved_from_path_and_keeps_a_missing_other_repo(self):
+        self.assertEqual(self.ws('start', '--yes')[0], 0)
+        root = core.find_root(self.repo); cfg = core.config(root)
+        away = str(self.base / 'unmounted-drive' / 'other'); cfg['repos'].append(away)
+        (root / 'workspace.json').write_text(json.dumps(cfg))
+        moved = self.base / 'moved'; self.repo.rename(moved); os.chdir(moved); self.repo = moved
+        self.assertEqual(self.ws('start', '--yes')[0], 0)
+        self.assertEqual(core.config(root)['repos'], [away, str(moved)])
