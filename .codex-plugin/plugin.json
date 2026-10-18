@@ -5,6 +5,5 @@
   "homepage": "https://github.com/Alenroyfeild/ai-dev-workspace",
   "repository": "https://github.com/Alenroyfeild/ai-dev-workspace",
   "license": "MIT",
-  "hooks": "./hooks/codex-hooks.json",
-  "mcpServers": "./mcp/codex-plugin.json"
+  "hooks": "./hooks/codex-hooks.json"
 }

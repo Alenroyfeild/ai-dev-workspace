@@ -3,7 +3,6 @@
 ## 0.1.0-beta.6 (unreleased)
 
 ### New
-- The Codex plugin draft includes the optional memory MCP server; it resolves the started repo from the session directory and stays inactive elsewhere.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
 ## 0.1.0-beta.5 (unreleased)

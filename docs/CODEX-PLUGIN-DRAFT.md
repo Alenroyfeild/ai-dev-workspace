@@ -1,27 +1,27 @@
-# Codex plugin: review pending
+# Codex plugin draft: native MCP binding pending
 
-The compatibility manifest `.codex-plugin/plugin.json` declares SessionStart,
-PreCompact, UserPromptSubmit and Stop hooks plus the stdio MCP entry in
-`mcp/codex-plugin.json`. It reuses the approved plugin runtime on dev.
-`--plugin` resolves memory from the session repo; no MCP cwd override points at
-the plugin cache. Outside a started repo, only the inactive `brief` tool is listed.
+Do not install this draft for everyday use. The compatibility manifest in
+`.codex-plugin/plugin.json` declares SessionStart, PreCompact, UserPromptSubmit
+and Stop hooks for the approved runtime now on dev. Isolated Python startup
+excludes repo and PYTHONPATH modules; paths never become shell code.
 
-Python startup is isolated for both hooks and MCP. Hook commands read
-`CLAUDE_PLUGIN_ROOT` through Python so paths never become shell code.
-Codex requires review and trust of installed hook definitions. Native loading
-and memory delivery must pass before this draft is enabled for distribution.
+A disposable native Codex0.155.1 session received the saved decision from the
+plugin hook with repo-local Codex wiring disabled. Hook trust was bypassed for
+that test invocation; persisted interactive trust was not proved.
+The same session could not call the bundled MCP brief or save a decision.
 
-Use the plugin or `ws start`'s Codex repo wiring, not both: duplicate hooks can
-produce duplicate briefs and captures. This change does not remove repo wiring
-or infer plugin enablement. Codex records local plugin state under
-`plugins."plugin-name@marketplace-name".enabled`; that alone is not a ws receipt.
-No source marketplace advertises this package yet.
+Codex passed `${CLAUDE_PLUGIN_ROOT}` literally in MCP args. Its MCP process
+preserved the repo cwd, but exposed no PLUGIN_ROOT/CLAUDE_PLUGIN_ROOT variable.
+The rejected declaration is removed. No MCP server or source marketplace is
+advertised until a supported plugin-root and session-repo binding is proved.
+Changing MCP cwd to the plugin cache would disconnect workspace discovery.
+
+Use the plugin or `ws start`'s Codex hooks, not both: additive hooks can produce
+duplicate briefs and captures. This draft does not remove existing repo wiring
+or infer plugin enablement from `plugins."plugin@marketplace".enabled`.
 
 [OpenAI packaging guidance](https://developers.openai.com/plugins/build/plugins)
-covers compatibility manifests, local marketplaces and plugin trust.
-[Bundled MCP configuration](https://developers.openai.com/api/docs/guides/agents-api/tools/plugins)
-uses the compatibility manifest's `mcpServers` path.
-[Hook documentation](https://learn.chatgpt.com/docs/hooks) describes the events
-and additive hook sources. Hook packages target local distribution rather than
-the universal public directory. Prove the Codex half in a disposable HOME;
-Claude runs the Claude half.
+covers local marketplaces and hook trust. The [Codex MCP loader](https://github.com/openai/codex/blob/main/codex-rs/codex-mcp/src/plugin_config.rs)
+resolves relative configured cwd against the plugin root; it does not expand
+plugin-root variables in args. [Hook documentation](https://learn.chatgpt.com/docs/hooks)
+describes the four events and additive sources. Claude runs the Claude half.

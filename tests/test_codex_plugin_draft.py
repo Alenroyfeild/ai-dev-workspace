@@ -15,11 +15,8 @@ class CodexPluginDraftTests(unittest.TestCase):
         self.assertEqual(manifest['name'], 'ai-dev-workspace')
         self.assertEqual(manifest['hooks'], './hooks/codex-hooks.json')
         self.assertTrue((KIT / manifest['hooks']).is_file())
-        self.assertEqual(manifest['mcpServers'], './mcp/codex-plugin.json')
-        server = json.loads((KIT / manifest['mcpServers']).read_text())['mcpServers']['ai-dev-workspace']
-        self.assertEqual(server['command'], 'python3')
-        self.assertEqual(server['args'], ['-I', '${CLAUDE_PLUGIN_ROOT}/mcp/server.py', '--plugin'])
-        self.assertNotIn('cwd', server)
+        # Native MCP cwd is an integration gate, not a guessed plugin-root connection.
+        self.assertNotIn('mcpServers', manifest)
         self.assertFalse((KIT / '.agents/plugins/marketplace.json').exists())
 
     def test_manifest_version_matches_kit_version(self):
