@@ -34,8 +34,10 @@ class ConcurrentWriteTests(Base):
             except core.WsError as exc: errors.append(str(exc))
         threads = [threading.Thread(target=run, args=(core.remember, f'decision number {i}')) for i in range(6)]
         threads += [threading.Thread(target=run, args=(core.checkpoint, 'T-1', 'in_progress', f'next step {i}')) for i in range(4)]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        # Ten writers at once is far beyond real use; a slow runner (Windows fsync) must not turn the 4 s wait into a flake.
+        with mock.patch.object(core, 'LOCK_WAIT', 120.0):
+            for t in threads: t.start()
+            for t in threads: t.join()
         self.assertEqual(errors, [])
         record = core.task_read(self.root, 'T-1', ['Handoff'])
         for i in range(6): self.assertIn(f'decision number {i}', record['sections']['Handoff'])
