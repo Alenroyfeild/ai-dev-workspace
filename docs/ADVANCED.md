@@ -81,3 +81,14 @@ This is runtime groundwork, not an installable marketplace package. Keep existin
 repo-local connections until packaging, duplicate-connection detection and live
 client checks are complete. Installing or enabling a Codex plugin does not trust
 its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
+
+### Claude Code plugin (preview)
+
+The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires the same four hooks as `ws start` (SessionStart, PreCompact, Stop, UserPromptSubmit) through `bin/ws-plugin`, the MCP server in `--plugin` mode, and the handoff, pickup and lesson skills. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+
+```text
+/plugin marketplace add Alenroyfeild/ai-dev-workspace
+/plugin install ai-dev-workspace@ai-dev-workspace
+```
+
+Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. Needs `python3` on PATH; Windows is untested.

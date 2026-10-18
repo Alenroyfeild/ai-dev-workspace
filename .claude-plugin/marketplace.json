@@ -1,0 +1,26 @@
+{
+  "name": "ai-dev-workspace",
+  "description": "ai-dev-workspace: shared task memory for Claude Code and Codex.",
+  "owner": {
+    "name": "Alenroyfeild"
+  },
+  "plugins": [
+    {
+      "name": "ai-dev-workspace",
+      "source": "./",
+      "description": "Private task memory that Claude Code and Codex share. Inactive until you run ws start in a repo.",
+      "category": "productivity",
+      "tags": [
+        "memory",
+        "handoff",
+        "codex",
+        "mcp"
+      ],
+      "skills": [
+        "./skills/handoff",
+        "./skills/pickup",
+        "./skills/lesson"
+      ]
+    }
+  ]
+}

@@ -22,6 +22,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Opt-in `guards` pack: `ws pack add guards`, then `ws start` again in your repo. Claude Code and Codex are then stopped (Windows PowerShell commands included) before `rm -rf` or `Remove-Item -Recurse -Force` on your home or the filesystem root, `git reset --hard`, force push, `git clean -f`, commands or file edits containing what looks like a secret, and edits that newly skip or narrow tests. Start the assistant with `WS_GUARDS=off` to turn it off for one session; `ws pack remove guards` and `ws start` remove the hook.
 - Opt-in `discipline` pack (advisory, never blocks): after the same shell command fails 3 times in a session (on Codex, which sends no exit code: returns the same output 3 times), the assistant is told to stop retrying, form one hypothesis and save the dead end with `--note "Do not redo=…"`. `ws pack add discipline`, then `ws start` again in your repo.
 - Starter packs for common repo types: `web`, `library` and `ml` (alongside `ios`) add a few rules each, such as using the repo's own scripts, keeping a public API stable, or never committing datasets. The first `ws start` suggests the one that fits the repo; nothing is added unless you run `ws pack add`.
+- Claude Code plugin (preview): `/plugin marketplace add Alenroyfeild/ai-dev-workspace`, then `/plugin install ai-dev-workspace@ai-dev-workspace`. It brings the session-start brief, capture, the MCP tools and the handoff/pickup/lesson skills, and stays inactive outside repos where `ws start` has run.
 
 ### Improved
 - A confirmation prompt with no input (for example when an assistant runs `ws sync` or `ws know add --team` without `--yes`) now stops with "No confirmation; use --yes or --dry-run." instead of a Python traceback, and repeating `ws know add`, `ws remember` or `ws lesson add` with `--team` after declining reuses the saved record instead of creating a duplicate.
@@ -48,6 +49,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 
 ### Known limits
 - The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
+- The Claude Code plugin (preview) and the repo connection from `ws start` both add hooks; use one of them per repo, or each session gets two briefs.
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
 
