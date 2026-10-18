@@ -1799,6 +1799,21 @@ def current_task(root):
     return task, others
 
 
+def _branch_hint(root):
+    """How to get this repo's branch task when none is claimed; '' when the repo is unknown or detached."""
+    from . import repo as repo_mod, setup
+    try:
+        repos = config(root).get('repos', [])
+        top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=2).stdout.strip()
+        here = next((Path(r).resolve() for r in repos if top and Path(r).resolve() == Path(top).resolve()), None) or (Path(repos[0]).resolve() if len(repos) == 1 else None)
+        name = setup.branch(here) if here else ''
+        if not name: return ''
+        task = repo_mod.branch_task(root, here, name)
+    except (WsError, OSError, ValueError, subprocess.SubprocessError, TypeError): return ''
+    if task_path(root, task).exists(): return f'Branch {name} has task {task}: run ws claim {task}.'
+    return f'Branch {name} has no task yet: run ws task new {shlex.quote(task)} {shlex.quote(name)} --branch {shlex.quote(name)} --repo {shlex.quote(str(here))}, then ws claim {shlex.quote(task)}.'
+
+
 def _brief(root, task_id=None):
     guard = repeat_guard(root)
     task, others = current_task(root)
@@ -1808,7 +1823,7 @@ def _brief(root, task_id=None):
         return ['Others working: ' + ', '.join(shown)] if shown else []
     if not task:
         from . import knowledge
-        fields = [('', guard or 'No in-progress task. Find or create the task before working.', 194)]
+        fields = [('', guard or ('No in-progress task. ' + (_branch_hint(root) or 'Find or create the task before working.')), 194)]
         fields += [('', line, 18) for line in others_line()]
         return _bounded_brief(fields + knowledge.onboarding_fields(root)), ''
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
