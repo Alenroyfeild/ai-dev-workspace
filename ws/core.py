@@ -220,7 +220,7 @@ def find_root(start=None):
                 cfg = config(root)
                 repos = cfg.get('repos', []) if isinstance(cfg, dict) else None
                 if not isinstance(repos, list) or str(candidate) not in repos:
-                    raise WsError('Repo memory link does not match this repo; run ws start --undo.')
+                    raise WsError('Repo memory link does not match this repo (moved or copied?); run ws start here to relink it, or ws start --undo to remove the wiring.')
             except WsError:
                 raise
             except (OSError, ValueError, TypeError, subprocess.SubprocessError):
@@ -1928,7 +1928,7 @@ def _branch_hint(root):
         top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=2).stdout.strip()
         here = next((Path(r).resolve() for r in repos if top and Path(r).resolve() == Path(top).resolve()), None) or (Path(repos[0]).resolve() if len(repos) == 1 else None)
         name = current_branch(here) if here else ''
-        if not name: return ''
+        if not name or LINE_BREAK_RE.search(name): return ''
         task = repo_mod.branch_task(root, here, name)
     except (WsError, OSError, ValueError, subprocess.SubprocessError, TypeError): return ''
     if task_path(root, task).exists(): return f'Branch {name} has task {task}: run ws claim {task}.'
