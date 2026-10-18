@@ -1,7 +1,9 @@
 """`ws` command line. Every command prints JSON or plain text and exits non-zero on error."""
 import argparse
+import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -114,13 +116,15 @@ def text_doctor(report):
     if report.get('team_workspace'):
         pulls = 'enabled (read-only)' if report['team_workspace'].get('auto_pull') is True else 'off (consent required)'
         lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls ' + pulls)
+        if report['team_workspace'].get('problem'): lines.append('Team problem: ' + report['team_workspace']['problem'])
     if report.get('setup'):
-        lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
+        assistants = ', '.join(report['setup']['assistants'])
+        lines.append('Setup preset: ' + report['setup']['preset'] + (f' ({assistants})' if assistants else ''))
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
     for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
     clients = report.get('configured_clients', {})
     if clients:
-        lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
+        lines.append('Workspace-level connections: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
     goals = report.get('codex_goals')
     if goals:
         lines.append(f"Codex goals: {goals['active']} active, {goals['complete']} complete" if 'active' in goals
@@ -129,8 +133,9 @@ def text_doctor(report):
     lines.extend(f'Team: {warning}' for warning in report.get('team', {}).get('warnings', []))
     health = report.get('capture_health')
     if health:
-        lines.append(f"Last capture outcome: {health.get('outcome', 'unknown')} "
-                     f"({health.get('client', 'unknown')}, {health.get('date', 'unknown')}; {health.get('reason', 'unknown')})")
+        outcome = health.get('outcome', 'unknown')
+        detail = [health[k] for k in ('client', 'date') if health.get(k)] + ([health['reason']] if health.get('reason') not in (None, outcome) else [])
+        lines.append('Last capture: not run yet' if outcome == 'not_run' else f'Last capture outcome: {outcome}' + (f" ({', '.join(detail)})" if detail else ''))
     checks = report.get('protocol_checks', {})
     if checks:
         rendered = [f"{name}={value['status']}" + (f" ({value['step']})" if value.get('step') else '')
@@ -171,7 +176,7 @@ def claude_tool_uses(transcript_path):
     try:
         if path.stat().st_size > 50 * 1024 * 1024:
             return None
-        transcript = path.open(encoding='utf-8')
+        transcript = path.open(encoding='utf-8', errors='replace')
     except OSError:
         return None
     recognized = False
@@ -182,7 +187,7 @@ def claude_tool_uses(transcript_path):
                 try:
                     entry = json.loads(line)
                     content = entry['message']['content'] if entry.get('type') == 'assistant' else None
-                except (KeyError, TypeError, json.JSONDecodeError):
+                except (KeyError, TypeError, AttributeError, json.JSONDecodeError):
                     continue
                 if not isinstance(content, list):
                     continue
@@ -222,12 +227,25 @@ def ask(prompt=''):
     except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
 
 
+class WsParser(argparse.ArgumentParser):
+    """Subparsers inherit this class: a mistyped command gets a short hint, not argparse's list of every name."""
+    def error(self, message):
+        bad = re.search(r"invalid choice: '(.*?)' \(choose from (.*)\)$", message)
+        if not bad: return super().error(message)
+        choices = [c.strip("'") for c in bad[2].split(', ')]
+        near = difflib.get_close_matches(bad[1], choices, n=3)
+        top = self.prog == 'ws'
+        hint = f'; did you mean: {", ".join(near)}?' if near else ('. Run ws --help' if top else f'. Choose from: {", ".join(choices)}')
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{self.prog}: unknown {'command' if top else 'choice'} '{bad[1]}'{hint}" + (' Run ws --help' if top and near else '') + '\n')
+
+
 def main(argv=None):
     if core.WINDOWS:  # the pip/pipx `ws` script skips bin/ws, whose cp1252 pipes cannot carry non-ASCII text
         for stream in (sys.stdin, sys.stdout, sys.stderr): getattr(stream, 'reconfigure', lambda **_: None)(encoding='utf-8')
-    p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
-                                formatter_class=GroupedHelpFormatter,
-                                epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
+    p = WsParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
+                 formatter_class=GroupedHelpFormatter,
+                 epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
     p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
@@ -535,6 +553,8 @@ def main(argv=None):
                 if not a.dry_run and (a.yes or ask('Save this exact local status preview? [y/N] ')):
                     out(team_status.apply(root, plan))
                 return 0
+            if a.action in ('init', 'link') and not a.remote:
+                raise core.WsError(f'The remote is missing: run `ws team {a.action} <private-repo>`' + (' (or a folder path with --folder).' if a.folder else '.'))
             if a.folder:
                 from . import team_folder
                 if a.action not in ('init','link'): raise core.WsError('--folder supports init/link; unlink uses ws team unlink.')
@@ -622,7 +642,8 @@ def main(argv=None):
                 from . import team_auto
                 update = team_auto.maybe_pull(root)
                 if update and update.get('warning'): print(update['warning'], file=sys.stderr)
-                branch_task = core.session_task(root, payload.get('cwd'))
+                try: branch_task = core.session_task(root, payload.get('cwd'))
+                except core.WsError: branch_task = None  # a bad cwd must not hide the brief
             if a.hook:
                 try: assist.observe(root, payload)
                 except OSError: pass  # Optional usage metadata must not block read-only memory.
@@ -770,13 +791,12 @@ def main(argv=None):
             else:
                 try: payload = json.loads(_read_limited_stdin())
                 except core.WsError as exc:
-                    if '50 MB' not in str(exc):
-                        return _block_prompt(a.client, 'This client prompt-hook input is not valid UTF-8. Retry with a short question plus the relevant excerpt.')
+                    if '50 MB' not in str(exc): out({}); return 0  # unreadable input: allow the prompt rather than block every one
                     return _block_prompt(a.client, 'Prompt hook input exceeds 50 MB. Save the source as a file and run `ws digest <file> --focus "<pattern>"` instead.')
                 except json.JSONDecodeError:
-                    return _block_prompt(a.client, 'This client sent malformed prompt-hook data. Retry with a short question plus the relevant excerpt.')
+                    out({}); return 0
                 if not isinstance(payload, dict) or not isinstance(payload.get('prompt'), str):
-                    return _block_prompt(a.client, 'This client did not provide a valid prompt. Retry with a short question plus the relevant excerpt.')
+                    out({}); return 0
                 prompt = payload.get('prompt', '')
                 lines = prompt.splitlines() if isinstance(prompt, str) else []
                 if not core.prompt_is_large(prompt) or lines and lines[0].strip() == '!raw':
@@ -798,7 +818,11 @@ def main(argv=None):
                                  a.worker_role, a.effort, a.check, a.files, a.verdict, a.findings))
             else: out(core.run_report(root, a.task))
         return 0
-    except (core.WsError, FileNotFoundError, json.JSONDecodeError) as exc:
+    except Exception as exc:
+        if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
+            print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
+            print('{}'); return 0
+        if not isinstance(exc, (core.WsError, FileNotFoundError, json.JSONDecodeError)): raise
         message = str(exc)
         if isinstance(exc, core.WsError) and not any(hint in message.lower() for hint in ('`ws ', 'run ws ', 'see ws ', 'next:')):
             message += ('' if message.endswith(('.', '!', '?', ':')) else '.') + f' Next: run `ws {a.cmd} --help`.'
