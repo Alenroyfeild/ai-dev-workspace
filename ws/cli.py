@@ -171,7 +171,7 @@ def claude_tool_uses(transcript_path):
     try:
         if path.stat().st_size > 50 * 1024 * 1024:
             return None
-        transcript = path.open(encoding='utf-8')
+        transcript = path.open(encoding='utf-8', errors='replace')
     except OSError:
         return None
     recognized = False
@@ -182,7 +182,7 @@ def claude_tool_uses(transcript_path):
                 try:
                     entry = json.loads(line)
                     content = entry['message']['content'] if entry.get('type') == 'assistant' else None
-                except (KeyError, TypeError, json.JSONDecodeError):
+                except (KeyError, TypeError, AttributeError, json.JSONDecodeError):
                     continue
                 if not isinstance(content, list):
                     continue
@@ -622,7 +622,8 @@ def main(argv=None):
                 from . import team_auto
                 update = team_auto.maybe_pull(root)
                 if update and update.get('warning'): print(update['warning'], file=sys.stderr)
-                branch_task = core.session_task(root, payload.get('cwd'))
+                try: branch_task = core.session_task(root, payload.get('cwd'))
+                except core.WsError: branch_task = None  # a bad cwd must not hide the brief
             if a.hook:
                 try: assist.observe(root, payload)
                 except OSError: pass  # Optional usage metadata must not block read-only memory.
@@ -770,13 +771,12 @@ def main(argv=None):
             else:
                 try: payload = json.loads(_read_limited_stdin())
                 except core.WsError as exc:
-                    if '50 MB' not in str(exc):
-                        return _block_prompt(a.client, 'This client prompt-hook input is not valid UTF-8. Retry with a short question plus the relevant excerpt.')
+                    if '50 MB' not in str(exc): out({}); return 0  # unreadable input: allow the prompt rather than block every one
                     return _block_prompt(a.client, 'Prompt hook input exceeds 50 MB. Save the source as a file and run `ws digest <file> --focus "<pattern>"` instead.')
                 except json.JSONDecodeError:
-                    return _block_prompt(a.client, 'This client sent malformed prompt-hook data. Retry with a short question plus the relevant excerpt.')
+                    out({}); return 0
                 if not isinstance(payload, dict) or not isinstance(payload.get('prompt'), str):
-                    return _block_prompt(a.client, 'This client did not provide a valid prompt. Retry with a short question plus the relevant excerpt.')
+                    out({}); return 0
                 prompt = payload.get('prompt', '')
                 lines = prompt.splitlines() if isinstance(prompt, str) else []
                 if not core.prompt_is_large(prompt) or lines and lines[0].strip() == '!raw':
@@ -798,7 +798,11 @@ def main(argv=None):
                                  a.worker_role, a.effort, a.check, a.files, a.verdict, a.findings))
             else: out(core.run_report(root, a.task))
         return 0
-    except (core.WsError, FileNotFoundError, json.JSONDecodeError) as exc:
+    except Exception as exc:
+        if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
+            print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
+            print('{}'); return 0
+        if not isinstance(exc, (core.WsError, FileNotFoundError, json.JSONDecodeError)): raise
         message = str(exc)
         if isinstance(exc, core.WsError) and not any(hint in message.lower() for hint in ('`ws ', 'run ws ', 'see ws ', 'next:')):
             message += ('' if message.endswith(('.', '!', '?', ':')) else '.') + f' Next: run `ws {a.cmd} --help`.'
