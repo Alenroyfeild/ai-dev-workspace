@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from unittest import mock
 from pathlib import Path
 from test_ws import Base, KIT
@@ -10,7 +11,7 @@ class UpgradeTests(Base):
     def snapshot(self):
         return {p.relative_to(self.root).as_posix(): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
 
-    def test_old_fixture_preview_sidecars_and_second_run(self):
+    def old_workspace(self):
         self.root = Path(self.tmp.name) / 'old-workspace'
         # The first release's template (commit 9853713), stored as a fixture: CI checkouts are shallow.
         fixture = KIT / 'tests/fixtures/template-0.1.0-beta.1'
@@ -24,6 +25,10 @@ class UpgradeTests(Base):
         hooks.write_bytes(b'{ "user": "keep spacing", "hooks": {} }\n')
         cfg = dict(schema_version=1, name='old fixture', packs=[], repos=[], vault='custom-vault', custom=True)
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
+
+    def test_old_fixture_preview_sidecars_and_second_run(self):
+        self.old_workspace()
+        rules, hooks = self.root / 'AGENTS.md', self.root / '.claude/settings.json'
         before = self.snapshot()
         preview = core.upgrade_workspace(self.root, dry_run=True)
         self.assertEqual(before, self.snapshot())
@@ -38,6 +43,27 @@ class UpgradeTests(Base):
         self.assertTrue(list((self.root / '.ws/backups').rglob('workspace.json')))
         self.assertEqual(core.upgrade_workspace(self.root)['changes'], [])
         self.assertTrue((self.root / '.agents/skills/pickup/SKILL.md').exists())
+
+    def test_dry_run_prints_a_short_summary_and_diff_flag_the_full_diff(self):
+        self.old_workspace()
+        (self.root / '.claude/settings.json').unlink()  # a beta.4 kit never had one, so upgrade adds it
+        run = lambda *a: subprocess.run([sys.executable, str(KIT / 'bin/ws'), *a], cwd=self.root, capture_output=True, text=True)
+        before = self.snapshot()
+        short, full = run('upgrade', '--dry-run'), run('upgrade', '--dry-run', '--diff')
+        self.assertEqual((short.returncode, full.returncode, before), (0, 0, self.snapshot()))
+        self.assertLess(len(short.stdout.splitlines()), 30)
+        self.assertGreater(len(full.stdout.splitlines()), 400)
+        self.assertIn('--dry-run --diff', short.stdout)
+        self.assertNotIn('--- routing.json', short.stdout)
+        self.assertIn('--- routing.json', full.stdout)
+        self.assertIn('+ .claude/settings.json (new: hooks for Claude Code)', short.stdout)
+        self.assertIn('+ .codex/hooks.json (new: hooks for Codex)', short.stdout)
+        self.assertRegex(short.stdout, r'~ workspace\.json \(changed, \d+ lines; keys ')
+
+    def test_json_key_summary(self):
+        from ws.upgrade import json_keys
+        self.assertEqual(json_keys(b'{"a": {"x": 1, "y": 2}, "b": 1}', b'{"a": {"x": 1, "y": 3, "z": 4}}'), '+1 -1 ~1')
+        self.assertEqual(json_keys(b'', b'{}'), '')
 
     def test_managed_markdown_and_hook_objects_preserve_outside_bytes(self):
         rules = self.root / 'AGENTS.md'
