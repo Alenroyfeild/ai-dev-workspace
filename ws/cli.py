@@ -116,6 +116,7 @@ def text_doctor(report):
     if report.get('team_workspace'):
         pulls = 'enabled (read-only)' if report['team_workspace'].get('auto_pull') is True else 'off (consent required)'
         lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls ' + pulls)
+        if report['team_workspace'].get('problem'): lines.append('Team problem: ' + report['team_workspace']['problem'])
     if report.get('setup'):
         assistants = ', '.join(report['setup']['assistants'])
         lines.append('Setup preset: ' + report['setup']['preset'] + (f' ({assistants})' if assistants else ''))

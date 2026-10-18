@@ -34,9 +34,39 @@ def _remote(clone, remote, branch):
     return line[0]
 
 
+def _discard_index(clone):
+    """INDEX.md is derived from the entries, so a local copy never blocks a pull; True if one was dropped."""
+    state=_git(clone,'status','--porcelain=v1','-z','--','INDEX.md')
+    if not state: return False
+    if state.startswith('??'): (clone/'INDEX.md').unlink()
+    else: _git(clone,'checkout','HEAD','--','INDEX.md')
+    return True
+
+
+def _pull(clone, head):
+    dropped=_discard_index(clone)
+    try: _git(clone,'merge','--ff-only','--no-edit','FETCH_HEAD')
+    except core.WsError:
+        dirty={e[3:] for e in _git(clone,'status','--porcelain=v1','-z','--untracked-files=all').split('\0') if e}
+        names=sorted(dirty&set(_git(clone,'diff','--name-only','-z',head,'FETCH_HEAD').split('\0')))
+        if not names: raise
+        raise core.WsError(f'Resolve manually: the pull would overwrite local changes to {", ".join(names)} in {clone}. Keep a copy if you need it, then run '
+                           f'`git -C {clone} checkout -- {" ".join(names)}` (untracked files: move them away) and `ws sync --pull-only`; never reset/force-push.') from None
+    return dropped
+
+
+def _index_current(root):
+    """True when INDEX.md already equals what the entries generate, so it needs no separate approval."""
+    return not any(p.name=='INDEX.md' for p in cards.plan(root,'team'))
+
+
 def _view(root, pull, read_only=False):
     if core.config(root).get('team_workspace',{}).get('host')=='folder': raise core.WsError('Git sync cannot operate on a folder host; use the folder publication path.')
-    knowledge._bases(root,'team')  # Validates the linked manifest and all path components.
+    bad=None
+    try: knowledge._bases(root,'team')  # Validates the linked manifest and all path components.
+    except team.ManifestError as exc:
+        if not pull: raise
+        bad=exc  # a pull may bring the fix; the manifest is checked again right after it
     cfg_text = sharing._text(sharing._safe(root,root/'workspace.json')); cfg=json.loads(cfg_text)
     link=cfg.get('team_workspace',{}); clone=sharing._safe(root,root/'.ws/team')
     if not link or link.get('path')!='.ws/team': raise core.WsError('Link a team first: run `ws team link <private-repo>`, or `ws team init <private-repo>` to create one.')
@@ -59,7 +89,12 @@ def _view(root, pull, read_only=False):
         _git(clone,'fetch','--no-tags','--',remote,branch)
         if _git(clone,'rev-parse','FETCH_HEAD').strip()!=base: raise core.WsError('Remote advanced; preview again.')
         _git(clone,'merge-base','--is-ancestor',head,base)
-        _git(clone,'merge','--ff-only','--no-edit','FETCH_HEAD')
+        dropped=_pull(clone,head); bad=None
+        knowledge._bases(root,'team')  # pulled; still refuse to use an invalid manifest
+        if dropped:  # regenerate the derived index so local entries stay listed after the pull
+            changes={p:t for p,t in cards.plan(root,'team').items() if p.name=='INDEX.md'}
+            if changes: cards.write(root,changes)
+    if bad: raise bad
     if read_only: return {'updated':base!=head,'head':base,'pushed':False}
     receipt=sharing._text(sharing._safe(root,root/'.ws/shares.json')); saved=json.loads(receipt or '{}')
     approved=saved.get('_artifacts:'+link['id'],{})
@@ -79,6 +114,7 @@ def _view(root, pull, read_only=False):
         if name=='team.json':
             expected={'kind':'ai-dev-workspace-team','schema_version':1,'id':link['id']}
             if base or text is None or json.loads(text)!=expected: raise core.WsError('Only the linked bootstrap manifest is approved.')
+        elif name=='INDEX.md' and text is not None and _index_current(root): pass  # derived, never hand-written
         elif approved.get(name)!= (core.digest_text(text) if text is not None else ''):
             raise core.WsError('File differs from its sharing approval; run ws share again. '+HINT)
         sharing.check_public(root,name,text)
