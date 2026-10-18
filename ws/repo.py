@@ -82,6 +82,7 @@ def exclusions(repo, state):
         previous = base64.b64decode(state['exclude_previous'])
         if not previous and (not exclude.exists() or block.splitlines()[1] not in exclude.read_bytes()): return exclude, b''
         block = previous
+    if exclude.is_file() and exclude.read_bytes().count(block) != 1 and exclude.read_bytes().count(block.replace(b'\n', b'\r\n')) == 1: block = block.replace(b'\n', b'\r\n')  # a Windows editor rewrote the line endings
     if not exclude.is_file() or exclude.read_bytes().count(block) != 1: raise core.WsError('Git exclude block changed; restore the recorded block before ws start --undo.')
     return exclude, block
 
@@ -148,8 +149,9 @@ PLUGIN = 'ai-dev-workspace@ai-dev-workspace'
 def claude_plugin_enabled(repo):
     """enabledPlugins for this kit's Claude Code plugin; local beats project beats user, like Claude Code."""
     value = None
-    for settings in (Path.home() / '.claude/settings.json', repo / '.claude/settings.json', repo / '.claude/settings.local.json'):
-        try: plugins = json.loads(settings.read_text(encoding='utf-8')).get('enabledPlugins')
+    user = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude')  # Claude Code honours CLAUDE_CONFIG_DIR
+    for settings in (user / 'settings.json', repo / '.claude/settings.json', repo / '.claude/settings.local.json'):
+        try: plugins = json.loads(settings.read_text(encoding='utf-8-sig')).get('enabledPlugins')  # -sig: PowerShell 5 writes a BOM
         except (OSError, ValueError, AttributeError): continue
         if isinstance(plugins, dict) and isinstance(plugins.get(PLUGIN), bool): value = plugins[PLUGIN]
     return value is True
@@ -160,13 +162,22 @@ def plugin_state(p):
     except (OSError, ValueError, core.WsError): return False
 
 
-def plugin_duplicates(root):
-    """Started repos where the Claude Code plugin and ws start's own Claude hooks would both run."""
+def _same(p, only):
+    return only is None or Path(only).resolve() == p.resolve()
+
+
+def plugin_duplicates(root, only=None):
+    """Started repos (just `only`, if given) where the Claude Code plugin and ws start's own Claude hooks would both run."""
     def files(p):  # a corrupt start record must not crash doctor; ws start reports it
         try: return load(p).get('files', {})
         except (OSError, ValueError, core.WsError): return {}
-    return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file()
+    return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file() and _same(p, only)
             and '.claude/settings.local.json' in files(p) and not plugin_state(p) and claude_plugin_enabled(p)]
+
+
+def plugin_missing(root):
+    """Started repos whose record says the plugin brings Claude's hooks, but the plugin is no longer enabled."""
+    return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file() and plugin_state(p) and not claude_plugin_enabled(p)]
 
 
 def codex_pending(root, check_global=True):
@@ -221,7 +232,7 @@ def stale_hooks(root):
         try: names = [n for n in load(repo)['files'] if n in HOOK_FILES]
         except (OSError, ValueError, core.WsError): continue
         for name in names:
-            try: data = json.loads((repo / name).read_text(encoding='utf-8'))
+            try: data = json.loads((repo / name).read_text(encoding='utf-8-sig'))
             except (OSError, ValueError): continue
             missing = next(filter(None, (_missing_in_hook(c, root) for c in _strings(data.get('hooks') if isinstance(data, dict) else None))), '')
             if missing: found.append({'repo': str(repo), 'file': name, 'missing': missing})
@@ -337,7 +348,7 @@ def render(repo, root, clients, prior, plugin=False):
         data = json.loads(desired[name] if name in desired else prior(name) or b'{}')
         if not isinstance(data, dict) or not isinstance(data.get(key, {}), dict): raise core.WsError('Invalid MCP settings: ' + name)
         servers = data.setdefault(key, {})
-        if 'ai-dev-workspace' in servers: raise core.WsError('Existing workspace MCP entry; review it before ws start.')
+        if 'ai-dev-workspace' in servers: raise core.WsError('Existing workspace MCP entry in ' + name + '; review it before ws start.')
         servers['ai-dev-workspace'] = core.mcp_command(root); desired[name] = (json.dumps(data, indent=2) + '\n').encode()
     return desired
 
@@ -366,14 +377,25 @@ def starter(repo, root):
 def extend_exclude(repo, state, names):
     """Add files ws newly writes to its Git-exclude block and the start record (also its directories, for undo)."""
     exclude, block = exclusions(repo, state)
-    end = b'# /ws:start\n'
+    nl = b'\r\n' if b'\r\n' in block else b'\n'
+    end = b'# /ws:start' + nl
     lines = block.decode().splitlines()
-    extra = ''.join('/' + n + '\n' for n in names if '/' + n not in lines).encode()
+    extra = b''.join(('/' + n).encode() + nl for n in names if '/' + n not in lines)
     grown = block[:-len(end)] + extra + end
     core.atomic_write(exclude, exclude.read_bytes().replace(block, grown, 1))
     state['exclude_block'] = base64.b64encode(grown).decode()
     new_dirs = {p.relative_to(repo).as_posix() for n in names for p in (repo / n).parents if repo in p.parents and not p.exists()}
     state['directories'] = sorted(set(state.get('directories', [])) | new_dirs, key=lambda n: n.count('/'), reverse=True)
+    core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+
+
+def shrink_exclude(repo, state, names):
+    """Inverse of extend_exclude: files ws no longer owns leave the exclude block, so a user's own file there shows in git status."""
+    exclude, block = exclusions(repo, state)
+    drop = {'/' + n for n in names}
+    shrunk = b''.join(line for line in block.splitlines(keepends=True) if line.rstrip(b'\r\n').decode() not in drop)
+    core.atomic_write(exclude, exclude.read_bytes().replace(block, shrunk, 1))
+    state['exclude_block'] = base64.b64encode(shrunk).decode()
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
 
 
@@ -387,7 +409,10 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
         entry = state['files'].get(name)
         if entry is None: return path(repo, name).read_bytes() if path(repo, name).exists() else None  # not written by ws yet: start from what is there, like start()
         return base64.b64decode(entry['before']) if entry.get('before') else None
-    desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before, plugin)
+    off = bool(state.get('plugin')) and not plugin  # the plugin was switched off since ws start: its Claude files must come back
+    hint = ' The Claude plugin is no longer enabled, so ws must restore its Claude hooks and MCP entry: enable the plugin again, or move your file aside (or run ws start --undo) and rerun ws start.'
+    try: desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before, plugin)
+    except core.WsError as exc: raise core.WsError(str(exc) + (hint if off else ''))
     codex = state['files'].get('.codex/config.toml')
     if codex and codex.get('before') is None: desired['.codex/config.toml'] = core.codex_mcp_config(root).encode()
     new = {n: before(n) for n in desired if n not in state['files']}  # what render() saw, to catch an edit while confirming
@@ -399,7 +424,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
         for name in changes: print('  ' + str(repo / name) + (' (new)' if name in new else ''), file=sys.stderr)
         for name in gone: print('  ' + str(repo / name) + ' (ws entries removed)', file=sys.stderr)
         tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes, *gone], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
-        if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))  # same rule as first setup
+        if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', ') + (hint if off and set(WITHOUT_PLUGIN) & set(tracked.splitlines()) else ''))  # same rule as first setup
         if dry_run: return sorted({*changes, *gone})
         if not confirm(yes, dry_run): return None
         if any(before(n) != data for n, data in new.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
@@ -408,9 +433,12 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
         for name in gone:
             if not restore_file(repo, state, name): raise core.WsError('Local file changed; review it before ws start: ' + name)
             core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+        if gone: shrink_exclude(repo, state, gone)
     if dry_run: return sorted({*changes, *gone})
-    # Kept (user-edited) files stay pending: the version moves only once every recorded file is current.
-    if not keep: state['kit_version'] = core.kit_meta()['version']; state['hook_packs'] = hook_packs(root); state['plugin'] = plugin
+    # Kept (user-edited) files stay pending: the version moves only once every recorded file is current. Packs and plugin describe the hook/MCP files only,
+    # so they move as soon as none of those is kept; otherwise a stale value would hide a later flip back (the rest was already rewritten).
+    if not keep: state['kit_version'] = core.kit_meta()['version']
+    if not {*HOOK_FILES, '.mcp.json'} & set(keep): state['hook_packs'] = hook_packs(root); state['plugin'] = plugin
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return sorted({*changes, *gone})
 
@@ -442,11 +470,11 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo) or _stale_here(root, repo)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo) or edited or _stale_here(root, repo)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
-        return dict(root=str(root), already=True, partial=partial, refreshed=refreshed, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current, codex_status=state.get('codex_status', 'connected'))
+        return dict(root=str(root), repo=str(repo), already=True, partial=partial, refreshed=refreshed, assistants=state.get('assistants', ['claude', 'codex']), task=task, branch=current, codex_status=state.get('codex_status', 'connected'))
     if remove: raise core.WsError('No repo setup to undo; run ws start first.')
     root = Path(workspace).expanduser().resolve() if workspace else (Path.home() / '.ai-dev-workspace' / repo.name).resolve()
     if root == repo or repo in root.parents: raise core.WsError('Choose a workspace outside the repo with ws start --workspace <dir>.')
@@ -487,6 +515,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
     previous_exclude = exclude.read_bytes() if exclude.exists() else b''
+    leftover = re.sub(rb'\r?\n# ws:start:' + core.digest_text(str(repo))[:12].encode() + rb'\r?\n.*?# /ws:start\r?\n', b'', previous_exclude, flags=re.S)  # git clean -fdx deleted the record, not this block
+    if leftover != previous_exclude: core.atomic_write(exclude, leftover); previous_exclude = leftover
     state = dict(kit_version=core.kit_meta()['version'], hook_packs=hook_packs(root), plugin=plugin, codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
@@ -506,4 +536,4 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
                 core.atomic_write(target, core.set_meta(core.set_section(text, 'Next action', ''), {'status': 'in_progress'}))
     memory_import.apply(root, repo, task, imports)
     state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
-    return dict(root=str(root), already=False, assistants=[c for c in clients if not (plugin and c == 'claude')] + (['claude (plugin)'] if plugin else []), task=task, branch=current, codex_status=state['codex_status'], starter=starter(repo, root))
+    return dict(root=str(root), repo=str(repo), already=False, assistants=[c for c in clients if not (plugin and c == 'claude')] + (['claude (plugin)'] if plugin else []), task=task, branch=current, codex_status=state['codex_status'], starter=starter(repo, root))
