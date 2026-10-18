@@ -20,7 +20,7 @@ def secret_values(text):
     for match in list(core.SECRET_RE.finditer(text)) + list(core.URL_CREDENTIALS_RE.finditer(text)):
         hit = match[0].rsplit(':', 1)[-1].rstrip('@') if match.re is core.URL_CREDENTIALS_RE else match[0]
         hit = hit.strip()
-        if not re.match(r'(?i)bearer\b', hit): hit = re.split(r'\s*[:=]\s*', hit, 1)[-1]  # the first : or = only; base64 padding keeps its =
+        if not re.match(r'(?i)bearer\b', hit): hit = re.split(r'\s*[:=]\s*', hit, maxsplit=1)[-1]  # the first : or = only; base64 padding keeps its =
         value = (hit.split() or [''])[-1].strip('"\'')
         if value[:1] in '$<{' or re.search(r'(?i)^(your|change|replace|insert|todo)|example|placeholder|dummy|xxx', value): continue
         if len(value) >= 12 and re.search(r'\d', value) and re.search(r'[A-Za-z]', value): found.add(value)
@@ -48,10 +48,21 @@ def _segments(command):
         if words: yield words
 
 
+def _canon(path):
+    """Path with ~, $HOME, ${HOME}, $env:USERPROFILE swapped for the real home, then slashes, `/.`, `//` and a trailing `/*` folded."""
+    home = os.path.expanduser('~')
+    path = re.sub(r'(?i)^(?:~|\$home|\$\{home\}|\$env:userprofile)(?=$|[\\/])', lambda _: home, path)
+    path = re.sub(r'/\.?\*$', '/', re.sub(r'[\\/]+', '/', path))
+    return os.path.normcase(os.path.normpath(path))
+
+
 def _is_home(path):
-    """The user's home folder, whatever the slash direction, case (Windows) or trailing slash or /*."""
-    norm = lambda p: os.path.normcase(os.path.normpath(re.sub(r'[\\/]\*$', '', p)))
-    return norm(path) == norm(os.path.expanduser('~'))
+    """The user's home folder, however spelled."""
+    return _canon(path) == _canon('~')
+
+
+def _is_root(path):
+    return _canon(path) == _canon('/')
 
 
 def command_reason(command):
@@ -63,7 +74,7 @@ def command_reason(command):
             continue
         flags = ''.join(a[1:] for a in args if a.startswith('-') and not a.startswith('--'))
         if name == 'rm' and ('r' in flags.lower() or '--recursive' in args) and ('f' in flags or '--force' in args):
-            hit = [a for a in args if a in HOME_OR_ROOT or _is_home(a)]
+            hit = [a for a in args if a in HOME_OR_ROOT or _is_home(a) or _is_root(a)]
             if hit: return f'rm -rf on {hit[0]} would delete your home folder or the filesystem root.'
         while name == 'git' and args and args[0].startswith('-'):  # global options: git -C dir, -c k=v, --no-pager ...
             args = args[2:] if args[0] in ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path') else args[1:]
@@ -88,8 +99,9 @@ def _ps_flag(arg, full):
 
 
 def _ps_home_or_root(a):
-    target = re.sub(r'[\\/]\*$', '', a.lower()).rstrip('\\/')
-    return not a.startswith('-') and (target in ('', '~', '$home', '${home}', '$env:userprofile') or bool(re.fullmatch(r'[a-z]:', target)) or _is_home(a))
+    if a.startswith('-'): return False
+    target = _canon(a).lower()
+    return not a.strip('\\/') or _is_home(a) or _is_root(a) or bool(re.fullmatch(r'[a-z]:[\\/]?', target))
 
 
 def powershell_reason(command):

@@ -2284,6 +2284,9 @@ def digest_file(path, max_lines=60, root=None, focus=None):
     try:
         out['json_shape'] = _shape(json.loads(raw))
         return out
+    except RecursionError:
+        out['json_shape'] = 'JSON nested too deeply to summarize'
+        return out
     except ValueError:
         pass
     seen, picked = {}, []
