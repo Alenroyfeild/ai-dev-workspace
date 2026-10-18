@@ -1055,6 +1055,9 @@ def _claim_defaults(root, task_id, worker, token):
 
 def task_new(root, task_id, title, objective='', branch='', repo=''):
     title = plain_text(redacted_line(title, 'Title'))
+    # Branch/repo are identifiers: stripping would corrupt them, so refuse private markers.
+    if any(isinstance(v, str) and (PRIVATE_RE.search(v) or re.search(r'#private\b', v, re.I)) for v in (branch, repo)):
+        raise WsError('Branch and repo values cannot contain private markers (<private>, #private); use the real branch name or path.')
     branch = redacted_line(branch, 'Branch')
     repo = redacted_line(repo, 'Repo')
     configured_repos = config(root).get('repos', [])
