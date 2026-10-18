@@ -119,7 +119,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 
 ### Link a private team repo
 
-- Create the empty private remote yourself. `ws team init <private-remote> --dry-run` previews; repeat without `--dry-run` to confirm. Init prepares an uncommitted `team.json` in `.ws/team` and never pushes. Inspect it, then commit and push it with normal Git to bootstrap the repo.
+- Create the empty private remote yourself. `ws team init <private-remote> --dry-run` previews; repeat without `--dry-run` to confirm. Init prepares an uncommitted `team.json` in `.ws/team` and never pushes. Run `ws sync` to publish it (it shows what it will push first); teammates can link only after that. At a terminal, team previews print a short summary (`+ <category> <text>` per note, the full text up to 600 characters, the destination, then `[y/N]`); piped or scripted runs get the full JSON, and `WS_JSON=1` forces it.
 - Teammates run `ws team link <private-remote>`.
 - Privacy is checked with an installed `gh` or `glab`, or with `--attest-private` for that exact remote when verification is unavailable. A remote known to be public or internal blocks linking. `--verify-with gh|glab` picks the verifier for a self-hosted remote. Doctor shows verified versus attested privacy.
 - `--yes` confirms the printed preview. `--auto-pull` or `--no-auto-pull` records the pull preference without prompting. Pull consent never authorizes publishing.
@@ -167,7 +167,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 
 ### Sync and status
 
-- `ws sync` pulls the linked team branch (fast-forward only), then previews one commit built only from share-approved file bytes. `--dry-run` may pull but never commits or pushes. `--yes` confirms the exact preview and rechecks privacy, remote head, approvals and files. No force-push, reset or clean ever runs.
+- `ws sync` pulls the linked team branch (fast-forward only) and prints a one-line count of notes pulled and published (to stderr), then previews one commit built only from share-approved file bytes. `--dry-run` may pull but never commits or pushes. `--yes` confirms the exact preview and rechecks privacy, remote head, approvals and files. No force-push, reset or clean ever runs.
 - Unapproved files, staged edits or unpublished local commits stop the sync with a hint and stay intact. An empty remote receives only the bootstrap manifest plus approved copies.
 - `ws sync --pull-only` only fetches and fast-forwards; it never checks publishing receipts or pushes. With `--dry-run` it refuses without contacting Git.
 - Auto-pull: explicit `--auto-pull` consent at link (or `team_workspace.auto_pull=true`) allows quiet read-only pulls at session start and after share or checkpoint (4-second budget). A failure keeps local memory and prints a hint. `ws brief` and `ws search` never pull. `auto_pull=false` stops future automatic pulls.

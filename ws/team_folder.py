@@ -32,7 +32,9 @@ def snapshot(root, folder, local=False, allow_empty=False):
             if not re.fullmatch(r'team\.json|INDEX\.md|entries/[a-f0-9]{32}(?:\.index)?\.md|status/[A-Za-z0-9][A-Za-z0-9_.-]{0,39}\.json',name):
                 raise core.WsError('Unexpected/conflict-copy file: '+name+'. '+HINT)
             if path.resolve()!=path or not path.is_file() or path.stat().st_size>1024*1024: raise core.WsError(HINT)
-            text=core.read_text(path,[folder],errors='strict'); total+=len(text.encode())
+            try: text=core.read_text(path,[folder],errors='strict')
+            except UnicodeDecodeError: raise core.WsError(name+' is not valid UTF-8 text. '+HINT)
+            total+=len(text.encode())
             if len(files)>=1000 or total>8*1024*1024: raise core.WsError('Folder snapshot exceeds 1000 files / 8 MiB.')
             files[name]=text
     if allow_empty and not files: return {'files':{},'identity':[info.st_dev,info.st_ino],'team':'','source':str(folder)}

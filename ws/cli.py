@@ -79,6 +79,11 @@ def out(value):
     print(value if isinstance(value, str) else readable(value) if human() else json.dumps(value, indent=2, ensure_ascii=False))
 
 
+def show(plan, summary):
+    """A terminal gets a few readable lines to approve; scripts and pipes keep the full JSON plan."""
+    out(summary(plan) if human() else plan)
+
+
 def text_status(report):
     lines = [f"Workspace: {report['workspace']}"]
     tasks = ', '.join(f'{name} {count}' for name, count in sorted(report['tasks'].items())) or 'none'
@@ -517,7 +522,8 @@ def main(argv=None):
             from . import sharing
             author = getattr(a, 'author', None)
             if author is None: author = sharing.default_author(root)
-            plan = sharing.preview(root, item, remove, author, as_format=getattr(a, 'as_format', '')); out(plan)
+            from . import team_ui
+            plan = sharing.preview(root, item, remove, author, as_format=getattr(a, 'as_format', '')); show(plan, team_ui.share)
             if getattr(a, 'dry_run', False) or plan['unchanged']: return
             if not a.yes:
                 print('Apply this exact local team preview? [y/N]')
@@ -539,16 +545,21 @@ def main(argv=None):
                 if not a.dry_run and plan['supported'] and (a.yes or ask('Activate this exact daily read-only job? [y/N] ')):
                     out(team_auto.schedule(root, a.daily, True, plan))
                 return 0
-            plan = team_sync.preview(root); out(plan)
-            if a.dry_run or not plan['files']: return 0
-            if a.yes or ask('Publish this exact team sync preview? [y/N] '):
-                out(team_sync.apply(root, plan))
+            from . import team_ui
+            before = team_ui.entries(root)
+            plan = team_sync.preview(root); show(plan, team_ui.sync); published = None
+            if not (a.dry_run or not plan['files']) and (a.yes or ask('Publish this exact team sync preview? [y/N] ')):
+                out(team_sync.apply(root, plan)); published = list(plan['files'])
+            print(team_ui.sync_line(before, team_ui.entries(root), published), file=sys.stderr)  # stderr: stdout stays JSON for scripts
             return 0
         if a.cmd == 'team':
             if a.action == 'status':
                 from . import team_status
                 if not a.remote and not a.disable_status:
-                    out(team_status.list_entries(root)); return 0
+                    rows = team_status.list_entries(root); out(rows)
+                    if not rows['entries'] and not rows['warnings']:
+                        print('No team status shared. Status sharing is off until someone opts in with ws team status --publish-status (previewed first).', file=sys.stderr)
+                    return 0
                 plan = team_status.preview(root, a.remote, a.author, a.publish_status, a.disable_status); out(plan)
                 if not a.dry_run and (a.yes or ask('Save this exact local status preview? [y/N] ')):
                     out(team_status.apply(root, plan))
@@ -559,17 +570,20 @@ def main(argv=None):
                 from . import team_folder
                 if a.action not in ('init','link'): raise core.WsError('--folder supports init/link; unlink uses ws team unlink.')
                 handler = team_folder.initialize if a.action=='init' else team_folder.link
-                plan = handler(root, a.remote, attest=a.attest_private, auto_pull=bool(a.auto_pull)); out(plan)
+                from . import team_ui
+                plan = handler(root, a.remote, attest=a.attest_private, auto_pull=bool(a.auto_pull))
+                if a.dry_run or plan.get('already') or not a.yes: show(plan, team_ui.team)  # with --yes only the result prints
                 if not a.dry_run and not plan.get('already') and (a.yes or ask('Link this exact private folder snapshot? [y/N] ')):
                     pulls = a.auto_pull
                     if pulls is None and not a.yes:
                         pulls = ask('Keep team knowledge updated automatically (read-only pulls)? [y/N] ')
                         plan['auto_pull'] = bool(pulls)
-                    out(handler(root, a.remote, True, a.attest_private, bool(pulls), plan))
+                    show(handler(root, a.remote, True, a.attest_private, bool(pulls), plan), team_ui.team_done)
                 return 0
-            from . import team
+            from . import team, team_ui
             plan = team.manage(root, a.action, a.remote, attest=a.attest_private,
-                               auto_pull=bool(a.auto_pull), verifier=a.verify_with); out(plan)
+                               auto_pull=bool(a.auto_pull), verifier=a.verify_with)
+            if a.dry_run or plan.get('already') or not a.yes: show(plan, team_ui.team)  # with --yes only the result prints
             if a.dry_run or plan.get('already'): return 0
             if not a.yes:
                 print('Apply this team preview? [y/N]')
@@ -578,7 +592,7 @@ def main(argv=None):
             if pulls is None and not a.yes and a.action != 'unlink':
                 print('Keep team knowledge updated automatically (pull at session start and daily)? [y/N]')
                 pulls = ask()
-            out(team.manage(root, a.action, a.remote, True, a.attest_private, bool(pulls), a.verify_with, plan['sha']))
+            show(team.manage(root, a.action, a.remote, True, a.attest_private, bool(pulls), a.verify_with, plan['sha']), team_ui.team_done)
             return 0
         if a.cmd == 'setup':
             from . import setup
