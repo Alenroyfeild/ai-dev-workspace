@@ -232,7 +232,7 @@ Details:
 | Command | What it does |
 |---|---|
 | `ws update [--check]` | Update the kit if it is a git clone, or print the pipx command for a pipx install. `--check` only looks. |
-| `ws upgrade [--dry-run] [--diff]` | Apply this kit version's managed workspace rules, hook handlers and Claude/Codex handoff, pickup and lesson skills. Prints one line per file (new, changed, with a reason for new files); `--diff` shows the full diff. |
+| `ws upgrade [--dry-run] [--diff] [--yes]` | Apply this kit version's managed workspace rules, hook handlers and Claude/Codex handoff, pickup and lesson skills. Prints one line per file (new, changed, with a reason for new files); `--diff` shows the full diff. Asks `Apply this upgrade? [y/N]` after the summary; `--yes` skips the question, and with no terminal and no `--yes` it refuses. |
 | `ws notices` | Show a new release, fixed issues and unshared feedback. Your assistant runs it once per session and asks before acting. |
 | `ws feedback add "<text>" [--kind K] [--source S]` | Record feedback about the workspace. `--kind` defaults to `idea`, `--source` to `user`. |
 | `ws feedback list [--all]` / `ws feedback sync` | List items, or tick items whose issue is closed. |
@@ -241,7 +241,7 @@ Details:
 
 Details:
 
-- `ws upgrade --dry-run` previews a per-file summary without writing (`--diff` adds the exact managed-file diffs). `ws upgrade` backs up changed files under `.ws/backups/<UTC timestamp>/`, adds managed routing defaults (keeping root overrides) and creates an empty claim directory. Existing claims are never changed.
+- `ws upgrade --dry-run` previews a per-file summary without writing (`--diff` adds the exact managed-file diffs). `ws upgrade` shows the same summary, asks before writing, backs up changed files under `.ws/backups/<UTC timestamp>/`, adds managed routing defaults (keeping root overrides) and creates an empty claim directory. Existing claims are never changed.
 - Managed Markdown blocks carry `ws:managed` markers with the kit version; managed hooks use `statusMessage: ws:managed:<event>:<kit version>`. Keep personal rules, settings and hooks outside them; their bytes are not changed.
 - Unmarked or ambiguous files (including routing files) produce `.ws-new` proposals, numbered if an earlier one was edited. Adopt them by hand, then rerun the dry run.
 - `workspace.json` records schema 2, kit version, a content fingerprint and pending proposals, and keeps custom keys and vault paths.

@@ -60,6 +60,23 @@ class UpgradeTests(Base):
         self.assertIn('+ .codex/hooks.json (new: hooks for Codex)', short.stdout)
         self.assertRegex(short.stdout, r'~ workspace\.json \(changed, \d+ lines; keys ')
 
+    def confirm_run(self, *args, stdin):
+        return subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'upgrade', *args], cwd=self.root, capture_output=True, text=True, input=stdin)
+
+    def test_upgrade_previews_then_asks_before_applying(self):
+        self.old_workspace(); before = self.snapshot()
+        no = self.confirm_run(stdin='n\n')
+        self.assertEqual((no.returncode, before), (0, self.snapshot()))  # declined: nothing written
+        self.assertIn('Apply this upgrade? [y/N]', no.stderr)
+        self.assertIn('+ routing.json (new: managed routing defaults)', no.stdout)  # summary shown before the prompt
+        result = self.confirm_run(stdin='')  # no answer at all, like a script or an assistant shell
+        self.assertEqual(result.returncode, 2); self.assertIn('ws upgrade --yes or --dry-run', result.stderr)
+        self.assertEqual(before, self.snapshot())
+        yes = self.confirm_run('--yes', stdin='')
+        self.assertEqual(yes.returncode, 0); self.assertNotIn('[y/N]', yes.stderr)
+        self.assertTrue((self.root / 'routing.json').exists())
+        self.assertEqual(self.confirm_run(stdin='').stdout.splitlines()[0], 'No changes.')  # nothing to apply, nothing to ask
+
     def test_json_key_summary(self):
         from ws.upgrade import json_keys
         self.assertEqual(json_keys(b'{"a": {"x": 1, "y": 2}, "b": 1}', b'{"a": {"x": 1, "y": 3, "z": 4}}'), '+1 -1 ~1')
