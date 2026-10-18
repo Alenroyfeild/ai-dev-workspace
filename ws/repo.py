@@ -86,6 +86,19 @@ def exclusions(repo, state):
     return exclude, block
 
 
+def restore_file(repo, state, name):
+    """Put one recorded file back as it was before ws wrote it and drop it from the record; False if it was edited since."""
+    entry = state['files'][name]
+    target = path(repo, name)
+    old = base64.b64decode(entry['before']) if entry['before'] is not None else None
+    current = target.read_bytes() if target.exists() else None
+    if (current is None and old is not None) or (current is not None and current != old and hashlib.sha256(current).hexdigest() != entry['sha']): return False
+    if old is None: target.unlink(missing_ok=True)
+    else: core.atomic_write(target, old)
+    del state['files'][name]
+    return True
+
+
 def undo(repo, state):
     exclude, block = exclusions(repo, state)
     kept = []
@@ -97,16 +110,8 @@ def undo(repo, state):
         current = target.read_bytes() if target.exists() else None
         if current is None or (current != old and hashlib.sha256(current).hexdigest() != config['sha']):
             kept.append(backup)
-    for name, entry in list(state['files'].items()):
-        if name in kept: continue
-        target = path(repo, name)
-        old = base64.b64decode(entry['before']) if entry['before'] is not None else None
-        current = target.read_bytes() if target.exists() else None
-        if (current is None and old is not None) or (current is not None and current != old and hashlib.sha256(current).hexdigest() != entry['sha']):
-            kept.append(name); continue
-        if old is None: target.unlink(missing_ok=True)
-        else: core.atomic_write(target, old)
-        del state['files'][name]
+    for name in list(state['files']):
+        if name not in kept and not restore_file(repo, state, name): kept.append(name)
     if kept:
         core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
         print('Kept edited local files: ' + ', '.join(kept), file=sys.stderr)
@@ -358,29 +363,56 @@ def starter(repo, root):
     return kind if kind and kind not in core.config(root).get('packs', []) else ''
 
 
+def extend_exclude(repo, state, names):
+    """Add files ws newly writes to its Git-exclude block and the start record (also its directories, for undo)."""
+    exclude, block = exclusions(repo, state)
+    end = b'# /ws:start\n'
+    lines = block.decode().splitlines()
+    extra = ''.join('/' + n + '\n' for n in names if '/' + n not in lines).encode()
+    grown = block[:-len(end)] + extra + end
+    core.atomic_write(exclude, exclude.read_bytes().replace(block, grown, 1))
+    state['exclude_block'] = base64.b64encode(grown).decode()
+    new_dirs = {p.relative_to(repo).as_posix() for n in names for p in (repo / n).parents if repo in p.parents and not p.exists()}
+    state['directories'] = sorted(set(state.get('directories', [])) | new_dirs, key=lambda n: n.count('/'), reverse=True)
+    core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+
+
+WITHOUT_PLUGIN = ('.claude/settings.local.json', '.mcp.json')  # Claude files the plugin replaces; render() stops producing them in plugin mode
+
+
 def refresh(repo, root, state, yes, dry_run, keep=()):
-    """Rewrite ws-written files still unchanged since ws wrote them, for this kit version; user edits stop it earlier."""
+    """Bring ws-written files in line with this kit version, packs and Claude plugin: rewrite those still unchanged since ws wrote them, create ones now needed, restore ones no longer needed."""
+    plugin = claude_plugin_enabled(repo)
     def before(name):
         entry = state['files'].get(name)
-        return base64.b64decode(entry['before']) if entry and entry.get('before') else None
-    desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before, state.get('plugin', False))
+        if entry is None: return path(repo, name).read_bytes() if path(repo, name).exists() else None  # not written by ws yet: start from what is there, like start()
+        return base64.b64decode(entry['before']) if entry.get('before') else None
+    desired = render(repo, root, state.get('assistants', ['claude', 'codex']), before, plugin)
     codex = state['files'].get('.codex/config.toml')
     if codex and codex.get('before') is None: desired['.codex/config.toml'] = core.codex_mcp_config(root).encode()
-    changes = {n: data for n, data in desired.items() if n in state['files'] and n not in keep and path(repo, n).read_bytes() != data}
+    new = {n: before(n) for n in desired if n not in state['files']}  # what render() saw, to catch an edit while confirming
+    changes = {n: data for n, data in desired.items() if n not in keep and (n in new or path(repo, n).read_bytes() != data)}
+    gone = [n for n in WITHOUT_PLUGIN if n in state['files'] and n not in desired and n not in keep]
     for name in keep: print('Kept your edits, not refreshed: ' + str(repo / name), file=sys.stderr)
-    if changes:
+    if changes or gone:
         print('Refresh repo setup for this ai-dev-workspace version (saved memory is kept):', file=sys.stderr)
-        for name in changes: print('  ' + str(repo / name), file=sys.stderr)
-        tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
+        for name in changes: print('  ' + str(repo / name) + (' (new)' if name in new else ''), file=sys.stderr)
+        for name in gone: print('  ' + str(repo / name) + ' (ws entries removed)', file=sys.stderr)
+        tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes, *gone], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
         if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))  # same rule as first setup
-        if dry_run: return sorted(changes)
+        if dry_run: return sorted({*changes, *gone})
         if not confirm(yes, dry_run): return None
+        if any(before(n) != data for n, data in new.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
+        if new: extend_exclude(repo, state, list(new))
         for name, data in changes.items(): record_file(repo, state, name, data)  # refuses a file changed meanwhile
-    if dry_run: return sorted(changes)
+        for name in gone:
+            if not restore_file(repo, state, name): raise core.WsError('Local file changed; review it before ws start: ' + name)
+            core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+    if dry_run: return sorted({*changes, *gone})
     # Kept (user-edited) files stay pending: the version moves only once every recorded file is current.
-    if not keep: state['kit_version'] = core.kit_meta()['version']; state['hook_packs'] = hook_packs(root)
+    if not keep: state['kit_version'] = core.kit_meta()['version']; state['hook_packs'] = hook_packs(root); state['plugin'] = plugin
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
-    return sorted(changes)
+    return sorted({*changes, *gone})
 
 
 def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=None, no_import=False):
@@ -410,7 +442,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or _stale_here(root, repo)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo) or _stale_here(root, repo)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None

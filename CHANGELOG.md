@@ -86,7 +86,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 
 ### Known limits
 - The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
-- The Claude Code plugin (preview) and the repo connection from `ws start` both add hooks; with the plugin enabled, `ws start` skips its own Claude brief and capture hooks (opt-in guards and discipline hooks stay); repos started earlier get a warning from `ws start` and `ws doctor` until you redo their setup.
+- The Claude Code plugin (preview) and the repo connection from `ws start` both add hooks; with the plugin enabled, `ws start` skips its own Claude brief and capture hooks (opt-in guards and discipline hooks stay); repos started earlier get a warning from `ws doctor` until you rerun `ws start`, which follows the plugin and the packs: it takes out ws's Claude brief hooks and MCP entry when the plugin is enabled, puts them back when it is disabled, and creates or removes the Claude settings file when you add or remove guards or discipline later (the preview lists each file).
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
 
