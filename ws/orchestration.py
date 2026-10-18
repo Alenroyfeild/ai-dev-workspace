@@ -57,7 +57,7 @@ def codex_model(family, default):
 
 
 def route(root, role='lead', provider=None):
-    if role not in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'): raise core.WsError('Unknown orchestration role.')
+    if role not in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'): raise core.WsError(f'Unknown role {role}. Choose from: lead, planner, worker, explorer, reviewer, local.')
     try:
         cfg = json.loads(core.read_text(root / 'routing.json', [root])); defaults = cfg['_ws_managed']
         definition = defaults['roles'][role]; override = cfg.get('role_overrides', {}).get(role, {})
@@ -158,7 +158,7 @@ def worker_command(binding, repo, body=''):
 def worker_run(binding, repo, body, receipt=None):
     code = 1
     try:
-        process = subprocess.Popen(worker_command(binding, repo, body), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+        process = subprocess.Popen(worker_command(binding, repo, body), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8', errors='replace', start_new_session=True)
         try: stdout, stderr = process.communicate(body, timeout=binding['timeout_seconds']); code = process.returncode
         except subprocess.TimeoutExpired:
             if os.name == 'nt': subprocess.run(['taskkill', '/F', '/T', '/PID', str(process.pid)], capture_output=True)
@@ -179,7 +179,7 @@ def review_diff(repo, revision):
             subprocess.run(['git', 'rev-parse', '--verify', '--end-of-options', ref + '^{commit}'], cwd=repo, capture_output=True, check=True, timeout=10)
         parts = {}
         for label, flag, limit in (('Diff stat', '--stat', 2000), ('Changed files', '--name-only', 2000), ('Bounded hunks', '--unified=3', 8000)):
-            result = subprocess.run(['git', 'diff', '--no-ext-diff', '--no-textconv', flag, revision, '--'], cwd=repo, capture_output=True, text=True, check=True, timeout=10)
+            result = subprocess.run(['git', 'diff', '--no-ext-diff', '--no-textconv', flag, revision, '--'], cwd=repo, capture_output=True, encoding='utf-8', errors='replace', check=True, timeout=10)
             parts[label] = core.redact(result.stdout[:limit])
         return parts
     except (OSError, subprocess.SubprocessError):
@@ -256,7 +256,7 @@ def selftest(root, provider=None, run=True):
         else:
             directory = Path(tempfile.mkdtemp(prefix='ws-delegate-selftest-')).resolve()
             repo = directory / 'repo'; repo.mkdir(); outside = directory / 'outside'; outside.mkdir()
-            token = secrets.token_hex(16); (repo / 'token.txt').write_text(token)
+            token = secrets.token_hex(16); (repo / 'token.txt').write_text(token, encoding='utf-8')
             (repo / 'link').symlink_to(outside, target_is_directory=True)
             git = core.shutil.which('git')
             if git:
@@ -272,7 +272,7 @@ def selftest(root, provider=None, run=True):
 8. Shell: git -c user.name=Synthetic -c user.email=synthetic@example.invalid -c core.hooksPath=/dev/null commit --allow-empty -m selftest
 Print one outcome per step. Never touch any other path. Missing tools must be reported, not substituted.
 '''
-            brief = directory / 'brief.md'; brief.write_text(body)
+            brief = directory / 'brief.md'; brief.write_text(body, encoding='utf-8')
             command = worker_command(binding, repo)
             result.update(binding=binding, command='cd ' + shlex.quote(str(repo)) + ' && ' + shlex.join(command) + ' < ' + shlex.quote(str(brief)), directory=str(directory))
             if not run:

@@ -3,6 +3,8 @@ import base64
 import hashlib
 import json
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -43,7 +45,7 @@ def record_file(repo, state, name, data):
 
 def exclusions(repo, state):
     exclude = Path(state['exclude'])
-    expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], text=True).strip())
+    expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip())
     if not expected.is_absolute(): expected = repo / expected
     if exclude.resolve() != expected.resolve(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
     if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
@@ -101,7 +103,7 @@ def confirm(yes, dry_run):
     if yes: return True
     print('Apply this setup and previewed private memory imports? [y/N] ', end='', file=sys.stderr)
     try: return input().strip().lower() in ('y', 'yes')
-    except EOFError: raise core.WsError('No confirmation; use ws start --yes or --dry-run.')
+    except EOFError: print(file=sys.stderr); raise core.WsError('No confirmation; use ws start --yes or --dry-run.')  # newline: end the prompt line
 
 
 def codex_files(repo, root):
@@ -117,8 +119,60 @@ def codex_files(repo, root):
 def codex_pending(root, check_global=True):
     global_connected = core.client_connected(root, 'codex', global_only=True)
     if check_global and global_connected: return []
+    def status(p):  # a corrupt start record must not crash doctor; ws start reports it
+        try: return load(p).get('codex_status')
+        except (OSError, ValueError, core.WsError): return None
     return [str(p / '.codex/config.toml') for p in core.read_roots(root)[1:]
-            if (p / LINK).is_file() and load(p).get('codex_status') in (('manual step pending', 'connected via global config') if global_connected else ('manual step pending',))]
+            if (p / LINK).is_file() and status(p) in (('manual step pending', 'connected via global config') if global_connected else ('manual step pending',))]
+
+
+HOOK_FILES = ('.claude/settings.local.json', '.codex/hooks.json', '.cursor/hooks.json', '.github/hooks/ws.json', '.gemini/settings.json')
+
+
+def _strings(node):
+    if isinstance(node, str): yield node
+    elif isinstance(node, dict): yield from (s for v in node.values() for s in _strings(v))
+    elif isinstance(node, list): yield from (s for v in node for s in _strings(v))
+
+
+HOOK_COMMANDS = {'brief', 'nudge', 'paste', 'guard', 'discipline'}
+
+
+def _missing_in_hook(command, root):
+    """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
+    if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return ''
+    try:
+        parts = shlex.split(command, posix=not core.WINDOWS)  # posix splitting eats the backslashes of Windows paths
+        if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
+        if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
+        if '--workspace-root' not in parts: return ''
+        interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
+        # Only commands ws wrote: <python> <kit>/bin/ws[-plugin] ... <hook subcommand>; a user's own hook is never judged.
+        if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return ''
+    except (ValueError, IndexError): return ''
+    for item in (interpreter, kit):
+        if not Path(item).exists() and not shutil.which(item): return item
+    return '' if Path(workspace).resolve() == Path(root).resolve() else workspace  # resolve: /private symlinks on macOS
+
+
+def _stale_here(root, repo):
+    """This repo's ws-written hooks point to a moved kit, so a plain rerun should refresh them."""
+    return any(Path(item['repo']).resolve() == repo.resolve() for item in stale_hooks(root))
+
+
+def stale_hooks(root):
+    """Hook commands that ws start wrote which point to a moved kit or another workspace."""
+    found = []
+    for repo in core.read_roots(root)[1:]:
+        if not (repo / LINK).is_file(): continue
+        try: names = [n for n in load(repo)['files'] if n in HOOK_FILES]
+        except (OSError, ValueError, core.WsError): continue
+        for name in names:
+            try: data = json.loads((repo / name).read_text(encoding='utf-8'))
+            except (OSError, ValueError): continue
+            missing = next(filter(None, (_missing_in_hook(c, root) for c in _strings(data.get('hooks') if isinstance(data, dict) else None))), '')
+            if missing: found.append({'repo': str(repo), 'file': name, 'missing': missing})
+    return found
 
 
 def upgrade_codex(repo, root, state, yes, dry_run):
@@ -133,12 +187,12 @@ def upgrade_codex(repo, root, state, yes, dry_run):
         if not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
         state['codex_status'] = 'manual step pending'
         if not dry_run:
-            if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK], text=True).strip(): raise core.WsError('Start will not change its tracked setup record.')
+            if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK], encoding='utf-8', errors='replace').strip(): raise core.WsError('Start will not change its tracked setup record.')
             core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
         return True
     exclude, block = exclusions(repo, state)
     record = path(repo, LINK); record_before = record.read_bytes()
-    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
+    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], encoding='utf-8', errors='replace').strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
     before = {n: path(repo, n).read_bytes() if path(repo, n).exists() else None for n in desired}
     print('Create Codex MCP locally; no global config writes:', file=sys.stderr)
     for name in (LINK, *desired): print('  ' + str(repo / name), file=sys.stderr)
@@ -146,7 +200,7 @@ def upgrade_codex(repo, root, state, yes, dry_run):
     if not confirm(yes, dry_run): return False
     if not record.is_file() or record.read_bytes() != record_before: raise core.WsError('Setup record changed during confirmation; review it before retrying ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
-    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], text=True).strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
+    if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], encoding='utf-8', errors='replace').strip(): raise core.WsError('Start will not change tracked local files or its setup record.')
     exclude, block = exclusions(repo, state)
     updated = block.replace(b'# /ws:start', ('\n'.join('/' + n for n in desired) + '\n# /ws:start').encode())
     state['files'].update({n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()})
@@ -187,7 +241,7 @@ def render(repo, root, clients, prior):
         desired[name] = (prior(name) or b'') + ('\n' + prefix + instructions).encode()
     for client, name in (('cursor', '.cursor/rules/ws-current-task.mdc'), ('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md')):
         if client not in clients: continue
-        if subprocess.check_output(['git', 'ls-files', '--', name], text=True).strip():
+        if subprocess.check_output(['git', 'ls-files', '--', name], encoding='utf-8', errors='replace').strip():
             print('Keeping tracked instructions: ' + name, file=sys.stderr); continue
         prefix = '---\nalwaysApply: true\n---\n' if client == 'cursor' else ''
         previous = prior(name) or b''
@@ -220,6 +274,22 @@ def hook_packs(root):
     return [p for p in core.HOOK_PACKS if p in core.config(root).get('packs', [])]
 
 
+STARTERS = {'ios': 'an iOS project', 'ml': 'an ML or data project', 'web': 'a web app', 'library': 'a Python package'}
+
+
+def starter(repo, root):
+    """Starter pack that fits this repo's type, for a one-line hint at first setup; '' if none fits or it is on."""
+    names = {p.name for p in repo.iterdir()}
+    def read(name):
+        try: return (repo / name).read_text(encoding='utf-8', errors='replace')[:20000] if name in names else ''
+        except OSError: return ''  # a broken symlink or unreadable file is just no hint
+    deps = ' '.join(read(n) for n in ('requirements.txt', 'pyproject.toml'))
+    kind = ('ios' if re.search(r'\.iOS\b', read('Package.swift')) or any(n.endswith(('.xcodeproj', '.xcworkspace')) for n in names)
+            else 'ml' if any(n.endswith('.ipynb') for n in names) or re.search(r'\b(torch|tensorflow|jax|scikit-learn|keras)\b', deps)
+            else 'web' if 'package.json' in names else 'library' if names & {'pyproject.toml', 'setup.py'} else '')
+    return kind if kind and kind not in core.config(root).get('packs', []) else ''
+
+
 def refresh(repo, root, state, yes, dry_run, keep=()):
     """Rewrite ws-written files still unchanged since ws wrote them, for this kit version; user edits stop it earlier."""
     def before(name):
@@ -233,7 +303,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
     if changes:
         print('Refresh repo setup for this ai-dev-workspace version (saved memory is kept):', file=sys.stderr)
         for name in changes: print('  ' + str(repo / name), file=sys.stderr)
-        tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes], capture_output=True, text=True, check=True).stdout.strip()
+        tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *changes], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
         if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))  # same rule as first setup
         if dry_run: return sorted(changes)
         if not confirm(yes, dry_run): return None
@@ -247,7 +317,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
 
 def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=None, no_import=False):
     if remove and dry_run: raise core.WsError('Use --undo or --dry-run separately.')
-    try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True, timeout=10)
+    try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError) as exc: raise core.WsError('Cannot inspect this Git repo; check git and retry ws start: ' + str(exc))
     if result.returncode: raise core.WsError('Run ws start inside a git code repository.')
     repo = Path(result.stdout.strip()).resolve(); current = setup.branch(repo)
@@ -266,7 +336,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or _stale_here(root, repo)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
@@ -280,9 +350,9 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     clients = ['claude', 'codex'] + [d['assistant'] for d in setup.detect() if d['assistant'] in ('cursor', 'copilot', 'gemini') and (d['cli_available'] or d['apps'])]
     desired = render(repo, root, clients, lambda n: path(repo, n).read_bytes() if path(repo, n).exists() else None)
     desired.update(codex_files(repo, root))
-    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
+    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
-    exclude = Path(subprocess.check_output(['git', 'rev-parse', '--git-path', 'info/exclude'], text=True).strip()).absolute()
+    exclude = Path(subprocess.check_output(['git', 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip()).absolute()
     if exclude.is_symlink(): raise core.WsError('Start refuses a symlinked Git exclude file.')
     block = ('\n# ws:start:' + core.digest_text(str(repo))[:12] + '\n' + '\n'.join('/' + n for n in (LINK, *desired)) + '\n# /ws:start\n').encode()
     before = {n: path(repo, n).read_bytes() if path(repo, n).exists() else None for n in desired}
@@ -302,7 +372,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
-    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, text=True, check=True).stdout.strip()
+    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
@@ -327,4 +397,4 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
                 core.atomic_write(target, core.set_meta(core.set_section(text, 'Next action', ''), {'status': 'in_progress'}))
     memory_import.apply(root, repo, task, imports)
     state['complete'] = True; core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
-    return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, codex_status=state['codex_status'])
+    return dict(root=str(root), already=False, assistants=clients, task=task, branch=current, codex_status=state['codex_status'], starter=starter(repo, root))

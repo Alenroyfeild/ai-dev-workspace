@@ -93,10 +93,15 @@ def link(root, folder, apply=False, attest=False, auto_pull=False, expected=None
     return {**plan,'applied':True}
 
 
-def pull(root):
+def source(root):
     link=core.config(root)['team_workspace'];proof=link.get('privacy',{});data=snapshot(root,link['remote'])
     if (proof.get('method')!='attested' or proof.get('remote')!=data['source'] or proof.get('identity')!=data['identity'] or
         link.get('id')!=data['team'] or proof.get('manifest_sha')!=core.digest_text(data['files']['team.json'])): raise core.WsError('Folder identity/attestation changed; link again.')
+    return data
+
+
+def pull(root):
+    link=core.config(root)['team_workspace'];data=source(root)
     base=sharing._safe(root,root/'.ws/folder-base.json');saved=json.loads(sharing._text(base));local=root/'.ws/team'
     if isinstance(saved,dict):saved.pop('INDEX.md',None)
     # Local snapshots use the same strict inventory; never discard pending edits.

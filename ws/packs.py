@@ -68,7 +68,7 @@ def add(root, directory):
             if core.write_preserving(root / relative, text, collisions) == root / relative and not existed:
                 created[relative] = core.hashlib.sha256(text).hexdigest()
         path = root / 'AGENTS.md'
-        if rules: core.atomic_write(path, path.read_text() + '\n' + rules)
+        if rules: core.atomic_write(path, path.read_text(encoding='utf-8') + '\n' + rules)
         local[name] = dict(path=str(source), version=manifest['version'], files=created, rules=rules)
         cfg['packs'].append(name)
         core.atomic_write(root / 'workspace.json', json.dumps(cfg, indent=2) + '\n')
@@ -81,7 +81,7 @@ def remove(root, name):
         entry = cfg.get('local_packs', {}).get(name)
         if entry is None and name in cfg['packs'] and not (core.KIT / 'packs' / name / 'vault').exists():
             # A built-in pack with no vault files (guards): drop its rules and config entry, nothing else to delete.
-            path = safe(root, 'AGENTS.md'); text = path.read_text(); rules = core.pack_rules('', name).strip(); kept = []
+            path = safe(root, 'AGENTS.md'); text = path.read_text(encoding='utf-8'); rules = core.pack_rules('', name).strip(); kept = []
             if rules and rules in text: core.atomic_write(path, text.replace(rules, '', 1).rstrip('\n') + '\n')
             elif rules: kept.append('AGENTS.md')
             cfg['packs'].remove(name); core.atomic_write(safe(root, 'workspace.json'), json.dumps(cfg, indent=2) + '\n')
@@ -93,7 +93,7 @@ def remove(root, name):
             path = paths[relative]
             if path.is_file() and core.hashlib.sha256(path.read_bytes()).hexdigest() == digest: path.unlink()
             elif path.exists(): kept.append(relative)
-        path = paths['AGENTS.md']; text = path.read_text()
+        path = paths['AGENTS.md']; text = path.read_text(encoding='utf-8')
         if entry['rules'] and entry['rules'] in text: core.atomic_write(path, text.replace(entry['rules'], '', 1))
         elif entry['rules']: kept.append('AGENTS.md')
         del cfg['local_packs'][name]; cfg['packs'].remove(name)

@@ -11,7 +11,7 @@ from . import core
 
 def state(root):
     path = root / '.ws/assist.json'
-    return json.loads(path.read_text()) if path.exists() else {}
+    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
 
 
 def save(root, data):
@@ -24,7 +24,7 @@ def cost_data():
     # notices runs at every session start: reuse one Codeburn scan per day instead of ~30 s of subprocesses.
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'codeburn-assist.json'
     try:
-        cached = json.loads(cache.read_text())
+        cached = json.loads(cache.read_text(encoding='utf-8'))
         if cached.get('day') == core.now()[:10]:
             return cached['report'], cached['usage']
     except (OSError, ValueError, KeyError, AttributeError):
@@ -37,13 +37,14 @@ def cost_data():
 
 
 def _scan():
+    executable = core.shutil.which('codeburn') or 'codeburn'  # Windows npm shims are codeburn.CMD; only the full path launches
     try:
-        report = subprocess.run(['codeburn', 'optimize', '--format', 'json'], capture_output=True, text=True, timeout=15)
+        report = subprocess.run([executable, 'optimize', '--format', 'json'], capture_output=True, encoding='utf-8', errors='replace', timeout=15)
         since = (datetime.date.fromisoformat(core.now()[:10]) - datetime.timedelta(days=30)).isoformat()
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'usage.json'
-            export = subprocess.run(['codeburn', 'export', '-f', 'json', '-o', str(path), '--from', since], capture_output=True, text=True, timeout=15)
-            return json.loads(report.stdout), json.loads(path.read_text()) if export.returncode == 0 else {}
+            export = subprocess.run([executable, 'export', '-f', 'json', '-o', str(path), '--from', since], capture_output=True, encoding='utf-8', errors='replace', timeout=15)
+            return json.loads(report.stdout), json.loads(path.read_text(encoding='utf-8')) if export.returncode == 0 else {}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {}, {}
 
@@ -95,7 +96,7 @@ def feature_suggestions(root, add):
         add('upgrade', 'Kit is newer than this workspace or .ws-new proposals await review', 'ws upgrade --dry-run', 'local-reversible')
     from . import orchestration
     path = root / '.ws/delegate-selftests.json'
-    try: records = json.loads(path.read_text()) if path.is_file() else {}
+    try: records = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
     except (OSError, ValueError): records = {}
     if not isinstance(records, dict): records = {}
     seen = set()

@@ -100,7 +100,7 @@ def _record(root, run_id, require_checkout=True):
     directory = Path(root).resolve() / '.ws/workers' / run_id
     for p in (directory.parent.parent, directory.parent, directory, directory / 'checkout', directory / 'source.git', directory / 'run.json', directory / 'diff.patch'):
         if p.is_symlink(): raise core.WsError('Worker run paths must not be symlinked.')
-    state = json.loads((directory / 'run.json').read_text())
+    state = json.loads((directory / 'run.json').read_text(encoding='utf-8'))
     if (state.get('id') != run_id or state.get('directory') != str(directory) or state.get('checkout') != str(directory / 'checkout')
             or require_checkout and not state.get('complete') or state.get('provider') != 'codex'):
         raise core.WsError('Worker preparation is incomplete or its recorded paths changed.')
@@ -257,7 +257,7 @@ def _profile(directory, executable=None):
     if executable:
         executable = Path(executable).resolve(); rules[str(executable)] = 'read'
         package = executable.parent.parent; home = Path.home().resolve()
-        try: metadata = json.loads((package / 'codex-package.json').read_text())
+        try: metadata = json.loads((package / 'codex-package.json').read_text(encoding='utf-8'))
         except (OSError, ValueError): metadata = {}
         protected = (home, home / '.codex', home / '.local', home / '.local/bin', *home.parents)
         install = home / '.codex/packages/standalone/releases'
@@ -380,14 +380,14 @@ def _launch(root, run_id):
             if event.get('type') == 'item.completed' and isinstance(item, dict) and item.get('type') == 'command_execution':
                 state['checks'].append(dict(command=core.redact(str(item.get('command', '')))[:1000], exit_code=item.get('exit_code')))
     try:
-        code, output, tokens_in, tokens_out, known = orchestration.worker_run(binding, checkout, (directory / 'brief.md').read_text(), receipt=receipt)
+        code, output, tokens_in, tokens_out, known = orchestration.worker_run(binding, checkout, (directory / 'brief.md').read_text(encoding='utf-8'), receipt=receipt)
         state.update(worker_exit=code, output=core.redact(output), usage=dict(input=tokens_in, output=tokens_out, known=known))
     except (OSError, ValueError) as error: state.update(worker_exit=1, output=core.redact(str(error)))
     state['finished_at'] = core.now()
     core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     result = collect(root, run_id)
     if state['worker_exit'] or not state['checks'] or any(c['exit_code'] != 0 for c in state['checks']):
-        state = json.loads((directory / 'run.json').read_text()); state.update(blocked=True, reason=state['reason'] + '; worker failed, checks failed, or command evidence missing.')
+        state = json.loads((directory / 'run.json').read_text(encoding='utf-8')); state.update(blocked=True, reason=state['reason'] + '; worker failed, checks failed, or command evidence missing.')
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
         result = {k: v for k, v in state.items() if k not in ('claim_token', 'claimed_by')}
     return result

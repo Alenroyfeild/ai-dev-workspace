@@ -112,10 +112,12 @@ def text_doctor(report):
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
     if report.get('team_workspace'):
-        lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls not active yet')
+        pulls = 'enabled (read-only)' if report['team_workspace'].get('auto_pull') is True else 'off (consent required)'
+        lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls ' + pulls)
     if report.get('setup'):
         lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
+    for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
@@ -221,8 +223,11 @@ def ask(prompt=''):
 
 
 def main(argv=None):
+    if core.WINDOWS:  # the pip/pipx `ws` script skips bin/ws, whose cp1252 pipes cannot carry non-ASCII text
+        for stream in (sys.stdin, sys.stdout, sys.stderr): getattr(stream, 'reconfigure', lambda **_: None)(encoding='utf-8')
     p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
-                                formatter_class=GroupedHelpFormatter)
+                                formatter_class=GroupedHelpFormatter,
+                                epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
     p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
@@ -303,29 +308,31 @@ def main(argv=None):
     choice.add_argument('--apply', action='store_true', help='apply the previewed preset and project connections')
 
     t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
-    s = t.add_parser('new'); s.add_argument('id'); s.add_argument('title')
-    s.add_argument('--objective', default=''); s.add_argument('--branch', default=''); s.add_argument('--repo', default='')
-    t.add_parser('list')
-    s = t.add_parser('find'); s.add_argument('ref')
-    s = t.add_parser('show'); s.add_argument('id'); s.add_argument('--section', action='append')
+    s = t.add_parser('new', help='create a task record'); s.add_argument('id', help='short ID such as JIRA-123 or fix-login'); s.add_argument('title')
+    s.add_argument('--objective', default='', help='one-line goal'); s.add_argument('--branch', default='', help='Git branch the task belongs to'); s.add_argument('--repo', default='', help='repo path the task belongs to')
+    t.add_parser('list', help='list tasks with status, claim and next action')
+    s = t.add_parser('find', help='find tasks by ID, branch or title'); s.add_argument('ref', help='ID, branch or title text')
+    s = t.add_parser('show', help='print one task record'); s.add_argument('id'); s.add_argument('--section', action='append', help='print only this section; repeat for several')
     s = t.add_parser('depend', help='make a task wait for another'); s.add_argument('id'); s.add_argument('--on', required=True, metavar='OTHER')
     s = t.add_parser('import', help='create tasks from Task Master tasks.json or a Spec Kit tasks.md (preview unless --yes)')
     s.add_argument('file'); s.add_argument('--prefix', default='SPEC'); s.add_argument('--yes', action='store_true', help='write the tasks')
     s = sub.add_parser('next', help='open tasks whose dependencies are done'); s.add_argument('--json', action='store_true')
 
-    s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker')
-    s = sub.add_parser('release', help='release a task claim'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
+    s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker', help='label for this session (default: $USER)')
+    s = sub.add_parser('release', help='release a task claim'); s.add_argument('id')
+    s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
     valid_notes = ', '.join(core.NOTE_SECTIONS)
     s = sub.add_parser('checkpoint', help='save task status and next action',
                        description='Save task status, next action, and optional notes.',
                        epilog='Valid note sections: ' + valid_notes)
-    s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
-    s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
-    s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
+    s.add_argument('id', help='task ID (see ws task list)'); s.add_argument('--status', required=True, choices=core.STATUSES)
+    s.add_argument('--next', required=True, help='exactly what the next person or AI should do')
+    s.add_argument('--expected-sha', help='refuse if the task changed since you read it'); s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
+    s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT', help='save text into a section, e.g. "Handoff=Decision: use Postgres"; repeatable')
 
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
-    s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
-    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
+    s.add_argument('text', help='the decision, e.g. "use Postgres, not SQLite"'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
+    s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s = sub.add_parser('pr-notes', help="print the task's decisions and checks as a PR-description block")
     s.add_argument('id', nargs='?', help='task (default: your only claimed task or the current branch task)')
     s.add_argument('--no-link', action='store_true', help='omit the one-line ai-dev-workspace credit')
@@ -334,32 +341,32 @@ def main(argv=None):
     s.add_argument('--since', default='7d', help='7d (days back) or YYYY-MM-DD; default 7d')
     s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
     k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
-    s = k.add_parser('add')
-    s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
-    s.add_argument('--category', default='other')
-    s = k.add_parser('list'); s.add_argument('--category', default=''); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
-    s = k.add_parser('show'); s.add_argument('id')
+    s = k.add_parser('add', help='save one knowledge entry')
+    s.add_argument('text'); s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
+    s.add_argument('--category', default='other', help='product, feature, domain, repo, runbook or other (default other)')
+    s = k.add_parser('list', help='list knowledge entries'); s.add_argument('--category', default='', help='only this category'); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
+    s = k.add_parser('show', help='print one knowledge entry'); s.add_argument('id', help='ID from ws know list')
 
-    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query'); s.add_argument('--category', default='')
+    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query', help='words to look for (3+ letters)'); s.add_argument('--category', default='', help='only knowledge in this category')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
-    s = sessions.add_parser('search'); s.add_argument('query')
+    s = sessions.add_parser('search', help='search transcripts of earlier assistant sessions'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
     s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
-    s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
-    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true'); s.add_argument('--author')
+    s = l.add_parser('add', help='save a lesson: what happened -> rule'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[], help='topic tag; repeatable')
+    s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
-    s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
+    s = l.add_parser('search', help='find saved lessons'); s.add_argument('query', nargs='?', default='', help='words to look for (default: all)')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
-    s = f.add_parser('add'); s.add_argument('text'); s.add_argument('--kind', default='idea'); s.add_argument('--source', default='user')
-    s = f.add_parser('list'); s.add_argument('--all', action='store_true')
+    s = f.add_parser('add', help='record feedback locally'); s.add_argument('text'); s.add_argument('--kind', default='idea', help='idea, bug, praise or friction (default idea)'); s.add_argument('--source', default='user')
+    s = f.add_parser('list', help='list feedback items'); s.add_argument('--all', action='store_true', help='include items already done')
     s = f.add_parser('submit', help='turn item N into a GitHub issue (preview first)'); s.add_argument('n', type=int); s.add_argument('--yes', action='store_true')
     s = f.add_parser('link', help='record the issue URL for item N'); s.add_argument('n', type=int); s.add_argument('url')
     f.add_parser('sync', help='tick items whose issue is closed')
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
-    sub.add_parser('version')
-    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true')
+    sub.add_parser('version', help='print the installed kit version')
+    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true', help='print the changes without writing them')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
     s = sub.add_parser('assist', help='suggest improvements; apply only after explicit permission')
     s.add_argument('action', nargs='?', choices=('apply', 'decide')); s.add_argument('id', nargs='?')
@@ -391,8 +398,11 @@ def main(argv=None):
         p.formatter_class = argparse.HelpFormatter
         p.print_help()
         return 0
-    if args in (['--help'], ['-h']):
+    if args in (['--help'], ['-h'], ['help']):
         p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
+    if args == ['help']:
+        p.print_help()
+        return 0
     a = p.parse_args(argv)
     try:
         if a.cmd == 'demo':
@@ -403,6 +413,7 @@ def main(argv=None):
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
             try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import)
+            except core.WsError: raise  # already says what to do; the prefix below is for unexpected file errors
             except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
             if result and result.get('undone'):
                 print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
@@ -411,6 +422,7 @@ def main(argv=None):
                 print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected') + ('; Codex: ' + result.get('codex_status', 'connected')))
                 print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
                 print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
+                if result.get('starter'): print(f"Looks like {repo.STARTERS[result['starter']]}: ws pack add {result['starter']} adds a few starter rules (optional).")
             return 2 if result and result.get('partial') else 0
         if a.cmd == 'setup' and a.detect:
             from . import setup
@@ -479,6 +491,10 @@ def main(argv=None):
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
         root = core.find_root(a.workspace_root)
+        @core.contextlib.contextmanager
+        def saved_locally():  # the record is already saved; say so when sharing it cannot go ahead
+            try: yield
+            except (core.WsError, ValueError, OSError) as exc: raise core.WsError(f'Saved locally, not shared: {exc}') from None
         def share_gate(item, remove=False):
             from . import sharing
             author = getattr(a, 'author', None)
@@ -597,7 +613,8 @@ def main(argv=None):
             collision_notices(result)
             out(result)
         elif a.cmd in ('brief', 'nudge'):
-            payload = json.load(sys.stdin) if a.hook else {}
+            try: payload = json.load(sys.stdin) if a.hook else {}
+            except ValueError: raise core.WsError('Hook input must be a JSON object; stdin was empty or not JSON.')
             branch_task = None
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
@@ -613,8 +630,8 @@ def main(argv=None):
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client,
                                            assist.session_task(root, payload.get('session_id')))
-                message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else ''
-                summary = core.memory_summary(root) if message and a.client == 'codex' else ''
+                message, summary = core.brief_and_summary(root, branch_task) if a.cmd == 'brief' else ('', '')
+                summary = summary if message and a.client == 'codex' else ''
                 out({'additional_context': message} if a.client == 'cursor' and message else
                     {'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if summary else
                     {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if message else {})
@@ -623,7 +640,7 @@ def main(argv=None):
                 core.capture_decisions(root, payload.get('transcript_path'), 'claude',
                                        assist.session_task(root, payload.get('session_id')))
             if a.cmd == 'brief' and a.refresh: core.refresh_native(root)
-            message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else core.nudge(root)
+            message, summary = core.brief_and_summary(root, branch_task) if a.cmd == 'brief' else (core.nudge(root), '')
             if a.hook and a.cmd == 'nudge':
                 if payload.get('hook_event_name') == 'Stop':
                     uses = claude_tool_uses(payload.get('transcript_path'))
@@ -633,7 +650,7 @@ def main(argv=None):
                 elif message:
                     out({'systemMessage': message})
             elif message:
-                summary = core.memory_summary(root) if a.hook and a.cmd == 'brief' and a.client == 'claude' else ''
+                summary = summary if a.hook and a.cmd == 'brief' and a.client == 'claude' else ''
                 out({'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if a.client == 'claude' and summary else message)
         elif a.cmd == 'connect':
             result = core.connect(root, a.client, a.write, skills=a.skills, verify=True)
@@ -682,12 +699,14 @@ def main(argv=None):
                 if res['waiting']: lines.append(f"{res['waiting']} waiting on dependencies")
                 out('\n'.join(lines))
         elif a.cmd == 'claim':
-            worker = a.worker or os.environ.get('USER')
+            worker = a.worker or os.environ.get('USER') or os.environ.get('USERNAME')
             if not worker:
-                raise core.WsError('Set USER or pass --worker.')
+                raise core.WsError('Set USER (USERNAME on Windows) or pass --worker.')
             out(core.claim(root, a.id, worker))
         elif a.cmd == 'release': out(core.release(root, a.id, a.worker, a.token))
         elif a.cmd == 'checkpoint':
+            if (bad := [n for n in a.note if '=' not in n]):
+                raise core.WsError(f'--note needs SECTION=TEXT, e.g. --note "Handoff=Decision: use Postgres"; got "{bad[0]}".')
             notes = dict(n.split('=', 1) for n in a.note)
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
             if a.status == 'done' and (hint := native.goal_hint(root, a.id)): print(hint, file=sys.stderr)  # stderr keeps stdout JSON clean
@@ -696,7 +715,7 @@ def main(argv=None):
             out(f"Remembered in {result['task']}: {result['remembered']}" if human() else result)
             if a.team:
                 from . import sharing
-                share_gate(sharing.standalone(root, 'decision', a.text))
+                with saved_locally(): share_gate(sharing.standalone(root, 'decision', a.text))
         elif a.cmd == 'pr-notes':
             result = core.pr_notes(root, a.id, link=not a.no_link)
             print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
@@ -707,7 +726,8 @@ def main(argv=None):
             from . import knowledge
             if a.action == 'add':
                 item = knowledge.add(root, a.text, a.category, a.team); out({'saved': item})
-                if a.team: share_gate(item)
+                if a.team:
+                    with saved_locally(): share_gate(item)
             elif a.action == 'list': out(knowledge.list_entries(root, a.category, a.layer))
             else: out(knowledge.show(root, a.id))
         elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
@@ -716,7 +736,7 @@ def main(argv=None):
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
             if a.action == 'add' and a.team:
                 from . import sharing
-                share_gate(sharing.standalone(root, 'lesson', a.text))
+                with saved_locally(): share_gate(sharing.standalone(root, 'lesson', a.text))
         elif a.cmd == 'feedback':
             if a.action == 'add': out(core.feedback_add(root, a.text, a.kind, a.source))
             elif a.action == 'submit': out(core.feedback_submit(root, a.n, a.yes))
@@ -730,8 +750,8 @@ def main(argv=None):
             digest = core.digest_file(a.file, focus=a.focus)
             if a.local_summary:
                 try:
-                    result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file],
-                                            capture_output=True, text=True, timeout=180)
+                    result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file], env={**os.environ, 'PYTHONUTF8': '1'},  # the child prints UTF-8 too
+                                            capture_output=True, encoding='utf-8', errors='replace', timeout=180)
                 except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(core.redact(f'Local summary failed: {exc}'))
                 if result.returncode: raise core.WsError(core.redact(result.stderr.strip()) or 'Local summary failed.')
                 digest['local_summary'] = core.redact(result.stdout)
@@ -781,7 +801,7 @@ def main(argv=None):
     except (core.WsError, FileNotFoundError, json.JSONDecodeError) as exc:
         message = str(exc)
         if isinstance(exc, core.WsError) and not any(hint in message.lower() for hint in ('`ws ', 'run ws ', 'see ws ', 'next:')):
-            message += ' Next: run `ws --help` for the relevant command.'
+            message += ('' if message.endswith(('.', '!', '?', ':')) else '.') + f' Next: run `ws {a.cmd} --help`.'
         print(f'ws: {message}', file=sys.stderr)
         if not isinstance(exc, core.WsError):
             print('If this looks like a bug in ws, record it: ws feedback add "<what you ran and saw>" --kind bug', file=sys.stderr)

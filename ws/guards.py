@@ -48,6 +48,12 @@ def _segments(command):
         if words: yield words
 
 
+def _is_home(path):
+    """The user's home folder, whatever the slash direction, case (Windows) or trailing slash or /*."""
+    norm = lambda p: os.path.normcase(os.path.normpath(re.sub(r'[\\/]\*$', '', p)))
+    return norm(path) == norm(os.path.expanduser('~'))
+
+
 def command_reason(command):
     for words in _segments(command):
         name, args = os.path.basename(words[0]), words[1:]
@@ -57,7 +63,7 @@ def command_reason(command):
             continue
         flags = ''.join(a[1:] for a in args if a.startswith('-') and not a.startswith('--'))
         if name == 'rm' and ('r' in flags.lower() or '--recursive' in args) and ('f' in flags or '--force' in args):
-            hit = [a for a in args if a in HOME_OR_ROOT or a.rstrip('/') == os.path.expanduser('~')]
+            hit = [a for a in args if a in HOME_OR_ROOT or _is_home(a)]
             if hit: return f'rm -rf on {hit[0]} would delete your home folder or the filesystem root.'
         while name == 'git' and args and args[0].startswith('-'):  # global options: git -C dir, -c k=v, --no-pager ...
             args = args[2:] if args[0] in ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path') else args[1:]
@@ -83,7 +89,7 @@ def _ps_flag(arg, full):
 
 def _ps_home_or_root(a):
     target = re.sub(r'[\\/]\*$', '', a.lower()).rstrip('\\/')
-    return not a.startswith('-') and (target in ('', '~', '$home', '${home}', '$env:userprofile') or bool(re.fullmatch(r'[a-z]:', target)) or a.rstrip('\\/') == os.path.expanduser('~'))
+    return not a.startswith('-') and (target in ('', '~', '$home', '${home}', '$env:userprofile') or bool(re.fullmatch(r'[a-z]:', target)) or _is_home(a))
 
 
 def powershell_reason(command):

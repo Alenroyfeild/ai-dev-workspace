@@ -41,7 +41,7 @@ def run():
                 result = subprocess.run([sys.executable, '-B', str(core.KIT / 'bin/ws'),
                                          '--workspace-root', str(root), 'brief', '--hook', '--client', 'codex'],
                                         input=json.dumps({'hook_event_name': 'SessionStart'}),
-                                        cwd=base, env=dict(os.environ), capture_output=True, text=True, timeout=20)
+                                        cwd=base, env=dict(os.environ), capture_output=True, encoding='utf-8', errors='replace', timeout=20)
             except (OSError, subprocess.TimeoutExpired) as exc:
                 raise core.WsError('Demo brief process could not finish; retry ws demo.') from exc
             try:

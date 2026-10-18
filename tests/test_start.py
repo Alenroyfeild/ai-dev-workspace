@@ -31,6 +31,23 @@ class StartTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), contextlib.redirect_stderr(preview): result = cli.main(['start', *args])
         return result, output.getvalue(), preview.getvalue().replace(os.sep, '/')
 
+    def test_start_refusals_are_not_mislabeled_as_file_errors(self):
+        code, _, err = self.start('--undo')
+        self.assertEqual(code, 2)
+        self.assertIn('No repo setup to undo; run ws start first.', err)
+        self.assertNotIn('review local files', err)
+        with mock.patch('builtins.input', side_effect=EOFError):
+            code, _, err = self.start()
+        self.assertEqual(code, 2)
+        self.assertIn('[y/N] \nws: No confirmation; use ws start --yes or --dry-run.', err)  # error starts on its own line
+        self.assertNotIn('review local files', err)
+
+    def test_no_workspace_error_points_a_repo_user_at_ws_start(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), mock.patch.dict(os.environ, {'WS_ROOT': ''}):
+            self.assertEqual(cli.main(['status']), 2)
+        self.assertIn('In a git repo run `ws start`', err.getvalue())
+
     def test_confirmed_start_summarizes_private_files_and_dry_run_lists_them(self):
         listed = self.start('--dry-run')[2]
         self.assertIn('vault/Templates/Task.md', listed)
@@ -78,6 +95,13 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 0)
         self.assertNotIn('PreToolUse', hooks('.claude/settings.local.json'))
         self.assertEqual(self.start('--undo')[0], 0)
+
+    def test_first_start_suggests_a_starter_pack_for_the_repo_type(self):
+        (self.repo / 'package.json').write_text('{}\n')
+        code, out, _ = self.start('--yes')
+        self.assertEqual(code, 0)
+        self.assertIn('Looks like a web app: ws pack add web adds a few starter rules (optional).', out)
+        self.assertNotIn('Looks like', self.start('--yes')[1])  # rerun: no repeat
 
     def test_refresh_refuses_a_setup_file_committed_to_git(self):
         self.assertEqual(self.start('--yes')[0], 0)

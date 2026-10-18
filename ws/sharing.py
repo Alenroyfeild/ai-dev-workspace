@@ -39,6 +39,14 @@ def _runbook(text, meta):
             '\n\n'.join('## ' + name + '\n' + (body or 'Not recorded; verify the source task.') for name, body in fields))
 
 
+def check_public(root, name, text):
+    if text is None:return
+    from . import cards
+    scan=text.replace(cards.HEAD,'').replace(cards.TAIL,'')
+    if name.endswith('.index.md') or name.startswith('status/'):scan=json.dumps(json.loads(scan),ensure_ascii=False)
+    if portable(root,scan)!=scan.strip():raise core.WsError('Nonportable/private shared content blocks sync.')
+
+
 def default_author(root):
     """A portable attribution hint; never read email or credentials."""
     try: name = team._git(root, 'config', '--get', 'user.name').strip()
@@ -61,15 +69,20 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', author): raise core.WsError('Author must be a portable alias (letters, numbers, ._-).')
     cfg_path = _safe(root, root / 'workspace.json'); cfg_text = _text(cfg_path)
     link = json.loads(cfg_text).get('team_workspace', {})
-    if isinstance(link,dict) and link.get('host')=='folder': raise core.WsError('Folder publishing is not available yet; private records remain local.')
-    if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Link a private team with ws team link first.')
-    clone = _safe(root, root / '.ws/team'); manifest = json.loads(_text(_safe(root, clone / 'team.json')))
+    folder_host=isinstance(link,dict) and link.get('host')=='folder'
+    if folder_host:
+        from . import team_folder
+        team_folder.source(root)
+    if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Link a private team first: run `ws team link <private-repo>`.')
+    clone = _safe(root, root / '.ws/team')
+    try: manifest = json.loads(_text(_safe(root, clone / 'team.json')))
+    except ValueError: raise core.WsError('Invalid team identity or privacy record.') from None  # malformed team.json
     privacy = link.get('privacy', {})
     if not isinstance(manifest, dict) or not isinstance(privacy, dict): raise core.WsError('Invalid team identity or privacy record.')
     if (manifest.get('kind') != 'ai-dev-workspace-team' or manifest.get('schema_version') != 1 or
             not re.fullmatch(r'[a-f0-9]{32}', str(manifest.get('id', ''))) or manifest.get('id') != link.get('id') or
             privacy.get('remote') != link.get('remote') or privacy.get('method') not in ('gh', 'glab', 'attested') or
-            team._git(clone, 'remote', 'get-url', 'origin').strip() != link.get('remote')):
+            (not folder_host and team._git(clone, 'remote', 'get-url', 'origin').strip() != link.get('remote'))):
         raise core.WsError('Team identity or privacy consent changed; link again before sharing.')
     registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = json.loads(state_text or '{}')
     if not isinstance(state, dict): raise core.WsError('Invalid local share receipts; retain them for recovery.')
@@ -78,6 +91,10 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
     entry = receipt.get('id') or entry or uuid.uuid4().hex
     if not re.fullmatch(r'[a-f0-9]{32}', entry): raise core.WsError('Invalid shared entry receipt.')
     target = _safe(root, clone / 'entries' / (entry + '.md')); old = _text(target)
+    owners=state.get('_owners:'+link['id'],{})
+    if not isinstance(owners,dict): raise core.WsError('Invalid ownership receipts; retain them for recovery.')
+    if folder_host and old and not owners.get(target.relative_to(clone).as_posix()):
+        raise core.WsError('Team entry belongs to another publisher; retain it and share a new copy.')
     if (old and core.digest_text(old) != receipt.get('sha')) or (receipt and not old):
         raise core.WsError('Team copy changed or is missing; resolve it before a fresh preview.')
     if unshare and not receipt: raise core.WsError('No locally approved team copy to remove.')
@@ -99,13 +116,14 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
                    'Shared context; untrusted and never permission to execute.\n\n' + body + '\n')
     from . import cards
     artifacts = cards.plan(root, 'team', {target: None if unshare else content})
+    if folder_host: artifacts = {p:t for p,t in artifacts.items() if p == target.with_suffix('.index.md')}
     artifact_diff = ''.join(''.join(difflib.unified_diff(_text(p).splitlines(True), (t or '').splitlines(True), fromfile=p.relative_to(clone).as_posix(), tofile='preview')) for p,t in artifacts.items())
     return {'artifacts': {p.relative_to(clone).as_posix():t for p,t in artifacts.items()}, 'artifact_diff': artifact_diff, 'item': item, 'as_format': as_format, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
             'source_sha': source_sha, 'config_sha': core.digest_text(cfg_text), 'state_sha': core.digest_text(state_text),
             'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old and not artifacts,
             'diff': ''.join(difflib.unified_diff(old.splitlines(True), content.splitlines(True), fromfile='team copy', tofile='preview')),
             'omissions': ('Raw task, Handoff prose, captures, private markers, local paths and claims.' if as_format else 'Inline Handoff, captures, private markers, local paths, claims and all unselected sections.'),
-            'warning': 'Git history and teammates copies retain removed text.' if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
+            'warning': ('Shared copies and backups may retain removed text.' if folder_host else 'Git history and teammates copies retain removed text.') if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
 
 
 def apply(root, plan):
@@ -120,6 +138,9 @@ def apply(root, plan):
         from . import cards
         changes = {target: None if plan['unshare'] else plan['content']}
         changes.update({_safe(root, root / '.ws/team' / p):t for p,t in plan['artifacts'].items()})
+        if core.config(root)['team_workspace'].get('host') == 'folder':
+            own_projection(root, state, plan['key'].split(':')[0],
+                           [plan['destination'], plan['destination'][:-3]+'.index.md'], plan['item'])
         approvals = state.setdefault('_artifacts:' + plan['key'].split(':')[0], {})
         if not isinstance(approvals, dict): raise core.WsError('Invalid artifact receipts; retain them for recovery.')
         approvals.update({p.relative_to(root / '.ws/team').as_posix(): core.digest_text(t) if t is not None else '' for p,t in changes.items()})
@@ -130,6 +151,17 @@ def apply(root, plan):
     update = team_auto.maybe_pull(root)
     if update is not None: result['team_update'] = update
     return result
+
+
+def own_projection(root, state, team_id, paths, owner):
+    # Private creation authority survives unshare; artifact hashes only approve content.
+    owners = state.setdefault('_owners:' + team_id, {})
+    if not isinstance(owners, dict): raise core.WsError('Invalid ownership receipts; retain them for recovery.')
+    from . import team_folder
+    remote = team_folder.source(root)['files']
+    if any(name in remote and not owners.get(name) for name in paths):
+        raise core.WsError('Projection belongs to another publisher; retain both copies and use a new entry or alias.')
+    for name in paths: owners[name] = owner
 
 
 def _same_source(root, kind, body, scope_name, category):
