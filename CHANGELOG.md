@@ -4,9 +4,11 @@
 
 ### Fixed
 - Native Claude memory with a UTF-8 BOM now imports its description correctly; BOM-only files are skipped as empty.
+- Imported brief excerpts keep whole items and source IDs together.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 
 ### New
+- Team previews at a terminal are a short summary (`+ category text`, destination, `[y/N]`) instead of raw JSON; `ws sync` prints a one-line pulled/published count; `ws know add` keeps a private note's `#private` text and paths as written (sharing it later still strips them) and says clearly when a `--team` note is entirely private; the team docs show the real quick-start order, the `#private`/`<private>` markers and a "rotate pushed secrets" warning.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
 ### Fixed
@@ -34,6 +36,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 
 ### Improved
 - Clearer messages: a mistyped command suggests close matches instead of listing every command; `ws doctor --text` drops empty parentheses, says "Last capture: not run yet" and labels connections "Workspace-level connections"; `ws digest <directory>` and `ws team init`/`link` without a remote say what to pass.
+- `ws start` asks "Apply this setup?" and mentions private memory imports only when it previewed some, and its preview notes existing untracked files (such as your own `.mcp.json`) that stay hidden from `git status` until `ws start --undo`. The tutorial and setup guide now match real output and point newcomers to `ws start` first.
 - A confirmation prompt with no input (for example when an assistant runs `ws sync` or `ws know add --team` without `--yes`) now stops with "No confirmation; use --yes or --dry-run." instead of a Python traceback, and repeating `ws know add`, `ws remember` or `ws lesson add` with `--team` after declining reuses the saved record instead of creating a duplicate.
 - The brief now carries dead ends: approaches saved as "Do not redo" or "Failures" in the task appear on one line, so the next session in any assistant skips them. `/handoff` asks for them.
 - Each session starts lighter: the MCP server lists 7 core memory tools by default instead of 28, about 1,360 fewer tokens of tool descriptions per session. Set `"mcp_tools": "all"` in workspace.json to list everything; other tools still work when called by name.
@@ -48,6 +51,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Source builds and installed CLI/MCP entry points work from the packaged kit, including builds through pip.
 - `ws doctor` reports your saved automatic team-pull consent instead of saying pulls are not active yet. [Team setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
 - Assistant hooks (`ws brief`, `ws nudge`, `ws paste`, and the opt-in guard and discipline hooks) no longer exit 2, print a traceback or block a prompt or session end when their input is malformed, the workspace is missing or corrupt, or a transcript is unreadable; they allow the action and print `{}`. A bad `cwd` no longer hides the session brief. A large prompt is still saved and blocked.
+- Redaction (used for team sharing, captures and PR notes) now also hides bare provider tokens recognisable by prefix: GitHub (`ghp_`, `github_pat_`), OpenAI-style `sk-`, Slack `xox*-` (all prefixes, including `xoxc-` and `xoxd-`), AWS `AKIA` key IDs, GitLab `glpat-`, Google API keys `AIza`, npm `npm_`, Hugging Face `hf_` and Stripe `sk_`/`rk_` `live_`/`test_` keys (Anthropic `sk-ant-` is covered by `sk-`).
 - `ws validate` and `ws doctor` no longer call a fresh `ws start` setup invalid: a task that has never been checkpointed may have no next action yet.
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 - Two memory updates at the same moment (for example a Stop hook capturing while the assistant saves a decision) no longer reject one of them: a save now waits up to 4 seconds for the other to finish instead of failing at once, so the hook is not reported as an error and the capture is not skipped.
@@ -57,6 +61,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - On Windows, non-ASCII text (accented names in paths, notes, `AGENTS.md`, git output) is read and written as UTF-8, the pip/pipx `ws` command prints it correctly, Codeburn runs when installed as a `.cmd` shim, `ws upgrade` recognises its own quoted hooks, and the guards pack blocks a home-folder delete written with `/` or different capitalisation.
 - MCP tools now reject odd or hostile arguments with a clear error instead of crashing the server or corrupting the task record: deeply nested or non-UTF-8 requests, huge numbers, text over 100,000 characters, unknown task IDs, and text that tried to start a new section, add task metadata, forge `ws` markers or carry `<private>` spans. `search_sessions` also hides `<private>` text and `#private` messages.
 - An unclosed `<private>` marker now hides the rest of the text everywhere (capture, `ws remember`, export, session search), not only in saved notes.
+- A team folder file that is not valid UTF-8 now stops `ws team link --folder` and `ws sync --pull-only` with a message naming the file instead of a Python traceback; the local mirror is left unchanged. A new branch's first brief now shows team onboarding like any fresh task, and with more than 100 team entries it shows the newest product, domain and repo notes without a false "unreadable entries" warning.
 
 ### Known limits
 - The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
