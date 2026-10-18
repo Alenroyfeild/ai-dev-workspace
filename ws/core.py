@@ -91,8 +91,16 @@ SECRET_RE = re.compile(
     r'-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----'
     r'|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}'
     r'|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
-    # Provider tokens recognisable by prefix alone (GitHub, OpenAI-style, Slack, AWS access key IDs).
-    r'|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}|sk-[A-Za-z0-9_-]{20,}|xox[abcdeprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b'
+    # Provider tokens recognisable by prefix alone. The group may also end on a `-` (Google keys can).
+    r'|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}'  # GitHub
+    r'|sk-[A-Za-z0-9_-]{20,}'  # OpenAI-style, Anthropic (sk-ant-)
+    r'|xox[abcdeprs]-[A-Za-z0-9-]{10,}'  # Slack
+    r'|AKIA[0-9A-Z]{16}'  # AWS access key ID
+    r'|glpat-[A-Za-z0-9_-]{20,}'  # GitLab
+    r'|AIza[0-9A-Za-z_-]{35}'  # Google API key
+    r'|npm_[A-Za-z0-9]{36}'  # npm
+    r'|hf_[A-Za-z0-9]{30,}'  # Hugging Face
+    r'|[rs]k_(?:live|test)_[A-Za-z0-9]{20,})(?:\b|(?<=-))'  # Stripe
     r'|(?<!claim_)(?i:(?:api[_-]?key|token|secret|password)["\']?\s*[:=]\s*["\']?)[A-Za-z0-9/+_.-]{12,}'
     r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
