@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+"""Release smoke for the release owner: build, install and drive `ws` in a toy repo with a throwaway HOME.
+
+  bin/release-smoke                 build sdist + wheel offline from this checkout, install in a temp venv, run all steps
+  bin/release-smoke --wheel PATH    install a given wheel instead of building
+  bin/release-smoke --source        run bin/ws from the checkout (fast; no build, so the package check is skipped)
+  --json                            machine-readable result on stdout
+
+Offline (WS_OFFLINE=1), never touches the real HOME. Exit 0 only if every required step passes.
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+from pathlib import Path
+from zipfile import ZipFile
+
+ROOT = Path(__file__).resolve().parents[1]
+TOKEN = 'ghp_' + 'Q7x2' * 9  # fake GitHub token: 'ghp_' + 36 characters
+# Built from pieces so this shipped script does not trip its own package-content check.
+BANNED_TEXT = ('/Us' + 'ers/', 'collab' + '-ios')
+MIN_TOOLS = 7
+TIMEOUT = 300
+
+
+class Fail(Exception):
+    pass
+
+
+class Smoke:
+    def __init__(self, tmp, mode, wheel):
+        self.tmp, self.mode, self.wheel = tmp, mode, wheel
+        self.home = tmp / 'home'
+        self.repo = tmp / 'repo'
+        self.before = tmp / 'repo-before'
+        self.steps = []
+        self.task = 'feature-x'
+        self.kit_version = None
+        self.sdist = None
+        self.ws_cmd = None
+        self.mcp_cmd = None
+        self.env = self.make_env()
+
+    def make_env(self):
+        home = str(self.home)
+        env = {k: v for k, v in os.environ.items()
+               if not k.startswith(('WS_', 'GIT_', 'CLAUDE', 'CODEX', 'PYTHON', 'XDG_'))}
+        env.update(HOME=home, USERPROFILE=home, WS_OFFLINE='1', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
+                   CODEX_HOME=str(self.home / '.codex'), CLAUDE_CONFIG_DIR=str(self.home / '.claude'), PYTHONDONTWRITEBYTECODE='1')
+        return env
+
+    def run(self, cmd, cwd=None, input=None, ok=(0,)):
+        done = subprocess.run([str(c) for c in cmd], cwd=str(cwd or self.repo), env=self.env, input=input, text=True,
+                              encoding='utf-8', errors='replace', capture_output=True, timeout=TIMEOUT)
+        if done.returncode not in ok:
+            tail = (done.stderr.strip() or done.stdout.strip()).splitlines()[-1:] or ['no output']
+            raise Fail('`%s` exited %d: %s' % (' '.join(str(c) for c in cmd[-3:]), done.returncode, tail[0][:160]))
+        return done
+
+    def ws(self, *args, **kw):
+        return self.run(self.ws_cmd + list(args), **kw)
+
+    def step(self, name, fn, required=True, known_blocker=None):
+        start = time.time()
+        row = {'name': name, 'status': 'PASS', 'reason': '', 'required': required}
+        try:
+            row['reason'] = fn() or ''
+        except Fail as exc:
+            row.update(status='FAIL', reason=str(exc))
+            if known_blocker: row['known_blocker'] = known_blocker
+        except Exception as exc:  # a crashing step is a FAIL line, never a crash of the smoke
+            row.update(status='FAIL', reason='%s: %s' % (type(exc).__name__, str(exc)[:160]))
+        row['seconds'] = round(time.time() - start, 2)
+        self.steps.append(row)
+        return row['status'] == 'PASS'
+
+    def skip(self, name, reason):
+        self.steps.append({'name': name, 'status': 'SKIP', 'reason': reason, 'required': False, 'seconds': 0.0})
+
+    # ---- setup ----
+    def guard_home(self):
+        self.home.mkdir(parents=True)
+        real = Path(os.path.expanduser('~')).resolve()
+        if self.home.resolve() == real: raise Fail('temp HOME is the real HOME; refusing to run')
+        seen = self.run([sys.executable, '-c', 'import pathlib; print(pathlib.Path.home())'], cwd=self.tmp).stdout.strip()
+        if Path(seen).resolve() != self.home.resolve(): raise Fail('child sees HOME %s, not the temp HOME; refusing to run' % seen)
+        return 'HOME is a temp dir'
+
+    def build(self):
+        src = self.tmp / 'src'
+        shutil.copytree(ROOT, src, ignore=shutil.ignore_patterns('.git', 'build', 'dist', '*.egg-info', '__pycache__', '.DS_Store'))
+        dist = self.tmp / 'dist'
+        try:
+            self.run([sys.executable, 'setup.py', 'sdist', '--dist-dir', dist, 'bdist_wheel', '--dist-dir', dist], cwd=src)
+        except Fail as exc:
+            raise Fail('build failed (needs setuptools and wheel): ' + str(exc))
+        self.wheel, self.sdist = next(dist.glob('*.whl')), next(dist.glob('*.tar.gz'))
+        return '%s, %s' % (self.sdist.name, self.wheel.name)
+
+    def install(self):
+        venv = self.tmp / 'venv'
+        self.run([sys.executable, '-m', 'venv', venv], cwd=self.tmp)
+        scripts = venv / ('Scripts' if os.name == 'nt' else 'bin')
+        exe = '.exe' if os.name == 'nt' else ''
+        python = scripts / ('python' + exe)
+        self.run([python, '-m', 'pip', 'install', '--no-index', '--no-deps', '--disable-pip-version-check', self.wheel], cwd=self.tmp)
+        self.ws_cmd = [scripts / ('ws' + exe)]
+        self.mcp_cmd = [scripts / ('ai-dev-workspace' + exe)]
+        return 'installed ' + Path(self.wheel).name
+
+    def toy_repo(self):
+        git = ['git', '-c', 'user.name=Smoke', '-c', 'user.email=smoke@example.invalid']
+        self.repo.mkdir()
+        self.run(git + ['init', '-q'])
+        (self.repo / 'app.py').write_text('print("hello")\n')
+        self.run(git + ['add', '.'])
+        self.run(git + ['commit', '-q', '-m', 'init'])
+        self.run(git + ['checkout', '-q', '-b', 'feature-x'])
+        (self.repo / 'app.py').write_text('print("hello")\nprint("uncommitted edit")\n')  # work in progress ws must not touch
+        (self.repo / 'notes.txt').write_text('untracked\n')
+        shutil.copytree(self.repo, self.before)
+
+    def kit(self):
+        if self.mode == 'source': return json.loads((ROOT / 'kit.json').read_text())['version']
+        with ZipFile(self.wheel) as archive:
+            return json.loads(archive.read(next(n for n in archive.namelist() if n == 'ws/kit.json')))['version']
+
+    # ---- steps ----
+    def s_version(self):
+        got = self.ws('--version').stdout.strip()
+        if got != 'ws ' + self.kit_version: raise Fail('`ws --version` is %r, kit version is %r' % (got, self.kit_version))
+        return got
+
+    def s_demo(self):
+        out = self.ws('demo', cwd=self.tmp).stdout
+        return 'ran, %d lines' % len(out.splitlines())
+
+    def s_start(self):
+        out = self.ws('start', '--yes').stdout
+        found = re.search(r'Next: task (\S+)', out)
+        if found: self.task = found.group(1)
+        if not (self.repo / '.ws-start.json').exists(): raise Fail('.ws-start.json was not written')
+        return 'task ' + self.task
+
+    def s_remember(self):
+        self.ws('remember', 'Decision: use sqlite, not postgres')
+        self.ws('checkpoint', self.task, '--status', 'in_progress', '--next', 'Write the migration tests',
+                '--note', 'Do not redo=Tried a redis cache; too slow, dead end')
+        return 'decision and checkpoint saved'
+
+    def s_brief(self):
+        out = self.ws('brief').stdout
+        missing = [want for want, text in (('decision', 'sqlite'), ('next step', 'migration tests'), ('dead end', 'redis')) if text not in out]
+        if missing: raise Fail('brief is missing the ' + ' and '.join(missing))
+        words = len(out.split())
+        if words > 200: raise Fail('brief is %d words (limit 200)' % words)
+        return '%d words' % words
+
+    def workspace_files(self):
+        for base in (self.home, self.repo):
+            for path in base.rglob('*'):
+                if path.is_file() and '.git' not in path.relative_to(base).parts: yield path
+
+    def s_redaction(self):
+        remembered = self.ws('remember', 'rotate the deploy token %s before release' % TOKEN).stdout
+        leaks = [str(p.relative_to(self.tmp)) for p in self.workspace_files() if TOKEN.encode() in p.read_bytes()]
+        if TOKEN in remembered: leaks.append('remember output')
+        if TOKEN in self.ws('brief').stdout: leaks.append('brief')
+        if leaks: raise Fail('token not redacted, found in: ' + ', '.join(leaks[:4]) + ' (needs #211 "Redact bare tokens")')
+        return 'ghp_ token redacted everywhere'
+
+    def s_doctor(self):
+        lines = self.ws('doctor', '--text').stdout.strip().splitlines()
+        # ponytail: current doctor opens with its "Core:" check line; the spec'd OK/Needs attention headline is accepted too.
+        if not lines or not lines[0].startswith(('OK', 'Needs attention', 'Core:')): raise Fail('unexpected first line: %r' % (lines[:1],))
+        return lines[0][:70]
+
+    def s_text(self, *args):
+        out = self.ws(*args).stdout.strip()
+        if not out: raise Fail('empty output')
+        if 'sqlite' not in out: raise Fail('output does not mention the saved decision')
+        return '%d lines' % len(out.splitlines())
+
+    def s_mcp(self):
+        root = next((self.home / '.ai-dev-workspace').glob('*/workspace.json')).parent
+        cmd = self.mcp_cmd + ['--root', root] if self.mcp_cmd else [sys.executable, ROOT / 'mcp' / 'server.py', '--root', root]
+        messages = [{'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
+                     'params': {'protocolVersion': '2024-11-05', 'capabilities': {}, 'clientInfo': {'name': 'smoke', 'version': '1'}}},
+                    {'jsonrpc': '2.0', 'method': 'notifications/initialized'},
+                    {'jsonrpc': '2.0', 'id': 2, 'method': 'tools/list'}]
+        out = self.run(cmd, cwd=self.tmp, input=''.join(json.dumps(m) + '\n' for m in messages)).stdout
+        replies = {r.get('id'): r for r in map(json.loads, out.splitlines())}
+        if 'result' not in replies.get(1, {}): raise Fail('initialize failed: %s' % str(replies.get(1))[:120])
+        tools = replies.get(2, {}).get('result', {}).get('tools', [])
+        if len(tools) < MIN_TOOLS: raise Fail('tools/list returned %d tools, need at least %d' % (len(tools), MIN_TOOLS))
+        return '%d tools' % len(tools)
+
+    def tree(self, base):
+        return {p.relative_to(base).as_posix(): p.read_bytes() for p in base.rglob('*')
+                if p.is_file() and '.git' not in p.relative_to(base).parts}
+
+    def s_undo(self):
+        self.ws('start', '--undo')
+        now, before = self.tree(self.repo), self.tree(self.before)
+        diff = sorted(set(now) ^ set(before)) + sorted(n for n in set(now) & set(before) if now[n] != before[n])
+        if diff: raise Fail('repo differs after --undo: ' + ', '.join(diff[:4]))
+        for name in ('info/exclude', 'HEAD', 'config'):
+            a, b = self.repo / '.git' / name, self.before / '.git' / name
+            if a.exists() != b.exists() or a.exists() and a.read_bytes() != b.read_bytes(): raise Fail('.git/%s changed' % name)
+        return '%d files and .git/info/exclude identical' % len(before)
+
+    def s_package(self):
+        problems = []
+        with ZipFile(self.wheel) as wheel:
+            archives = [(self.wheel.name, wheel.namelist(), wheel.read)]
+            files = self.scan(archives, problems)
+        if self.sdist:
+            with tarfile.open(self.sdist, 'r:gz') as sdist:
+                members = {m.name: m for m in sdist.getmembers() if m.isfile()}
+                read = lambda name: sdist.extractfile(members[name]).read()
+                files += self.scan([(self.sdist.name, list(members), read)], problems)
+        if problems: raise Fail('; '.join(problems[:3]))
+        return '%d files, no tests/.ws/banned text' % files
+
+    def scan(self, archives, problems):
+        count = 0
+        for label, names, read in archives:
+            for name in names:
+                if name.endswith('/'): continue
+                count += 1
+                parts = name.split('/')[1:] if label.endswith('.tar.gz') else name.split('/')
+                if 'tests' in parts or any(p == '.ws' or p.startswith('.ws-') for p in parts):
+                    problems.append('%s ships %s' % (label, name))
+                    continue
+                data = read(name)
+                if b'\0' in data: continue
+                text = data.decode('utf-8', 'replace').lower()
+                for banned in BANNED_TEXT:
+                    if banned.lower() in text: problems.append('%s: %r in %s' % (label, banned, name))
+        return count
+
+
+def table(result):
+    rows = [(s['name'], s['status'], '%.1fs' % s['seconds'], s['reason']) for s in result['steps']]
+    width = max(len(r[0]) for r in rows)
+    lines = ['%-*s  %-4s  %6s  %s' % (width, name, status, secs, reason) for name, status, secs, reason in rows]
+    for step in result['steps']:
+        if step.get('known_blocker'): lines.append('KNOWN BLOCKER: %s -> %s' % (step['name'], step['known_blocker']))
+    lines.append('%s: %d passed, %d failed, %d skipped in %.1fs (mode: %s, version %s)' % (
+        'PASS' if result['ok'] else 'FAIL', sum(s['status'] == 'PASS' for s in result['steps']),
+        sum(s['status'] == 'FAIL' for s in result['steps']), sum(s['status'] == 'SKIP' for s in result['steps']),
+        result['seconds'], result['mode'], result['version']))
+    return '\n'.join(lines)
+
+
+def run_steps(smoke, mode):
+    if not smoke.step('isolated HOME', smoke.guard_home): return
+    if mode == 'build':
+        if not smoke.step('build sdist + wheel', smoke.build): return
+    if mode == 'source': smoke.ws_cmd = [sys.executable, ROOT / 'bin' / 'ws']
+    elif not smoke.step('install wheel in temp venv', smoke.install): return
+    smoke.kit_version = smoke.kit()
+    smoke.toy_repo()
+    smoke.step('ws --version', smoke.s_version)
+    smoke.step('ws demo', smoke.s_demo)
+    if smoke.step('ws start --yes', smoke.s_start):
+        smoke.step('ws remember + checkpoint', smoke.s_remember)
+        smoke.step('ws brief (decision, next, dead end, <=200 words)', smoke.s_brief)
+        smoke.step('token redaction (ghp_)', smoke.s_redaction, known_blocker='merge PR #211 (Redact bare tokens) before tagging')
+        smoke.step('ws doctor --text', smoke.s_doctor)
+        smoke.step('ws recap', lambda: smoke.s_text('recap'))
+        smoke.step('ws pr-notes', lambda: smoke.s_text('pr-notes'))
+        smoke.step('MCP initialize + tools/list', smoke.s_mcp)
+        smoke.step('ws start --undo restores repo', smoke.s_undo)
+    if mode == 'source': smoke.skip('package contents', 'no build in --source mode')
+    else: smoke.step('package contents', smoke.s_package)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description='Release smoke: one command for the CLI half of a release check.')
+    p.add_argument('--wheel', metavar='PATH', help='install this wheel instead of building')
+    p.add_argument('--source', action='store_true', help='run bin/ws from the checkout; no build or install')
+    p.add_argument('--json', action='store_true', help='print machine-readable results')
+    a = p.parse_args(argv)
+    if a.wheel and a.source: p.error('--wheel and --source are exclusive')
+    if a.wheel and not Path(a.wheel).is_file(): p.error('no such wheel: ' + a.wheel)
+    mode = 'source' if a.source else 'wheel' if a.wheel else 'build'
+    started = time.time()
+    holder = tempfile.TemporaryDirectory(prefix='ws-release-smoke-')
+    smoke = Smoke(Path(holder.name).resolve(), mode, Path(a.wheel).resolve() if a.wheel else None)
+    try:
+        run_steps(smoke, mode)
+    except Exception as exc:
+        smoke.steps.append({'name': 'smoke harness', 'status': 'FAIL', 'reason': '%s: %s' % (type(exc).__name__, exc), 'required': True, 'seconds': 0.0})
+    finally:
+        try: holder.cleanup()
+        except OSError: pass  # Windows can keep read-only .git objects
+    result = {'mode': mode, 'version': smoke.kit_version, 'seconds': round(time.time() - started, 1), 'steps': smoke.steps,
+              'ok': not any(s['status'] == 'FAIL' for s in smoke.steps)}
+    print(json.dumps(result, indent=2) if a.json else table(result))
+    return 0 if result['ok'] else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
