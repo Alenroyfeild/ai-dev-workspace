@@ -20,13 +20,13 @@ class MemoryImportTests(unittest.TestCase):
         for name, text in files.items():
             path = self.repo / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(text)
         memory = self.home / 'auto-memory'; memory.mkdir()
-        (memory / 'MEMORY.md').write_text('Receipt requests need idempotency keys.\n')
+        (memory / 'receipt.md').write_text('Receipt requests need idempotency keys.\n')
         return files, memory
 
     def test_preview_one_consent_private_copies_first_brief_and_clean_undo(self):
         files, memory = self.sources()
         originals = {self.repo / n: (self.repo / n).read_bytes() for n in files}
-        originals[memory / 'MEMORY.md'] = (memory / 'MEMORY.md').read_bytes()
+        originals[memory / 'receipt.md'] = (memory / 'receipt.md').read_bytes()
         subprocess.run(['git', 'add', '.'], check=True)
         subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'memory'], check=True)
         code, _, preview = self.start('--dry-run', '--memory-dir', str(memory))
@@ -78,9 +78,9 @@ class MemoryImportTests(unittest.TestCase):
     def test_default_claude_memory_is_repo_scoped(self):
         project = re.sub(r'[^A-Za-z0-9]', '-', str(self.repo.resolve()))
         memory = self.home / '.claude/projects' / project / 'memory'; memory.mkdir(parents=True)
-        (memory / 'MEMORY.md').write_text('Saved receipt decision.')
+        (memory / 'receipt.md').write_text('Saved receipt decision.')
         other = self.home / '.claude/projects/other/memory'; other.mkdir(parents=True)
-        (other / 'MEMORY.md').write_text('OTHER_PROJECT_SENTINEL')
+        (other / 'receipt.md').write_text('OTHER_PROJECT_SENTINEL')
         with mock.patch.dict(os.environ, CLAUDE_CONFIG_DIR='', CLAUDE_CODE_PROJECT_DIR_NAME=''):
             self.assertEqual(self.start('--yes')[0], 0)
         text = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
@@ -121,7 +121,7 @@ class MemoryImportTests(unittest.TestCase):
     def test_custom_memory_symlink_parent_outside_home_is_skipped(self):
         outside = self.repo.parent.resolve() / 'other-memory'; outside.mkdir()
         (outside / 'child').mkdir()
-        (outside / 'child/MEMORY.md').write_text('ESCAPED_MEMORY_SENTINEL')
+        (outside / 'child/receipt.md').write_text('ESCAPED_MEMORY_SENTINEL')
         parent = self.repo.parent.resolve() / 'linked-memory'; parent.symlink_to(outside, target_is_directory=True)
         code, _, preview = self.start('--yes', '--memory-dir', str(parent / 'child'))
         self.assertEqual(code, 0)
