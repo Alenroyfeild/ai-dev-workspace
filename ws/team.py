@@ -11,6 +11,17 @@ from urllib.parse import quote, urlsplit
 from . import core
 
 
+class ManifestError(core.WsError):
+    """The linked team.json cannot be read; `ws sync --pull-only` may still pull a fix."""
+
+
+def parse_manifest(path, read):
+    try: return json.loads(read())
+    except (ValueError, OSError) as exc:
+        raise ManifestError(f'Team manifest {path} is missing or not valid JSON ({exc}). If you did not edit it, run '
+                            f'`git -C {Path(path).parent} checkout -- team.json`, or `ws sync --pull-only` once a teammate has fixed it.') from None
+
+
 def remote_parts(remote):
     if not isinstance(remote, str) or not remote or not remote.isprintable() or remote.startswith('-'):
         raise core.WsError('Use a local absolute repository path or an SSH/HTTPS remote without credentials.')
