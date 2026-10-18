@@ -26,6 +26,14 @@ class CapturePrivacyTests(Base):
         self.assertIn('amber lane', handoff); self.assertIn('Never skip tests', handoff)
         self.assertNotIn('hunter2', handoff); self.assertNotIn('codename', handoff)
 
+    def test_unclosed_private_block_hides_the_rest_in_capture_and_remember(self):
+        _, handoff = self.capture(
+            user('We must keep the amber lane. <private>we must use the hunter2 vault always'), assistant('Done. Next step: ship.'))
+        self.assertIn('amber lane', handoff); self.assertNotIn('hunter2', handoff)
+        core.remember(self.root, 'Use Postgres <private>because zebra-secret', 'T-1')
+        handoff = core.task_read(self.root, 'T-1', ['Handoff'])['sections']['Handoff']
+        self.assertIn('Use Postgres', handoff); self.assertNotIn('zebra-secret', handoff)
+
     def test_private_tag_and_command_skip_whole_message(self):
         _, handoff = self.capture(
             user('We must keep the amber lane.'),
