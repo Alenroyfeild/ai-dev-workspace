@@ -35,6 +35,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 
 ### Fixed
 - `ws doctor` reports your saved automatic team-pull consent instead of saying pulls are not active yet. [Team setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
+- Assistant hooks (`ws brief`, `ws nudge`, `ws paste`, and the opt-in guard and discipline hooks) no longer exit 2, print a traceback or block a prompt or session end when their input is malformed, the workspace is missing or corrupt, or a transcript is unreadable; they allow the action and print `{}`. A bad `cwd` no longer hides the session brief. A large prompt is still saved and blocked.
 - `ws validate` and `ws doctor` no longer call a fresh `ws start` setup invalid: a task that has never been checkpointed may have no next action yet.
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 - Two memory updates at the same moment (for example a Stop hook capturing while the assistant saves a decision) no longer reject one of them: a save now waits up to 4 seconds for the other to finish instead of failing at once, so the hook is not reported as an error and the capture is not skipped.
