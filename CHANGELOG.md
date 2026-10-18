@@ -2,6 +2,9 @@
 
 ## 0.1.0-beta.6 (unreleased)
 
+### Fixed
+- Native Claude memory with a UTF-8 BOM now imports its description correctly; BOM-only files are skipped as empty.
+
 ### New
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
