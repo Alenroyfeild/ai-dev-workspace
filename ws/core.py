@@ -1811,9 +1811,7 @@ def _brief(root, task_id=None):
     handoff = task_read(root, task['id'], ['Handoff'])['sections']['Handoff']
     capture_pattern = r'(?:<!-- ws:captured:[^\n]* -->\n)?### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->'
     captured = re.findall(capture_pattern, handoff, re.S)
-    import_pattern = r'### Imported [^\n]* \(unverified, from (claude|codex|gemini)\)\n(.*?)\n<!-- /ws:imported -->'
-    native_imports = re.findall(import_pattern, handoff, re.S)
-    explicit = re.sub(import_pattern, '', re.sub(capture_pattern, '', handoff, flags=re.S), flags=re.S).strip()
+    explicit = re.sub(capture_pattern, '', handoff, flags=re.S).strip()
     placeholder = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Handoff')
     explicit = explicit if explicit != placeholder else ''
     decisions, prose = [], []
@@ -1847,8 +1845,6 @@ def _brief(root, task_id=None):
                ('Claim:', record['claim'], 12)]
     truncated |= len(' '.join(decisions).split()) > 25
     imported = task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory']
-    imported = '\n'.join([imported] + [client + ': ' + line.strip().removeprefix('- ')
-                                      for client, body in native_imports for line in body.splitlines() if line.strip()])
     if imported: fields.append(('Imported context (unverified):', imported, 35))
     fields += [('', line, 18) for line in others_line(task['id'])]
     from . import knowledge
