@@ -1244,7 +1244,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     if not next_action.strip():
         raise WsError('Next action is required: say exactly what the next person or AI should do.')
     with lock(root):
-        task_id = claimed_task_id(root, task_id)
+        task_id = claimed_task_id(root, task_id, 'pass the ID: `ws checkpoint <id> --status ... --next ...`')
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = existing_task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
@@ -1290,11 +1290,11 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
 NEW_TASK_STEP = '`ws task list` to see task IDs, or `ws task new <id> "<title>"` to create one'
 
 
-def claimed_task_id(root, task_id=None):
-    """The given task ID, else the one claimed task; the error says how to get an ID."""
+def claimed_task_id(root, task_id=None, how='pass --task <id>'):
+    """The given task ID, else the one claimed task; the error says how to get an ID (`how` is the command's own form)."""
     task_id = task_id or sole_local_claim(root)
     if not task_id:
-        raise WsError(f'No single claimed task. Run {NEW_TASK_STEP}, then `ws claim <id>` (or pass --task <id>).')
+        raise WsError(f'No single claimed task. Run {NEW_TASK_STEP}, then `ws claim <id>` (or {how}).')
     return task_id
 
 
