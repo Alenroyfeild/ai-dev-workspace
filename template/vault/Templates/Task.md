@@ -1,5 +1,6 @@
 ---
 id: {{id}}
+format: 1
 status: ready
 scope: private
 created: {{date}}
