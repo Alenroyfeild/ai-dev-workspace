@@ -92,7 +92,7 @@ SECRET_RE = re.compile(
     r'|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}'
     r'|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
     # Provider tokens recognisable by prefix alone (GitHub, OpenAI-style, Slack, AWS access key IDs).
-    r'|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}|sk-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b'
+    r'|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}|sk-[A-Za-z0-9_-]{20,}|xox[abcdeprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b'
     r'|(?<!claim_)(?i:(?:api[_-]?key|token|secret|password)["\']?\s*[:=]\s*["\']?)[A-Za-z0-9/+_.-]{12,}'
     r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
