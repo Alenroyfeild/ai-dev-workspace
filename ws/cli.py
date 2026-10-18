@@ -1,6 +1,5 @@
 """`ws` command line. Every command prints JSON or plain text and exits non-zero on error."""
 import argparse
-import difflib
 import json
 import os
 import re
@@ -8,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import core, assist, orchestration, native, workers, upgrade
+from . import core, assist, native
 
 
 def _read_limited_stdin():
@@ -238,6 +237,7 @@ class WsParser(argparse.ArgumentParser):
         bad = re.search(r"invalid choice: '(.*?)' \(choose from (.*)\)$", message)
         if not bad: return super().error(message)
         choices = [c.strip("'") for c in bad[2].split(', ')]
+        import difflib  # lazy: only for mistyped commands
         near = difflib.get_close_matches(bad[1], choices, n=3)
         top = self.prog == 'ws'
         hint = f'; did you mean: {", ".join(near)}?' if near else ('. Run ws --help' if top else f'. Choose from: {", ".join(choices)}')
@@ -603,6 +603,7 @@ def main(argv=None):
             from . import setup
             if a.assistants is not None: selected = [name.strip().lower() for name in a.assistants.split(',')]
             elif a.preset:
+                from . import orchestration
                 selected = json.loads(orchestration.routing_template(a.preset))['assistants']
             elif sys.stdin.isatty():
                 detected = [item['assistant'] for item in setup.detect() if item['cli_available'] or item['apps']]
@@ -612,9 +613,11 @@ def main(argv=None):
             result = setup.configure(root, selected, a.preset, dry_run=not a.apply)
             out(result); return 2 if result.get('partial') else 0
         if a.cmd == 'route':
+            from . import orchestration
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2
         if a.cmd == 'worker':
+            from . import workers
             if a.action == 'launch': out(workers.launch(root, a.id)); return 0
             def confirm(plan):
                 print(json.dumps(plan, indent=2), file=sys.stderr)
@@ -626,6 +629,7 @@ def main(argv=None):
             else: out(workers.prepare(root, a.task, a.scope, a.base, apply=not a.dry_run, confirm=approval))
             return 0
         if a.cmd == 'delegate':
+            from . import orchestration
             if a.selftest:
                 if a.task or a.role or a.diff: raise core.WsError('Selftest takes no task, role or diff; run ws delegate --help.')
                 binding = orchestration.route(root, 'explorer', a.provider)
@@ -634,6 +638,7 @@ def main(argv=None):
             if not a.task or not a.role or a.provider: raise core.WsError('Delegate requires task and --role; --provider is selftest-only.')
             result = orchestration.delegate(root, a.task, a.role, a.run, a.diff); out(result); return 0 if result.get('exit_code', 0) == 0 else 2
         if a.cmd == 'upgrade':
+            from . import upgrade
             def show_upgrade(result): out(('\n'.join(c['diff'] for c in result['changes']) if a.diff else upgrade.summary(result['changes'])) if result['changes'] else 'No changes.')
             result = core.upgrade_workspace(root, True)  # preview first; applying re-plans under the lock
             show_upgrade(result)
@@ -660,6 +665,7 @@ def main(argv=None):
             collision_notices(result)
             out(result)
         elif a.cmd in ('brief', 'nudge'):
+            if a.hook: core.memo_git(True)  # session_task, observe and the brief share one git state
             try: payload = json.load(sys.stdin) if a.hook else {}
             except ValueError: raise core.WsError('Hook input must be a JSON object; stdin was empty or not JSON.')
             branch_task = None
@@ -857,6 +863,8 @@ def main(argv=None):
         if not isinstance(exc, core.WsError):
             print('If this looks like a bug in ws, record it: ws feedback add "<what you ran and saw>" --kind bug', file=sys.stderr)
         return 2
+    finally:
+        core.memo_git(False)
 
 
 if __name__ == '__main__':

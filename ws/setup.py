@@ -15,11 +15,7 @@ def detect():
 
 
 def branch(repo):
-    try:
-        result = subprocess.run(['git', '-C', str(repo), 'symbolic-ref', '--quiet', '--short', 'HEAD'],
-                                capture_output=True, encoding='utf-8', errors='replace', timeout=2)
-        return result.stdout.strip() if result.returncode == 0 else ''
-    except (OSError, subprocess.SubprocessError): return ''
+    return core.current_branch(repo)
 
 
 def selection_json(text, values):
