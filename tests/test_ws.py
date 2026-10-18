@@ -149,9 +149,9 @@ class SkillDuplicateTests(Base):
         self.assertEqual(report['protocol_checks']['claude']['status'], 'not_run')
         self.assertEqual(report['capture_health']['outcome'], 'not_run')
         rendered = cli.text_doctor(report)
-        self.assertIn('Configured clients:', rendered)
+        self.assertIn('Workspace-level connections:', rendered)
         self.assertIn('Last protocol check: claude=not_run', rendered)
-        self.assertIn('Last capture outcome: not_run', rendered)
+        self.assertIn('Last capture: not run yet', rendered)
         self.assertNotIn('Connected clients:', rendered)
 
     def test_doctor_protocol_check_is_separate_from_configured_state(self):
@@ -236,10 +236,10 @@ class ToolCostTests(Base):
         codeburn = next(item for item in result['tools'] if item['name'] == 'codeburn')
         self.assertEqual(codeburn['uses_last_30_days'], 4)
 
-    def test_assist_never_suggests_pinned_or_graphy_tools(self):
+    def test_assist_never_suggests_pinned_or_builtin_tools(self):
         cfg_path = self.root / 'workspace.json'
         cfg = json.loads(cfg_path.read_text())
-        cfg['tool_overrides'] = {'headroom': 'on'}
+        cfg['tool_overrides'] = {'headroom': 'on', 'graphify': 'on'}
         cfg_path.write_text(json.dumps(cfg))
         findings = {'findings': [
             {'id': 'remove-headroom', 'title': 'Remove headroom MCP', 'explanation': 'unused', 'class': 'review'},
