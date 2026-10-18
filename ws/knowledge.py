@@ -61,7 +61,7 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
     category(value)
     body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', raw[end:], flags=re.S)
     if 'ws:captured:' in body or '/ws:captured' in body: raise core.WsError('Malformed capture block.')
-    body = sharing.portable(root, body)
+    body = sharing.derived(root, body) if layer == 'private' else sharing.portable(root, body)
     source_sha = meta.get('source_sha', '') if layer == 'team' else core.digest_text(raw)
     if source_sha and not re.fullmatch(r'[a-f0-9]{64}', source_sha): raise core.WsError('Invalid source revision metadata.')
     row = {'key': layer + ':' + path.stem, 'id': path.stem, 'layer': layer, 'category': value,
