@@ -1,6 +1,7 @@
 import contextlib
 import io
 import time
+from pathlib import Path
 from test_ws import Base
 from ws import cli, core, sharing
 
@@ -69,3 +70,10 @@ class Utf8ArgumentTests(Base):
             code = cli.main(['--workspace-root', str(self.root), 'remember', 'bad \ud800 x', '--task', 'T-1'])
         self.assertEqual(code, 2)
         self.assertIn('valid UTF-8', err.getvalue()); self.assertNotIn('Traceback', err.getvalue())
+
+
+class PrivateReCallersTests(Base):
+    def test_no_module_calls_private_re_sub(self):
+        for path in (Path(core.__file__).parent).glob('*.py'):
+            self.assertNotIn('PRIVATE_RE.sub', path.read_text(encoding='utf-8'), f'{path.name}: use core.strip_private()')
+        self.assertIsNotNone(core.PRIVATE_RE)  # still importable for older branches
