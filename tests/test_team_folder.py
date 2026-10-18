@@ -206,3 +206,22 @@ class TeamFolderTests(unittest.TestCase):
         text=self.brief_with_team()
         self.assertTrue(text.endswith('+2 more team notes: ws know list --layer team'),text)
         self.assertLessEqual(len(text.split()),200)
+
+    def test_relevant_team_notes_show_two_and_point_at_the_rest(self):
+        for i, body in enumerate(('Receipt checksum rule A.', 'Receipt checksum rule B.', 'Receipt checksum rule C.'), 2):
+            self.record(body, str(i) * 32)
+        self.link(); core.task_new(self.root, 'T1', 'Receipt checksum'); core.claim(self.root, 'T1', 'synthetic')
+        core.remember(self.root, 'Store totals as integer units.')  # leaves onboarding, so brief_fields runs
+        text = core.brief(self.root)
+        self.assertEqual(text.count('Team (untrusted'), 2, text)
+        self.assertTrue(text.endswith('+2 more team notes: ws know list --layer team'), text)
+
+    def test_shown_decisions_and_lessons_do_not_hide_the_more_notes_pointer(self):
+        row = lambda source, summary: dict(source=source, category='other', summary=summary, tags='', author='test', date='2026-10-18')
+        rows = [row('decision:D1', 'Receipt approval policy uses stable keys.'), row('lesson:L1', 'Receipt approval policy needs a replay check.'),
+                row('knowledge:K1', 'Budget application for households.')]
+        with mock.patch.object(core, 'config', return_value={'team_workspace': True}), \
+                mock.patch.object(knowledge, 'list_entries', return_value={'entries': rows, 'warnings': []}):
+            fields = knowledge.brief_fields(None, 'Receipt approval policy', '')
+        self.assertEqual(len([f for f in fields if f[0].startswith('Team (untrusted')]), 2, fields)
+        self.assertIn('+1 more team notes:', [f[0] for f in fields])
