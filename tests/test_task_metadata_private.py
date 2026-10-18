@@ -27,3 +27,12 @@ class TaskMetadataPrivateTests(unittest.TestCase):
         core.task_new(self.root, 'P-2', 'Synthetic', branch='feature/a#1', repo='/tmp/work')
         meta = core.task_read(self.root, 'P-2', ['Objective'])['meta']
         self.assertEqual((meta['branch'], meta['repo']), ('feature/a#1', '/tmp/work'))
+
+    def test_private_marker_in_configured_repo_fallback_is_refused(self):
+        marked = Path(self.tmp.name) / 'project#private'
+        marked.mkdir()
+        root = Path(self.tmp.name) / 'marked'
+        core.init(root, 'synthetic', repos=[str(marked)], clients=[])
+        with self.assertRaisesRegex(core.WsError, 'cannot contain private markers'):
+            core.task_new(root, 'P-3', 'Synthetic')
+        self.assertFalse(core.task_path(root, 'P-3').exists())
