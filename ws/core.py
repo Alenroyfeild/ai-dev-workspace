@@ -108,6 +108,7 @@ SECRET_RE = re.compile(
     r'|(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*(?:"[^"\n]*"|\'[^\'\n]*\'|[^\s"\']+)', re.S)
 URL_CREDENTIALS_RE = re.compile(r'(?<=[A-Za-z0-9+.-])(://)[^\s/@:]+:[^\s/@]+@')  # anchored on `://`: no rescan of a long scheme-like run
 PRIVATE_TAG_RE = re.compile(r'</?private>', re.I)
+PRIVATE_RE = re.compile(r'<private>.*?(?:</private>|\Z)', re.I | re.S)  # Deprecated: .sub() misses nested spans; use strip_private() (kept so older branches still import)
 HOME_PATH_RE = re.compile(r'(?<![\w.~-])(?:/Users|/home)/[^/\s]+|(?<![\w.~-])[A-Za-z]:\\Users\\[^\\\s]+')
 
 
