@@ -96,7 +96,7 @@ SECRET_RE = re.compile(
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
     r'|(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*(?:"[^"\n]*"|\'[^\'\n]*\'|[^\s"\']+)', re.S)
 URL_CREDENTIALS_RE = re.compile(r'(\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@')
-PRIVATE_RE = re.compile(r'<private>.*?</private>', re.I | re.S)
+PRIVATE_RE = re.compile(r'<private>.*?(?:</private>|\Z)', re.I | re.S)  # an unclosed marker hides the rest
 HOME_PATH_RE = re.compile(r'(?<![\w.~-])(?:/Users|/home)/[^/\s]+|(?<![\w.~-])[A-Za-z]:\\Users\\[^\\\s]+')
 
 
@@ -121,8 +121,19 @@ def localize_paths(text, root):
     return re.sub(r'~((?:\\[^\\\s/]+)+)', lambda m: '~' + m.group(1).replace('\\', '/'), text)
 
 
+# Every character str.splitlines() treats as a line end: frontmatter is parsed with it.
+LINE_BREAK_RE = re.compile('[\r\n\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]')
+
+
+def plain_text(text, keep_capture=False):
+    """Free text an assistant saves: secrets and <private> spans removed, `<!--` neutralised so it cannot forge ws markers.
+    Section notes keep capture markers: a read-edit-save of a Handoff must not turn unverified captures into plain text."""
+    text = redact(PRIVATE_RE.sub(' ', text))
+    return re.sub(r'<!--(?!\s*/?ws:captured)', '&lt;!--', text) if keep_capture else text.replace('<!--', '&lt;!--')
+
+
 def redacted_line(value, field):
-    if not isinstance(value, str) or any(c in value for c in '\r\n\x85\u2028\u2029'):
+    if not isinstance(value, str) or LINE_BREAK_RE.search(value):
         raise WsError(f'{field} must be one line of text.')
     return redact(value)
 
@@ -198,6 +209,7 @@ def read_text(path, roots=None, errors='replace', preserve_newlines=False):
     try:
         path = (inside(path, roots) if roots is not None else Path(path).expanduser()).resolve()
         info = path.stat()
+        if stat.S_ISDIR(info.st_mode): raise WsError(f'{path} is a directory; pass a file.')
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_READ_BYTES: raise WsError('Read requires a regular file under 50 MB; run ws digest on a smaller file.')
         fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_NOFOLLOW', 0))
         with os.fdopen(fd, 'rb') as source:
@@ -878,7 +890,7 @@ def set_meta(text, values):
     head, body = text[4:].split('\n---', 1)
     for key, value in values.items():
         value = str(value)
-        if '\n' in value:
+        if LINE_BREAK_RE.search(value):
             raise WsError('Metadata values must be one line.')
         if re.search(rf'^{re.escape(key)}:', head, re.M):
             head = re.sub(rf'^{re.escape(key)}:.*$', lambda m: f'{key}: {value}', head, flags=re.M)
@@ -893,10 +905,12 @@ def section(text, name):
 
 
 def set_section(text, name, body):
+    # A `## ` line inside a body would start a new section; a lone CR becomes a newline when the file is read back.
+    body = re.sub(r'(?m)^(?=## )', '\\\\', re.sub(r'\r\n?', '\n', body).strip())  # strip first: it can expose an indented `## `
     pattern = rf'(^## {re.escape(name)}[ \t]*\n).*?(?=^## |\Z)'
     if re.search(pattern, text, re.M | re.S):
-        return re.sub(pattern, lambda m: m.group(1) + body.strip() + '\n\n', text, count=1, flags=re.M | re.S)
-    return text.rstrip('\n') + f'\n\n## {name}\n{body.strip()}\n'
+        return re.sub(pattern, lambda m: m.group(1) + body + '\n\n', text, count=1, flags=re.M | re.S)
+    return text.rstrip('\n') + f'\n\n## {name}\n{body}\n'
 
 
 def conflicted(text):
@@ -930,6 +944,13 @@ def task_path(root, task_id):
     return inside(vault(root) / 'Tasks' / f'{task_id}.md', [root])
 
 
+def existing_task_path(root, task_id):
+    path = task_path(root, task_id)
+    if not path.is_file():
+        raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
+    return path
+
+
 def _local_claim_path(root, task_id):
     if not ID_RE.fullmatch(task_id or ''):
         raise WsError('Task IDs use letters, digits, dot, dash or underscore (e.g. JIRA-123, fix-login).')
@@ -949,7 +970,7 @@ def _claim_defaults(root, task_id, worker, token):
 
 
 def task_new(root, task_id, title, objective='', branch='', repo=''):
-    title = redacted_line(title, 'Title')
+    title = plain_text(redacted_line(title, 'Title'))
     branch = redacted_line(branch, 'Branch')
     repo = redacted_line(repo, 'Repo')
     configured_repos = config(root).get('repos', [])
@@ -965,7 +986,7 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
     text = template.replace('{{id}}', task_id).replace('{{title}}', title).replace('{{date}}', now()[:10])
     text = set_meta(text, {'branch': branch, 'repo': repo, 'scope': 'private'})
     if objective:
-        text = set_section(text, 'Objective', redact(objective))
+        text = set_section(text, 'Objective', plain_text(objective))
     with lock(root):
         if path.exists(): raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
         atomic_write(path, text)
@@ -1000,6 +1021,7 @@ def task_list(root):
         bad = conflicted(text)
         if bad: text = keep_ours(text)
         meta = parse_meta(text)
+        if not ID_RE.fullmatch(meta.get('id', path.stem)): continue  # a stray or hand-edited file must not break every brief
         title = re.search(r'^# (.+)$', text, re.M)
         out.append({'id': meta.get('id', path.stem), 'title': title.group(1) if title else path.stem,
                     'status': 'conflicted' if bad else meta.get('status', 'unknown'),
@@ -1208,6 +1230,7 @@ def release(root, task_id, worker=None, token=None):
 def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=None, token=None, notes=None):
     if status not in STATUSES:
         raise WsError(f'Status must be one of: {", ".join(STATUSES)}')
+    next_action = plain_text(next_action)
     if not next_action.strip():
         raise WsError('Next action is required: say exactly what the next person or AI should do.')
     with lock(root):
@@ -1226,7 +1249,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         if 'checkpoint_commit' in values:  # uncommitted edits at checkpoint, so brief can tell when they vanish
             values['checkpoint_dirty'] = json.dumps([n for n in _task_git(root, task_id, 'diff', '--name-only', '-z', 'HEAD', '--').split('\0') if n][:20])
         text = set_meta(text, values)
-        text = set_section(text, 'Next action', redact(next_action))
+        text = set_section(text, 'Next action', next_action)
         for name, body in (notes or {}).items():
             if name not in NOTE_SECTIONS:
                 raise WsError(f'Unknown section {name}. Valid note sections: {", ".join(NOTE_SECTIONS)}.')
@@ -1243,7 +1266,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
                 present = {l.strip() for l in outside(body)}
                 kept = [l for l in outside(section(text, name)) if l.startswith('Decision: ') and l.strip() not in present]
                 body = '\n'.join(kept + [body.strip()]) if kept else body
-            text = set_section(text, name, redact(body))
+            text = set_section(text, name, plain_text(body, keep_capture=True))
         atomic_write(path, text)
         refresh_native(root, locked=True)
     result = {'task': task_id, 'status': status, 'sha': digest_text(text)}
@@ -1376,12 +1399,15 @@ def refresh_native(root, locked=False):
 
 # --- knowledge -------------------------------------------------------------------
 
+MAX_QUERY_WORDS = 20
+
+
 def search(root, query, limit=20, category=''):
     """Rank vault notes by query-word hits; return path:line snippets, not whole files."""
     if category:
         from . import knowledge
         return knowledge.search(root, query, category)[:limit]
-    words = [w.lower() for w in re.findall(r'\w{3,}', query)]
+    words = list(dict.fromkeys(w.lower() for w in re.findall(r'\w{3,}', query)))[:MAX_QUERY_WORDS]  # work grows with words x lines
     if not words:
         raise WsError('Search needs at least one word of 3+ letters.')
     hits, paths = [], []
@@ -1457,7 +1483,7 @@ def _search_session_records(stream, tool):
             yield text, record.get('timestamp') or (payload.get('timestamp') if isinstance(payload, dict) else '')
 
 
-def session_search(query, roots=None):
+def session_search(query, roots=None, hide_private=False):
     """Search bounded local transcripts; return redacted conversation snippets."""
     query = ' '.join(query.split())
     if not query: raise WsError('Session search needs words to find.')
@@ -1475,6 +1501,9 @@ def session_search(query, roots=None):
                 fallback = datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).isoformat()
                 with path.open(encoding='utf-8', errors='replace') as stream:
                     for text, timestamp in _search_session_records(stream, tool):
+                        if hide_private:  # same markers capture honours: `#private` / `/private` drop the message
+                            if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'): continue
+                            text = PRIVATE_RE.sub(' ', text)
                         if query.lower() not in text.lower(): continue
                         timestamp = timestamp or fallback
                         compact = ' '.join(redact(text).split())
@@ -1497,7 +1526,7 @@ def _append_line(root, rel, line):
 
 
 def lesson_add(root, text, tags=(), paths=(), area=''):
-    text = ' '.join(redact(text).split())
+    text = ' '.join(plain_text(text).split())
     if len(text) < 10:
         raise WsError('Write the lesson as: what happened → rule.')
     tag = ' '.join(f'#{redacted_line(t, "Tag")}' for t in tags)
@@ -1513,7 +1542,7 @@ def lesson_add(root, text, tags=(), paths=(), area=''):
 
 def lesson_search(root, query):
     path = vault(root) / 'Learnings.md'
-    words = [w.lower() for w in re.findall(r'\w{3,}', query)]
+    words = list(dict.fromkeys(w.lower() for w in re.findall(r'\w{3,}', query)))[:MAX_QUERY_WORDS]
     lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- ')] if path.exists() else []
     return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
 
@@ -1770,6 +1799,21 @@ def current_task(root):
     return task, others
 
 
+def _branch_hint(root):
+    """How to get this repo's branch task when none is claimed; '' when the repo is unknown or detached."""
+    from . import repo as repo_mod, setup
+    try:
+        repos = config(root).get('repos', [])
+        top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=2).stdout.strip()
+        here = next((Path(r).resolve() for r in repos if top and Path(r).resolve() == Path(top).resolve()), None) or (Path(repos[0]).resolve() if len(repos) == 1 else None)
+        name = setup.branch(here) if here else ''
+        if not name: return ''
+        task = repo_mod.branch_task(root, here, name)
+    except (WsError, OSError, ValueError, subprocess.SubprocessError, TypeError): return ''
+    if task_path(root, task).exists(): return f'Branch {name} has task {task}: run ws claim {task}.'
+    return f'Branch {name} has no task yet: run ws task new {shlex.quote(task)} {shlex.quote(name)} --branch {shlex.quote(name)} --repo {shlex.quote(str(here))}, then ws claim {shlex.quote(task)}.'
+
+
 def _brief(root, task_id=None):
     guard = repeat_guard(root)
     task, others = current_task(root)
@@ -1779,7 +1823,7 @@ def _brief(root, task_id=None):
         return ['Others working: ' + ', '.join(shown)] if shown else []
     if not task:
         from . import knowledge
-        fields = [('', guard or 'No in-progress task. Find or create the task before working.', 194)]
+        fields = [('', guard or ('No in-progress task. ' + (_branch_hint(root) or 'Find or create the task before working.')), 194)]
         fields += [('', line, 18) for line in others_line()]
         return _bounded_brief(fields + knowledge.onboarding_fields(root)), ''
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
@@ -2013,7 +2057,7 @@ def feedback_add(root, text, kind='idea', source='user'):
         raise WsError('Kind is one of: idea, bug, praise, friction.')
     source = redacted_line(source, 'Source')
     _append_line(root, Path(config(root).get('vault', 'vault')) / 'Feedback.md',
-                 f'- [ ] {now()[:10]} **{kind}** ({source}): {" ".join(redact(text).split())}')
+                 f'- [ ] {now()[:10]} **{kind}** ({source}): {" ".join(plain_text(text).split())}')
     return {'added': True}
 
 
@@ -2179,13 +2223,15 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
             result='ok', note='', worker_role='', effort='', checks=(), files=None, verdict='', findings=None,
             source='', import_id='', at=None):
     """Append one orchestration step (who did what, cost, outcome) to vault/Runs/<task>.jsonl."""
-    task_path(root, task_id)
+    existing_task_path(root, task_id)
+    for key, value in (('tokens_in', tokens_in), ('tokens_out', tokens_out), ('seconds', seconds)):
+        if not 0 <= value <= 10**12: raise WsError(f'{key} must be a number from 0 to 10**12.')
     if result not in ('ok', 'failed', 'rejected', 'accepted', 'skipped'):
         raise WsError('result is ok, failed, rejected, accepted or skipped.')
     entry = {'at': at or now(), 'task': task_id, 'step': redacted_line(step, 'Step'),
              'provider': redacted_line(provider, 'Provider'), 'model': redacted_line(model, 'Model'),
              'tokens_in': int(tokens_in), 'tokens_out': int(tokens_out), 'seconds': float(seconds),
-             'result': result, 'note': redact(note)[:300]}
+             'result': result, 'note': plain_text(note)[:300]}
     if verdict not in ('', 'accepted', 'changes', 'rejected'):
         raise WsError('verdict is accepted, changes or rejected.')
     for key, value in (('files', files), ('findings', findings)):
@@ -2639,6 +2685,10 @@ def doctor(root=None, mcp=False):
             method = privacy.get('method') if isinstance(privacy, dict) else None
             report['team_workspace'] = {'privacy': method if method in ('gh', 'glab', 'attested') else 'unknown',
                                         'auto_pull': cfg['team_workspace'].get('auto_pull') is True, 'pulls_active': cfg['team_workspace'].get('auto_pull') is True}
+            if cfg['team_workspace'].get('host') != 'folder':
+                from . import knowledge
+                try: knowledge._bases(root, 'team')
+                except (WsError, OSError, ValueError) as exc: report['team_workspace']['problem'] = str(exc)
         report['capture_health'] = capture_health(root)
         from . import native
         report['codex_goals'] = native.codex_goals(root)
