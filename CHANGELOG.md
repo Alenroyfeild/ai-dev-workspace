@@ -3,6 +3,7 @@
 ## 0.1.0-beta.6 (unreleased)
 
 ### Fixed
+- Imported brief excerpts keep whole items and source IDs together.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 
 ### New

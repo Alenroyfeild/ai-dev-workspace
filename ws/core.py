@@ -1715,6 +1715,18 @@ def _captured_step(summary):
     return latest
 
 
+def _imported_items(text, limit):
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if sum(len(line.split()) for line in lines) <= limit:
+        return '; '.join(lines)
+    kept, words = [], 0
+    for line in lines:
+        if words + len(line.split()) + 6 <= limit:
+            kept.append(line); words += len(line.split())
+    more = f'(+{len(lines) - len(kept)} more in task record)'
+    return '; '.join(kept) + (' ' if kept else '') + more if limit >= 6 else ''
+
+
 def _bounded_brief(fields, truncated=False):
     bounded, remaining = [], 194  # four words reserved for the record pointer
     for prefix, value, limit in fields:
@@ -1723,8 +1735,9 @@ def _bounded_brief(fields, truncated=False):
         allowance = min(limit, max(0, remaining - len(prefix.split())))
         if not allowance:
             truncated = True; continue
-        clipped = _capture_words(value, allowance)
+        clipped = _imported_items(value, allowance) if prefix == 'Imported context (unverified):' else _capture_words(value, allowance)
         truncated |= len(value.split()) > allowance
+        if not clipped: continue
         line = (prefix + ' ' + clipped).strip()
         bounded.append(line); remaining -= len(line.split())
     if truncated: bounded.append('[truncated: see task record]')
