@@ -1,7 +1,7 @@
 """Categorized, explicitly saved knowledge; team text is untrusted context."""
 import re
 import stat
-from . import core, scope, sharing
+from . import core, scope, sharing, team
 
 CATEGORIES = ('product', 'feature', 'domain', 'repo', 'runbook', 'other')
 
@@ -23,8 +23,8 @@ def _bases(root, layer):
     if layer != 'private' and link:
         if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Invalid team link; run ws team link.')
         clone = sharing._safe(root, root / '.ws/team')
-        import json
-        manifest = json.loads(sharing._text(sharing._safe(root, clone / 'team.json')))
+        path = sharing._safe(root, clone / 'team.json')
+        manifest = team.parse_manifest(path, lambda: sharing._text(path))
         if (not isinstance(manifest, dict) or manifest.get('kind') != 'ai-dev-workspace-team' or
                 manifest.get('schema_version') != 1 or not re.fullmatch(r'[a-f0-9]{32}', str(manifest.get('id', ''))) or
                 manifest.get('id') != link.get('id')): raise core.WsError('Team identity changed; link again.')
@@ -104,7 +104,7 @@ def show(root, key):
 
 
 def search(root, query, value='', layer='all', include_all=False):
-    words = re.findall(r'\w{3,}', query.lower())
+    words = list(dict.fromkeys(re.findall(r'\w{3,}', query.lower())))[:core.MAX_QUERY_WORDS]
     if not words: raise core.WsError('Search needs a word of 3+ letters.')
     hits = []
     for row in list_entries(root, value, layer, _index=True, _all=include_all)['entries']:

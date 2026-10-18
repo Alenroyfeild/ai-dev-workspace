@@ -160,17 +160,12 @@ class PasteGuardTests(unittest.TestCase):
                 self.assertTrue(saved)
                 self.assertEqual(len(saved[-1].read_text().splitlines()), 151)
 
-    def test_invalid_hook_payloads_are_blocked_for_each_client(self):
+    def test_invalid_hook_payloads_are_allowed_for_each_client(self):  # a hook that cannot read its input must not block every prompt
         for client in ('claude', 'codex', 'cursor', 'gemini'):
             for payload in ('{', {}, {'prompt': 7}):
                 with self.subTest(client=client, payload=payload):
                     code, stdout, stderr = self.invoke_hook(client, payload)
-                    response = stderr if client == 'claude' else json.loads(stdout)
-                    self.assertIn('prompt', str(response).lower())
-                    self.assertEqual(code, 2 if client == 'claude' else 0)
-                    if client == 'codex': self.assertEqual(response['decision'], 'block')
-                    if client == 'cursor': self.assertFalse(response['continue'])
-                    if client == 'gemini': self.assertEqual(response['decision'], 'deny')
+                    self.assertEqual((code, json.loads(stdout)), (0, {}))
 
     def test_size_limit_raw_bypass_and_short_prompt(self):
         event = 'UserPromptSubmit'
