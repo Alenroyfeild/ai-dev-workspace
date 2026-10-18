@@ -1140,13 +1140,6 @@ def task_find(root, ref):
     return [t for t in task_list(root) if ref in t['id'].lower() or ref == t['branch'].lower() or ref in t['title'].lower()]
 
 
-def existing_task_path(root, task_id):
-    path = task_path(root, task_id)
-    if not path.is_file():
-        raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
-    return path
-
-
 def task_read(root, task_id, sections=None):
     path = task_path(root, task_id)
     if not path.is_file():
@@ -1165,7 +1158,7 @@ def claim(root, task_id, worker):
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', worker):
         raise WsError('Worker is a short label such as claude-main or codex-1.')
     with lock(root):
-        path = existing_task_path(root, task_id)
+        path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
@@ -1194,7 +1187,7 @@ def claim(root, task_id, worker):
 def release(root, task_id, worker=None, token=None):
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
-        path = existing_task_path(root, task_id)
+        path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
@@ -1212,7 +1205,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         raise WsError('Next action is required: say exactly what the next person or AI should do.')
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
-        path = existing_task_path(root, task_id)
+        path = task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
