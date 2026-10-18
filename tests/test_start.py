@@ -244,6 +244,32 @@ class StartTests(unittest.TestCase):
             self.assertEqual(self.start('--undo')[0], 0)
         self.assertEqual(json.loads(hooks.read_text()), {'version': 77})
 
+    def test_undo_keeps_cursor_hooks_version_when_the_user_added_their_own_hook(self):
+        detect = [{'assistant': 'cursor', 'cli_available': True, 'apps': []}]
+        hooks = self.repo / '.cursor/hooks.json'
+        with mock.patch('ws.setup.detect', return_value=detect):
+            self.assertEqual(self.start('--yes')[0], 0)
+            data = json.loads(hooks.read_text()); data['hooks']['afterFileEdit'] = [{'command': 'echo mine'}]; hooks.write_text(json.dumps(data))
+            self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(json.loads(hooks.read_text()), {'version': 1, 'hooks': {'afterFileEdit': [{'command': 'echo mine'}]}})  # Cursor needs the version
+
+    def test_undo_restores_a_zero_byte_json_file_as_zero_bytes(self):
+        for name in ('.claude/settings.local.json', '.mcp.json'):
+            (self.repo / name).parent.mkdir(exist_ok=True); (self.repo / name).write_bytes(b'')
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual(self.start('--undo')[0], 0)
+        for name in ('.claude/settings.local.json', '.mcp.json'): self.assertEqual((self.repo / name).read_bytes(), b'', name)
+
+    def test_undo_continues_after_the_user_deleted_a_json_file_ws_merged_into(self):
+        mine = self.repo / '.mcp.json'; mine.write_text('{"mcpServers": {"other": {"command": "x"}}}')
+        self.assertEqual(self.start('--yes')[0], 0)
+        mine.unlink(); (self.repo / '.claude/settings.local.json').unlink()
+        code, _, err = self.start('--undo')
+        self.assertEqual(code, 0, err); self.assertNotIn('Kept edited', err)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+        self.assertFalse(mine.exists())
+        self.assertNotIn('ws:start', (self.repo / '.git/info/exclude').read_text())
+
     def test_refresh_and_undo_keep_other_mcp_servers_and_delete_ws_only_files(self):
         self.assertEqual(self.start('--yes')[0], 0)
         mcp = self.repo / '.mcp.json'
@@ -359,7 +385,7 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(local.read_bytes(), before)
         self.assertIn(b'user-pattern', (self.repo / '.git/info/exclude').read_bytes())
         self.assertEqual(self.start('--yes')[0], 0); local.unlink()
-        self.assertEqual(self.start('--undo')[0], 2); self.assertFalse(local.exists())
+        self.assertEqual(self.start('--undo')[0], 0); self.assertFalse(local.exists())  # deleted by the user: nothing of ws's is left to take out
 
     def test_readable_branch_id_has_no_saved_placeholder_next(self):
         self.assertEqual(self.start('--yes')[0], 0)

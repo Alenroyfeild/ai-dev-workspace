@@ -93,12 +93,16 @@ def restore_file(repo, state, name):
     target = path(repo, name)
     old = base64.b64decode(entry['before']) if entry['before'] is not None else None
     current = target.read_bytes() if target.exists() else None
-    if name in JSON_FILES and current is not None:  # the sha cannot tell: refresh records merged bytes, so always take out only ws's entries
+    if name in JSON_FILES and current is None:  # the user deleted it: no ws entries are left to take out
+        del state['files'][name]
+        return True
+    if name in JSON_FILES:  # the sha cannot tell: refresh records merged bytes, so always take out only ws's entries
         rest = stripped(name, current, old)
         if rest is not None and target.read_bytes() != current: current = target.read_bytes(); rest = stripped(name, current, old)  # an edit just landed: strip ws's entries from the new bytes
         if rest is None: return False
-        base = stripped(name, old) if old is not None else {}
-        if name == '.cursor/hooks.json' and rest.get('version') == WS_CURSOR_VERSION and 'version' not in (base or {}): del rest['version']  # ws added it; a different value is the user's
+        base = stripped(name, old) if old else {}  # a zero-byte original is no JSON, and restores as zero bytes
+        # ws added the version; a different value is the user's, and the version stays once the user's own hooks need it.
+        if name == '.cursor/hooks.json' and rest.get('version') == WS_CURSOR_VERSION and 'version' not in (base or {}) and rest.get('hooks') == (base or {}).get('hooks'): del rest['version']
         if old is None and not rest: target.unlink(missing_ok=True)
         elif old is not None and rest == base: core.atomic_write(target, old)  # no user additions: byte-exact restore
         else: core.atomic_write(target, (json.dumps(rest, indent=2) + '\n').encode())
