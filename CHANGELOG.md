@@ -11,6 +11,10 @@
 - `redact()` is linear: long dash/dot runs, repeated `sk-` and repeated unterminated `-----BEGIN PRIVATE KEY-----` markers no longer take seconds. A private-key block is hidden through its matching `END` even when another `-----BEGIN ...` line appears inside it; with no `END` the rest of the text is hidden.
 - A task file saved with a UTF-8 BOM keeps its frontmatter instead of being treated as a new task.
 - Invalid UTF-8 or a lone surrogate in a command-line text argument gives a clear error instead of a traceback.
+- `ws doctor` now reports a broken repo link (`.ws-start.json`) or unreadable `workspace.json` as "Needs attention" with the fix, instead of printing a healthy report; the SessionStart hook no longer blames a team pull for an unreadable `workspace.json`.
+- The guards pack now catches `rm -rf` on home or root spelled `${HOME}/*`, `~//`, `~/.`, `$HOME/.`, `//` or `/.` (and the same PowerShell forms); real subfolders such as `~/project/build` are still allowed.
+- `bin/ws-plugin` fails open (one stderr note, `{}`, exit 0) on deeply nested JSON like the other hooks; `ws digest` and `ws paste` no longer crash on it.
+- `ws help <command>` shows that command's options.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 
 ### New

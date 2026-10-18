@@ -115,7 +115,8 @@ def text_route(report):
 
 def text_doctor(report):
     core = report.get('core', {})
-    lines = [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
+    lines = ['Needs attention: ' + report['workspace_error']] if report.get('workspace_error') else []
+    lines += [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
     if report.get('team_workspace'):
@@ -417,6 +418,8 @@ def main(argv=None):
     s = sub.add_parser('trace', help='read-only Markdown timeline of reported orchestration steps'); s.add_argument('task')
 
     args = sys.argv[1:] if argv is None else argv
+    if len(args) > 1 and args[0] == 'help' and args != ['help', 'all']:  # `ws help X` is `ws X --help`
+        args = argv = [*args[1:], '--help']
     if args == ['help', 'all']:
         p.formatter_class = argparse.HelpFormatter
         p.print_help()
@@ -486,11 +489,18 @@ def main(argv=None):
                 out(res); return 0
             out(core.update_kit()); return 0
         if a.cmd == 'doctor':
+            problem = ''
             try:
                 root = core.find_root(a.workspace_root)
-            except core.WsError:
+            except core.WsError as exc:
                 root = None
-            report = core.doctor(root, a.mcp)
+                if not str(exc).startswith('No workspace.json found'): problem = str(exc)  # a broken repo link, not just "no workspace here"
+            try:
+                report = core.doctor(root, a.mcp)
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as exc:
+                problem = f'workspace.json is unreadable ({exc}); fix or restore it, or run ws start --undo in a started repo.'
+                report = core.doctor(None, a.mcp)
+            if problem: report['workspace_error'] = problem
             out(text_doctor(report) if a.text or human() else report); return 0
         if a.cmd == 'audit':
             from . import audit
