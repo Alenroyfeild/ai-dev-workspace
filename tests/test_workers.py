@@ -22,12 +22,16 @@ class WorkerPrepareTests(Base):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True).strip()
 
-    def test_seeded_repo_copy_skips_git_lock_files(self):
+    def test_seeded_repo_copy_skips_git_lock_files_but_keeps_tracked_ones(self):
         import testutil
-        (next(iter(testutil._REPO_TEMPLATES.values())) / '.git/objects/maintenance.lock').write_text('')  # a racing maintenance run
-        copy = self.root / 'copy'; copy.mkdir()
-        seeded_repo(copy, 'feature/fixture', {'calc.py': 'answer = 1\n', '.gitignore': 'ignored.txt\n'})
-        self.assertEqual(list(copy.rglob('*.lock')), [])
+        files = {'calc.py': 'answer = 1\n', 'Cargo.lock': '# tracked\n'}  # a seed of its own: no other cached template can stand in
+        first = self.root / 'first'; first.mkdir(); seeded_repo(first, 'feature/lock', files)
+        template = testutil._REPO_TEMPLATES[('feature/lock', 'fixture', tuple(sorted(files.items())))]
+        lock = template / '.git/objects/maintenance.lock'; lock.write_text('')  # a racing maintenance run
+        self.assertTrue(lock.exists())
+        copy = self.root / 'copy'; copy.mkdir(); seeded_repo(copy, 'feature/lock', files)
+        self.assertFalse((copy / '.git/objects/maintenance.lock').exists())
+        self.assertEqual((copy / 'Cargo.lock').read_text(), '# tracked\n')
 
     def prepare(self, **kw):
         with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):

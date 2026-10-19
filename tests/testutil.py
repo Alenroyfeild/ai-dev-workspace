@@ -116,4 +116,9 @@ def seeded_repo(dest, branch, files, message='fixture'):
         git('add', '.')
         git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', message)
         _REPO_TEMPLATES[key] = template
-    shutil.copytree(_REPO_TEMPLATES[key], dest, symlinks=True, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.lock'))
+    template = _REPO_TEMPLATES[key]
+
+    def skip_git_locks(directory, names):  # only lock files under .git; a tracked Cargo.lock must be copied
+        return [n for n in names if n.endswith('.lock') and '.git' in Path(directory).relative_to(template).parts]
+
+    shutil.copytree(template, dest, symlinks=True, dirs_exist_ok=True, ignore=skip_git_locks)
