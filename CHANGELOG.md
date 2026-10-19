@@ -63,6 +63,8 @@ Team workspaces can now receive approved shared updates automatically or be read
 - The session brief now says when a file named in the saved next action or decisions was deleted or renamed since the checkpoint (`gone since: export.py (now publish.py)`), including deletions not yet committed, so the next session does not chase a file that is no longer there.
 - The brief also warns when uncommitted edits that existed at the last checkpoint are gone (`uncommitted edits gone: export.py (stashed or reset?)`), so a session does not build on work that was stashed or reset away.
 - `ws doctor` reports repo hooks that point to a missing kit, Python or workspace (after a pipx reinstall, deleted checkout or Python upgrade), so a silently memory-less session is caught; running `ws start` again in that repo refreshes them.
+- `ws --help` now says how to see every command (`ws help all`, `ws <command> --help`), `ws help` alone prints the short help, and about 60 options and subcommands of the daily commands have one-line help.
+- The PyPI page's documentation links now point to GitHub instead of breaking, and the sidebar lists Documentation, Changelog, Issues and Source links.
 
 ### Fixed
 - Native Claude memory with a UTF-8 BOM now imports its description correctly; BOM-only files are skipped as empty.
@@ -83,6 +85,8 @@ Team workspaces can now receive approved shared updates automatically or be read
 - MCP tools now reject odd or hostile arguments with a clear error instead of crashing the server or corrupting the task record: deeply nested or non-UTF-8 requests, huge numbers, text over 100,000 characters, unknown task IDs, and text that tried to start a new section, add task metadata, forge `ws` markers or carry `<private>` spans. `search_sessions` also hides `<private>` text and `#private` messages.
 - An unclosed `<private>` marker now hides the rest of the text everywhere (capture, `ws remember`, export, session search), not only in saved notes.
 - A team folder file that is not valid UTF-8 now stops `ws team link --folder` and `ws sync --pull-only` with a message naming the file instead of a Python traceback; the local mirror is left unchanged. A new branch's first brief now shows team onboarding like any fresh task, and with more than 100 team entries it shows the newest product, domain and repo notes without a false "unreadable entries" warning.
+- `ws remember "Decision: x"` (and the MCP `remember` tool) no longer saves `Decision: Decision: x`; a typed leading `Decision:` is dropped before the prefix is added.
+- `ws checkpoint`, `claim` and `release` with an unknown task now say `No task X. Create it with ws task new X "<title>".` instead of a raw file error; a `--note` without `SECTION=TEXT` and an empty or invalid `ws brief --hook` input give a clear message instead of a traceback. On Windows, `ws claim` takes the worker name from `USERNAME` when `USER` is not set.
 
 ### Known limits
 - The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
