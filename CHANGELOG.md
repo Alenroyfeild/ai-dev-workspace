@@ -14,6 +14,9 @@
 - `redact()` is linear: long dash/dot runs, repeated `sk-` and repeated unterminated `-----BEGIN PRIVATE KEY-----` markers no longer take seconds. A private-key block is hidden through its matching `END` even when another `-----BEGIN ...` line appears inside it; with no `END` the rest of the text is hidden.
 - A task file saved with a UTF-8 BOM keeps its frontmatter instead of being treated as a new task.
 - Invalid UTF-8 or a lone surrogate in a command-line text argument gives a clear error instead of a traceback.
+- `ws start` run from a repo subdirectory now refuses tracked local files exactly like the root (all its Git checks are anchored to the repo root).
+- A moved or copied repo folder no longer bricks `ws`: `ws start` (with its usual preview) relinks the repo to its workspace, and `ws start --undo` works from the new location using this repo's own Git exclude file. A symlinked Git exclude file is refused (it can never redirect undo to another repo), and a relink interrupted midway is finished by rerunning `ws start`.
+- A branch name containing a line separator or control character is refused by `ws start` before anything is written, so a failed start never leaves a half-wired repo that a rerun reports as set up.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 
 ### New

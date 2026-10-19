@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import os
 import re
 import shlex
 import shutil
@@ -43,11 +44,31 @@ def record_file(repo, state, name, data):
     core.atomic_write(target, data)
 
 
-def exclusions(repo, state):
-    exclude = Path(state['exclude'])
+def moved(repo, state):
+    """The listed repo path this record was written for when the folder moved or copied; '' otherwise."""
+    try: repos = core.config(Path(state['workspace'])).get('repos', [])
+    except (OSError, ValueError, TypeError, KeyError): return ''
+    old = os.path.abspath(state['exclude'])
+    if str(repo) in repos: return ''
+    return next((r for r in repos if isinstance(r, str) and old == os.path.join(os.path.abspath(r), '.git', 'info', 'exclude')), '')
+
+
+def own_exclude(repo):
+    """This repo's Git exclude path; a symlinked .git, git dir, info dir or exclude file is refused before any resolve."""
     expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip())
     if not expected.is_absolute(): expected = repo / expected
-    if exclude.resolve() != expected.resolve(): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
+    # .git may be a gitdir-pointer file (worktree/submodule): git's own answer is checked instead of .git/info/exclude.
+    parts = [repo / '.git', expected.parent.parent, expected.parent, expected]
+    if any(p.is_symlink() for p in parts): raise core.WsError('This repo\'s Git exclude file is a symlink (or under one); restore a plain file before ws start or undo.')
+    return expected
+
+
+def exclusions(repo, state):
+    exclude = Path(state['exclude'])
+    expected = own_exclude(repo)
+    if exclude.resolve() != expected.resolve():
+        if not moved(repo, state): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
+        exclude = expected  # moved or copied repo: only this repo's own exclude file is used
     if exclude.is_symlink(): raise core.WsError('Local Git exclude changed to a symlink; restore it before undo.')
     block = base64.b64decode(state['exclude_block'])
     if state.get('complete') is False and 'exclude_before' in state:
@@ -213,6 +234,25 @@ def upgrade_codex(repo, root, state, yes, dry_run):
     return True
 
 
+def rehome(repo, root, state, yes, dry_run):
+    """The repo folder was moved or copied: link this path to its workspace (memory and hooks stay as they are)."""
+    if not (root / 'workspace.json').is_file(): raise core.WsError('Linked workspace is missing; run ws start --undo here, then ws start.')
+    old = moved(repo, state)  # '' when a retry finds the repo already listed
+    exclude, _ = exclusions(repo, dict(state, exclude=str(own_exclude(repo))))
+    print(f'This repo was moved or copied. Link {repo} to private workspace {root}:', file=sys.stderr)
+    print('  ' + str(root / 'workspace.json') + ' (repo list)', file=sys.stderr)
+    print('  ' + str(repo / LINK) + ' (exclude path)', file=sys.stderr)
+    if not confirm(yes, dry_run): return False
+    with core.lock(root):
+        cfg = core.config(root)
+        # Only the path this repo moved from is dropped, and only when it is gone; other entries (unmounted drives) stay.
+        cfg['repos'] = [r for r in cfg.get('repos', []) if r != old or Path(r).is_dir()] + [str(repo)] * (str(repo) not in cfg.get('repos', []))
+        core.atomic_write(root / 'workspace.json', json.dumps(cfg, indent=2) + '\n')
+    state['exclude'] = str(exclude)
+    core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+    return True
+
+
 def branch_task(root, repo, branch):
     matches = []
     for task in core.task_list(root) if root.exists() else []:
@@ -241,7 +281,7 @@ def render(repo, root, clients, prior):
         desired[name] = (prior(name) or b'') + ('\n' + prefix + instructions).encode()
     for client, name in (('cursor', '.cursor/rules/ws-current-task.mdc'), ('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md')):
         if client not in clients: continue
-        if subprocess.check_output(['git', 'ls-files', '--', name], encoding='utf-8', errors='replace').strip():
+        if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', name], encoding='utf-8', errors='replace').strip():
             print('Keeping tracked instructions: ' + name, file=sys.stderr); continue
         prefix = '---\nalwaysApply: true\n---\n' if client == 'cursor' else ''
         previous = prior(name) or b''
@@ -322,11 +362,17 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     if result.returncode: raise core.WsError('Run ws start inside a git code repository.')
     repo = Path(result.stdout.strip()).resolve(); current = setup.branch(repo)
     if not current and not remove: raise core.WsError('Choose a git branch before ws start; detached HEAD has no task name.')
+    if core.LINE_BREAK_RE.search(current) and not remove: raise core.WsError('This branch name has a line break or control character, so ws cannot name its task; rename the branch (git branch -m) and run ws start again.')
     if path(repo, LINK).exists():
         state = load(repo)
         if remove: return undo(repo, state)
         root = Path(state['workspace'])
-        if str(repo) not in core.config(root).get('repos', []): raise core.WsError('Linked workspace belongs elsewhere; review .ws-start.json or undo this repo setup.')
+        listed = str(repo) in core.config(root).get('repos', [])
+        # Listed but the record still names another exclude file: an interrupted relink; finish it (rehome only ever writes this repo's own path).
+        if not listed or Path(state['exclude']).resolve() != own_exclude(repo).resolve():
+            if not listed and not moved(repo, state): raise core.WsError('Linked workspace belongs elsewhere; review .ws-start.json or undo this repo setup.')
+            if not rehome(repo, root, state, yes, dry_run): return None
+            state = load(repo)
         task = branch_task(root, repo, current)
         if not core.task_path(root, task).exists(): task = ''
         incomplete = state.get('complete') is False or any(not path(repo, n).is_file() for n in state['files'])
@@ -350,9 +396,9 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     clients = ['claude', 'codex'] + [d['assistant'] for d in setup.detect() if d['assistant'] in ('cursor', 'copilot', 'gemini') and (d['cli_available'] or d['apps'])]
     desired = render(repo, root, clients, lambda n: path(repo, n).read_bytes() if path(repo, n).exists() else None)
     desired.update(codex_files(repo, root))
-    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
+    tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
-    exclude = Path(subprocess.check_output(['git', 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip()).absolute()
+    exclude = repo / subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip()  # root-anchored; absolute output wins
     if exclude.is_symlink(): raise core.WsError('Start refuses a symlinked Git exclude file.')
     block = ('\n# ws:start:' + core.digest_text(str(repo))[:12] + '\n' + '\n'.join('/' + n for n in (LINK, *desired)) + '\n# /ws:start\n').encode()
     before = {n: path(repo, n).read_bytes() if path(repo, n).exists() else None for n in desired}
@@ -374,7 +420,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
-    tracked = subprocess.run(['git', 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
+    tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
