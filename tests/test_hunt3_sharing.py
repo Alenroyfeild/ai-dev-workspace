@@ -112,6 +112,16 @@ class LessonRelevanceTests(Base):
         self.assertEqual(len(core.lesson_search(self.root, '')), 1)
 
 
+    def test_search_on_a_long_space_run_is_linear(self):
+        import time
+        core.lesson_add(self.root, 'Cached values expired; reuse stable receipts.', paths=['src/*.py'], area='serialization')
+        path = core.vault(self.root) / 'Learnings.md'
+        path.write_text(path.read_text(encoding='utf-8') + '- ' + ' ' * 200000 + 'tail\n', encoding='utf-8')
+        start = time.perf_counter(); found = core.lesson_search(self.root, 'receipts tail')
+        self.assertLess(time.perf_counter() - start, 2.0)
+        self.assertEqual(len(found), 2)
+        self.assertEqual(core.lesson_search(self.root, 'serialization'), [])  # the metadata comment is still ignored
+
 class FolderJunkTests(unittest.TestCase):
     setUp = test_team_folder.TeamFolderTests.setUp
     link = test_team_folder.TeamFolderTests.link

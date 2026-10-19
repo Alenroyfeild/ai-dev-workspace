@@ -1629,7 +1629,7 @@ def lesson_add(root, text, tags=(), paths=(), area=''):
     return {'added': True}
 
 
-LESSON_META_RE = re.compile(r'\s*<!-- ws:lesson (.*?) -->$')
+LESSON_META_RE = re.compile(r'<!-- ws:lesson (.*?) -->$')  # no leading \s*: it rescans a space run from every start (quadratic); callers rstrip
 STOPWORDS = frozenset('the and for with from this that these those are was were been being have has had not but all any can could should would will may might must into onto over out our you your when then than them they their its via per also only just more most some such use used using'.split())
 
 
@@ -1752,7 +1752,7 @@ def relevant_lessons(root, task):
         if match:
             try: metadata = json.loads(match[1])
             except ValueError: pass
-            line = line[:match.start()]
+            line = line[:match.start()].rstrip()
         if not isinstance(metadata, dict): metadata = {}
         paths = metadata.get('paths', [])
         if not isinstance(paths, list): paths = []
