@@ -15,7 +15,7 @@ def git(repo, *args, env_extra=None, binary=False):
     env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT='0', GIT_LFS_SKIP_SMUDGE='1')
     if env_extra: env.update(env_extra)
     try:
-        result = subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-c', 'core.fsmonitor=false', '-c', 'core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol', '-C', str(repo), *args],
+        result = subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-c', 'core.fsmonitor=false', '-c', 'core.longpaths=true', '-c', 'core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol', '-C', str(repo), *args],
                                 env=env, capture_output=True, timeout=120)
     except (OSError, subprocess.TimeoutExpired): raise core.WsError('Worker Git operation could not complete; no provider was launched.')
     if result.returncode: raise core.WsError('Worker Git operation failed: ' + core.redact(result.stderr[-1000:].decode('utf-8', errors='replace')))
@@ -99,7 +99,7 @@ def _record(root, run_id, require_checkout=True):
     if not isinstance(run_id, str) or not re.fullmatch(r'[0-9a-f]{16}', run_id): raise core.WsError('Invalid worker run ID.')
     directory = Path(root).resolve() / '.ws/workers' / run_id
     for p in (directory.parent.parent, directory.parent, directory, directory / 'checkout', directory / 'source.git', directory / 'run.json', directory / 'diff.patch'):
-        if p.is_symlink(): raise core.WsError('Worker run paths must not be symlinked.')
+        if core.is_link(p): raise core.WsError('Worker run paths must not be symlinked.')
     state = json.loads((directory / 'run.json').read_text(encoding='utf-8'))
     if (state.get('id') != run_id or state.get('directory') != str(directory) or state.get('checkout') != str(directory / 'checkout')
             or require_checkout and not state.get('complete') or state.get('provider') != 'codex'):
@@ -297,7 +297,7 @@ def collect(root, run_id):
             if entry:
                 spec, name = entry.split('\t', 1); base_blobs[name] = spec.split()[2]
         for p in checkout.rglob('*'):
-            if p.is_symlink(): raise core.WsError('Worker introduced a symlink; collection blocked.')
+            if core.is_link(p): raise core.WsError('Worker introduced a symlink; collection blocked.')
             info = p.stat()
             if not (stat.S_ISREG(info.st_mode) or p.is_dir()): raise core.WsError('Worker introduced a special file; collection blocked before staging.')
             if stat.S_ISREG(info.st_mode) and info.st_size > 1024 * 1024:

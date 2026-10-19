@@ -12,6 +12,11 @@
 - A task file saved with a UTF-8 BOM keeps its frontmatter instead of being treated as a new task.
 - Invalid UTF-8 or a lone surrogate in a command-line text argument gives a clear error instead of a traceback.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
+- Windows: a team folder on a mapped or `subst` drive is accepted (stored under its real path); a symlink or junction in the path is still refused.
+- Windows: workers started through an npm `.cmd` shim (`codex.cmd`) now refuse `& | < > ^ % !` in the repo path or prompt instead of letting cmd.exe cut or alter the command.
+- Windows: deep paths no longer fail on the 260-character limit when ws writes backups under `.ws/backups` (`\\?\` form) or creates worker checkouts (`core.longpaths=true`).
+- Windows: junctions (`mklink /J`) are now detected by the checks that refuse symlinks (private packs, setup, upgrade, repo start, memory import, worker runs and collection, team folders).
+- Tests: twelve symlink tests that were skipped on Windows now run wherever symlinks can be created, as on `windows-latest`.
 
 ### New
 - Task records carry `format: 1` and new lesson metadata carries `"format": 1`. A record written by a newer kit opens read-only: `ws brief`, `ws task find` and `ws recap` show it with a warning, and claim, checkpoint and remember refuse with "written by a newer ai-dev-workspace (format N); update the kit". Old records without the marker work unchanged. The record-corpus test now also covers this (EXIT-04).

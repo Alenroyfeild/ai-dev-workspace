@@ -145,7 +145,7 @@ def summary(changes):
 def upgrade(root, dry_run=False, expected=None):
     root = Path(root).resolve()
     def safe(path):
-        if any(p.is_symlink() for p in (path, *path.parents) if p != root and root in p.parents):
+        if any(core.is_link(p) for p in (path, *path.parents) if p != root and root in p.parents):
             raise core.WsError('Upgrade refuses symlinks: ' + str(path.relative_to(root)))
         if any(p.exists() and not p.is_dir() for p in path.parents if p != root and root in p.parents):
             raise core.WsError('Upgrade destination has a non-directory parent: ' + str(path.relative_to(root)))
@@ -209,7 +209,7 @@ def upgrade(root, dry_run=False, expected=None):
                 if path.exists() and path.read_bytes() != old: raise core.WsError('File changed during upgrade; run dry-run again.')
                 if old:
                     backup = root / '.ws/backups' / stamp / path.relative_to(root); safe(backup)
-                    core.atomic_write(backup, old); backups.append(backup.relative_to(root).as_posix())
+                    core.atomic_write(core.long_path(backup), old); backups.append(backup.relative_to(root).as_posix())
                 core.atomic_write(path, new)
         if not dry_run:
             claims.mkdir(parents=True, exist_ok=True)  # local, gitignored state: created silently, not reported as an upgrade

@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from testutil import needs_symlinks
 from pathlib import Path
 from unittest import mock
 from ws import cli, core, team
@@ -87,7 +88,7 @@ class ScopeTests(unittest.TestCase):
         path.write_text('---\nid: T-1\nscope: private\nscope: team\n---\nbody\n')
         with self.assertRaises(core.WsError): scope.record(self.a, 'task:T-1')
 
-    @unittest.skipIf(os.name == 'nt', 'symlink fixture may require Windows developer mode')
+    @needs_symlinks
     def test_note_alias_via_symlinked_record_directory_is_ineligible(self):
         from ws import scope
         private = core.vault(self.a) / 'Personal'; private.mkdir()
@@ -97,7 +98,7 @@ class ScopeTests(unittest.TestCase):
         with self.assertRaises(core.WsError): scope.record(self.a, 'decision:P-1', 'team')
         self.assertEqual(before, note.read_bytes())
 
-    @unittest.skipIf(os.name == 'nt', 'symlink fixture may require Windows developer mode')
+    @needs_symlinks
     def test_symlinked_record_file_is_ineligible_for_read_and_change(self):
         from ws import scope
         target = core.vault(self.a) / 'Personal' / 'R-1.md'; target.parent.mkdir()

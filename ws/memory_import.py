@@ -11,7 +11,7 @@ from . import core
 
 def _read(path, base):
     anchor = Path.home() if Path.home() in path.parents else Path(path.anchor)
-    if any(p.is_symlink() for p in (path, *path.parents) if p == anchor or anchor in p.parents):
+    if any(core.is_link(p) for p in (path, *path.parents) if p == anchor or anchor in p.parents):
         raise core.WsError('Symlink memory source skipped.')
     info = path.stat()
     if not stat.S_ISREG(info.st_mode) or info.st_size > 16384:
@@ -39,20 +39,20 @@ def _limited(paths, label):
 def preview(repo, memory_dir=None, dry_run=False):
     paths = [(repo / name, repo, name) for name in ('CLAUDE.md', '.claude/CLAUDE.md', 'AGENTS.md', '.cursorrules')]
     rules = repo / '.cursor/rules'
-    if rules.is_dir() and not rules.is_symlink():
+    if rules.is_dir() and not core.is_link(rules):
         paths += [(p, repo, p.relative_to(repo).as_posix()) for p in _limited(rules.glob('*.mdc'), 'Cursor rule')]
     # Standard Claude project layout; --memory-dir handles custom settings/worktrees.
     home = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude').expanduser()
     project = os.environ.get('CLAUDE_CODE_PROJECT_DIR_NAME') if os.environ.get('CLAUDE_CONFIG_DIR') else None
     project = project or re.sub(r'[^A-Za-z0-9]', '-', str(repo))
     base = Path(memory_dir).expanduser().absolute() if memory_dir else home / 'projects' / project / 'memory'
-    if base.is_dir() and not base.is_symlink() and not any(p.is_symlink() for p in base.parents if p == Path.home() or Path.home() in p.parents):
+    if base.is_dir() and not core.is_link(base) and not any(core.is_link(p) for p in base.parents if p == Path.home() or Path.home() in p.parents):
         topics = (p for p in base.glob('*.md') if p.name != 'MEMORY.md')
         paths += [(p, base, 'Claude memory/' + p.name) for p in _limited(topics, 'Claude memory')]
     rows = []; total = 0
     for path, parent, label in paths:
         label = ''.join(c for c in ' '.join(label.split()) if c.isprintable())
-        if not path.exists() and not path.is_symlink(): continue
+        if not path.exists() and not core.is_link(path): continue
         try: raw = _read(path, parent)
         except (core.WsError, OSError, ValueError):
             print('Memory import skipped unsafe/unreadable source: ' + label, file=sys.stderr); continue

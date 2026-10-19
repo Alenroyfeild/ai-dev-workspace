@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import unittest
+from testutil import needs_symlinks
 from unittest import mock
 import test_sharing
 from ws import cli, core, sharing
@@ -54,7 +55,7 @@ class KnowledgeTests(unittest.TestCase):
         self.assertFalse(any(r.get('result',{}).get('isError') for r in replies[:4]));self.assertIn('error',replies[4])
         self.assertFalse((self.clone/'entries').exists())
 
-    @unittest.skipIf(os.name=='nt','symlink fixture requires Windows developer mode')
+    @needs_symlinks
     def test_symlinked_knowledge_directory_cannot_alias_private_notes(self):
         from ws import knowledge
         personal=core.vault(self.root)/'Personal'; personal.mkdir();(personal/'K1.md').write_text('---\nid: K1\n---\nPrivate note.\n')

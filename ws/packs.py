@@ -7,11 +7,11 @@ from . import core
 
 def load(directory):
     source = Path(directory).expanduser()
-    if source.is_symlink(): raise core.WsError(f'Private pack refuses symlink: {source}. Use the real folder with ws pack add --from.')
+    if core.is_link(source): raise core.WsError(f'Private pack refuses symlink: {source}. Use the real folder with ws pack add --from.')
     source = source.resolve()
     try:
         for path in [source, *source.rglob('*')]:
-            if path.is_symlink() or not (path.is_dir() or stat.S_ISREG(path.stat().st_mode)):
+            if core.is_link(path) or not (path.is_dir() or stat.S_ISREG(path.stat().st_mode)):
                 raise core.WsError(f'Private pack refuses symlinks/non-regular files: {path}. Remove them and retry ws pack add --from.')
         manifest = json.loads((source / 'pack.json').read_text(encoding='utf-8'))
         if not isinstance(manifest, dict) or any(not isinstance(manifest.get(k), str) or not manifest[k].strip()
@@ -45,7 +45,7 @@ def load(directory):
 
 def safe(root, relative):
     path = root / relative
-    if root.resolve() not in path.resolve().parents or any(p.is_symlink() for p in (path, *path.parents) if p != root and root in p.parents):
+    if root.resolve() not in path.resolve().parents or any(core.is_link(p) for p in (path, *path.parents) if p != root and root in p.parents):
         raise core.WsError(f'Private pack destination is unsafe: {relative}. Remove the symlink and retry ws pack add --from.')
     return path
 
