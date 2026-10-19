@@ -13,6 +13,9 @@
 - Invalid UTF-8 or a lone surrogate in a command-line text argument gives a clear error instead of a traceback.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 
+### New
+- Task records carry `format: 1` and new lesson metadata carries `"format": 1`. A record written by a newer kit opens read-only: `ws brief`, `ws task find` and `ws recap` show it with a warning, and claim, checkpoint and remember refuse with "written by a newer ai-dev-workspace (format N); update the kit". Old records without the marker work unchanged. The record-corpus test now also covers this (EXIT-04).
+
 ## 0.1.0-beta.5 (2026-10-19)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
