@@ -72,7 +72,8 @@ class DoctorBrokenLinkTests(Base):
     def test_session_start_with_deeply_nested_workspace_json_fails_open(self):
         (self.root / 'workspace.json').write_text('{"team_workspace":' + '[' * 5000 + '0' + ']' * 5000 + '}')
         from ws import team_auto
-        self.assertIsNone(team_auto.maybe_pull(self.root))
+        result = team_auto.maybe_pull(self.root)  # contract: no exception; decoders differ (3.12+ parses it, older ones overflow)
+        self.assertTrue(result is None or isinstance(result, dict) and 'error' not in result and 'Traceback' not in json.dumps(result))
 
 
 class GuardSpellingTests(unittest.TestCase):
