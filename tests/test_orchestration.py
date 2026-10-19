@@ -312,6 +312,19 @@ class OrchestrationTests(Base):
             with self.assertRaises(core.WsError): orchestration.selftest(self.root, 'codex')
         self.assertFalse(marker.exists())
 
+    @unittest.skipIf(os.name == 'nt', 'POSIX permission bits')
+    def test_selftest_refuses_an_uncreatable_metadata_dir_before_the_paid_run(self):
+        shutil.rmtree(self.root / '.ws', ignore_errors=True)
+        marker = self.root / 'ran'; git = shutil.which('git'); original = self.root.stat().st_mode
+        with self.fake('open(%r, "w").write("x")' % str(marker)):
+            self._git_on_path(git)
+            self.root.chmod(0o555)  # read-only root, .ws absent
+            try:
+                if os.access(self.root, os.W_OK): self.skipTest('permission bits are not enforced (running as root)')
+                with self.assertRaisesRegex(core.WsError, r'\.ws'): orchestration.selftest(self.root, 'codex')
+            finally: self.root.chmod(original)
+        self.assertFalse(marker.exists())  # worker never launched
+
     def test_selftest_control_survives_redaction_of_the_worker_answer(self):
         git = shutil.which('git')
         code = 'from pathlib import Path; print("token: " + Path("token.txt").read_text())'

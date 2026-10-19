@@ -279,8 +279,12 @@ def selftest(root, provider=None, run=True):
     directory = None
     if (root / '.ws').is_symlink(): raise core.WsError('Selftest refuses symlinked metadata directory.')
     cache = root / '.ws/delegate-selftests.json'
-    if cache.exists() and not cache.is_file() or (root / '.ws').exists() and not os.access(root / '.ws', os.W_OK | os.X_OK):
-        raise core.WsError('Selftest cache .ws/delegate-selftests.json cannot be written; fix or remove it. No worker was started.')  # before any paid run
+    try:  # before any paid run: create .ws and prove the lock file (what core.lock needs to save the cache) can be opened
+        core.inside(root / '.ws/lock', [root])  # refuses a symlinked lock path, as core.lock does
+        if cache.exists() and not cache.is_file(): raise OSError('not a file')
+        (root / '.ws').mkdir(exist_ok=True); (root / '.ws/lock').open('a+b').close()
+    except OSError as error:
+        raise core.WsError(f'Selftest cache {cache} cannot be written ({type(error).__name__}); fix permissions or remove it. No worker was started.')
 
     def load():
         try: records = json.loads(core.read_text(cache, [root])) if cache.exists() else {}
