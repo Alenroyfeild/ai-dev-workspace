@@ -356,6 +356,29 @@ class PluginDuplicateTests(Base):
         self.start_here(repo); self.start_here(repo, '--undo')
         self.assertIn('my-own-ignore', exclude.read_text()); self.assertNotIn('ws:start', exclude.read_text())
 
+    def test_a_damaged_stale_block_is_refused_and_user_lines_survive(self):
+        repo, root = self.started_repo(); exclude = repo / '.git/info/exclude'
+        subprocess.run(['git', 'clean', '-fdxq'], cwd=repo, check=True)
+        damaged = exclude.read_text().replace('# /ws:start\n', '') + '\nuser-important-ignore\n# /ws:start\n'
+        exclude.write_text(damaged)
+        err = io.StringIO()
+        cwd = os.getcwd(); os.chdir(repo)
+        try:
+            with mock.patch('ws.setup.detect', return_value=[]), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                self.assertNotEqual(cli.main(['start', '--yes']), 0)
+        finally: os.chdir(cwd)
+        self.assertIn('exclude', err.getvalue()); self.assertIn('damaged', err.getvalue())
+        self.assertEqual(exclude.read_text(), damaged)
+        self.assertFalse((repo / '.ws-start.json').exists())
+
+    def test_a_stale_block_next_to_user_lines_only_loses_its_own_lines(self):
+        repo, root = self.started_repo(); exclude = repo / '.git/info/exclude'
+        subprocess.run(['git', 'clean', '-fdxq'], cwd=repo, check=True)
+        exclude.write_text('before-ignore\n' + exclude.read_text() + 'after-ignore\n')
+        self.assertEqual(self.start_here(repo), 0)
+        text = exclude.read_text()
+        self.assertIn('before-ignore', text); self.assertIn('after-ignore', text); self.assertEqual(text.count('# ws:start:'), 1)
+
     # --- ws stops owning a file: it leaves the exclude block ---
 
     def test_a_file_ws_no_longer_owns_leaves_the_exclude_block(self):
@@ -380,7 +403,11 @@ class PluginDuplicateTests(Base):
     def test_a_bom_in_a_hook_file_does_not_hide_stale_hooks(self):
         repo, root = self.started_repo()
         path = repo / '.claude/settings.local.json'
-        path.write_bytes(b'\xef\xbb\xbf' + path.read_text().replace(str(core.KIT), str(core.KIT) + '-moved').encode())
+        data = json.loads(path.read_text())  # decoded: raw JSON text doubles Windows backslashes
+        for groups in data['hooks'].values():
+            for group in groups:
+                for hook in group['hooks']: hook['command'] = hook['command'].replace(str(core.KIT), str(core.KIT) + '-moved')
+        path.write_bytes(b'\xef\xbb\xbf' + json.dumps(data).encode())
         self.assertTrue(repo_setup.stale_hooks(root))
 
     def test_claude_config_dir_is_honoured_for_user_settings(self):

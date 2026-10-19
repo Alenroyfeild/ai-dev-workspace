@@ -374,6 +374,14 @@ def starter(repo, root):
     return kind if kind and kind not in core.config(root).get('packs', []) else ''
 
 
+def _without_stale_block(data, digest, exclude):
+    """Drop this repo's leftover exclude block (git clean -fdx deleted the record, not the block); refuse a malformed one."""
+    begin = rb'\r?\n# ws:start:' + digest.encode() + rb'\r?\n'
+    cleaned = re.sub(begin + rb'(?:/[^\r\n]*\r?\n)*# /ws:start\r?\n', b'', data)  # only path lines may sit between the markers
+    if re.search(begin, cleaned): raise core.WsError(f'{exclude} has a ws start block that is damaged (missing end marker or extra lines inside). Remove it by hand, then rerun ws start; nothing was changed.')
+    return cleaned
+
+
 def extend_exclude(repo, state, names):
     """Add files ws newly writes to its Git-exclude block and the start record (also its directories, for undo)."""
     exclude, block = exclusions(repo, state)
@@ -511,11 +519,11 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     if any((path(repo, n).read_bytes() if path(repo, n).exists() else None) != data for n, data in before.items()): raise core.WsError('Local config changed during confirmation; review it before retrying.')
     tracked = subprocess.run(['git', '-C', str(repo), 'ls-files', '--', LINK, *desired], capture_output=True, encoding='utf-8', errors='replace', check=True).stdout.strip()
     if tracked: raise core.WsError('Start will not change tracked local files: ' + tracked.replace('\n', ', '))
+    previous_exclude = exclude.read_bytes() if exclude.exists() else b''
+    leftover = _without_stale_block(previous_exclude, core.digest_text(str(repo))[:12], exclude)  # refuses before anything is written
     if not root.exists(): core.init(root, repo.name, repos=[str(repo)], clients=[])
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
-    previous_exclude = exclude.read_bytes() if exclude.exists() else b''
-    leftover = re.sub(rb'\r?\n# ws:start:' + core.digest_text(str(repo))[:12].encode() + rb'\r?\n.*?# /ws:start\r?\n', b'', previous_exclude, flags=re.S)  # git clean -fdx deleted the record, not this block
     if leftover != previous_exclude: core.atomic_write(exclude, leftover); previous_exclude = leftover
     state = dict(kit_version=core.kit_meta()['version'], hook_packs=hook_packs(root), plugin=plugin, codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')

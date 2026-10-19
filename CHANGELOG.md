@@ -23,10 +23,14 @@
 - Windows: deep paths no longer fail on the 260-character limit when ws writes backups under `.ws/backups` (`\\?\` form) or creates worker checkouts (`core.longpaths=true`).
 - Windows: junctions (`mklink /J`) are now detected by the checks that refuse symlinks (private packs, setup, upgrade, repo start, memory import, worker runs and collection, team folders).
 - Tests: twelve symlink tests that were skipped on Windows now run wherever symlinks can be created, as on `windows-latest`.
+- `ws start` after `git clean -fdx` removes only its own leftover block from `.git/info/exclude`. A damaged block (missing end marker or foreign lines inside) is refused with a message naming that file, instead of deleting your own exclude lines.
 
 ### New
 - `bin/release-smoke` runs the release smoke in one command: it builds the artifacts offline, installs the wheel in a temp venv and drives `ws` end to end in a toy repo with a throwaway HOME (`--wheel PATH`, `--source`, `--json`). See [Cutting a release](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/MAINTAINING.md#cutting-a-release).
 - Task records carry `format: 1` and new lesson metadata carries `"format": 1`. A record written by a newer kit opens read-only: `ws brief`, `ws task find` and `ws recap` show it with a warning, and claim, checkpoint and remember refuse with "written by a newer ai-dev-workspace (format N); update the kit". Old records without the marker work unchanged. The record-corpus test now also covers this (EXIT-04).
+
+### Known limits
+- The Claude Code plugin (preview) and the repo connection from `ws start` both add hooks; with the plugin enabled, `ws start` skips its own Claude brief and capture hooks (opt-in guards and discipline hooks stay); repos started earlier get a warning from `ws doctor` until you rerun `ws start`, which follows the plugin and the packs: it takes out ws's Claude brief hooks and MCP entry when the plugin is enabled, puts them back when it is disabled, and creates or removes the Claude settings file when you add or remove guards or discipline later (the preview lists each file); `ws doctor` also warns when a repo was set up for the plugin and the plugin is no longer enabled.
 
 ## 0.1.0-beta.5 (2026-10-19)
 
@@ -86,7 +90,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 
 ### Known limits
 - The `uncommitted edits gone` warning covers tracked files only: a new untracked file deleted after the checkpoint, or a file edited again with different uncommitted changes, is not reported.
-- The Claude Code plugin (preview) and the repo connection from `ws start` both add hooks; with the plugin enabled, `ws start` skips its own Claude brief and capture hooks (opt-in guards and discipline hooks stay); repos started earlier get a warning from `ws doctor` until you rerun `ws start`, which follows the plugin and the packs: it takes out ws's Claude brief hooks and MCP entry when the plugin is enabled, puts them back when it is disabled, and creates or removes the Claude settings file when you add or remove guards or discipline later (the preview lists each file); `ws doctor` also warns when a repo was set up for the plugin and the plugin is no longer enabled.
+- The Claude Code plugin (preview) and the repo connection from `ws start` both add hooks; use one of them per repo, or each session gets two briefs.
 - Folder snapshots are read-only and do not provide realtime sync or protection from concurrent external edits.
 - Automatic team pulls require a Git remote and consent; only macOS gets the built-in daily scheduler.
 
