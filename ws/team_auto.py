@@ -26,8 +26,11 @@ def pull(root, automatic=False):
 
 
 def maybe_pull(root):
+    try: cfg=core.config(root)
+    except (OSError,ValueError,RecursionError): return None  # unreadable or too deeply nested workspace.json is not a team problem; doctor reports it
+    if not isinstance(cfg,dict): return None
     try:
-        if core.config(root).get('team_workspace',{}).get('auto_pull') is not True: return None
+        if cfg.get('team_workspace',{}).get('auto_pull') is not True: return None
         return pull(root,automatic=True)
     except (core.WsError,OSError,ValueError,TypeError,KeyError,AttributeError,RecursionError):
         return {'warning':'Team pull stopped; local files retained. Run ws sync --pull-only for the resolution hint.','pushed':False}

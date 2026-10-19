@@ -23,20 +23,22 @@ def main(argv=None):
     parser.add_argument('--client', choices=('claude', 'codex'), required=True)
     args = parser.parse_args(argv)
     try:
-        payload = json.loads(cli._read_limited_stdin())
+        text = cli._read_limited_stdin()
+        payload = json.loads(text)
         if not isinstance(payload, dict): raise ValueError('Expected an object')
         cwd = payload.get('cwd')
         if cwd is not None and (not isinstance(cwd, str) or not cwd): raise ValueError('Invalid cwd')
         command = {'SessionStart': 'brief', 'PreCompact': 'nudge', 'Stop': 'nudge',
                    'UserPromptSubmit': 'paste'}.get(payload.get('hook_event_name'))
         root = workspace(cwd) if command else None
-    except (core.WsError, OSError, ValueError, TypeError, KeyError):
+    except (core.WsError, OSError, ValueError, TypeError, KeyError, RecursionError) as exc:
+        print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open, like the other hooks
         root = None
     if root is None:
         print('{}'); return 0
     previous = sys.stdin
     try:
-        sys.stdin = io.StringIO(json.dumps(payload))
+        sys.stdin = io.StringIO(text)
         return cli.main(['--workspace-root', str(root), command, '--hook', '--client', args.client])
     finally:
         sys.stdin = previous
