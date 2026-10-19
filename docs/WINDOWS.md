@@ -17,6 +17,8 @@ path or prompt, because cmd.exe re-parses them. Paths over 260 characters: git
 runs with `core.longpaths=true` and backups use the `\\?\` form, but other tools
 still need `LongPathsEnabled`.
 
+Literal worker command templates in `workspace.json` are trusted configuration, so the `.cmd` shim check covers the repo path, model and prompt, not the template itself. Mapped and `subst` drive support is exercised only by CI simulation (mocked drive resolution), not on a real mapped drive.
+
 Official APIs: [Python msvcrt.locking](https://docs.python.org/3/library/msvcrt.html),
 [Microsoft _locking](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/locking?view=msvc-170),
 [subprocess Windows argument conversion](https://docs.python.org/3/library/subprocess.html),
