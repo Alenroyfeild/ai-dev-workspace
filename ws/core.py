@@ -88,8 +88,8 @@ NOTE_SECTIONS = REQUIRED + ('Findings', 'Failures', 'Risks', 'Do not redo')
 STATUSES = ('backlog', 'ready', 'in_progress', 'review', 'blocked', 'done')
 ID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 SECRET_RE = re.compile(
-    # The body stops at the next BEGIN (that chunk is redacted too), so repeated markers cannot rescan to the end of the text.
-    r'-----BEGIN [^-]*PRIVATE KEY-----(?:(?!-----BEGIN ).)*?(?:-----END [^-]*PRIVATE KEY-----|(?=-----BEGIN ))'
+    # Marker only: redact() splices whole key blocks (linear); this still locates a key for line numbers.
+    r'-----BEGIN [^-]*PRIVATE KEY-----'
     r'|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}'
     r'|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
     # Provider tokens recognisable by prefix alone. The group may also end on a `-` (Google keys can).
@@ -106,6 +106,8 @@ SECRET_RE = re.compile(
     r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
     r'|(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*(?:"[^"\n]*"|\'[^\'\n]*\'|[^\s"\']+)', re.S)
+PRIVATE_KEY_BEGIN_RE = re.compile(r'-----BEGIN [^-]*PRIVATE KEY-----')
+PRIVATE_KEY_END_RE = re.compile(r'-----END [^-]*PRIVATE KEY-----')
 URL_CREDENTIALS_RE = re.compile(r'(?<=[A-Za-z0-9+.-])(://)[^\s/@:]+:[^\s/@]+@')  # anchored on `://`: no rescan of a long scheme-like run
 PRIVATE_TAG_RE = re.compile(r'</?private>', re.I)
 PRIVATE_RE = re.compile(r'<private>.*?(?:</private>|\Z)', re.I | re.S)  # Deprecated: .sub() misses nested spans; use strip_private() (kept so older branches still import)
@@ -120,8 +122,21 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
 
 
+def redact_private_keys(text):
+    """Hide each BEGIN..END private-key block whole (any marker inside it too); no END hides the rest. One pass, no backtracking."""
+    out, pos = [], 0
+    while True:
+        begin = PRIVATE_KEY_BEGIN_RE.search(text, pos)
+        if not begin: break
+        end = PRIVATE_KEY_END_RE.search(text, begin.end())
+        out += [text[pos:begin.start()], '[REDACTED]']
+        if not end: pos = len(text); break
+        pos = end.end()
+    return ''.join(out) + text[pos:]
+
+
 def redact(text):
-    return URL_CREDENTIALS_RE.sub(r'\1[REDACTED]@', SECRET_RE.sub('[REDACTED]', text))
+    return URL_CREDENTIALS_RE.sub(r'\1[REDACTED]@', SECRET_RE.sub('[REDACTED]', redact_private_keys(text)))
 
 
 def localize_paths(text, root):

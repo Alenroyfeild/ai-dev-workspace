@@ -47,9 +47,14 @@ class RedactSpeedTests(Base):
         self.assertEqual(core.redact('x -----BEGIN RSA PRIVATE KEY-----\nMIIabc\n-----END RSA PRIVATE KEY----- y'), 'x [REDACTED] y')
         two = '-----BEGIN PRIVATE KEY-----\nAAA\n-----BEGIN PRIVATE KEY-----\nBBB\n-----END PRIVATE KEY-----'
         self.assertNotRegex(core.redact(two), 'AAA|BBB')
-        self.assertEqual(core.redact('no end -----BEGIN PRIVATE KEY----- here'), 'no end -----BEGIN PRIVATE KEY----- here')
+        self.assertEqual(core.redact('no end -----BEGIN PRIVATE KEY----- here'), 'no end [REDACTED]')  # privacy first: no END hides the rest
         self.assertEqual(core.redact('a postgres://user:pw@host/db b'), 'a postgres://[REDACTED]@host/db b')
         self.assertEqual(core.redact('v1.2+x-y://u:p@h'), 'v1.2+x-y://[REDACTED]@h')
+
+    def test_other_begin_marker_inside_a_private_key_does_not_end_the_redaction(self):
+        s = '-----BEGIN PRIVATE KEY-----\nAAA\n-----BEGIN COMMENT-----\nSECRETTAIL\n-----END PRIVATE KEY-----\nafter'
+        self.assertEqual(core.redact(s), '[REDACTED]\nafter')
+        self.assertEqual(core.redact('a ' + s + ' -----BEGIN RSA PRIVATE KEY-----\nZZZ\n-----END RSA PRIVATE KEY----- b'), 'a [REDACTED]\nafter [REDACTED] b')
 
 
 class BomTaskTests(Base):
