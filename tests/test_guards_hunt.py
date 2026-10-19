@@ -212,9 +212,10 @@ class DisablingTheGuardTests(GuardTestCase):
         self.assertTrue(guards.reason('apply_patch', {'command': '*** Begin Patch\n*** Delete File: .codex/hooks.json\n*** End Patch'}))
         self.assertEqual(guards.reason('apply_patch', {'command': '*** Begin Patch\n*** Update File: .codex/hooks.json\n-  "a": 1\n+  "a": 2\n*** End Patch'}), '')
         self.check(denied=('ws pack remove guards', 'python3 bin/ws pack remove guards', 'cd x && ./bin/ws --workspace-root . pack remove guards', 'rm .claude/settings.json', 'mv .claude/settings.json /tmp/x',
-                           "sed -i 's/guard//' .claude/settings.json", 'jq . x > .claude/settings.local.json', 'echo {} > .codex/hooks.json', 'rm -f ~/.claude/settings.json', 'bash -c "ws pack remove guards"'),
+                           "sed -i 's/guard//' .claude/settings.json", 'jq . x > .claude/settings.local.json', 'echo {} > .codex/hooks.json', 'rm -f ~/.claude/settings.json', 'bash -c "ws pack remove guards"',
+                           'echo hi >> .claude/settings.json'),  # appending breaks the JSON, which switches the hooks off
                    allowed=('ws pack add guards', 'ws pack remove ios', 'cat .claude/settings.json', 'cat .claude/settings.json > /tmp/x', 'git add .claude/settings.json', 'ls .codex', 'rm settings.json',
-                            'echo hi >> .claude/settings.json'))
+                            'echo hi >> notes/settings.json'))
         self.assertIn('Ask the user to remove the guards pack themselves.', self.deny('ws pack remove guards'))
 
 
