@@ -31,6 +31,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Claude Code plugin (preview): `/plugin marketplace add Alenroyfeild/ai-dev-workspace`, then `/plugin install ai-dev-workspace@ai-dev-workspace`. It brings the session-start brief, capture, the MCP tools and the handoff/pickup/lesson skills, and stays inactive outside repos where `ws start` has run.
 
 ### Improved
+- Recent topic memories are imported first; Claude's `MEMORY.md` index is excluded from topic selection.
 - Clearer messages: a mistyped command suggests close matches instead of listing every command; `ws doctor --text` drops empty parentheses, says "Last capture: not run yet" and labels connections "Workspace-level connections"; `ws digest <directory>` and `ws team init`/`link` without a remote say what to pass.
 - `ws start` asks "Apply this setup?" and mentions private memory imports only when it previewed some, and its preview notes existing untracked files (such as your own `.mcp.json`) that stay hidden from `git status` until `ws start --undo`. The tutorial and setup guide now match real output and point newcomers to `ws start` first.
 - A confirmation prompt with no input (for example when an assistant runs `ws sync` or `ws know add --team` without `--yes`) now stops with "No confirmation; use --yes or --dry-run." instead of a Python traceback, and repeating `ws know add`, `ws remember` or `ws lesson add` with `--team` after declining reuses the saved record instead of creating a duplicate.
