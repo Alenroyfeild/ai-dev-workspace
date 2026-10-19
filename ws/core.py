@@ -88,7 +88,8 @@ NOTE_SECTIONS = REQUIRED + ('Findings', 'Failures', 'Risks', 'Do not redo')
 STATUSES = ('backlog', 'ready', 'in_progress', 'review', 'blocked', 'done')
 ID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 SECRET_RE = re.compile(
-    r'-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----'
+    # Marker only: redact() splices whole key blocks (linear); this still locates a key for line numbers.
+    r'-----BEGIN [^-]*PRIVATE KEY-----'
     r'|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}'
     r'|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
     # Provider tokens recognisable by prefix alone. The group may also end on a `-` (Google keys can).
@@ -105,8 +106,10 @@ SECRET_RE = re.compile(
     r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
     r'|(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*(?:"[^"\n]*"|\'[^\'\n]*\'|[^\s"\']+)', re.S)
-URL_CREDENTIALS_RE = re.compile(r'(\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:]+:[^\s/@]+@')
-PRIVATE_RE = re.compile(r'<private>.*?(?:</private>|\Z)', re.I | re.S)  # an unclosed marker hides the rest
+PRIVATE_KEY_BEGIN_RE = re.compile(r'-----BEGIN ([^-]*PRIVATE KEY)-----')
+URL_CREDENTIALS_RE = re.compile(r'(?<=[A-Za-z0-9+.-])(://)[^\s/@:]+:[^\s/@]+@')  # anchored on `://`: no rescan of a long scheme-like run
+PRIVATE_TAG_RE = re.compile(r'</?private>', re.I)
+PRIVATE_RE = re.compile(r'<private>.*?(?:</private>|\Z)', re.I | re.S)  # Deprecated: .sub() misses nested spans; use strip_private() (kept so older branches still import)
 HOME_PATH_RE = re.compile(r'(?<![\w.~-])(?:/Users|/home)/[^/\s]+|(?<![\w.~-])[A-Za-z]:\\Users\\[^\\\s]+')
 
 
@@ -118,8 +121,23 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
 
 
+def redact_private_keys(text):
+    """Hide each private-key block whole: `BEGIN <label>` closes only at the exact `END <label>`; anything between
+    (other markers too) is hidden, and no matching END hides the rest. One pass; str.find, no backtracking."""
+    out, pos = [], 0
+    while True:
+        begin = PRIVATE_KEY_BEGIN_RE.search(text, pos)
+        if not begin: break
+        out += [text[pos:begin.start()], '[REDACTED]']
+        end_marker = f"-----END {' '.join(begin[1].split())}-----"
+        end = text.find(end_marker, begin.end())
+        if end < 0: pos = len(text); break
+        pos = end + len(end_marker)
+    return ''.join(out) + text[pos:]
+
+
 def redact(text):
-    return URL_CREDENTIALS_RE.sub(r'\1[REDACTED]@', SECRET_RE.sub('[REDACTED]', text))
+    return URL_CREDENTIALS_RE.sub(r'\1[REDACTED]@', SECRET_RE.sub('[REDACTED]', redact_private_keys(text)))
 
 
 def localize_paths(text, root):
@@ -135,10 +153,24 @@ def localize_paths(text, root):
 LINE_BREAK_RE = re.compile('[\r\n\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]')
 
 
+def strip_private(text, replacement=' '):
+    """Drop <private> spans, nesting included: text stays hidden until the matching close; an unclosed opener hides the rest."""
+    out, depth, pos = [], 0, 0
+    for tag in PRIVATE_TAG_RE.finditer(text):
+        if tag[0][1] != '/':
+            if not depth: out.append(text[pos:tag.start()])
+            depth += 1
+        elif depth:
+            depth -= 1
+            if not depth: out.append(replacement); pos = tag.end()
+    out.append(replacement if depth else text[pos:])
+    return ''.join(out)
+
+
 def plain_text(text, keep_capture=False):
     """Free text an assistant saves: secrets and <private> spans removed, `<!--` neutralised so it cannot forge ws markers.
     Section notes keep capture markers: a read-edit-save of a Handoff must not turn unverified captures into plain text."""
-    text = redact(PRIVATE_RE.sub(' ', text))
+    text = redact(strip_private(text))
     return re.sub(r'<!--(?!\s*/?ws:captured)', '&lt;!--', text) if keep_capture else text.replace('<!--', '&lt;!--')
 
 
@@ -886,6 +918,7 @@ def file_lock(stream, release=False):
 
 def parse_meta(text):
     meta = {}
+    text = text.lstrip('\ufeff')  # a Windows editor's BOM
     if text.startswith('---\n'):
         for line in text.split('\n---', 1)[0][4:].splitlines():
             if ':' in line:
@@ -895,6 +928,7 @@ def parse_meta(text):
 
 
 def set_meta(text, values):
+    text = text.lstrip('\ufeff')  # saving drops the BOM
     if not text.startswith('---\n') or '\n---' not in text[4:]:
         raise WsError('Task file has no frontmatter.')
     head, body = text[4:].split('\n---', 1)
@@ -949,8 +983,6 @@ RESERVED_RE = re.compile(r'(?i)(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?')  #
 def task_path(root, task_id):
     if not ID_RE.fullmatch(task_id or ''):
         raise WsError('Task IDs use letters, digits, dot, dash or underscore (e.g. JIRA-123, fix-login).')
-    if RESERVED_RE.fullmatch(task_id):
-        raise WsError(f'{task_id} is a reserved device name on Windows; choose another task ID (e.g. {task_id}-1).')
     return inside(vault(root) / 'Tasks' / f'{task_id}.md', [root])
 
 
@@ -990,6 +1022,8 @@ def task_new(root, task_id, title, objective='', branch='', repo=''):
             normalized = redacted_line(candidate, 'Repo')
             repo = normalized if normalized == candidate else ''
     path = task_path(root, task_id)
+    if RESERVED_RE.fullmatch(task_id):  # only new tasks: existing aux.md etc. must stay readable
+        raise WsError(f'{task_id} is a reserved device name on Windows; choose another task ID (e.g. {task_id}-1).')
     if path.exists():
         raise WsError(f'Task {task_id} already exists: {path.relative_to(root)}')
     template = (vault(root) / 'Templates' / 'Task.md').read_text(encoding='utf-8')
@@ -1290,7 +1324,7 @@ def remember(root, text, task_id=None):
     """Save one explicit decision in the task's Handoff, where the brief lists decisions (before captured blocks)."""
     if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
         raise WsError('Not saved: the text is marked private.')
-    decision = ' '.join(redact(PRIVATE_RE.sub(' ', text)).split()).replace('<!--', '&lt;!--')
+    decision = ' '.join(redact(strip_private(text)).split()).replace('<!--', '&lt;!--')
     decision = re.sub(r'^decision:\s*', '', decision, flags=re.I)  # the Handoff line adds the prefix itself
     if not decision:
         raise WsError('Nothing to save: say the decision, e.g. ws remember "use Postgres, not SQLite".')
@@ -1365,7 +1399,7 @@ def pr_notes(root, task_id=None, link=True):
     if not decisions and not body('Checks'):
         parts.append('No decisions or checks saved yet. Save one with `ws remember "<decision>"`.')
     if link: parts.append(f'<sub>Decisions recorded with [ai-dev-workspace]({PROJECT_URL}).</sub>')
-    markdown = localize_paths(redact(PRIVATE_RE.sub('', '\n\n'.join(parts))), root)
+    markdown = localize_paths(redact(strip_private('\n\n'.join(parts), '')), root)
     return {'task': task_id, 'decisions': sum(1 for d in decisions if d.startswith('- ')), 'markdown': markdown + '\n'}
 
 
@@ -1513,7 +1547,7 @@ def session_search(query, roots=None, hide_private=False):
                     for text, timestamp in _search_session_records(stream, tool):
                         if hide_private:  # same markers capture honours: `#private` / `/private` drop the message
                             if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'): continue
-                            text = PRIVATE_RE.sub(' ', text)
+                            text = strip_private(text)
                         if query.lower() not in text.lower(): continue
                         timestamp = timestamp or fallback
                         compact = ' '.join(redact(text).split())
@@ -1968,7 +2002,7 @@ def _capture_decisions(root, transcript_path, client, task_id=None):
                 # Private markers: `#private` / leading `/private` drops the message, <private> blocks are cut.
                 if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
                     continue
-                text = localize_paths(redact(PRIVATE_RE.sub(' ', text)), root)
+                text = localize_paths(redact(strip_private(text)), root)
                 if kind == 'assistant':
                     worked |= isinstance(content, list) and any(isinstance(item, dict) and item.get('type') == 'tool_use' for item in content)
                     if text.strip():
@@ -3005,7 +3039,7 @@ def recap(root, since='7d'):
             if unreadable not in team: team.append(unreadable)
     def clean(value):
         if isinstance(value, str):
-            return ' '.join(localize_paths(redact(PRIVATE_RE.sub(' ', value)), root).split())
+            return ' '.join(localize_paths(redact(strip_private(value)), root).split())
         if isinstance(value, list): return [clean(item) for item in value]
         if isinstance(value, dict): return {key: clean(item) for key, item in value.items()}
         return value

@@ -428,6 +428,11 @@ def main(argv=None):
         return 0
     a = p.parse_args(argv)
     try:
+        for value in vars(a).values():  # a lone surrogate or invalid byte would crash every write path
+            for text in (value if isinstance(value, list) else [value]):
+                if isinstance(text, str):
+                    try: text.encode('utf-8')
+                    except UnicodeEncodeError: raise core.WsError('Text must be valid UTF-8.')
         if a.cmd == 'demo':
             from . import demo
             if a.workspace_root: raise core.WsError('ws demo uses its own disposable workspace; omit --workspace-root.')

@@ -17,7 +17,7 @@ def _text(path):
 
 
 def portable(root, text):
-    text = core.PRIVATE_RE.sub('', text)
+    text = core.strip_private(text, '')
     if re.search(r'</?private\b', text, re.I): raise core.WsError('Close private markers before sharing.')
     text = '\n'.join(line for line in text.splitlines() if not re.search(r'#private\b', line, re.I) and not line.lstrip().lower().startswith('/private'))
     text = core.localize_paths(core.redact(text), root)
@@ -37,7 +37,7 @@ def entry_parts(content):
 
 def derived(root, text):
     """Summary/index text of a private note, which is stored as written: an unclosed <private> hides the rest instead of failing."""
-    text = re.sub(r'<private\b.*', '', core.PRIVATE_RE.sub('', text), flags=re.I | re.S)
+    text = re.sub(r'<private\b.*', '', core.strip_private(text, ''), flags=re.I | re.S)
     return portable(root, re.sub(r'</private>', '', text, flags=re.I))
 
 
