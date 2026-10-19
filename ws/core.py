@@ -772,6 +772,22 @@ def skills_to_link(client, root):
     return sum(1 for s in (KIT / 'skills').iterdir() if (s / 'SKILL.md').is_file() and s.name not in have)
 
 
+COPY_MARK = '.ws-copy-hash'
+
+
+def _tree_hash(path):
+    """Content hash of a skill folder, ignoring the marker ws leaves in its copies."""
+    digest = hashlib.sha256()
+    for item in sorted(p for p in Path(path).rglob('*') if p.is_file() and p.name != COPY_MARK):
+        digest.update(item.relative_to(path).as_posix().encode() + b'\0' + item.read_bytes() + b'\0')
+    return digest.hexdigest()
+
+
+def _copy_dir(link, target):
+    shutil.copytree(target, link)  # a copy does not follow kit upgrades; a rerun refreshes it while it is unedited
+    (link / COPY_MARK).write_text(_tree_hash(link), encoding='utf-8')
+
+
 def _link_dir(link, target):
     """Symlink a skill folder; when the OS refuses (Windows without Developer Mode) use a junction, then a copy. Returns how."""
     try:
@@ -782,8 +798,20 @@ def _link_dir(link, target):
         if WINDOWS:
             done = subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(target)], capture_output=True)
             if done.returncode == 0 and link.is_dir(): return 'junction'
-        shutil.copytree(target, link)  # a copy does not follow kit upgrades; rerun ws connect --skills after one
+        _copy_dir(link, target)
         return 'copy'
+
+
+def _refresh_copy(link, target):
+    """Refresh a copy ws made earlier when it is unedited and the kit moved on: 'refreshed', 'edited' (kept), or '' (current, or not a ws copy)."""
+    mark = link / COPY_MARK
+    if link.is_symlink() or not mark.is_file(): return ''
+    if _tree_hash(link) != mark.read_text(encoding='utf-8').strip(): return 'edited'
+    if _tree_hash(target) == mark.read_text(encoding='utf-8').strip(): return ''
+    fresh = link.with_name(link.name + '.ws-new')
+    shutil.rmtree(fresh, ignore_errors=True); _copy_dir(fresh, target)
+    shutil.rmtree(link); fresh.rename(link)
+    return 'refreshed'
 
 
 def link_skills(client, root):
@@ -792,7 +820,7 @@ def link_skills(client, root):
     project = Path(root) / location
     workspace_names = {p.name for p in project.iterdir()
                        if p.is_dir() and (p / 'SKILL.md').is_file()} if project.is_dir() else set()
-    linked, kept, skipped, copied = [], [], [], []
+    linked, kept, skipped, copied, refreshed, edited = [], [], [], [], [], []
     try:
         directory.mkdir(parents=True, exist_ok=True)
         for source in sorted((KIT / 'skills').iterdir()):
@@ -806,10 +834,14 @@ def link_skills(client, root):
             try:
                 (copied if _link_dir(directory / source.name, source.resolve()) == 'copy' else linked).append(source.name)
             except FileExistsError:
-                kept.append(source.name)
+                state = _refresh_copy(directory / source.name, source.resolve())
+                if state == 'refreshed': refreshed.append(source.name)
+                else:
+                    kept.append(source.name)
+                    if state == 'edited': edited.append(source.name)
     except OSError as exc:
         raise WsError(f'Could not link skills into {directory}: {exc}. Existing names were kept.')
-    return {'directory': str(directory), 'linked': linked, 'copied': copied, 'kept': kept, 'skipped': skipped}
+    return {'directory': str(directory), 'linked': linked, 'copied': copied, 'refreshed': refreshed, 'edited': edited, 'kept': kept, 'skipped': skipped}
 
 
 def connect(root, client, write=False, skills=False, verify=False):

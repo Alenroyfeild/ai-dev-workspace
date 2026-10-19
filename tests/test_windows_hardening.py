@@ -48,6 +48,19 @@ class WindowsGuardTests(unittest.TestCase):
         encoded = base64.b64encode('Remove-Item -Recurse -Force $HOME'.encode('utf-16-le')).decode()
         self.assertTrue(self.deny(f'powershell -NoProfile -EncodedCommand {encoded}'))
 
+    def test_encoded_command_abbreviations_and_quoted_executables_are_unwrapped(self):
+        encoded = base64.b64encode('Remove-Item -Recurse -Force C:/'.encode('utf-16-le')).decode()
+        for flag in ('-e', '-ec', '-en', '-enc', '-enco', '-EncodedC', '-EncodedCommand'):
+            with self.subTest(flag): self.assertTrue(self.deny(f'pwsh -NoProfile {flag} {encoded}'))
+        self.assertTrue(self.deny(f'pwsh -enc {encoded} -NoProfile'))
+        self.assertEqual(self.deny(f'pwsh -enc {base64.b64encode("Get-Date".encode("utf-16-le")).decode()}'), '')
+        destroy = 'Remove-Item -Recurse -Force C:/'
+        for command in ('"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "%s"' % destroy, "& 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe' -Command \"%s\"" % destroy,
+                        '"pwsh" -c "%s"' % destroy, 'pwsh -ExecutionPolicy Bypass -comm "%s"' % destroy, 'pwsh -NoProfile -CommandWithArgs "%s"' % destroy,
+                        '"C:\\Windows\\System32\\cmd.exe" /c rd /s /q C:\\', "'C:\\Windows\\System32\\cmd.exe' /c rd /s /q C:\\"):
+            with self.subTest(command): self.assertTrue(self.deny(command))
+        self.assertEqual(self.deny('"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "Get-Date"'), '')
+
     def test_cmd_wrappers_are_unwrapped(self):
         for command in ('cmd /c rd /s /q %USERPROFILE%', 'cmd /c "rd /s /q %USERPROFILE%"', 'cmd.exe /c rmdir /s /q C:\\', 'cmd /d /s /c "rmdir /s /q C:\\Users\\me"',
                         'cmd /c rmdir /S /Q %USERPROFILE%\\*', 'cmd /c "del /s /q %USERPROFILE%"', 'cmd /c rd /s /q %SystemDrive%\\', 'cmd /c echo hi && rd /s /q C:\\'):
@@ -176,6 +189,29 @@ class SkillLinkFallbackTests(Base):
             result = core.link_skills('claude', self.root)
         self.assertIn('thinkbeforeact', result['copied'])
 
+    def copy_twice(self, edit=None):
+        kit = Path(self.tmp.name) / 'kit'; skill = kit / 'skills/synth'; skill.mkdir(parents=True); (skill / 'SKILL.md').write_text('first')
+        copy = self.home / '.claude/skills/synth'
+        with mock.patch.object(core, 'KIT', kit):
+            first = core.link_skills('claude', self.root)
+            if edit: (copy / 'SKILL.md').write_text(edit)
+            (skill / 'SKILL.md').write_text('second')
+            return first, core.link_skills('claude', self.root), copy
+
+    def test_rerun_refreshes_an_unedited_copy_after_a_kit_upgrade(self):
+        first, second, copy = self.copy_twice()
+        self.assertEqual(first['copied'], ['synth'])
+        self.assertEqual((second['refreshed'], second['edited'], second['kept']), (['synth'], [], []))
+        self.assertEqual((copy / 'SKILL.md').read_text(), 'second')
+        with mock.patch.object(core, 'KIT', Path(self.tmp.name) / 'kit'):  # nothing changed since: nothing to refresh
+            third = core.link_skills('claude', self.root)
+        self.assertEqual((third['refreshed'], third['kept']), ([], ['synth']))
+
+    def test_rerun_keeps_an_edited_copy_and_says_so(self):
+        _, second, copy = self.copy_twice(edit='mine')
+        self.assertEqual((second['refreshed'], second['edited'], second['kept']), ([], ['synth'], ['synth']))
+        self.assertEqual((copy / 'SKILL.md').read_text(), 'mine')
+
     def test_cli_reports_copies_and_exits_zero(self):
         err = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
@@ -275,6 +311,19 @@ class CrlfCheckoutTests(Base):
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
         shutil.copytree(repo, directory / 'checkout')  # the worker's checkout dir
         return workers._later_edits(directory, {'tree': tree})
+
+    def test_an_unrelated_local_filter_does_not_turn_off_crlf_handling(self):
+        repo, tree = self.checkout('*.txt text eol=crlf\n')
+        config = repo / '.git/config'; config.write_text(config.read_text() + '\n[filter "unused"]\n\tclean = never-run-this\n')
+        self.assertFalse(self.later(repo, tree))
+
+    def test_a_file_that_names_a_configured_filter_never_runs_it(self):
+        repo, tree = self.checkout('*.txt text eol=crlf\n')
+        ran = Path(self.tmp.name) / 'filter-ran'
+        (repo / '.git/info').mkdir(exist_ok=True); (repo / '.git/info/attributes').write_text('a.txt filter=probe\n')
+        config = repo / '.git/config'; config.write_text(config.read_text() + '\n[filter "probe"]\n\tclean = touch ' + ran.as_posix() + '\n')
+        self.later(repo, tree)
+        self.assertFalse(ran.exists())
 
     def test_a_real_edit_is_still_reported_with_crlf_conversion_on(self):
         repo, tree = self.checkout('*.txt text eol=crlf\n')

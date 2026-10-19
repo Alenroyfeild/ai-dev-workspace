@@ -69,8 +69,11 @@ def _is_root(path):
     return _canon(path) == '/' or bool(re.fullmatch(r'[a-z]:', _canon(path)))
 
 
-_PS_WRAP = re.compile(r'(?is)(?<![\w.-])(?:[^\s;&|"\']*[\\/])?(?:powershell|pwsh)(?:\.exe)?\s(?:.*?\s)?-(c|command|commandwithargs|ec|encodedcommand)\b\s*(.*)')
-_CMD_WRAP = re.compile(r'(?is)(?<![\w.-])(?:[^\s;&|"\']*[\\/])?cmd(?:\.exe)?\s+(?:.*?\s)?/[ck]\s+(.*)')
+# PowerShell takes any unique prefix of a parameter name (-e, -enc, -comm; -ec is an alias), so match every prefix; a quoted path to the executable counts too.
+_PREFIXES = lambda name, low: '|'.join(sorted((name[:n] for n in range(low, len(name) + 1)), key=len, reverse=True))
+_EXE = r'(?<![\w.-])(?:"[^"]*[\\/]|\'[^\']*[\\/]|["\']|[^\s;&|"\']*[\\/])?'
+_PS_WRAP = re.compile(r'(?is)' + _EXE + r'(?:powershell|pwsh)(?:\.exe)?["\']?\s(?:.*?\s)?-(' + _PREFIXES('encodedcommand', 1) + r'|ec|' + _PREFIXES('commandwithargs', 1) + r')\b\s*(.*)')
+_CMD_WRAP = re.compile(r'(?is)' + _EXE + r'cmd(?:\.exe)?["\']?\s+(?:.*?\s)?/[ck]\s+(.*)')
 
 
 def _unquote(text):
@@ -82,8 +85,8 @@ def _wrapped(command):
     """Inner command strings of powershell/pwsh -Command and cmd /c invocations, so the same rules see them under the Bash tool."""
     for match in _PS_WRAP.finditer(command):
         inner = _unquote(match[2])
-        if match[1].lower() in ('ec', 'encodedcommand'):
-            try: inner = base64.b64decode(inner.strip('"\' '), validate=True).decode('utf-16-le')
+        if match[1].lower() == 'ec' or 'encodedcommand'.startswith(match[1].lower()):
+            try: inner = base64.b64decode((inner.split() or [''])[0].strip('"\''), validate=True).decode('utf-16-le')
             except ValueError: continue  # includes UnicodeDecodeError and binascii.Error
         yield inner
     for match in _CMD_WRAP.finditer(command):
