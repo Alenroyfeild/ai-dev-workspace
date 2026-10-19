@@ -33,7 +33,7 @@ Semantic versioning in `kit.json`:
 ## Cutting a release
 
 1. Move the `CHANGELOG.md` entries under a new `## <version> (<YYYY-MM-DD>)` heading. Write it for users: first line is a one-sentence summary (the update notice shows it), then Improved, Fixed, Measured and Known limits, each line saying what changes for the user. Use absolute links; relative ones break on the release page.
-2. Set the same version in `kit.json`.
+2. Set the same version in `kit.json`. Save this release's record corpus under `tests/fixtures/records/<version>/` (see `docs/UPGRADE-CHECK.md`).
 3. Commit, then `git tag v<version> && git push --tags`. Do not create the GitHub Release by hand.
 4. `.github/workflows/release.yml` checks the tag matches `kit.json`, runs the tests and publishes the GitHub Release as Latest with that CHANGELOG section plus upgrade steps. Users see the summary on their next `ws doctor` / `ws update --check` (checked at most once a day).
 
