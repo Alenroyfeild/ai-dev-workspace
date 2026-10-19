@@ -17,7 +17,8 @@ class TaskMetadataPrivateTests(unittest.TestCase):
 
     def test_private_markers_in_branch_or_repo_are_refused(self):
         for field, value in (('branch', 'feature/<private>x</private>'), ('repo', '/tmp/<private>x</private>'),
-                             ('branch', 'fix/<private>unclosed'), ('repo', '/tmp/x#private')):
+                             ('branch', 'fix/<private>unclosed'), ('repo', '/tmp/x#private'),
+                             ('branch', 'a/<private><private>x</private>y'), ('repo', '/tmp/x</private>')):
             with self.subTest(field=field, value=value):
                 with self.assertRaisesRegex(core.WsError, 'cannot contain private markers'):
                     core.task_new(self.root, 'P-1', 'Synthetic', **{field: value})

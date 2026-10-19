@@ -1139,7 +1139,7 @@ def _claim_defaults(root, task_id, worker, token):
 
 def _refuse_private_identifiers(*values):
     # Branch/repo are identifiers: stripping would corrupt them, so refuse private markers.
-    if any(isinstance(v, str) and (PRIVATE_RE.search(v) or re.search(r'#private\b', v, re.I)) for v in values):
+    if any(isinstance(v, str) and (PRIVATE_TAG_RE.search(v) or re.search(r'#private\b', v, re.I)) for v in values):
         raise WsError('Branch and repo values cannot contain private markers (<private>, #private); use the real branch name or path.')
 
 
