@@ -13,6 +13,7 @@
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
 
 ### New
+- The brief now ends with `+N more team notes: ws know list --layer team` when the team has more notes than the cards it shows (`+N or more` once the 100-note catalog cap stops the count); it is the first line dropped when the brief is full.
 - Team previews at a terminal are a short summary (`+ category text`, destination, `[y/N]`) instead of raw JSON; `ws sync` prints a one-line pulled/published count; `ws know add` keeps a private note's `#private` text and paths as written (sharing it later still strips them) and says clearly when a `--team` note is entirely private; the team docs show the real quick-start order, the `#private`/`<private>` markers and a "rotate pushed secrets" warning.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
