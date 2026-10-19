@@ -1345,7 +1345,7 @@ def task_read(root, task_id, sections=None):
     path = task_path(root, task_id)
     if not path.is_file():
         raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
-    text = path.read_text(encoding='utf-8')
+    text = path.read_text(encoding='utf-8', errors='replace')  # read-only view: a stray non-UTF-8 byte must not break every brief
     bad = {'conflicted': True} if conflicted(text) else {}
     if not sections:
         return {'task': task_id, 'sha': digest_text(text), 'text': text, **bad}
@@ -1716,7 +1716,7 @@ def lesson_add(root, text, tags=(), paths=(), area=''):
 def lesson_search(root, query):
     path = vault(root) / 'Learnings.md'
     words = list(dict.fromkeys(w.lower() for w in re.findall(r'\w{3,}', query)))[:MAX_QUERY_WORDS]
-    lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- ')] if path.exists() else []
+    lines = [l for l in path.read_text(encoding='utf-8', errors='replace').splitlines() if l.startswith('- ')] if path.exists() else []
     return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
 
 
