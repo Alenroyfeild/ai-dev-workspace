@@ -69,6 +69,11 @@ class DoctorBrokenLinkTests(Base):
         from ws import team_auto
         self.assertIsNone(team_auto.maybe_pull(self.root))
 
+    def test_session_start_with_deeply_nested_workspace_json_fails_open(self):
+        (self.root / 'workspace.json').write_text('{"team_workspace":' + '[' * 5000 + '0' + ']' * 5000 + '}')
+        from ws import team_auto
+        self.assertIsNone(team_auto.maybe_pull(self.root))
+
 
 class GuardSpellingTests(unittest.TestCase):
     def deny(self, command, tool='Bash'):

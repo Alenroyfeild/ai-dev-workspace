@@ -27,7 +27,7 @@ def pull(root, automatic=False):
 
 def maybe_pull(root):
     try: cfg=core.config(root)
-    except (OSError,ValueError): return None  # unreadable workspace.json is not a team problem; doctor reports it
+    except (OSError,ValueError,RecursionError): return None  # unreadable or too deeply nested workspace.json is not a team problem; doctor reports it
     if not isinstance(cfg,dict): return None
     try:
         if cfg.get('team_workspace',{}).get('auto_pull') is not True: return None

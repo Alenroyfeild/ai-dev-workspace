@@ -67,11 +67,11 @@ class StdioLoopTests(Base):
         return [json.loads(line) for line in proc.stdout.decode().splitlines()]
 
     def test_bad_lines_get_parse_errors_and_the_loop_keeps_serving(self):
-        for line in (b'[' * 200000 + b']' * 200000, b'{"a":' * 100000 + b'1' + b'}' * 100000,
-                     b'{"jsonrpc":"2.0","id":1,"method":"ping","x":"\xff\xfe"}'):
+        for line, allowed in ((b'[' * 200000 + b']' * 200000, (-32700, -32600)), (b'{"a":' * 100000 + b'1' + b'}' * 100000, (-32700, -32600)),
+                              (b'{"jsonrpc":"2.0","id":1,"method":"ping","x":"\xff\xfe"}', (-32700,))):
             replies = self.wire(line)
-            # Python 3.14 parses the deep object (no recursion limit), so the server answers Invalid Request instead of Parse error
-            self.assertIn(replies[1]['error']['code'], (-32700, -32600))
+            # Python 3.14 parses the deep JSON (no recursion limit), so only those lines may answer Invalid Request; invalid UTF-8 must stay a parse error
+            self.assertIn(replies[1]['error']['code'], allowed)
             self.assertEqual(replies[-1]['id'], 9)
             self.assertEqual(replies[-1]['result'], {})
 

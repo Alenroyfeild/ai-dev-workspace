@@ -18,6 +18,7 @@
 - A moved or copied repo folder no longer bricks `ws`: `ws start` (with its usual preview) relinks the repo to its workspace, and `ws start --undo` works from the new location using this repo's own Git exclude file. A symlinked Git exclude file is refused (it can never redirect undo to another repo), and a relink interrupted midway is finished by rerunning `ws start`.
 - A branch name containing a line separator or control character is refused by `ws start` before anything is written, so a failed start never leaves a half-wired repo that a rerun reports as set up.
 - `ws doctor` now reports a broken repo link (`.ws-start.json`) or unreadable `workspace.json` as "Needs attention" with the fix, instead of printing a healthy report; the SessionStart hook no longer blames a team pull for an unreadable `workspace.json`.
+- `ws doctor` now reports a broken repo link (`.ws-start.json`) or unreadable `workspace.json` as "Needs attention" with the fix, instead of printing a healthy report; the SessionStart hook no longer blames a team pull for an unreadable or deeply nested `workspace.json`.
 - The guards pack now catches `rm -rf` on home or root spelled `${HOME}/*`, `~//`, `~/.`, `$HOME/.`, `//` or `/.` (and the same PowerShell forms); real subfolders such as `~/project/build` are still allowed.
 - `bin/ws-plugin` fails open (one stderr note, `{}`, exit 0) on deeply nested JSON like the other hooks; `ws digest` and `ws paste` no longer crash on it.
 - `ws help <command>` shows that command's options.
