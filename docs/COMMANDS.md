@@ -127,7 +127,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 
 ### Link a shared folder
 
-- `ws team link /path/to/shared-folder --folder --attest-private` previews an existing folder, then copies a validated snapshot into `.ws/team`. It never writes to the source folder. Symlinks inside it are refused, and sync metadata (`Icon\r`, `.DS_Store`, `.dropbox`, `.dropbox.attr`) is skipped. iCloud placeholders stop with a Finder "Keep Downloaded" hint.
+- `ws team link /path/to/shared-folder --folder --attest-private` previews an existing folder, then copies a validated snapshot into `.ws/team`. It never writes to the source folder. Symlinks inside it are refused, and sync and OS metadata (`Icon\r`, `.DS_Store`, `.dropbox`, `.dropbox.attr`, `desktop.ini`, `Thumbs.db`, `._*`, `.localized`, `.Spotlight-V100`, `.fseventsd`, `.Trashes`, `.TemporaryItems`, `~$*`) is skipped and never published. iCloud placeholders stop with a Finder "Keep Downloaded" hint.
 - The folder must contain `team.json` plus complete entry/card pairs. Unexpected or conflict-copy files and partial cards stop the pull and keep the previous snapshot.
 - `ws sync --pull-only` refreshes only an unedited mirror; pending local changes stop it and are kept. Reads use the last local snapshot offline.
 - Folder hosts ignore a shared `INDEX.md` and never write it. Link and pull build a private index at `.ws/team-index.md` from validated entry/card pairs; an older imported `.ws/team/INDEX.md` and text outside the managed markers are kept. Git-hosted teams keep their shared index.

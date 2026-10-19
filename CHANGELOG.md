@@ -6,6 +6,12 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- Shared notes and summaries no longer turn closing tags such as `</form>` or `</div>` into `<[local path]>`; real local paths are still replaced.
+- One hand-edited private Knowledge note (wrong category, for example) no longer blocks every `ws know add` and team share: it is skipped with a warning that names the file. Categories are accepted in any letter case, and a UTF-8 byte-order mark at the start of a note is tolerated.
+- `ws search --category` now looks at every note, not the first 100 by random ID; `ws know list` caps at the newest 100 per layer and says "newest N of M" when it does.
+- A lesson is no longer ranked as relevant to a task just because both contain words like "the" or "for"; `ws lesson search` ignores the hidden paths/area metadata and rejects a query without a 3+ letter word.
+- Team folder pulls ignore `desktop.ini`, `Thumbs.db`, `._*`, `.localized`, `.Spotlight-V100`, `.fseventsd`, `.Trashes`, `.TemporaryItems` and `~$*` files instead of stopping, and never publish them.
+- `ws assist decide <id> snoozed --until` accepts only `YYYY-MM-DD` and refuses a date that is not in the future (Python 3.11+ used to accept `20261001` and snooze to the end of the year).
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws upgrade --dry-run` now prints one line per file (new or changed, and why a new hook file is added) instead of hundreds of diff lines; `--diff` shows the full diff.
 - `ws upgrade` now shows the summary and asks `Apply this upgrade? [y/N]` before writing, like `ws start`; `--yes` skips the question; no answer (closed input) refuses, so scripts must pass `--yes`. If files change while the question is open, it refuses ("Workspace changed during confirmation; run ws upgrade again") instead of applying a different plan.

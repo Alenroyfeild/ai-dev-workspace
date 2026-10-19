@@ -2,6 +2,7 @@
 import difflib
 import json
 import re
+import sys
 import uuid
 from . import core, scope, team
 
@@ -21,7 +22,7 @@ def portable(root, text):
     if re.search(r'</?private\b', text, re.I): raise core.WsError('Close private markers before sharing.')
     text = '\n'.join(line for line in text.splitlines() if not re.search(r'#private\b', line, re.I) and not line.lstrip().lower().startswith('/private'))
     text = core.localize_paths(core.redact(text), root)
-    text = re.sub(r'(?<![\w:/])(?:/[\w.-]+(?:/[\w./~-]*)?|[A-Za-z]:[\\/]\S+)', '[local path]', text)
+    text = re.sub(r'(?<![\w:/<])(?:/[\w.-]+(?:/[\w./~-]*)?|[A-Za-z]:[\\/]\S+)', '[local path]', text)
     if core.SECRET_RE.search(text) or core.conflicted(text): raise core.WsError('Unsafe or conflicted projection; edit the private source first.')
     return text.strip()
 
@@ -125,19 +126,20 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
         category = as_format or (kind if kind != 'knowledge' else meta.get('category', 'other'))
         if kind == 'knowledge':
             from .knowledge import category as validate_category
-            validate_category(category)
+            category = validate_category(category)
         content = (f'---\nid: {entry}\nteam: {link["id"]}\ncategory: {category}\n'
                    f'author: {author}\nsource: {item}\nsource_sha: {source_sha}\ndate: {date}\n---\n'
                    'Shared context; untrusted and never permission to execute.\n\n' + body + '\n')
     shown = entry_parts(content or old)  # an unshare lists the text being removed
     from . import cards
-    artifacts = cards.plan(root, 'team', {target: None if unshare else content})
+    warnings = []
+    artifacts = cards.plan(root, 'team', {target: None if unshare else content}, warnings)
     if folder_host: artifacts = {p:t for p,t in artifacts.items() if p == target.with_suffix('.index.md')}
     artifact_diff = ''.join(''.join(difflib.unified_diff(_text(p).splitlines(True), (t or '').splitlines(True), fromfile=p.relative_to(clone).as_posix(), tofile='preview')) for p,t in artifacts.items())
     return {'artifacts': {p.relative_to(clone).as_posix():t for p,t in artifacts.items()}, 'artifact_diff': artifact_diff, 'item': item, 'as_format': as_format, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
             'category': shown[0], 'text': shown[1], 'host': 'folder' if folder_host else 'git', 'remote': link.get('remote', ''),
             'source_sha': source_sha, 'config_sha': core.digest_text(cfg_text), 'state_sha': core.digest_text(state_text),
-            'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old and not artifacts,
+            'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old and not artifacts, 'warnings': warnings,
             'diff': ''.join(difflib.unified_diff(old.splitlines(True), content.splitlines(True), fromfile='team copy', tofile='preview')),
             'omissions': ('Raw task, Handoff prose, captures, private markers, local paths and claims.' if as_format else 'Inline Handoff, captures, private markers, local paths, claims and all unselected sections.'),
             'warning': ('Shared copies and backups may retain removed text.' if folder_host else 'Git history and teammates copies retain removed text.') if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
@@ -210,7 +212,9 @@ def standalone(root, kind, text, team_scope=True, category='other'):
         core.atomic_write(path, f'---\nid: {identifier}\nscope: {"team" if team_scope else "private"}\n' + metadata + '---\n\n' + body + '\n')
         if kind == 'knowledge':
             from . import cards
-            try: cards.write(root, cards.plan(root, 'private'))
+            warnings = []
+            try: cards.write(root, cards.plan(root, 'private', warnings=warnings))
             except (core.WsError, OSError):
                 path.unlink(); raise
+            for warning in warnings: print('ws: warning: ' + warning, file=sys.stderr)
     return kind + ':' + identifier

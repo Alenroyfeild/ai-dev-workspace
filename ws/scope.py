@@ -19,6 +19,7 @@ def _read(root, identifier):
     if path.resolve() != path.absolute(): raise core.WsError('Scope records and their directories must not be symlinks.')
     try: text = core.read_text(path, [root], errors='strict', preserve_newlines=True)
     except UnicodeError: raise core.WsError('Scope records must be UTF-8.')
+    text = text.removeprefix('\ufeff')  # an editor's BOM must not hide valid frontmatter
     match = re.match(r'\A---\r?\n.*?\r?\n---(?=\r?\n|\Z)', text, re.S)
     if not match or core.conflicted(text): raise core.WsError('Record needs valid, unconflicted frontmatter.')
     header = match.group().replace('\r\n', '\n')

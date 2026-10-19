@@ -1629,11 +1629,21 @@ def lesson_add(root, text, tags=(), paths=(), area=''):
     return {'added': True}
 
 
+LESSON_META_RE = re.compile(r'\s*<!-- ws:lesson (.*?) -->$')
+STOPWORDS = frozenset('the and for with from this that these those are was were been being have has had not but all any can could should would will may might must into onto over out our you your when then than them they their its via per also only just more most some such use used using'.split())
+
+
+def _words(text):
+    return {w for w in re.findall(r'\w{3,}', text.lower()) if w not in STOPWORDS}
+
+
 def lesson_search(root, query):
     path = vault(root) / 'Learnings.md'
     words = list(dict.fromkeys(w.lower() for w in re.findall(r'\w{3,}', query)))[:MAX_QUERY_WORDS]
+    if query.strip() and not words: raise WsError('Search needs at least one word of 3+ letters.')
     lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- ')] if path.exists() else []
-    return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
+    # Match the lesson text, not the hidden paths/area metadata comment.
+    return [l for l in lines if any(w in LESSON_META_RE.sub('', l).lower() for w in words)] if words else lines
 
 
 _BRIEF_GIT = threading.local()  # memo of read-only git output for one hook/brief; absent otherwise
@@ -1713,7 +1723,7 @@ def session_task(root, cwd=None):
 
 
 def relevant_lessons(root, task):
-    title = set(re.findall(r'\w{3,}', task['title'].lower()))
+    title = _words(task['title'])
     saved = lesson_search(root, '')
     if not saved: return []
     git_files = {}  # git file lists, read only once a path-scoped lesson needs them
@@ -1737,7 +1747,7 @@ def relevant_lessons(root, task):
         return git_files['tracked']
     ranked = []
     for line in saved:
-        match = re.search(r'\s*<!-- ws:lesson (.*?) -->$', line)
+        match = LESSON_META_RE.search(line)
         metadata = {}
         if match:
             try: metadata = json.loads(match[1])
@@ -1747,7 +1757,7 @@ def relevant_lessons(root, task):
         paths = metadata.get('paths', [])
         if not isinstance(paths, list): paths = []
         overlap = sum(any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for p in paths) for f in changed_files()) if paths else 0
-        score = len(title & set(re.findall(r'\w{3,}', (line + ' ' + str(metadata.get('area', ''))).lower())))
+        score = len(title & _words(line + ' ' + str(metadata.get('area', ''))))
         gone = paths and tracked_files() != [''] and not any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for f in tracked_files() for p in paths)
         if overlap or score: ranked.append((overlap, score, ('(paths gone) ' if gone else '') + line))
     ranked.sort(key=lambda item: (-item[0], -item[1]))
