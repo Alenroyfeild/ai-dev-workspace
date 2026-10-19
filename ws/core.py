@@ -1732,7 +1732,7 @@ def _imported_items(text, limit):
 
 def _bounded_brief(fields, truncated=False):
     bounded, remaining = [], 194  # four words reserved for the record pointer
-    fields = sorted(fields, key=lambda f: f[0].endswith('more team notes:'))  # stable: that hint goes last, so it drops first
+    fields = sorted(fields, key=lambda f: f[0].endswith('team notes:'))  # stable: that hint goes last, so it drops first
     for prefix, value, limit in fields:
         if not value: continue
         value = redact(value)
