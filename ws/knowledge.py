@@ -72,7 +72,8 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
     return row, body
 
 
-CAP_WARNING = 'Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'
+CAP_PREFIX = 'Catalog examines the newest'
+CAP_WARNING = CAP_PREFIX + ' 100 entries per layer; use ws know show for omitted IDs.'
 
 
 def list_entries(root, value='', layer='all', _index=False, _all=False, limit=100):
@@ -176,4 +177,4 @@ def brief_fields(root, query, private):
     fields += [(prefix, text, 20) for _,prefix,text,_ in shown]
     def is_known(r): return r['source'].startswith('knowledge:') or (r['category'] == 'runbook' and r['source'].startswith('task:'))
     # Decisions and lessons in the list are not knowledge entries, so only shown knowledge/runbook rows count as displayed.
-    return fields + _more_note(sum(map(is_known, listing['entries'])) - sum(is_known(r[3]) for r in shown), CAP_WARNING in listing['warnings'])
+    return fields + _more_note(sum(map(is_known, listing['entries'])) - sum(is_known(r[3]) for r in shown), any(w.startswith(CAP_PREFIX) for w in listing['warnings']))
