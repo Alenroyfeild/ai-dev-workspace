@@ -273,10 +273,12 @@ class OrchestrationTests(Base):
             (self.root / '.ws/delegate-selftests.json').write_text(junk)
             with self.subTest(junk=junk), self.fake('from pathlib import Path; print(Path("token.txt").read_text())'):
                 binary = Path(os.environ['PATH']) / 'git'
-                if not binary.exists(): binary.symlink_to(git)
+                if os.name == 'nt': self.executable(binary.parent, 'git', 'import subprocess,sys; sys.exit(subprocess.call([' + repr(git) + ', *sys.argv[1:]]))')
+                elif not binary.exists(): binary.symlink_to(git)
                 result = orchestration.selftest(self.root, 'codex')
                 self.assertEqual(result['result'], 'SELFTEST OK')
                 self.assertEqual(json.loads((self.root / '.ws/delegate-selftests.json').read_text())['codex']['result'], 'SELFTEST OK')
+        if os.name == 'nt': return  # the .ws symlink below needs a privilege Windows may not grant
         shutil.rmtree(self.root / '.ws'); outside = self.root / 'elsewhere'; outside.mkdir()
         (self.root / '.ws').symlink_to(outside, target_is_directory=True)
         with self.fake('open(%r, "w").write("x")' % str(marker)):
