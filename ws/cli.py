@@ -311,7 +311,7 @@ def main(argv=None):
     s.add_argument('--automatic', action='store_true', help=argparse.SUPPRESS)
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink', 'status')); s.add_argument('remote', nargs='?', default='')
-    s.add_argument('--folder', action='store_true', help='link an attested existing synced folder (read-only)')
+    s.add_argument('--folder', nargs='?', const=True, default=False, metavar='PATH', help='link an attested existing synced folder (read-only); PATH may also come first')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s.add_argument('--attest-private', action='store_true', help='I confirm this exact remote is private to my team')
     s.add_argument('--verify-with', choices=('gh', 'glab'), default='')
@@ -427,6 +427,9 @@ def main(argv=None):
         p.print_help()
         return 0
     a = p.parse_args(argv)
+    if a.cmd == 'team' and isinstance(a.folder, str):  # `--folder PATH` supplies the remote
+        if a.remote and a.remote != a.folder: p.error('give the folder path once: ws team link --folder PATH')
+        a.remote, a.folder = a.folder, True
     try:
         for value in vars(a).values():  # a lone surrogate or invalid byte would crash every write path
             for text in (value if isinstance(value, list) else [value]):
@@ -555,7 +558,7 @@ def main(argv=None):
             plan = team_sync.preview(root); show(plan, team_ui.sync); published = None
             if not (a.dry_run or not plan['files']) and (a.yes or ask('Publish this exact team sync preview? [y/N] ')):
                 out(team_sync.apply(root, plan)); published = list(plan['files'])
-            print(team_ui.sync_line(before, team_ui.entries(root), published), file=sys.stderr)  # stderr: stdout stays JSON for scripts
+            print(team_ui.sync_line(before, team_ui.entries(root), published, len(plan['files'])), file=sys.stderr)  # stderr: stdout stays JSON for scripts
             return 0
         if a.cmd == 'team':
             if a.action == 'status':

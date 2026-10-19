@@ -12,8 +12,8 @@ def _normal(text):
 
 def _view(root):
     data=team_folder.source(root);local=team_folder.snapshot(root,root/'.ws/team',local=True)['files']
-    base_text=sharing._text(sharing._safe(root,root/'.ws/folder-base.json'));base=json.loads(base_text)
-    receipts=sharing._text(sharing._safe(root,root/'.ws/shares.json'));state=json.loads(receipts or '{}')
+    base_text=sharing._text(sharing._safe(root,root/'.ws/folder-base.json'));base=core.load_json(base_text,'.ws/folder-base.json')
+    receipts=sharing._text(sharing._safe(root,root/'.ws/shares.json'));state=core.load_json(receipts or '{}','.ws/shares.json')
     if not isinstance(state,dict):raise core.WsError('Invalid folder approvals; retain local files.')
     approved=state.get('_artifacts:'+data['team'],{});owners=state.get('_owners:'+data['team'],{})
     if not all(isinstance(x,dict) for x in (base,approved,owners)):raise core.WsError('Invalid folder baseline/approvals; retain local files.')

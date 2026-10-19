@@ -11,7 +11,7 @@ from . import core
 
 def state(root):
     path = root / '.ws/assist.json'
-    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    return core.load_json(path.read_text(encoding='utf-8'), '.ws/assist.json', 'delete it (only snooze and offer history is lost)') if path.exists() else {}
 
 
 def save(root, data):
@@ -26,7 +26,7 @@ def cost_data():
     try:
         cached = json.loads(cache.read_text(encoding='utf-8'))
         if cached.get('day') == core.now()[:10]:
-            return cached['report'], cached['usage']
+            return _dict(cached['report']), _dict(cached['usage'])
     except (OSError, ValueError, KeyError, AttributeError):
         pass
     report, usage = _scan()
@@ -34,6 +34,14 @@ def cost_data():
         cache.parent.mkdir(parents=True, exist_ok=True)
         core.atomic_write(cache, json.dumps({'day': core.now()[:10], 'report': report, 'usage': usage}))
     return report, usage
+
+
+def _dict(value):
+    return value if isinstance(value, dict) else {}  # Codeburn output of any other shape is ignored
+
+
+def _rows(value):
+    return [row for row in value if isinstance(row, dict)] if isinstance(value, list) else []
 
 
 def _scan():
@@ -44,8 +52,8 @@ def _scan():
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'usage.json'
             export = subprocess.run([executable, 'export', '-f', 'json', '-o', str(path), '--from', since], capture_output=True, encoding='utf-8', errors='replace', timeout=15)
-            return json.loads(report.stdout), json.loads(path.read_text(encoding='utf-8')) if export.returncode == 0 else {}
-    except (OSError, ValueError, subprocess.TimeoutExpired):
+            return _dict(json.loads(report.stdout)), _dict(json.loads(path.read_text(encoding='utf-8')) if export.returncode == 0 else {})
+    except (OSError, ValueError, RecursionError, subprocess.TimeoutExpired):
         return {}, {}
 
 
@@ -165,10 +173,11 @@ def suggestions(root, include_hidden=False):
     if guard:
         add('trace', guard, 'ws trace ' + guard.split()[1].rstrip(':'), 'local-reversible')
         items.insert(0, items.pop())
-    report, usage = cost_data()
-    used = [row['Server'].lower() for row in usage.get('mcp', []) if row.get('Calls', 0) > 0]
+    report, usage = map(_dict, cost_data())
+    used = [row['Server'].lower() for row in _rows(usage.get('mcp')) if isinstance(row.get('Server'), str)
+            and isinstance(row.get('Calls'), (int, float)) and not isinstance(row.get('Calls'), bool) and row['Calls'] > 0]
     pinned = [name.lower() for name, value in core.config(root).get('tool_overrides', {}).items() if value == 'on']
-    for finding in report.get('findings', []):
+    for finding in _rows(report.get('findings')):
         text = json.dumps(finding).lower()
         if any(name in text for name in ['ccd_', 'claude-in-chrome', 'ai-dev-workspace', 'workspace', *used, *pinned]):
             continue
@@ -178,8 +187,10 @@ def suggestions(root, include_hidden=False):
             continue
         identifier = str(finding.get('id', ''))
         if re.fullmatch(r'[a-zA-Z0-9_-]+', identifier):
-            add('cost-' + identifier, 'Review Codeburn: ' + finding.get('title', '') + '; ' + finding.get('explanation', '')[:180],
-                'codeburn optimize --format json', 'changes-config', f"up to ${finding.get('estimatedSavingsUSD', 0):.2f} in the scanned period (estimate)")
+            try: saving = float(finding.get('estimatedSavingsUSD') or 0)
+            except (TypeError, ValueError): saving = 0.0
+            add('cost-' + identifier, 'Review Codeburn: ' + str(finding.get('title') or '') + '; ' + str(finding.get('explanation') or '')[:180],
+                'codeburn optimize --format json', 'changes-config', f'up to ${saving:.2f} in the scanned period (estimate)')
     today = core.now()[:10]
     return [item for item in items if include_hidden or data.get('permissions', {}).get(item['id'], {}).get('until', '') <= today][:2 if not include_hidden else len(items)]
 

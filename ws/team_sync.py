@@ -96,7 +96,7 @@ def _view(root, pull, read_only=False):
             if changes: cards.write(root,changes)
     if bad: raise bad
     if read_only: return {'updated':base!=head,'head':base,'pushed':False}
-    receipt=sharing._text(sharing._safe(root,root/'.ws/shares.json')); saved=json.loads(receipt or '{}')
+    receipt=sharing._text(sharing._safe(root,root/'.ws/shares.json')); saved=core.load_json(receipt or '{}','.ws/shares.json')
     approved=saved.get('_artifacts:'+link['id'],{})
     if not isinstance(approved,dict): raise core.WsError('Invalid approval receipts. '+HINT)
     files={}; diff=''; total=0
