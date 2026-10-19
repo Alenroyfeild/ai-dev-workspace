@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from testutil import needs_symlinks
 from pathlib import Path
 from unittest import mock
 from test_ws import Base
@@ -36,7 +37,7 @@ class SetupTests(Base):
         self.assertEqual((self.root / '.mcp.json').read_bytes(), before[Path('.mcp.json')])
         self.assertTrue((self.root / '.github/hooks/ai-dev-workspace.json').exists())
 
-    @unittest.skipIf(os.name == 'nt', 'Symlink creation requires privileges on Windows')
+    @needs_symlinks
     def test_client_symlink_refused_before_metadata_changes(self):
         from ws import setup
         (self.root / '.vscode').mkdir()

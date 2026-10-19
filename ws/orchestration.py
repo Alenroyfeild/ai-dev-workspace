@@ -145,6 +145,11 @@ def worker_command(binding, repo, body=''):
     if not isinstance(template, list) or any(not isinstance(arg, str) or '\x00' in arg for arg in template):
         raise core.WsError('Invalid provider command template.')
     values = {'model': model or '', 'effort': effort, 'effort_json': json.dumps(effort), 'repo': str(repo), 'prompt': body}
+    if core.WINDOWS and str(exe).lower().endswith(('.cmd', '.bat')):
+        # npm shims run through cmd.exe, which re-parses & | < > ^ % ! even when Popen quotes the argument.
+        used = {m[1] for arg in template for m in re.finditer(r'\{(model|effort|repo|prompt)\}', arg)} | ({'model'} if not binding['headless'] and model and binding.get('model_flag') else set())
+        if any(re.search(r'[&|<>^%!"\r\n]', text) for text in [str(exe), *(str(values[name]) for name in used)]):
+            raise core.WsError('This provider runs through a Windows .cmd shim, which cannot safely take & | < > ^ % ! or quotes in its path, model or prompt; use a repo path without them.')
     args = []
     for arg in template:
         args.append(re.sub(r'\{(model|effort|effort_json|repo|prompt)\}', lambda match: values[match[1]], arg))

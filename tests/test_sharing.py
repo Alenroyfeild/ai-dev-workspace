@@ -4,6 +4,7 @@ import json
 import os
 import tempfile
 import unittest
+from testutil import needs_symlinks
 from pathlib import Path
 from unittest import mock
 from ws import cli, core, scope, team
@@ -89,7 +90,7 @@ class SharingTests(unittest.TestCase):
         self.assertIn('Decision: A bounded', core.section(core.task_path(self.root, 'T1').read_text(), 'Handoff'))
         self.assertFalse(list(self.clone.rglob('*.md')))
 
-    @unittest.skipIf(os.name == 'nt', 'symlink fixture requires Windows developer mode')
+    @needs_symlinks
     def test_symlink_destination_and_changed_remote_refuse(self):
         from ws import sharing
         (self.clone / 'entries').symlink_to(self.base, target_is_directory=True)

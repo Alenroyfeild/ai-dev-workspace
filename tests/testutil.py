@@ -3,6 +3,8 @@ import os
 import shutil
 import stat
 import sys
+import tempfile
+import unittest
 from pathlib import Path
 from unittest import mock
 
@@ -33,3 +35,14 @@ def rmtree_owned(path, root):
         func(failing)
 
     shutil.rmtree(path, **{('onexc' if sys.version_info >= (3, 12) else 'onerror'): fix})
+
+
+def _can_symlink():
+    if os.name != 'nt': return True
+    with tempfile.TemporaryDirectory() as tmp:
+        try: os.symlink(tmp, os.path.join(tmp, 'link'), target_is_directory=True); return True
+        except (OSError, NotImplementedError): return False
+
+
+# Skips only where this host really cannot create symlinks (Windows without Developer Mode/admin); windows-latest can.
+needs_symlinks = unittest.skipUnless(_can_symlink(), 'symlinks cannot be created on this host')

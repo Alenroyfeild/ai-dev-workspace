@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from testutil import needs_symlinks
 from pathlib import Path
 from unittest import mock
 import test_team_folder
@@ -64,7 +65,7 @@ class FolderInitTests(unittest.TestCase):
         self.assertEqual(json.loads((host/'team.json').read_text())['id'],plan['team'])
         self.assertNotIn('team_workspace',core.config(self.root))
 
-    @unittest.skipIf(os.name=='nt','Symlink creation may require Windows privileges.')
+    @needs_symlinks
     def test_user_selected_alias_initializes_only_the_canonical_folder(self):
         host=self.host();alias=self.base/'cloud-alias';alias.symlink_to(host,target_is_directory=True)
         plan=team_folder.initialize(self.root,str(alias),attest=True)

@@ -59,7 +59,7 @@ def configure(root, assistants, preset=None, dry_run=False):
     candidate = orchestration.routing_template(preset, assistants)
     path = root / 'routing.json'
     for target in (path, root / 'workspace.json', root / '.ws', root / '.ws/backups'):
-        if target.is_symlink(): raise core.WsError('Setup refuses symlinked configuration/backups.')
+        if core.is_link(target): raise core.WsError('Setup refuses symlinked configuration/backups.')
     clients = ['vscode' if name == 'copilot' else name for name in assistants]
     config_paths = ['routing.json', 'workspace.json']
     hook_paths = {'codex': '.codex/hooks.json', 'cursor': '.cursor/hooks.json', 'vscode': '.github/hooks/ai-dev-workspace.json'}
@@ -68,7 +68,7 @@ def configure(root, assistants, preset=None, dry_run=False):
         if client in hook_paths: config_paths.append(hook_paths[client])
     for relative in config_paths:
         target = root / relative
-        if any(p.is_symlink() for p in (target, *target.parents) if p == root or root in p.parents):
+        if any(core.is_link(p) for p in (target, *target.parents) if p == root or root in p.parents):
             raise core.WsError('Setup refuses symlinked client configuration: ' + relative)
     note = ('Restart each selected client; trust this project and approve its MCP server/hooks. '
             'Codex project hooks require trust; global MCP stays preview-only. Detection does not verify login/model access.')
@@ -99,7 +99,7 @@ def configure(root, assistants, preset=None, dry_run=False):
                         changes=changes, clients=clients, note=note + ' Preview only; repeat with --apply to configure these paths.')
         backup = root / '.ws/backups' / (core.now().replace(':', '').replace('+', '-') + '-' + core.uuid.uuid4().hex[:6])
         for source, text in ((path, original), (root / 'workspace.json', metadata)):
-            if text is not None: core.atomic_write(backup / source.name, text)
+            if text is not None: core.atomic_write(core.long_path(backup / source.name), text)
         core.atomic_write(path, candidate)
         core.atomic_write(root / 'workspace.json', json.dumps(updated, indent=2) + '\n')
     connections = []
