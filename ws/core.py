@@ -822,9 +822,19 @@ def _refresh_copy(link, target):
     if link.is_symlink() or not mark.is_file(): return ''
     if _tree_hash(link) != mark.read_text(encoding='utf-8').strip(): return 'edited'
     if _tree_hash(target) == mark.read_text(encoding='utf-8').strip(): return ''
-    fresh = link.with_name(link.name + '.ws-new')
-    shutil.rmtree(fresh, ignore_errors=True); _copy_dir(fresh, target)
-    shutil.rmtree(link); fresh.rename(link)
+    # Everything ws creates lives in one fresh staging dir, the only thing deleted here; the original is kept until the new copy is in place.
+    stage = Path(tempfile.mkdtemp(dir=link.parent, prefix='.ws-stage-')); moved = False
+    try:
+        _copy_dir(stage / 'new', target)
+        link.rename(stage / 'old'); moved = True
+        (stage / 'new').rename(link)
+    except BaseException:
+        if moved:
+            try: (stage / 'old').rename(link)
+            except OSError: raise  # restore failed: the staging dir keeps the original, so it is not deleted
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+    shutil.rmtree(stage, ignore_errors=True)
     return 'refreshed'
 
 

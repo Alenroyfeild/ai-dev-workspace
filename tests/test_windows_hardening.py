@@ -216,6 +216,31 @@ class SkillLinkFallbackTests(Base):
         self.assertEqual((second['refreshed'], second['edited'], second['kept']), ([], ['synth'], ['synth']))
         self.assertEqual((copy / 'SKILL.md').read_text(), 'mine')
 
+    def test_refresh_never_deletes_a_preexisting_ws_new_folder(self):
+        kit = Path(self.tmp.name) / 'kit'; skill = kit / 'skills/synth'; skill.mkdir(parents=True); (skill / 'SKILL.md').write_text('first')
+        with mock.patch.object(core, 'KIT', kit):
+            core.link_skills('claude', self.root)
+            mine = self.home / '.claude/skills/synth.ws-new'; mine.mkdir(); (mine / 'note.txt').write_text('user data')
+            (skill / 'SKILL.md').write_text('second')
+            second = core.link_skills('claude', self.root)
+        self.assertEqual(second['refreshed'], ['synth'])
+        self.assertEqual((mine / 'note.txt').read_text(), 'user data')
+        self.assertEqual([p.name for p in (self.home / '.claude/skills').iterdir() if p.name.startswith('.ws-stage-')], [])
+
+    def test_failed_refresh_keeps_the_original_skill(self):
+        kit = Path(self.tmp.name) / 'kit'; skill = kit / 'skills/synth'; skill.mkdir(parents=True); (skill / 'SKILL.md').write_text('first')
+        copy = self.home / '.claude/skills/synth'; real = Path.rename
+        def rename(path, target):
+            if Path(target) == copy and Path(path).name == 'new': raise PermissionError('synthetic rename failure')  # the new copy cannot take the original's place; restoring the backup still works
+            return real(path, target)
+        with mock.patch.object(core, 'KIT', kit):
+            core.link_skills('claude', self.root)
+            (skill / 'SKILL.md').write_text('second')
+            with mock.patch.object(Path, 'rename', rename), self.assertRaises(core.WsError):
+                core.link_skills('claude', self.root)
+        self.assertEqual((copy / 'SKILL.md').read_text(), 'first')
+        self.assertEqual(sorted(p.name for p in copy.parent.iterdir()), ['synth'])  # no staging or backup left behind
+
     def test_cli_reports_copies_and_exits_zero(self):
         err = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
