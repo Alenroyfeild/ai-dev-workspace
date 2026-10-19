@@ -24,7 +24,6 @@ import tempfile
 import threading
 import time
 import urllib.parse
-import urllib.request
 import uuid
 from pathlib import Path
 
@@ -1622,14 +1621,36 @@ def lesson_search(root, query):
     return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
 
 
+_BRIEF_GIT = threading.local()  # memo of read-only git output for one hook/brief; absent otherwise
+
+
+def memo_git(on):
+    """Run each read-only task git command once until memo_git(False); one-shot hook processes use this."""
+    _BRIEF_GIT.memo = {} if on else None
+
+
+def git_read(path, *args):
+    """stdout of a read-only `git -C path ...` ('' on failure); memoised while memo_git is on."""
+    memo = getattr(_BRIEF_GIT, 'memo', None)
+    if memo is not None and (str(path), args) in memo: return memo[str(path), args]
+    result = subprocess.run(['git', '-C', str(path), *args], capture_output=True, encoding='utf-8', errors='replace', timeout=2)
+    out = result.stdout if result.returncode == 0 else ''
+    if memo is not None: memo[str(path), args] = out
+    return out
+
+
+def current_branch(repo):
+    try: return git_read(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD').strip()
+    except (OSError, subprocess.SubprocessError): return ''
+
+
 def _task_git(root, task_id, *args):
     """Read local git state only for the task's declared repository."""
     try:
         repo = task_read(root, task_id, ['Objective'])['meta'].get('repo')
         if not repo: return ''
         path = inside(root / repo, read_roots(root))
-        result = subprocess.run(['git', '-C', str(path), *args], capture_output=True, encoding='utf-8', errors='replace', timeout=2)
-        return result.stdout if result.returncode == 0 else ''
+        return git_read(path, *args)
     except (WsError, OSError, ValueError, subprocess.SubprocessError):
         return ''
 
@@ -1656,8 +1677,7 @@ def session_task(root, cwd=None):
     except (OSError, subprocess.SubprocessError): return None
     if result.returncode: return None
     repo = inside(Path(result.stdout.strip()), read_roots(root))
-    from .setup import branch
-    current = branch(repo)
+    current = current_branch(repo)  # not setup.branch: importing setup is slow on the hook path
     if not current: return None
     matches = [t for t in task_list(root) if t['branch'] == current and
                (root / task_read(root, t['id'], ['Next action'])['meta'].get('repo', '')).resolve() == repo]
@@ -1679,17 +1699,27 @@ def session_task(root, cwd=None):
 
 def relevant_lessons(root, task):
     title = set(re.findall(r'\w{3,}', task['title'].lower()))
-    changed = []
-    try:
-        local = json.loads(read_text(_local_claim_path(root, task['id']), [root]))
-        meta = task_read(root, task['id'], ['Objective'])['meta']
-        head = local.get('git_head', '')
-        if local.get('token') == meta.get('claim_token') and local.get('repo') == meta.get('repo') and re.fullmatch(r'[0-9a-f]{40,64}', head):
-            changed = _task_git(root, task['id'], 'diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', head, '--').split('\0')
-    except (WsError, OSError, ValueError, TypeError, AttributeError):
-        pass
     saved = lesson_search(root, '')
-    tracked = _task_git(root, task['id'], 'ls-files', '-z').split('\0') if saved else []
+    if not saved: return []
+    git_files = {}  # git file lists, read only once a path-scoped lesson needs them
+
+    def changed_files():
+        if 'changed' not in git_files:
+            changed = []
+            try:
+                local = json.loads(read_text(_local_claim_path(root, task['id']), [root]))
+                meta = task_read(root, task['id'], ['Objective'])['meta']
+                head = local.get('git_head', '')
+                if local.get('token') == meta.get('claim_token') and local.get('repo') == meta.get('repo') and re.fullmatch(r'[0-9a-f]{40,64}', head):
+                    changed = _task_git(root, task['id'], 'diff', '--no-ext-diff', '--no-textconv', '--name-only', '-z', head, '--').split('\0')
+            except (WsError, OSError, ValueError, TypeError, AttributeError):
+                pass
+            git_files['changed'] = changed
+        return git_files['changed']
+
+    def tracked_files():
+        if 'tracked' not in git_files: git_files['tracked'] = _task_git(root, task['id'], 'ls-files', '-z').split('\0')
+        return git_files['tracked']
     ranked = []
     for line in saved:
         match = re.search(r'\s*<!-- ws:lesson (.*?) -->$', line)
@@ -1701,9 +1731,9 @@ def relevant_lessons(root, task):
         if not isinstance(metadata, dict): metadata = {}
         paths = metadata.get('paths', [])
         if not isinstance(paths, list): paths = []
-        overlap = sum(any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for p in paths) for f in changed)
+        overlap = sum(any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for p in paths) for f in changed_files()) if paths else 0
         score = len(title & set(re.findall(r'\w{3,}', (line + ' ' + str(metadata.get('area', ''))).lower())))
-        gone = tracked != [''] and paths and not any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for f in tracked for p in paths)
+        gone = paths and tracked_files() != [''] and not any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for f in tracked_files() for p in paths)
         if overlap or score: ranked.append((overlap, score, ('(paths gone) ' if gone else '') + line))
     ranked.sort(key=lambda item: (-item[0], -item[1]))
     return [line for _, _, line in ranked]
@@ -1892,12 +1922,12 @@ def current_task(root):
 
 def _branch_hint(root):
     """How to get this repo's branch task when none is claimed; '' when the repo is unknown or detached."""
-    from . import repo as repo_mod, setup
+    from . import repo as repo_mod
     try:
         repos = config(root).get('repos', [])
         top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=2).stdout.strip()
         here = next((Path(r).resolve() for r in repos if top and Path(r).resolve() == Path(top).resolve()), None) or (Path(repos[0]).resolve() if len(repos) == 1 else None)
-        name = setup.branch(here) if here else ''
+        name = current_branch(here) if here else ''
         if not name: return ''
         task = repo_mod.branch_task(root, here, name)
     except (WsError, OSError, ValueError, subprocess.SubprocessError, TypeError): return ''
@@ -1906,6 +1936,13 @@ def _branch_hint(root):
 
 
 def _brief(root, task_id=None):
+    if getattr(_BRIEF_GIT, 'memo', None) is not None: return _brief_once(root, task_id)
+    _BRIEF_GIT.memo = {}  # one git state per brief: the same command on the same repo runs once
+    try: return _brief_once(root, task_id)
+    finally: _BRIEF_GIT.memo = None
+
+
+def _brief_once(root, task_id=None):
     guard = repeat_guard(root)
     task, others = current_task(root)
     if task_id: task = next((t for t in task_list(root) if t['id'] == task_id), None)
@@ -2846,6 +2883,7 @@ def _repo():
 
 
 def _get_json(url):
+    import urllib.request  # lazy: ~17 ms import, needed only for the network check
     req = urllib.request.Request(url, headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'ai-dev-workspace'})
     with urllib.request.urlopen(req, timeout=5) as resp:
         return json.load(resp)
