@@ -97,6 +97,13 @@ class SizeAndNumberTests(Base):
         self.assertEqual(reply['error']['code'], -32602)
         self.assertEqual(before, self.task_text())
 
+    def test_total_payload_is_bounded_even_when_every_string_is_under_the_limit(self):
+        before = self.task_text()
+        reply = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {
+            'name': 'add_lesson', 'arguments': {'text': 'a long enough lesson', 'paths': ['a' * 100000] * 3}}})
+        self.assertEqual(reply['error']['code'], -32602); self.assertIn('in total', reply['error']['message'])
+        self.assertEqual(before, self.task_text())
+
     def test_log_step_numbers_are_bounded(self):
         for field, value in (('seconds', 10**400), ('tokens_in', 10**400), ('tokens_out', -5), ('seconds', -1)):
             self.fails('log_step', {'task': 'T-1', 'step': 's', 'provider': 'p', field: value}, field)

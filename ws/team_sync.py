@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -44,9 +45,11 @@ def _discard_index(clone):
 
 
 def _pull(clone, head):
+    index=clone/'INDEX.md'; saved=index.read_bytes() if index.is_file() else None
     dropped=_discard_index(clone)
     try: _git(clone,'merge','--ff-only','--no-edit','FETCH_HEAD')
     except core.WsError:
+        if dropped and saved is not None: index.write_bytes(saved)  # the failed pull must not lose the local index
         dirty={e[3:] for e in _git(clone,'status','--porcelain=v1','-z','--untracked-files=all').split('\0') if e}
         names=sorted(dirty&set(_git(clone,'diff','--name-only','-z',head,'FETCH_HEAD').split('\0')))
         if not names: raise
@@ -92,8 +95,11 @@ def _view(root, pull, read_only=False):
         dropped=_pull(clone,head); bad=None
         knowledge._bases(root,'team')  # pulled; still refuse to use an invalid manifest
         if dropped:  # regenerate the derived index so local entries stay listed after the pull
-            changes={p:t for p,t in cards.plan(root,'team').items() if p.name=='INDEX.md'}
-            if changes: cards.write(root,changes)
+            try:
+                changes={p:t for p,t in cards.plan(root,'team').items() if p.name=='INDEX.md'}
+                if changes: cards.write(root,changes)
+            except core.WsError as exc:  # the clone is already updated: report, do not fail the pull
+                print(f'Warning: pulled, but INDEX.md was not regenerated: {exc}',file=sys.stderr)
     if bad: raise bad
     if read_only: return {'updated':base!=head,'head':base,'pushed':False}
     receipt=sharing._text(sharing._safe(root,root/'.ws/shares.json')); saved=json.loads(receipt or '{}')

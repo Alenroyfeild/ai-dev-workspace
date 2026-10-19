@@ -23,6 +23,11 @@
 - Windows: deep paths no longer fail on the 260-character limit when ws writes backups under `.ws/backups` (`\\?\` form) or creates worker checkouts (`core.longpaths=true`).
 - Windows: junctions (`mklink /J`) are now detected by the checks that refuse symlinks (private packs, setup, upgrade, repo start, memory import, worker runs and collection, team folders).
 - Tests: twelve symlink tests that were skipped on Windows now run wherever symlinks can be created, as on `windows-latest`.
+- MCP calls are also bounded in total size (200,000 characters across all arguments), so many near-limit strings in one array can no longer bypass the per-string limit.
+- A failed team pull keeps your local `INDEX.md`, and a pull that succeeded but could not regenerate the index now warns instead of failing.
+- A bad `team.json` no longer blocks private reads: `ws know list` and category search skip the team layer with a warning that names the fix.
+- `ws validate` reports task files whose names are not valid task IDs (they are hidden from lists and briefs) instead of staying silent.
+- `ws start` names the file and says JSON comments are not supported when a local settings file is not valid JSON.
 
 ### New
 - `bin/release-smoke` runs the release smoke in one command: it builds the artifacts offline, installs the wheel in a temp venv and drives `ws` end to end in a toy repo with a throwaway HOME (`--wheel PATH`, `--source`, `--json`). See [Cutting a release](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/MAINTAINING.md#cutting-a-release).

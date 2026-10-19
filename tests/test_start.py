@@ -42,6 +42,11 @@ class StartTests(unittest.TestCase):
         self.assertIn('[y/N] \nws: No confirmation; use ws start --yes or --dry-run.', err)  # error starts on its own line
         self.assertNotIn('review local files', err)
 
+    def test_jsonc_settings_error_names_the_file(self):
+        (self.repo / '.claude').mkdir(); (self.repo / '.claude/settings.local.json').write_text('{\n// note\n}\n')
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 2); self.assertIn('.claude/settings.local.json is not valid JSON', err); self.assertIn('comments are not supported', err)
+
     def test_no_workspace_error_points_a_repo_user_at_ws_start(self):
         err = io.StringIO()
         with contextlib.redirect_stderr(err), mock.patch.dict(os.environ, {'WS_ROOT': ''}):

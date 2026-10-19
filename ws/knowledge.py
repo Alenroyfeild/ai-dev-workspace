@@ -1,6 +1,7 @@
 """Categorized, explicitly saved knowledge; team text is untrusted context."""
 import re
 import stat
+import sys
 from . import core, scope, sharing, team
 
 CATEGORIES = ('product', 'feature', 'domain', 'repo', 'runbook', 'other')
@@ -75,7 +76,12 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
 def list_entries(root, value='', layer='all', _index=False, _all=False, limit=100):
     if value: category(value)
     rows, warnings = [], []
-    for name, base, team_id in _bases(root, layer):
+    try: bases = _bases(root, layer)
+    except team.ManifestError as exc:
+        if layer != 'all': raise
+        bases = _bases(root, 'private'); warnings.append(f'Team layer skipped, private memory shown: {exc}')  # a bad team.json must not block private reads
+        print(warnings[-1], file=sys.stderr)
+    for name, base, team_id in bases:
         scanned = 0
         for path in sorted(base.glob('*.md')):
             if path.name == 'INDEX.md' or path.name.endswith('.index.md') or path.stem.endswith('.local'): continue
