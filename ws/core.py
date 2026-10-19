@@ -854,10 +854,18 @@ def _connect_config(root, client, write=False):
 
 # --- files -----------------------------------------------------------------------
 
+MAX_FRONTMATTER = 1024 * 1024  # a task's frontmatter is never this large; refuse rather than guess
+
+
 def atomic_write(path, text):
     if path.parent.name == 'Tasks' and path.suffix == '.md' and path.is_file():  # a task from a newer kit stays read-only
-        try: number = task_format(parse_meta(path.read_bytes()[:4096].decode('utf-8', 'replace').lstrip('\ufeff').replace('\r\n', '\n')))  # CRLF and BOM files still show their frontmatter
-        except OSError: number = 1
+        try:
+            with path.open('rb') as stream: head = stream.read(MAX_FRONTMATTER + 1)
+        except OSError: head = b''
+        front = head.decode('utf-8', 'replace').lstrip('\ufeff').replace('\r\n', '\n')  # CRLF and BOM files still show their frontmatter
+        if len(head) > MAX_FRONTMATTER and front.startswith('---\n') and '\n---' not in front[4:]:
+            raise WsError(f'Task {path.stem} has frontmatter over {MAX_FRONTMATTER // 1024} KiB; not rewriting it.')
+        number = task_format(parse_meta(front))  # the same parser readers use, over the whole frontmatter
         if number > TASK_FORMAT: raise WsError(newer_format_message(f'Task {path.stem}', number))
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix='.' + path.name + '.', dir=path.parent)
@@ -1553,8 +1561,9 @@ def session_search(query, roots=None, hide_private=False):
 def _append_line(root, rel, line):
     path = inside(root / rel, [root])
     with lock(root):
-        text = path.read_text(encoding='utf-8') if path.exists() else ''
-        atomic_write(path, text.rstrip('\n') + '\n' + line + '\n')
+        old = path.read_bytes() if path.exists() else b''  # bytes in, bytes out: older (even newer-format) lines stay exactly as written
+        eol = b'\r\n' if b'\r\n' in old else b'\n'
+        atomic_write(path, old + (b'' if not old or old.endswith(b'\n') else eol) + line.encode('utf-8') + eol)
 
 
 def lesson_add(root, text, tags=(), paths=(), area=''):

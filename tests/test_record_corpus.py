@@ -105,6 +105,34 @@ class RecordCorpusTests(Base):
         core.lesson_add(root, 'Round half up when converting cents', paths=['price.py'])
         self.assertTrue(ledger.read_bytes().startswith(lesson_before))  # the newer lesson is kept byte for byte
 
+    def test_appending_a_lesson_keeps_crlf_newer_lesson_bytes(self):
+        root = self.restore('format-99', FUTURE)
+        ledger = root / 'vault/Learnings.md'
+        ledger.write_bytes(ledger.read_bytes().replace(b'\n', b'\r\n'))
+        before = ledger.read_bytes()
+        core.lesson_add(root, 'Round half up when converting cents', paths=['price.py'])
+        after = ledger.read_bytes()
+        self.assertTrue(after.startswith(before))
+        self.assertTrue(after[len(before):].endswith(b'\r\n'))  # the new line uses the file's line ending
+
+    def test_task_with_a_late_newer_format_key_is_not_overwritten(self):
+        path = Path(self.tmp.name) / 'late/Tasks/T.md'
+        path.parent.mkdir(parents=True)
+        text = '---\npadding: ' + 'x' * 5000 + '\nformat: 99\n---\nfuture task\n'
+        path.write_text(text, encoding='utf-8')
+        with self.assertRaisesRegex(core.WsError, 'format 99'):
+            core.atomic_write(path, 'replacement\n')
+        self.assertEqual(path.read_text(encoding='utf-8'), text)
+
+    def test_task_with_unterminated_oversized_frontmatter_is_refused(self):
+        path = Path(self.tmp.name) / 'big/Tasks/T.md'
+        path.parent.mkdir(parents=True)
+        text = '---\npadding: ' + 'x' * (core.MAX_FRONTMATTER + 10) + '\n'
+        path.write_text(text, encoding='utf-8')
+        with self.assertRaisesRegex(core.WsError, 'frontmatter over'):
+            core.atomic_write(path, 'replacement\n')
+        self.assertEqual(path.read_text(encoding='utf-8'), text)
+
     def test_json_fixtures_stay_valid_for_a_backslash_repo_path(self):
         for src in (*CORPUS.rglob('*.json'), *FUTURE.rglob('*.json')):
             json.loads(fill(src, 'C:\\Users\\x\\repo'))
