@@ -2598,6 +2598,8 @@ def validate(root):
     errors, warnings = [], []
     v = vault(root)
     for path in sorted((v / 'Tasks').glob('*.md')):
+        if not ID_RE.fullmatch(path.stem):  # task_list hides these, so say why here
+            errors.append(f'{path.name}: task file hidden: the name is not a valid task ID (letters, digits, . _ -, at most 80, starting with a letter or digit); rename it'); continue
         text = path.read_text(encoding='utf-8')
         if conflicted(text):
             errors.append(f'{path.name}: ' + conflict_hint(path.stem)); continue

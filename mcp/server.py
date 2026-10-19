@@ -139,7 +139,7 @@ def rpc_error(mid, code, message):
     return {'jsonrpc': '2.0', 'id': mid, 'error': {'code': code, 'message': message}}
 
 
-MAX_TEXT, MAX_ITEMS = 100_000, 1000  # per string / per array: one call must not bloat the task record or stall later reads
+MAX_TEXT, MAX_ITEMS, MAX_TOTAL = 100_000, 1000, 200_000  # per string / per array / whole call: one call must not bloat the task record or stall later reads
 
 
 def validate_input(value, schema, field='arguments'):
@@ -149,6 +149,8 @@ def validate_input(value, schema, field='arguments'):
              'number': type(value) is int or (type(value) is float and math.isfinite(value))}
     if kind and not valid.get(kind, False):
         raise ValueError(f'{field} must be {kind}')
+    if field == 'arguments' and len(json.dumps(value, ensure_ascii=False)) > MAX_TOTAL:  # arrays multiply the per-string limit
+        raise ValueError(f'{field} are larger than {MAX_TOTAL} characters in total')
     if 'enum' in schema and value not in schema['enum']:
         raise ValueError(f'{field} is not an allowed value')
     if kind == 'string' and len(value) > MAX_TEXT:

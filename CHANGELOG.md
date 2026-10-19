@@ -42,6 +42,11 @@
 - The guards pack also denies `rm -r`/`Remove-Item -Recurse -Force` on the parent of home (`~/..`, `/Users`, `C:/Users`), `/mnt/c` and `/cygdrive/c`, `rm -r ~` without `-f`, and `rm -rf *` after `cd ~` or `cd /` in the same command.
 - The guards pack treats `password`, `passwd`, `pwd`, `secret` and `token` values of 8+ characters as secrets even without a digit (`DB_PASSWORD=Sup3rS3cret`, `password=correcthorsebatterystaple`), still skipping placeholders, `$VAR`, calls and identifiers; PGP key blocks count. It also denies more ways to mute tests (`pytest.skip(`, `self.skipTest(`, `xfail`, `fit(`/`fdescribe(`, `it.skip.each`, `t.Skipf(`, `@Disabled`, `@Ignore`, `#[ignore]`, RSpec `xit "x"`) in edits and in `sed -i`, `perl -pi`, `tee` and heredoc writes to test files.
 - The guards pack denies the assistant removing the guard hook from `.claude/settings*.json` or `.codex/hooks.json`, adding `WS_GUARDS` to them, deleting or overwriting those files from the shell, and running `ws pack remove guards`; the message is "Ask the user to remove the guards pack themselves."
+- MCP calls are also bounded in total size (200,000 characters across all arguments), so many near-limit strings in one array can no longer bypass the per-string limit.
+- A failed team pull keeps your local `INDEX.md`, and a pull that succeeded but could not regenerate the index now warns instead of failing.
+- A bad `team.json` no longer blocks private reads: `ws know list` and category search skip the team layer with a warning that names the fix.
+- `ws validate` reports task files whose names are not valid task IDs (they are hidden from lists and briefs) instead of staying silent.
+- `ws start` names the file and says JSON comments are not supported when a local settings file is not valid JSON.
 
 ### New
 - `bin/release-smoke` runs the release smoke in one command: it builds the artifacts offline, installs the wheel in a temp venv and drives `ws` end to end in a toy repo with a throwaway HOME (`--wheel PATH`, `--source`, `--json`). See [Cutting a release](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/MAINTAINING.md#cutting-a-release).

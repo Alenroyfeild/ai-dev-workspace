@@ -271,6 +271,11 @@ def branch_task(root, repo, branch):
     return name
 
 
+def _json(text, name):
+    try: return json.loads(text)
+    except ValueError as exc: raise core.WsError(f'Repo setup stopped; nothing was changed. {name} is not valid JSON ({exc}); JSON comments are not supported. Fix or move that file, then run ws start again.') from None
+
+
 def render(repo, root, clients, prior):
     """Repo wiring for this kit, built on each file's bytes from before ws (prior(name) -> bytes or None)."""
     command = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'), '--workspace-root', str(root)])
@@ -288,7 +293,7 @@ def render(repo, root, clients, prior):
         desired[name] = previous + (('\n' if previous else prefix) + instructions).encode()
     for client, name in (('claude', '.claude/settings.local.json'), ('codex', '.codex/hooks.json'), ('cursor', '.cursor/hooks.json'), ('copilot', '.github/hooks/ws.json'), ('gemini', '.gemini/settings.json')):
         if client not in clients: continue
-        data = json.loads(prior(name) or b'{}')
+        data = _json(prior(name) or b'{}', name)
         if not isinstance(data, dict) or not isinstance(data.get('hooks', {}), dict): raise core.WsError('Invalid local hook settings: ' + name)
         hooks = data.setdefault('hooks', {})
         generated = core.memory_hooks(root, 'vscode' if client == 'copilot' else client)
@@ -301,7 +306,7 @@ def render(repo, root, clients, prior):
     for client in clients:
         if client == 'codex': continue
         name, key = core.MCP_LOCATIONS['vscode' if client == 'copilot' else client]
-        data = json.loads(desired[name] if name in desired else prior(name) or b'{}')
+        data = _json(desired[name] if name in desired else prior(name) or b'{}', name)
         if not isinstance(data, dict) or not isinstance(data.get(key, {}), dict): raise core.WsError('Invalid MCP settings: ' + name)
         servers = data.setdefault(key, {})
         if 'ai-dev-workspace' in servers: raise core.WsError('Existing workspace MCP entry; review it before ws start.')
