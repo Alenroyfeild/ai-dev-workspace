@@ -53,10 +53,17 @@ def moved(repo, state):
     return next((r for r in repos if isinstance(r, str) and old == os.path.join(os.path.abspath(r), '.git', 'info', 'exclude')), '')
 
 
-def exclusions(repo, state):
-    exclude = Path(state['exclude'])
+def own_exclude(repo):
+    """This repo's Git exclude path; a symlink (or a symlinked .git/info) is refused before it is resolved or used."""
     expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip())
     if not expected.is_absolute(): expected = repo / expected
+    if expected.resolve() != expected.parent.resolve() / expected.name: raise core.WsError('This repo\'s Git exclude file is a symlink (or under one); restore a plain file before ws start or undo.')
+    return expected
+
+
+def exclusions(repo, state):
+    exclude = Path(state['exclude'])
+    expected = own_exclude(repo)
     if exclude.resolve() != expected.resolve():
         if not moved(repo, state): raise core.WsError('Start record points at another Git exclude file; restore it before undo.')
         exclude = expected  # moved or copied repo: only this repo's own exclude file is used
@@ -228,8 +235,8 @@ def upgrade_codex(repo, root, state, yes, dry_run):
 def rehome(repo, root, state, yes, dry_run):
     """The repo folder was moved or copied: link this path to its workspace (memory and hooks stay as they are)."""
     if not (root / 'workspace.json').is_file(): raise core.WsError('Linked workspace is missing; run ws start --undo here, then ws start.')
-    old = moved(repo, state)
-    exclude, _ = exclusions(repo, state)
+    old = moved(repo, state)  # '' when a retry finds the repo already listed
+    exclude, _ = exclusions(repo, dict(state, exclude=str(own_exclude(repo))))
     print(f'This repo was moved or copied. Link {repo} to private workspace {root}:', file=sys.stderr)
     print('  ' + str(root / 'workspace.json') + ' (repo list)', file=sys.stderr)
     print('  ' + str(repo / LINK) + ' (exclude path)', file=sys.stderr)
@@ -237,7 +244,7 @@ def rehome(repo, root, state, yes, dry_run):
     with core.lock(root):
         cfg = core.config(root)
         # Only the path this repo moved from is dropped, and only when it is gone; other entries (unmounted drives) stay.
-        cfg['repos'] = [r for r in cfg.get('repos', []) if r != old or Path(r).is_dir()] + [str(repo)]
+        cfg['repos'] = [r for r in cfg.get('repos', []) if r != old or Path(r).is_dir()] + [str(repo)] * (str(repo) not in cfg.get('repos', []))
         core.atomic_write(root / 'workspace.json', json.dumps(cfg, indent=2) + '\n')
     state['exclude'] = str(exclude)
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
@@ -358,8 +365,10 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         state = load(repo)
         if remove: return undo(repo, state)
         root = Path(state['workspace'])
-        if str(repo) not in core.config(root).get('repos', []):
-            if not moved(repo, state): raise core.WsError('Linked workspace belongs elsewhere; review .ws-start.json or undo this repo setup.')
+        listed = str(repo) in core.config(root).get('repos', [])
+        # Listed but the record still names another exclude file: an interrupted relink; finish it (rehome only ever writes this repo's own path).
+        if not listed or Path(state['exclude']).resolve() != own_exclude(repo).resolve():
+            if not listed and not moved(repo, state): raise core.WsError('Linked workspace belongs elsewhere; review .ws-start.json or undo this repo setup.')
             if not rehome(repo, root, state, yes, dry_run): return None
             state = load(repo)
         task = branch_task(root, repo, current)
