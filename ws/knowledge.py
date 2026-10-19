@@ -79,7 +79,7 @@ def _newest(path):
 
 
 def list_entries(root, value='', layer='all', _index=False, _all=False, limit=100):
-    if value: category(value)
+    if value: value = category(value)
     rows, warnings = [], []
     for name, base, team_id in _bases(root, layer):
         files = [p for p in base.glob('*.md') if p.name != 'INDEX.md' and not p.name.endswith('.index.md')

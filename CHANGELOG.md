@@ -6,7 +6,7 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
-- Shared notes and summaries no longer turn closing tags such as `</form>` or `</div>` into `<[local path]>`; real local paths are still replaced.
+- Shared notes and summaries no longer turn closing tags such as `</form>` or `</div>` into `<[local path]>`; real local paths are still replaced, including ones in angle brackets such as `</opt/x/file.txt>`.
 - One hand-edited private Knowledge note (wrong category, for example) no longer blocks every `ws know add` and team share: it is skipped with a warning that names the file. Categories are accepted in any letter case, and a UTF-8 byte-order mark at the start of a note is tolerated.
 - `ws search --category` now looks at every note, not the first 100 by random ID; `ws know list` caps at the newest 100 per layer and says "newest N of M" when it does.
 - A lesson is no longer ranked as relevant to a task just because both contain words like "the" or "for"; `ws lesson search` ignores the hidden paths/area metadata and rejects a query without a 3+ letter word.

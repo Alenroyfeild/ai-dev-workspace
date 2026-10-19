@@ -22,10 +22,22 @@ class PortableTests(unittest.TestCase):
         self.assertNotIn('bob', out); self.assertNotIn('/etc', out); self.assertIn('<b>bold</b>', out)
         self.assertEqual(out.count('[local path]'), 3)
 
+    def test_bracketed_local_paths_are_localized_but_closing_tags_survive(self):
+        out = sharing.portable(self.root, 'see </opt/synthetic-private/file.txt> and <C:\\synthetic-private\\file.txt> in <b>x</b> </div >')
+        self.assertNotIn('synthetic-private', out); self.assertIn('<b>x</b> </div >', out)
+
     def test_private_summary_keeps_closing_tags(self):
         item = knowledge.add(self.root, 'wrap in <form>x</form> tag', 'repo')
         self.assertIn('</form>', knowledge.list_entries(self.root)['entries'][0]['summary'])
         self.assertTrue(item)
+
+
+class CategoryFilterTests(unittest.TestCase):
+    setUp = test_sharing.SharingTests.setUp
+
+    def test_mixed_case_category_filter_matches_stored_category(self):
+        knowledge.add(self.root, 'Receipt policy belongs in the product guide', 'product')
+        self.assertEqual(len(knowledge.list_entries(self.root, 'Product')['entries']), 1)
 
 
 class BrokenNoteTests(unittest.TestCase):
