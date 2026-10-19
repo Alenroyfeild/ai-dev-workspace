@@ -1,13 +1,14 @@
 import contextlib
 import io
 import json
+import shutil
 import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-from ws import cli, core
+from ws import cli, core, repo as wsrepo
 
 
 class Hunt2RepoTests(unittest.TestCase):
@@ -75,3 +76,31 @@ class Hunt2RepoTests(unittest.TestCase):
         moved = self.base / 'moved'; self.repo.rename(moved); os.chdir(moved); self.repo = moved
         self.assertEqual(self.ws('start', '--yes')[0], 0)
         self.assertEqual(core.config(root)['repos'], [away, str(moved)])
+
+    def test_copied_repo_with_symlinked_exclude_is_refused_and_original_untouched(self):
+        self.assertEqual(self.ws('start', '--yes')[0], 0)
+        original = self.repo / '.git/info/exclude'; before = original.read_bytes()
+        copied = self.base / 'copy'; shutil.copytree(self.repo, copied, ignore=shutil.ignore_patterns('*.lock'))
+        link = copied / '.git/info/exclude'; link.unlink(); link.symlink_to(original)
+        os.chdir(copied); self.repo = copied
+        for args in (('start', '--undo'), ('start', '--yes')):
+            code, _, err = self.ws(*args)
+            self.assertEqual(code, 2, args); self.assertIn('symlink', err)
+            self.assertEqual(original.read_bytes(), before)
+        self.assertNotIn(str(copied), core.config(core.find_root(self.base / 'repo'))['repos'])
+
+    def test_interrupted_relink_is_finished_by_a_retry_and_undo_works(self):
+        self.assertEqual(self.ws('start', '--yes')[0], 0)
+        old = self.repo; moved = self.base / 'moved'; old.rename(moved); os.chdir(moved); self.repo = moved
+        root = Path(wsrepo.load(moved)['workspace']); real = core.atomic_write
+        def stop(path, data):
+            if Path(path) == moved / wsrepo.LINK: raise OSError('synthetic interruption after config write')
+            return real(path, data)
+        with mock.patch.object(core, 'atomic_write', side_effect=stop): self.assertNotEqual(self.ws('start', '--yes')[0], 0)
+        self.assertIn(str(moved), core.config(root)['repos'])
+        self.assertEqual(wsrepo.load(moved)['exclude'], str(old / '.git/info/exclude'))
+        code, _, err = self.ws('start', '--yes'); self.assertEqual(code, 0, err)
+        self.assertEqual(wsrepo.load(moved)['exclude'], str(moved / '.git/info/exclude'))
+        self.assertEqual(core.config(root)['repos'], [str(moved)])
+        code, _, err = self.ws('start', '--undo'); self.assertEqual(code, 0, err)
+        self.assertNotIn('ws:start', (moved / '.git/info/exclude').read_text())
