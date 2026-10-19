@@ -1526,7 +1526,7 @@ def search(root, query, limit=20, category=''):
         if 'Runs' not in path.parts:
             paths.append((path, path.relative_to(root).as_posix()))
     for repo in config(root).get('repos', []):
-        report = _graphify_report(Path(repo).expanduser())
+        report = _graphify_report(repo_path(root, repo))
         if report:
             paths.append((report, str(report)))
     for path, shown in paths:
@@ -1632,6 +1632,7 @@ def session_search(query, roots=None, hide_private=False):
 def _append_line(root, rel, line):
     path = inside(root / rel, [root])
     with lock(root):
+        if path.exists(): read_exact(path)  # refuse a file that is not valid UTF-8; valid files are appended byte for byte
         old = path.read_bytes() if path.exists() else b''  # bytes in, bytes out: older (even newer-format) lines stay exactly as written
         eol = b'\r\n' if b'\r\n' in old else b'\n'
         atomic_write(path, old + (b'' if not old or old.endswith(b'\n') else eol) + line.encode('utf-8') + eol)

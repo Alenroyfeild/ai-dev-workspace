@@ -31,7 +31,7 @@ class BadByteTests(Base):
         report = core.validate(self.root)
         self.assertFalse(report['valid'])
         for name in ('Tasks/T-1.md', 'Learnings.md', 'Feedback.md', 'Runs/T-1.jsonl'):
-            self.assertTrue(any(name in e and 'not valid UTF-8 (byte offset ' in e for e in report['errors']), (name, report['errors']))
+            self.assertTrue(any(name in e.replace(os.sep, '/') and 'not valid UTF-8 (byte offset ' in e for e in report['errors']), (name, report['errors']))
 
     def test_rewrites_refuse_with_a_clear_error_naming_the_file(self):
         vault = core.vault(self.root)
@@ -88,6 +88,17 @@ class RepoPathTests(Base):
         cwd = os.getcwd(); os.chdir(elsewhere)
         try: self.assertTrue(core._task_git(self.root, 'T-9', 'rev-parse', '--show-toplevel').strip())
         finally: os.chdir(cwd)
+
+    def test_graphify_report_of_a_relative_repo_is_found_from_a_nested_cwd(self):
+        report = self.root.parent / 'repo1/graphify-out/GRAPH_REPORT.md'; report.parent.mkdir(parents=True)
+        report.write_text('quokka architecture\n')
+        cfg = core.config(self.root); cfg['repos'] = ['../repo1']
+        (self.root / 'workspace.json').write_text(__import__('json').dumps(cfg))
+        nested = Path(self.tmp.name) / 'other/nested'; nested.mkdir(parents=True)
+        cwd = os.getcwd(); os.chdir(nested)
+        try: hits = core.search(self.root, 'quokka')
+        finally: os.chdir(cwd)
+        self.assertIn('GRAPH_REPORT.md', str(hits))
 
 
 class RecapClockTests(Base):
