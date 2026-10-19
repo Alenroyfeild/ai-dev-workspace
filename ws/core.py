@@ -856,7 +856,7 @@ def _connect_config(root, client, write=False):
 
 def atomic_write(path, text):
     if path.parent.name == 'Tasks' and path.suffix == '.md' and path.is_file():  # a task from a newer kit stays read-only
-        try: number = task_format(parse_meta(path.read_bytes()[:4096].decode('utf-8', 'replace')))
+        try: number = task_format(parse_meta(path.read_bytes()[:4096].decode('utf-8', 'replace').lstrip('\ufeff').replace('\r\n', '\n')))  # CRLF and BOM files still show their frontmatter
         except OSError: number = 1
         if number > TASK_FORMAT: raise WsError(newer_format_message(f'Task {path.stem}', number))
     path.parent.mkdir(parents=True, exist_ok=True)
