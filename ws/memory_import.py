@@ -57,7 +57,7 @@ def preview(repo, memory_dir=None, dry_run=False):
         except (core.WsError, OSError, ValueError):
             print('Memory import skipped unsafe/unreadable source: ' + label, file=sys.stderr); continue
         if re.search(r'#private\b', raw, re.I) or raw.lstrip().lower().startswith('/private'): continue
-        text = core.redact(core.PRIVATE_RE.sub('', raw)).replace('<!--', '&lt;!--').strip()
+        text = core.redact(core.strip_private(raw, '')).replace('<!--', '&lt;!--').strip()
         if not text or total + len(text.encode()) > 65536: continue
         total += len(text.encode())
         rows.append(dict(path=path, base=parent, label=label, sha=core.digest_text(raw), text=text))

@@ -6,6 +6,11 @@
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws upgrade --dry-run` now prints one line per file (new or changed, and why a new hook file is added) instead of hundreds of diff lines; `--diff` shows the full diff.
 - `ws upgrade` now shows the summary and asks `Apply this upgrade? [y/N]` before writing, like `ws start`; `--yes` skips the question; no answer (closed input) refuses, so scripts must pass `--yes`. If files change while the question is open, it refuses ("Workspace changed during confirmation; run ws upgrade again") instead of applying a different plan.
+- Nested `<private>` markers no longer leak their tail into saved decisions, `ws pr-notes` or `ws recap`: everything after an opener stays hidden until its matching close (an unclosed one hides the rest).
+- Tasks already named like Windows device names (`aux`, `con`, `nul`, `com1`...) work again for brief, checkpoint, claim and hooks; the reserved-name refusal now applies only when creating a task.
+- `redact()` is linear: long dash/dot runs, repeated `sk-` and repeated unterminated `-----BEGIN PRIVATE KEY-----` markers no longer take seconds. A private-key block is hidden through its matching `END` even when another `-----BEGIN ...` line appears inside it; with no `END` the rest of the text is hidden.
+- A task file saved with a UTF-8 BOM keeps its frontmatter instead of being treated as a new task.
+- Invalid UTF-8 or a lone surrogate in a command-line text argument gives a clear error instead of a traceback.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 
 ## 0.1.0-beta.5 (2026-10-19)
