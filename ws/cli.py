@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import core, assist, orchestration, native, workers
+from . import core, assist, orchestration, native, workers, upgrade
 
 
 def _read_limited_stdin():
@@ -389,7 +389,7 @@ def main(argv=None):
     f.add_parser('sync', help='tick items whose issue is closed')
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
     sub.add_parser('version', help='print the installed kit version')
-    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true', help='print the changes without writing them')
+    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true', help='print the changes without writing them'); s.add_argument('--diff', action='store_true', help='show the full diff of every file, not the summary'); s.add_argument('--yes', action='store_true', help='apply without asking (needed in scripts: closed input is no answer and refuses)')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
     s = sub.add_parser('assist', help='suggest improvements; apply only after explicit permission')
     s.add_argument('action', nargs='?', choices=('apply', 'decide')); s.add_argument('id', nargs='?')
@@ -629,8 +629,16 @@ def main(argv=None):
             if not a.task or not a.role or a.provider: raise core.WsError('Delegate requires task and --role; --provider is selftest-only.')
             result = orchestration.delegate(root, a.task, a.role, a.run, a.diff); out(result); return 0 if result.get('exit_code', 0) == 0 else 2
         if a.cmd == 'upgrade':
-            result = core.upgrade_workspace(root, a.dry_run)
-            out('\n'.join(c['diff'] for c in result['changes']) or 'No changes.')
+            def show_upgrade(result): out(('\n'.join(c['diff'] for c in result['changes']) if a.diff else upgrade.summary(result['changes'])) if result['changes'] else 'No changes.')
+            result = core.upgrade_workspace(root, True)  # preview first; applying re-plans under the lock
+            show_upgrade(result)
+            if not a.dry_run:
+                if result['changes'] and not a.yes:
+                    print('Apply this upgrade? [y/N] ', end='', file=sys.stderr)
+                    try: go = input().strip().lower() in ('y', 'yes')
+                    except EOFError: print(file=sys.stderr); raise core.WsError('No confirmation; use ws upgrade --yes or --dry-run.')
+                    if not go: out('Not applied.'); return 0
+                result = core.upgrade_workspace(root, False, result['changes'])  # refuses if the plan changed since the preview
             out({'pending_review': result['pending'], 'backups': result['backups']}); return 0
         if a.cmd == 'assist':
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
