@@ -62,7 +62,8 @@ class DoctorBrokenLinkTests(Base):
         (repo / '.ws-start.json').write_text('{bad')
         self.assertIn('workspace_error', json.loads(run(KIT / 'bin/ws', 'doctor', cwd=repo, home=self.tmp.name).stdout))
         plain = Path(self.tmp.name) / 'nothing'; plain.mkdir()
-        self.assertNotIn('Needs attention', run(KIT / 'bin/ws', 'doctor', '--text', cwd=plain, home=self.tmp.name).stdout)
+        # no workspace at all is not a broken link (ws doctor may still say 'no workspace found')
+        self.assertNotIn('workspace_error', json.loads(run(KIT / 'bin/ws', 'doctor', cwd=plain, home=self.tmp.name).stdout))
 
     def test_session_start_with_corrupt_workspace_json_does_not_blame_team_pull(self):
         (self.root / 'workspace.json').write_text('{bad')
