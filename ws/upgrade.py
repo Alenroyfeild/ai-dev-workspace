@@ -65,7 +65,7 @@ def managed_command(command):
 def hooks(old, new):
     """Replace only our hook commands (recognized by `ws brief|nudge --hook`); keep every other setting."""
     try:
-        data, desired = json.loads(old), json.loads(new)['hooks']
+        data, desired = json.loads(old.lstrip('\ufeff')), json.loads(new)['hooks']
         found, changed = {}, False
         for event, groups in data.get('hooks', {}).items():
             for index, group in enumerate(groups):

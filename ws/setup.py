@@ -17,7 +17,7 @@ def detect():
 def branch(repo):
     try:
         result = subprocess.run(['git', '-C', str(repo), 'symbolic-ref', '--quiet', '--short', 'HEAD'],
-                                capture_output=True, encoding='utf-8', errors='replace', timeout=2)
+                                capture_output=True, encoding='utf-8', errors='replace', timeout=core.git_timeout())
         return result.stdout.strip() if result.returncode == 0 else ''
     except (OSError, subprocess.SubprocessError): return ''
 

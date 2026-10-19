@@ -1,0 +1,8 @@
+#!/bin/sh
+# Plugin hook launcher: run the first working Python 3.9+ (python3, python, py -3).
+# python.org and winget installs on Windows provide `python` and `py`, not `python3`.
+for py in python3 python "py -3"; do
+  if $py -c 'import sys; sys.exit(sys.version_info < (3, 9))' >/dev/null 2>&1; then exec $py "$@"; fi
+done
+echo 'ai-dev-workspace: no Python 3.9+ found (tried python3, python, py -3); install Python or run `ws start` instead of the plugin.' >&2
+exit 1

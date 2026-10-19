@@ -175,9 +175,11 @@ def _later_edits(directory, state):
             metadata, name = entry.split('\t', 1); mode, _, blob = metadata.split(); expected[name] = (mode, blob)
     names = set(filter(None, git(checkout, 'ls-files', '--cached', '--others', '-z').split('\0')))
     if names != set(expected): return True
+    # Hash with line-ending conversion on (a CRLF checkout via .gitattributes eol=crlf or autocrlf); skip it when a filter driver could run code.
+    plain = ['--no-filters'] if any(k.lower().startswith('filter.') for k in git(checkout, 'config', '--includes', '--name-only', '--list').splitlines()) else []
     for name, (mode, blob) in expected.items():
         path = checkout / name
-        if (path.is_symlink() or not path.is_file() or git(checkout, 'hash-object', '--no-filters', '--', name) != blob
+        if (path.is_symlink() or not path.is_file() or git(checkout, 'hash-object', *plain, '--', name) != blob
                 or os.name != 'nt' and bool(path.stat().st_mode & 0o111) != (mode == '100755')): return True
     return False
 

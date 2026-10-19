@@ -16,6 +16,14 @@
 - `bin/ws-plugin` fails open (one stderr note, `{}`, exit 0) on deeply nested JSON like the other hooks; `ws digest` and `ws paste` no longer crash on it.
 - `ws help <command>` shows that command's options.
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
+- Windows guards: the guards pack now also blocks `rm -rf` on a drive root or home spelled `/c/*`, `C:/`, `C:/*`, `/c/Users/<you>`, `$USERPROFILE` or `%USERPROFILE%`, and looks inside `powershell`/`pwsh -Command` (also `-EncodedCommand`) and `cmd /c` run from the Bash tool, so `Remove-Item -Recurse -Force $HOME`, `rd /s /q %USERPROFILE%`, `git push --force` and `git reset --hard` are caught there too; subfolders such as `C:/Users/you/project/build` are still allowed.
+- On Windows, saving a file retries for about a second and a half while a sync client, antivirus or editor holds it, instead of failing with "Access is denied".
+- Config files saved with a UTF-8 BOM (Windows PowerShell 5.1, some editors) are read: `workspace.json`, `.mcp.json`, `.claude/settings.json` hooks and hook input on stdin; `ws upgrade` no longer parks the hooks of a BOM file in `.ws-new`.
+- `ws connect --skills` falls back to a directory junction and then to a copy when Windows refuses symlinks, says which skills were copied, and no longer exits 2 after the MCP config and hooks were written.
+- The Claude plugin hooks start through `bin/ws-python`, which uses the first working `python3`, `python` or `py -3` (python.org installs on Windows have no `python3`). The plugin MCP entry still calls `python3`; see docs/ADVANCED.md.
+- `ws worker accept` no longer warns about "later edits" on a checkout with CRLF line endings (`eol=crlf` or autocrlf).
+- The quick git probes behind the brief and `ws start` wait 6 s instead of 2 s on Windows, so a slow first `git.exe` start no longer drops the branch hint.
+- Windows workspace paths containing `$`, a backtick or `!` use the encoded hook launcher like `%` paths, so Git Bash and PowerShell no longer expand them.
 
 ### New
 - Task records carry `format: 1` and new lesson metadata carries `"format": 1`. A record written by a newer kit opens read-only: `ws brief`, `ws task find` and `ws recap` show it with a warning, and claim, checkpoint and remember refuse with "written by a newer ai-dev-workspace (format N); update the kit". Old records without the marker work unchanged. The record-corpus test now also covers this (EXIT-04).
