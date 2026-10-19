@@ -10,13 +10,13 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from . import core, orchestration
 
 
-def git(repo, *args, env_extra=None, binary=False):
+def git(repo, *args, env_extra=None, binary=False, stdin=None):
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT='0', GIT_LFS_SKIP_SMUDGE='1')
     if env_extra: env.update(env_extra)
     try:
         result = subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-c', 'core.fsmonitor=false', '-c', 'core.longpaths=true', '-c', 'core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol', '-C', str(repo), *args],
-                                env=env, capture_output=True, timeout=120)
+                                env=env, capture_output=True, timeout=120, input=stdin)
     except (OSError, subprocess.TimeoutExpired): raise core.WsError('Worker Git operation could not complete; no provider was launched.')
     if result.returncode: raise core.WsError('Worker Git operation failed: ' + core.redact(result.stderr[-1000:].decode('utf-8', errors='replace')))
     return result.stdout if binary else result.stdout.decode('utf-8').strip()
@@ -175,11 +175,13 @@ def _later_edits(directory, state):
             metadata, name = entry.split('\t', 1); mode, _, blob = metadata.split(); expected[name] = (mode, blob)
     names = set(filter(None, git(checkout, 'ls-files', '--cached', '--others', '-z').split('\0')))
     if names != set(expected): return True
-    # Hash with line-ending conversion on (a CRLF checkout via .gitattributes eol=crlf or autocrlf); skip it when a filter driver could run code.
-    plain = ['--no-filters'] if any(k.lower().startswith('filter.') for k in git(checkout, 'config', '--includes', '--name-only', '--list').splitlines()) else []
+    # Hash with line-ending conversion on (a CRLF checkout via .gitattributes eol=crlf or autocrlf); skip it only for files whose filter attribute names a configured driver, since that could run code.
+    drivers = {key[7:].rsplit('.', 1)[0] for key in git(checkout, 'config', '--includes', '--name-only', '--list').splitlines() if key.lower().startswith('filter.')}
+    attrs = git(checkout, 'check-attr', '-z', '--stdin', 'filter', stdin=''.join(n + '\0' for n in expected).encode()).split('\0') if drivers and expected else []
+    filtered = {attrs[i] for i in range(0, len(attrs) - 2, 3) if attrs[i + 2] in drivers}
     for name, (mode, blob) in expected.items():
         path = checkout / name
-        if (path.is_symlink() or not path.is_file() or git(checkout, 'hash-object', *plain, '--', name) != blob
+        if (path.is_symlink() or not path.is_file() or git(checkout, 'hash-object', *(['--no-filters'] if name in filtered else []), '--', name) != blob
                 or os.name != 'nt' and bool(path.stat().st_mode & 0o111) != (mode == '100755')): return True
     return False
 

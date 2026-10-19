@@ -724,7 +724,9 @@ def main(argv=None):
                     linked = ', '.join(result['skills']['linked']) or 'none'
                     kept = ', '.join(result['skills']['kept']) or 'none'
                     skipped = ', '.join(result['skills']['skipped']) or 'none'
-                    copied = f"; copied because links are not allowed here: {', '.join(result['skills']['copied'])} (rerun after a kit upgrade)" if result['skills'].get('copied') else ''
+                    copied = f"; copied because links are not allowed here: {', '.join(result['skills']['copied'])} (rerun after a kit upgrade to refresh unedited copies)" if result['skills'].get('copied') else ''
+                    copied += f"; refreshed unedited copies: {', '.join(result['skills']['refreshed'])}" if result['skills'].get('refreshed') else ''
+                    copied += f"; kept your edited copies (delete them to refresh): {', '.join(result['skills']['edited'])}" if result['skills'].get('edited') else ''
                     print(f"Skills for {a.client}: linked {linked}{copied}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
                 else:
                     count = core.skills_to_link(a.client, root)
