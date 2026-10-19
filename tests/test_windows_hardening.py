@@ -163,7 +163,8 @@ class SkillLinkFallbackTests(Base):
         super().setUp()
         self.home = Path(self.tmp.name) / 'home'
         refused = OSError(22, 'A required privilege is not held by the client', None, 1314)
-        for patch in (mock.patch.object(Path, 'home', return_value=self.home), mock.patch.object(Path, 'symlink_to', side_effect=refused)):
+        # WINDOWS off: these tests pin the copy fallback; on a real Windows runner the junction step would otherwise succeed (the junction tests below mock it).
+        for patch in (mock.patch.object(Path, 'home', return_value=self.home), mock.patch.object(Path, 'symlink_to', side_effect=refused), mock.patch.object(core, 'WINDOWS', False)):
             patch.start(); self.addCleanup(patch.stop)
 
     def test_refused_symlink_falls_back_to_a_copy_and_connect_still_succeeds(self):
@@ -291,12 +292,12 @@ class GitTimeoutTests(Base):
 
 class CrlfCheckoutTests(Base):
     def git(self, repo, *args):
-        return subprocess.run(['git', '-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-C', str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
+        return subprocess.run(['git', '-c', 'user.name=T', '-c', 'user.email=t@example.invalid', '-c', 'core.autocrlf=false', '-C', str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
 
     def checkout(self, attributes):
         repo = Path(self.tmp.name) / 'checkout-repo'; repo.mkdir()
-        self.git(repo, 'init', '-q', '-b', 'main')
-        (repo / '.gitattributes').write_text(attributes); (repo / 'a.txt').write_bytes(b'one\ntwo\n')
+        self.git(repo, 'init', '-q', '-b', 'main')  # autocrlf off and byte writes: a Windows runner's system autocrlf/text-mode writes would turn .gitattributes into CRLF-vs-LF noise
+        (repo / '.gitattributes').write_bytes(attributes.encode()); (repo / 'a.txt').write_bytes(b'one\ntwo\n')
         self.git(repo, 'add', '.'); self.git(repo, 'commit', '-qm', 'x')
         (repo / 'a.txt').unlink(); self.git(repo, 'checkout', '--', 'a.txt')  # re-checkout applies eol=crlf
         return repo, self.git(repo, 'rev-parse', 'HEAD^{tree}')
