@@ -34,6 +34,16 @@ class WorkerPrepareTests(Base):
                      checks=[dict(command='python3 -m unittest', exit_code=0)])
         record.write_text(json.dumps(state))
 
+    def test_task_without_repo_prepares_against_the_repo_the_user_is_in(self):
+        core.task_new(self.root, 'W-2', 'No repo', objective='Update calc.py')  # a single configured repo is filled in; blank it
+        path = core.task_path(self.root, 'W-2'); path.write_text(core.set_meta(path.read_text(), {'repo': ''})); core.claim(self.root, 'W-2', 'lead')
+        cwd = os.getcwd(); os.chdir(self.repo)
+        try:
+            with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
+                result = workers.prepare(self.root, 'W-2', ['calc.py'])
+        finally: os.chdir(cwd)
+        self.assertEqual(result['base'], self.git('rev-parse', 'HEAD'))
+
     def test_preview_writes_nothing_and_warns_about_dirty_source(self):
         (self.repo / 'calc.py').write_text('uncommitted\n'); (self.repo / 'ignored.txt').write_text('private fixture\n')
         before = core.task_read(self.root, 'W-1')['sha']; result = self.prepare()
