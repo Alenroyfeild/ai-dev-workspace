@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from testutil import needs_symlinks
 from pathlib import Path
 from unittest import mock
 from ws import cards, core, knowledge
@@ -75,7 +76,7 @@ class TeamFolderTests(unittest.TestCase):
         from ws import team_folder
         with self.assertRaises(core.WsError):team_folder.link(self.root,str(self.root),attest=True)
 
-    @unittest.skipIf(os.name=='nt','Symlink creation may require Windows privileges.')
+    @needs_symlinks
     def test_user_folder_alias_is_canonicalized_but_internal_links_refuse(self):
         from ws import team_auto,team_folder
         alias=self.base/'alias';alias.symlink_to(self.folder,target_is_directory=True)
@@ -83,9 +84,10 @@ class TeamFolderTests(unittest.TestCase):
         team_folder.link(self.root,str(alias),True,True,False,plan)
         self.assertEqual(core.config(self.root)['team_workspace']['remote'],str(self.folder))
         alias.unlink();self.assertFalse(team_auto.pull(self.root)['updated'])
-        (self.folder/'Icon\r').symlink_to(self.home,target_is_directory=True)
+        icon='.dropbox' if os.name=='nt' else 'Icon\r'  # a CR in a name is invalid on Windows
+        (self.folder/icon).symlink_to(self.home,target_is_directory=True)
         with self.assertRaises(core.WsError):team_auto.pull(self.root)
-        (self.folder/'Icon\r').unlink();(self.folder/'.ws-symlink').symlink_to(self.home,target_is_directory=True)
+        (self.folder/icon).unlink();(self.folder/'.ws-symlink').symlink_to(self.home,target_is_directory=True)
         with self.assertRaises(core.WsError):team_auto.pull(self.root)
 
     def test_sync_client_metadata_is_skipped_without_copying_it(self):

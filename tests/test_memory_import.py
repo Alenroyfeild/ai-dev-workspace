@@ -3,6 +3,7 @@ import os
 import re
 import subprocess
 import unittest
+from testutil import needs_symlinks
 from unittest import mock
 import test_start
 from ws import core
@@ -109,7 +110,7 @@ class MemoryImportTests(unittest.TestCase):
         self.assertNotIn('syntheticsecret123456', text); self.assertNotIn('PRIVATE_SENTINEL', text)
         self.assertNotIn('keep this out', text); self.assertNotIn('x' * 100, text)
 
-    @unittest.skipIf(os.name == 'nt', 'Windows symlink fixture needs developer mode')
+    @needs_symlinks
     def test_symlink_sources_do_not_import(self):
         outside = self.home / 'outside.md'; outside.write_text('PRIVATE_SENTINEL')
         (self.repo / 'CLAUDE.md').symlink_to(outside)
@@ -117,7 +118,7 @@ class MemoryImportTests(unittest.TestCase):
         text = '\n'.join(p.read_text() for p in (core.vault(core.find_root()) / 'Knowledge').glob('import-*.md'))
         self.assertNotIn('PRIVATE_SENTINEL', text)
 
-    @unittest.skipIf(os.name == 'nt', 'Windows symlink fixture needs developer mode')
+    @needs_symlinks
     def test_custom_memory_symlink_parent_outside_home_is_skipped(self):
         outside = self.repo.parent.resolve() / 'other-memory'; outside.mkdir()
         (outside / 'child').mkdir()
@@ -134,7 +135,7 @@ class MemoryImportTests(unittest.TestCase):
         code, _, preview = self.start('--dry-run')
         self.assertEqual(code, 0); self.assertIn('1 Cursor rule file(s) skipped: 16-file limit', preview)
 
-    @unittest.skipIf(os.name == 'nt', 'Windows symlink fixture needs developer mode')
+    @needs_symlinks
     def test_unsafe_sources_do_not_consume_the_file_limit(self):
         for folder, suffix, flag in ((self.repo / '.cursor/rules', '.mdc', ()),
                                      (self.home / 'auto-memory', '.md', ('--memory-dir', str(self.home / 'auto-memory')))):

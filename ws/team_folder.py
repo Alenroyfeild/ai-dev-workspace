@@ -13,10 +13,25 @@ def _decode(text):
     except (ValueError,RecursionError): raise core.WsError('Incomplete/malformed folder data. '+HINT)
 
 
+def _drive_redirect(folder, real):
+    """True when Windows maps the folder's drive elsewhere (mapped share, `subst`): other drive, same path below it."""
+    rest=folder.parts[1:]
+    tail=real.parts[len(real.parts)-len(rest):] if len(rest)<=len(real.parts) else ()
+    return bool(rest) and folder.drive.lower()!=real.drive.lower() and [p.lower() for p in tail]==[p.lower() for p in rest]
+
+
+def _canonical(folder):
+    folder=Path(folder).expanduser().absolute(); real=folder.resolve()
+    if real==folder: return folder
+    # A mapped/subst drive resolves to its real path; accept that, never a symlink or junction in the path itself.
+    if core.WINDOWS and _drive_redirect(folder,real) and not any(core.is_link(p) for p in (folder,*folder.parents) if p!=Path(folder.anchor)): return real
+    raise core.WsError('Use a real dedicated folder outside the private workspace, without symlinks.')
+
+
 def snapshot(root, folder, local=False, allow_empty=False):
-    folder=Path(folder).expanduser().absolute()
+    folder=_canonical(folder)
     if local and folder != sharing._safe(root,root/'.ws/team'): raise core.WsError(HINT)
-    if folder.resolve()!=folder or not folder.is_dir() or (not local and (folder==root or root in folder.parents or folder in root.parents)):
+    if not folder.is_dir() or (not local and (folder==root or root in folder.parents or folder in root.parents)):
         raise core.WsError('Use a real dedicated folder outside the private workspace, without symlinks.')
     info=folder.stat(); files={}; total=0
     for directory in (folder,folder/'entries',folder/'status'):
@@ -25,8 +40,8 @@ def snapshot(root, folder, local=False, allow_empty=False):
         for path in directory.iterdir():
             name=path.relative_to(folder).as_posix()
             if name=='INDEX.md':continue  # Derived locally; never read a shared index.
-            if name in ('entries','status') and path.is_dir() and not path.is_symlink(): continue
-            if (path.name in ('.DS_Store','Icon\r','.dropbox','.dropbox.attr') or path.name.startswith('.ws-')) and not path.is_symlink(): continue
+            if name in ('entries','status') and path.is_dir() and not core.is_link(path): continue
+            if (path.name in ('.DS_Store','Icon\r','.dropbox','.dropbox.attr') or path.name.startswith('.ws-')) and not core.is_link(path): continue
             if path.name.startswith('.') and path.name.endswith('.icloud'):
                 raise core.WsError(path.name[1:-7]+' is not downloaded yet; open the folder in Finder or choose Keep Downloaded, then retry.')
             if not re.fullmatch(r'team\.json|INDEX\.md|entries/[a-f0-9]{32}(?:\.index)?\.md|status/[A-Za-z0-9][A-Za-z0-9_.-]{0,39}\.json',name):

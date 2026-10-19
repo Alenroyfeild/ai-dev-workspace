@@ -252,6 +252,21 @@ def inside(path, roots):
     return original
 
 
+def is_link(path):
+    """Symlink, or on Windows a junction (`mklink /J`, no privilege needed), which Path.is_symlink does not report."""
+    if Path(path).is_symlink(): return True
+    try: return WINDOWS and getattr(os.lstat(path), 'st_reparse_tag', 0) == 0xA0000003  # IO_REPARSE_TAG_MOUNT_POINT
+    except OSError: return False
+
+
+def long_path(path):
+    """Windows `\\?\` form for deep paths (MAX_PATH is 260 unless LongPathsEnabled); unchanged elsewhere or when short."""
+    text = str(path)
+    if not WINDOWS or len(text) < 240 or text.startswith('\\\\?\\'): return Path(path)
+    text = os.path.abspath(text)
+    return Path('\\\\?\\UNC\\' + text[2:] if text.startswith('\\\\') else '\\\\?\\' + text)
+
+
 def read_roots(root):
     repos = config(root).get('repos', [])
     if not isinstance(repos, list) or any(not isinstance(p, str) or not p for p in repos):

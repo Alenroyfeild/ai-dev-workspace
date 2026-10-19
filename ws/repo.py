@@ -18,7 +18,7 @@ FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json',
 def path(repo, name):
     target = repo / name
     core.inside(target, [repo])
-    if any(p.is_symlink() for p in (target, *target.parents) if p == repo or repo in p.parents):
+    if any(core.is_link(p) for p in (target, *target.parents) if p == repo or repo in p.parents):
         raise core.WsError('Start refuses symlinked local files: ' + name)
     return target
 
