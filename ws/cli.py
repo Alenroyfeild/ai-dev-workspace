@@ -103,6 +103,8 @@ def text_route(report):
              'Available: ' + ('yes' if report['available'] else 'no')]
     if report.get('reason'):
         lines.append('Reason: ' + report['reason'])
+    if report.get('mode_error'):
+        lines.append('Warning: ' + report['mode_error'])
     if report.get('model_source'):
         lines.append('Model source: ' + report['model_source'])
     if report.get('model_warning'):

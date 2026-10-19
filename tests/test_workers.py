@@ -59,7 +59,7 @@ class WorkerPrepareTests(Base):
         self.assertEqual(state['task_sha'], core.task_read(self.root, 'W-1')['sha'])
 
     def test_invalid_scope_base_repository_and_claim_refused_without_clone(self):
-        for scope in ([], ['../outside'], ['/tmp/outside'], ['.git/config'], ['.codex/config.toml'], ['C:\\outside'], ['\\outside'], ['calc.py\noutside'], ['calc.py\ttests'], ['calc.py\x7f']):
+        for scope in ([], ['../outside'], ['/tmp/outside'], ['.git/config'], ['.codex/config.toml'], ['.Claude/x'], ['.GIT/config'], ['sub/.Codex/x'], ['C:\\outside'], ['\\outside'], ['calc.py\noutside'], ['calc.py\ttests'], ['calc.py\x7f']):
             with self.subTest(scope=scope), self.assertRaises(core.WsError): workers.prepare(self.root, 'W-1', scope)
         for base in ('--help', 'missing-commit'):
             with self.subTest(base=base), self.assertRaises(core.WsError): self.prepare(base=base, apply=True)
