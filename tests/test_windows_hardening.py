@@ -160,11 +160,14 @@ class BomTests(Base):
 
 class SkillLinkFallbackTests(Base):
     def setUp(self):
+        # WINDOWS off before Base.setUp: init must write the same python command connect/client_connected compare against, or a real Windows runner (sys.executable vs python3) stages .mcp.json.ws-new instead.
+        # Off also pins the copy fallback; otherwise the junction step would succeed there (the junction tests below mock it).
+        patch = mock.patch.object(core, 'WINDOWS', False)
+        patch.start(); self.addCleanup(patch.stop)
         super().setUp()
         self.home = Path(self.tmp.name) / 'home'
         refused = OSError(22, 'A required privilege is not held by the client', None, 1314)
-        # WINDOWS off: these tests pin the copy fallback; on a real Windows runner the junction step would otherwise succeed (the junction tests below mock it).
-        for patch in (mock.patch.object(Path, 'home', return_value=self.home), mock.patch.object(Path, 'symlink_to', side_effect=refused), mock.patch.object(core, 'WINDOWS', False)):
+        for patch in (mock.patch.object(Path, 'home', return_value=self.home), mock.patch.object(Path, 'symlink_to', side_effect=refused)):
             patch.start(); self.addCleanup(patch.stop)
 
     def test_refused_symlink_falls_back_to_a_copy_and_connect_still_succeeds(self):
