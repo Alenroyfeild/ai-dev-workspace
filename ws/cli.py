@@ -518,7 +518,11 @@ def main(argv=None):
                         raise core.WsError('Use ws sessions search <query> --root cursor=<dir> (or claude, codex, gemini).')
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
-        root = core.find_root(a.workspace_root)
+        try: root = core.find_root(a.workspace_root)
+        except core.WsError as exc:
+            if a.cmd != 'pack' or not str(exc).startswith('No workspace.json found'): raise
+            name = a.name or '<name>'  # a pack needs a workspace, which `ws start` creates
+            raise core.WsError(f'No workspace.json found here or above. In a git repo run `ws start` first, then `ws pack {a.action} {name}` and `ws start` again to wire it; otherwise `ws init <dir>`, or set WS_ROOT.')
         @core.contextlib.contextmanager
         def saved_locally():  # the record is already saved; say so when sharing it cannot go ahead
             try: yield
@@ -855,7 +859,11 @@ def main(argv=None):
         if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
             print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
             print('{}'); return 0
-        if not isinstance(exc, (core.WsError, FileNotFoundError, json.JSONDecodeError)): raise
+        if isinstance(exc, OSError):  # a file that cannot be read or written is a user-fixable state, not a ws bug
+            exc = core.WsError(f'Cannot read or write {exc.filename or "a file"}: {exc.strerror or exc}. Next: check that path (permissions, or a directory where a file should be), then retry.')
+        elif isinstance(exc, UnicodeDecodeError):
+            exc = core.WsError(f'A file is not valid UTF-8 ({exc.reason}). Next: fix or remove the bad bytes in the file named by the command, then retry.')
+        if not isinstance(exc, (core.WsError, json.JSONDecodeError)): raise
         message = str(exc)
         if isinstance(exc, core.WsError) and not any(hint in message.lower() for hint in ('`ws ', 'run ws ', 'see ws ', 'next:')):
             message += ('' if message.endswith(('.', '!', '?', ':')) else '.') + f' Next: run `ws {a.cmd} --help`.'

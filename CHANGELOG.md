@@ -23,6 +23,7 @@
 - Windows: deep paths no longer fail on the 260-character limit when ws writes backups under `.ws/backups` (`\\?\` form) or creates worker checkouts (`core.longpaths=true`).
 - Windows: junctions (`mklink /J`) are now detected by the checks that refuse symlinks (private packs, setup, upgrade, repo start, memory import, worker runs and collection, team folders).
 - Tests: twelve symlink tests that were skipped on Windows now run wherever symlinks can be created, as on `windows-latest`.
+- A relinked (moved) repo keeps its tasks: their `repo:` path follows the move, so `ws brief` and the hooks find the branch task instead of suggesting a duplicate. A non-UTF-8 byte in a task file or Learnings.md no longer crashes read commands, an unwritable file gives a one-line `ws:` error (exit 2) instead of a traceback, and `ws pack add` before `ws start` says to run `ws start` first.
 
 ### New
 - `bin/release-smoke` runs the release smoke in one command: it builds the artifacts offline, installs the wheel in a temp venv and drives `ws` end to end in a toy repo with a throwaway HOME (`--wheel PATH`, `--source`, `--json`). See [Cutting a release](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/MAINTAINING.md#cutting-a-release).
