@@ -98,10 +98,10 @@ def undo(repo, state):
     return dict(root=state['workspace'], already=True, assistants=[], task='', branch=setup.branch(repo), partial=bool(kept), undone=True)
 
 
-def confirm(yes, dry_run):
+def confirm(yes, dry_run, imports=False):
     if dry_run: return False
     if yes: return True
-    print('Apply this setup and previewed private memory imports? [y/N] ', end='', file=sys.stderr)
+    print('Apply this setup' + (' and previewed private memory imports' if imports else '') + '? [y/N] ', end='', file=sys.stderr)
     try: return input().strip().lower() in ('y', 'yes')
     except EOFError: print(file=sys.stderr); raise core.WsError('No confirmation; use ws start --yes or --dry-run.')  # newline: end the prompt line
 
@@ -360,6 +360,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     if 'copilot' in clients: print('Copilot instructions are normally shared; these stay private for local VS Code. Cloud agents require a committed copy; ask before sharing.', file=sys.stderr)
     for name in (LINK, *desired): print('  ' + str(repo / name), file=sys.stderr)
     print('  ' + str(exclude) + ' (local exclusions)', file=sys.stderr)
+    yours = [n for n, data in before.items() if data is not None]  # existing untracked files join the exclude block
+    if yours: print('Hidden from git status until ws start --undo (already yours): ' + ', '.join(yours), file=sys.stderr)
     outside = {'.ws/lock', '.ws/claims/' + task + '.json', 'vault/Tasks/' + task + '.md'}
     if not root.exists(): outside |= {p.relative_to(core.KIT / 'template').as_posix() for p in (core.KIT / 'template').rglob('*') if p.is_file()} - {'routing-presets.json'} | set(upgrade.skills()) | set(upgrade.pointer_files()) | {'workspace.json', 'routing.json', 'vault/Project/Codebase map.md'}
     if dry_run:
@@ -367,7 +369,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     else:  # the private files are ws's own; --dry-run lists each one
         print(f'  plus {len(outside)} private workspace files (ws start --dry-run lists them)', file=sys.stderr)
     imports = [] if no_import else memory_import.preview(repo, memory_dir, dry_run=dry_run)
-    if not confirm(yes, dry_run): return None
+    if not confirm(yes, dry_run, bool(imports)): return None
     memory_import.verify(imports)
     if '.codex/config.toml' not in desired and not core.client_connected(root, 'codex', global_only=True) and not path(repo, '.codex/config.toml').is_file(): raise core.WsError('Codex config disappeared during confirmation; retry ws start.')
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')

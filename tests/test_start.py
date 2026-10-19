@@ -177,6 +177,20 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 0)
         self.assertIn('Continue the saved next action', core.task_read(workspace, task['id'])['text'])
 
+    def test_prompt_mentions_memory_imports_only_when_previewed(self):
+        with mock.patch('builtins.input', return_value='n'): _, _, err = self.start('--no-import')
+        self.assertIn('Apply this setup? [y/N]', err); self.assertNotIn('imports', err)
+        with mock.patch('builtins.input', return_value='n'): _, _, err = self.start()
+        self.assertIn('Apply this setup and previewed private memory imports? [y/N]', err)
+
+    def test_preview_flags_existing_untracked_files_hidden_from_git_status(self):
+        (self.repo / '.mcp.json').write_text('{"mcpServers": {}}\n')
+        _, _, err = self.start('--dry-run')
+        self.assertIn('Hidden from git status until ws start --undo (already yours): .mcp.json', err)
+        (self.repo / '.mcp.json').unlink()
+        _, _, err = self.start('--dry-run')
+        self.assertNotIn('Hidden from git status', err)
+
     def test_correction_instruction_is_written_and_undo_restores_user_text(self):
         instruction = ('When the user states a decision or corrects an earlier one, call the MCP `remember` tool '
                        'with it; for a correction, say what it replaces.')

@@ -119,7 +119,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 
 ### Link a private team repo
 
-- Create the empty private remote yourself. `ws team init <private-remote> --dry-run` previews; repeat without `--dry-run` to confirm. Init prepares an uncommitted `team.json` in `.ws/team` and never pushes. Inspect it, then commit and push it with normal Git to bootstrap the repo.
+- Create the empty private remote yourself. `ws team init <private-remote> --dry-run` previews; repeat without `--dry-run` to confirm. Init prepares an uncommitted `team.json` in `.ws/team` and never pushes. Run `ws sync` to publish it (it shows what it will push first); teammates can link only after that. At a terminal, team previews print a short summary (`+ <category> <text>` per note, the full text up to 600 characters, the destination, then `[y/N]`); piped or scripted runs get the full JSON, and `WS_JSON=1` forces it.
 - Teammates run `ws team link <private-remote>`.
 - Privacy is checked with an installed `gh` or `glab`, or with `--attest-private` for that exact remote when verification is unavailable. A remote known to be public or internal blocks linking. `--verify-with gh|glab` picks the verifier for a self-hosted remote. Doctor shows verified versus attested privacy.
 - `--yes` confirms the printed preview. `--auto-pull` or `--no-auto-pull` records the pull preference without prompting. Pull consent never authorizes publishing.
@@ -167,7 +167,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 
 ### Sync and status
 
-- `ws sync` pulls the linked team branch (fast-forward only), then previews one commit built only from share-approved file bytes. `--dry-run` may pull but never commits or pushes. `--yes` confirms the exact preview and rechecks privacy, remote head, approvals and files. No force-push, reset or clean ever runs.
+- `ws sync` pulls the linked team branch (fast-forward only) and prints a one-line count of notes pulled and published (to stderr), then previews one commit built only from share-approved file bytes. `--dry-run` may pull but never commits or pushes. `--yes` confirms the exact preview and rechecks privacy, remote head, approvals and files. No force-push, reset or clean ever runs.
 - Unapproved files, staged edits or unpublished local commits stop the sync with a hint and stay intact. An empty remote receives only the bootstrap manifest plus approved copies.
 - `ws sync --pull-only` only fetches and fast-forwards; it never checks publishing receipts or pushes. With `--dry-run` it refuses without contacting Git.
 - Auto-pull: explicit `--auto-pull` consent at link (or `team_workspace.auto_pull=true`) allows quiet read-only pulls at session start and after share or checkpoint (4-second budget). A failure keeps local memory and prints a hint. `ws brief` and `ws search` never pull. `auto_pull=false` stops future automatic pulls.
@@ -232,7 +232,7 @@ Details:
 | Command | What it does |
 |---|---|
 | `ws update [--check]` | Update the kit if it is a git clone, or print the pipx command for a pipx install. `--check` only looks. |
-| `ws upgrade [--dry-run]` | Apply this kit version's managed workspace rules, hook handlers and Claude/Codex handoff, pickup and lesson skills. |
+| `ws upgrade [--dry-run] [--diff] [--yes]` | Apply this kit version's managed workspace rules, hook handlers and Claude/Codex handoff, pickup and lesson skills. Prints one line per file (new, changed, with a reason for new files); `--diff` shows the full diff. Asks `Apply this upgrade? [y/N]` after the summary; `--yes` skips the question. No answer (closed input) refuses, so scripts need `--yes`; a piped `y` is an answer, as in `ws start`. If files change while the question is open, it refuses with "Workspace changed during confirmation; run ws upgrade again" and writes nothing. |
 | `ws notices` | Show a new release, fixed issues and unshared feedback. Your assistant runs it once per session and asks before acting. |
 | `ws feedback add "<text>" [--kind K] [--source S]` | Record feedback about the workspace. `--kind` defaults to `idea`, `--source` to `user`. |
 | `ws feedback list [--all]` / `ws feedback sync` | List items, or tick items whose issue is closed. |
@@ -241,7 +241,7 @@ Details:
 
 Details:
 
-- `ws upgrade --dry-run` previews exact managed-file diffs without writing. `ws upgrade` backs up changed files under `.ws/backups/<UTC timestamp>/`, adds managed routing defaults (keeping root overrides) and creates an empty claim directory. Existing claims are never changed.
+- `ws upgrade --dry-run` previews a per-file summary without writing (`--diff` adds the exact managed-file diffs). `ws upgrade` shows the same summary, asks before writing, backs up changed files under `.ws/backups/<UTC timestamp>/`, adds managed routing defaults (keeping root overrides) and creates an empty claim directory. Existing claims are never changed.
 - Managed Markdown blocks carry `ws:managed` markers with the kit version; managed hooks use `statusMessage: ws:managed:<event>:<kit version>`. Keep personal rules, settings and hooks outside them; their bytes are not changed.
 - Unmarked or ambiguous files (including routing files) produce `.ws-new` proposals, numbered if an earlier one was edited. Adopt them by hand, then rerun the dry run.
 - `workspace.json` records schema 2, kit version, a content fingerprint and pending proposals, and keeps custom keys and vault paths.
