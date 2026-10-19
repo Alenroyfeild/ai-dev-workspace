@@ -92,7 +92,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
 
 
 def launch(root, run_id):
-    raise core.WsError('Write workers remain preparation-only until the O2d real-client hostile probe passes.')
+    raise core.WsError('Write workers are preparation-only for now; launching one is not available yet.')
 
 
 def _record(root, run_id, require_checkout=True):
@@ -353,7 +353,7 @@ def collect(root, run_id):
 
 
 def _launch(root, run_id):
-    """Internal probe path only; public launch stays gated until O2d."""
+    """Internal probe path only; public launch stays closed."""
     directory, state = _record(root, run_id); checkout = directory / 'checkout'
     with core.lock(root):
         _claim(root, state)

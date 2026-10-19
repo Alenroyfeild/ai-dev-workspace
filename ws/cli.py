@@ -272,7 +272,7 @@ def main(argv=None):
     w = sub.add_parser('worker', help='prepare an isolated implementation checkout; no worker launch').add_subparsers(dest='action', required=True)
     s = w.add_parser('prepare'); s.add_argument('task'); s.add_argument('--scope', action='append', required=True)
     s.add_argument('--base', default='HEAD'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
-    s = w.add_parser('launch', help='gated until the real-client hostile probe passes'); s.add_argument('id')
+    s = w.add_parser('launch', help='not available yet (write workers are preparation-only)'); s.add_argument('id')
     s = w.add_parser('review', help='show diff/checks or record the current lead review'); s.add_argument('id')
     s.add_argument('--approve', action='store_true'); s.add_argument('--yes', action='store_true')
     for action in ('accept', 'discard'):

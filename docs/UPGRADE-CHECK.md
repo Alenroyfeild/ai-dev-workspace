@@ -1,16 +1,16 @@
 # Workspace upgrade check
 
-Both checks used throwaway directories and a temporary `HOME`; no existing workspace or client config was read or changed.
+This check uses throwaway directories and a temporary `HOME`; no existing workspace or client config is read or changed.
 
-The old copy came from `tests/fixtures/template-0.1.0-beta.1`. I added only synthetic user content, an unmarked Claude settings file and a schema-1 workspace record, then ran `ws upgrade --dry-run` and `ws upgrade`.
+The old copy comes from `tests/fixtures/template-0.1.0-beta.1`. Add only synthetic user content, an unmarked Claude settings file and a schema-1 workspace record, then run `ws upgrade --dry-run` and `ws upgrade --yes`.
 
-- Dry-run left every file byte-for-byte unchanged and showed 13 proposed file changes.
-- Applying the upgrade staged two ambiguous user-owned files for review (`AGENTS.md` and `.claude/settings.json`) and backed up the old `workspace.json`.
-- The second upgrade reported no changes.
+- The dry-run leaves every file byte-for-byte unchanged and lists one line per proposed file change, then a summary count.
+- Applying the upgrade stages two ambiguous user-owned files for review (`AGENTS.md` and `.claude/settings.json`) and backs up the old `workspace.json`.
+- A second upgrade reports no changes.
 
-The current copy was generated with `ws init` in another throwaway directory. Its dry-run also left every file unchanged; applying the upgrade reported zero changes, conflicts or backups.
+For the current copy, run `ws init` in another throwaway directory. Its dry-run also leaves every file unchanged, and applying the upgrade reports no changes, conflicts or backups.
 
-The two proposals on the old copy were expected: the synthetic user edits were outside managed markers, so the upgrader preserved them and emitted `.ws-new` proposals instead of overwriting them.
+The two proposals on the old copy are expected: the synthetic user edits are outside managed markers, so the upgrader preserves them and writes `.ws-new` proposals instead of overwriting them.
 
 ## Record format markers
 

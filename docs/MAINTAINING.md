@@ -39,6 +39,7 @@ Before step 1, run `bin/release-smoke` (stdlib, offline, throwaway HOME): it bui
 2. Set the same version in `kit.json`. Save this release's record corpus under `tests/fixtures/records/<version>/` (see `docs/UPGRADE-CHECK.md`).
 3. Commit, then `git tag v<version> && git push --tags`. Do not create the GitHub Release by hand.
 4. `.github/workflows/release.yml` checks the tag matches `kit.json`, runs the tests and publishes the GitHub Release as Latest with that CHANGELOG section plus upgrade steps. Users see the summary on their next `ws doctor` / `ws update --check` (checked at most once a day).
+5. For PyPI, the workflow publishes GitHub release notes only. Build `dist/` from the release tag with `python3 setup.py sdist bdist_wheel`, then upload those artifacts with your PyPI publishing tool. Keep publishing credentials outside the repository.
 
 ## Repository setting
 

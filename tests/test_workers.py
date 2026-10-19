@@ -159,10 +159,11 @@ class WorkerPrepareTests(Base):
     def test_write_launch_gate_is_closed_without_writes(self):
         plan = self.prepare(apply=True); before = Path(plan['record']).read_bytes()
         with mock.patch('ws.workers.orchestration.worker_run', side_effect=AssertionError('launch')):
-            with self.assertRaisesRegex(core.WsError, 'O2d'): workers.launch(self.root, plan['id'])
+            with self.assertRaisesRegex(core.WsError, 'not available yet'): workers.launch(self.root, plan['id'])
         with contextlib.redirect_stderr(io.StringIO()) as errors:
             self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'launch', plan['id']]), 2)
-        self.assertIn('O2d', errors.getvalue())
+        self.assertIn('not available yet', errors.getvalue())
+        self.assertNotIn('O2d', errors.getvalue())
         self.assertEqual(Path(plan['record']).read_bytes(), before)
 
     def test_internal_probe_launch_collects_snapshot_and_protects_source(self):

@@ -19,12 +19,16 @@ Compatibility claims stay limited to tested behavior; see the [client table](CLI
 - [x] Warn in the brief when files named in the next action changed since the checkpoint, or the code was rolled back past it.
 - [x] Carry dead ends into the brief (`Do not redo:`, from the task's Do not redo and Failures), and warn when saved memory names deleted or renamed files or uncommitted edits that were reset away.
 - [x] Opt-in `guards` (blocks risky shell commands, secrets and skipped tests; `WS_GUARDS=off`) and advisory `discipline` hook packs for Claude Code and Codex.
+- [x] Install the Claude Code plugin from this repo's marketplace (see [Advanced](ADVANCED.md#claude-code-plugin-preview)).
 - [x] Score a repo's AI assistant setup with `ws audit`, and try remembered decisions offline with `ws demo`.
+
+## Pending
+
+- [ ] Install from PyPI (`pipx install ai-dev-workspace`): pending, the beta.5 upload has not happened yet. Until then, install from GitHub (see [Setup](SETUP.md)).
 
 ## Next
 
-- [ ] Install from PyPI (`pipx install ai-dev-workspace`) and list the MCP server in the official registry.
-- [ ] Install the Claude Code plugin (waiting on #183).
+- [ ] List the MCP server in the official registry.
 - [ ] Test Cursor, Copilot and Gemini CLI in live client sessions.
 - [ ] Add automatic decision capture only where another client exposes a suitable transcript or equivalent.
 - [ ] Prepare the public v0.2 launch from beta feedback and test results.
