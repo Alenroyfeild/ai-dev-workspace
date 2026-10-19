@@ -26,11 +26,11 @@ def junction_lstat(fake, real=os.lstat):
 class JunctionTests(Base):
     def test_is_link_sees_a_junction_only_on_windows(self):
         folder = self.root / 'plain'; folder.mkdir()
-        self.assertFalse(core.is_link(folder))
+        with mock.patch.object(core, 'WINDOWS', False): self.assertFalse(core.is_link(folder))
         with mock.patch.object(core, 'WINDOWS', True), mock.patch.object(os, 'lstat', junction_lstat(folder)):
             self.assertTrue(core.is_link(folder))
             self.assertFalse(core.is_link(self.root))
-        with mock.patch.object(os, 'lstat', junction_lstat(folder)): self.assertFalse(core.is_link(folder))
+        with mock.patch.object(core, 'WINDOWS', False), mock.patch.object(os, 'lstat', junction_lstat(folder)): self.assertFalse(core.is_link(folder))
 
     def test_private_pack_refuses_a_junction_inside_it(self):
         pack = (self.root.parent / 'pack').resolve(); (pack / 'sub').mkdir(parents=True)
@@ -88,7 +88,7 @@ class CmdShimTests(Base):
     def test_real_executables_and_other_systems_keep_such_paths(self):
         exe = dict(self.binding, executable=r'C:\bin\codex.exe')
         with mock.patch.object(core, 'WINDOWS', True): self.assertEqual(orchestration.worker_command(exe, r'C:\work\R&D')[2], r'C:\work\R&D')
-        self.assertEqual(orchestration.worker_command(self.binding, '/work/R&D')[2], '/work/R&D')
+        with mock.patch.object(core, 'WINDOWS', False): self.assertEqual(orchestration.worker_command(self.binding, '/work/R&D')[2], '/work/R&D')
 
 
 class LongPathTests(Base):
@@ -99,7 +99,7 @@ class LongPathTests(Base):
             self.assertEqual(str(core.long_path('\\\\srv\\share\\' + deep[3:])), '\\\\?\\UNC\\srv\\share\\' + deep[3:])
             self.assertEqual(str(core.long_path('\\\\?\\' + deep)), '\\\\?\\' + deep)
             self.assertEqual(str(core.long_path('C:\\short\\f.json')), 'C:\\short\\f.json')
-        self.assertEqual(str(core.long_path(deep)), deep)  # not Windows
+        with mock.patch.object(core, 'WINDOWS', False): self.assertEqual(str(core.long_path(deep)), deep)  # not Windows
 
     def test_worker_git_enables_long_paths(self):
         with mock.patch.object(workers.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, b'', b'')) as run:
