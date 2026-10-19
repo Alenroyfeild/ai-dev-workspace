@@ -72,6 +72,9 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
     return row, body
 
 
+CAP_WARNING = 'Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'
+
+
 def list_entries(root, value='', layer='all', _index=False, _all=False, limit=100):
     if value: category(value)
     rows, warnings = [], []
@@ -80,7 +83,7 @@ def list_entries(root, value='', layer='all', _index=False, _all=False, limit=10
         for path in sorted(base.glob('*.md')):
             if path.name == 'INDEX.md' or path.name.endswith('.index.md') or path.stem.endswith('.local'): continue
             if not core.ID_RE.fullmatch(path.stem): continue
-            if limit and scanned >= limit: warnings.append('Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'); break
+            if limit and scanned >= limit: warnings.append(CAP_WARNING); break
             scanned += 1
             try: row, _ = _read(root, path, name, team_id, summary=True, include_all=_all)
             except (core.WsError, OSError, ValueError):
@@ -120,9 +123,10 @@ def search(root, query, value='', layer='all', include_all=False):
     return sorted(hits, key=lambda h: (h['layer'] == 'team', -h['score']))[:20]
 
 
-def _more_note(hidden):
+def _more_note(hidden, at_least=False):
     # core._bounded_brief fills this last, so it is the first line dropped when the brief is full.
-    return [(f'+{hidden} more team notes:', 'ws know list --layer team', 12)] if hidden > 0 else []
+    # at_least: the scan stopped at the catalog cap, so the real count is only bounded from below.
+    return [(f'+{hidden} or more team notes:' if at_least else f'+{hidden} more team notes:', 'ws know list --layer team', 12)] if hidden > 0 else []
 
 
 def onboarding_fields(root):
@@ -169,4 +173,4 @@ def brief_fields(root, query, private):
     fields += [(prefix, text, 20) for _,prefix,text,_ in shown]
     def is_known(r): return r['source'].startswith('knowledge:') or (r['category'] == 'runbook' and r['source'].startswith('task:'))
     # Decisions and lessons in the list are not knowledge entries, so only shown knowledge/runbook rows count as displayed.
-    return fields + _more_note(sum(map(is_known, listing['entries'])) - sum(is_known(r[3]) for r in shown))
+    return fields + _more_note(sum(map(is_known, listing['entries'])) - sum(is_known(r[3]) for r in shown), CAP_WARNING in listing['warnings'])

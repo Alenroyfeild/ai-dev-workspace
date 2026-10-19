@@ -214,6 +214,14 @@ class TeamFolderTests(unittest.TestCase):
         self.assertEqual(text.count('Team (untrusted'), 2, text)
         self.assertTrue(text.endswith('+2 more team notes: ws know list --layer team'), text)
 
+    def test_capped_scan_says_or_more_and_exact_count_below_the_cap(self):
+        for i in range(101): self.record('Receipt checksum rule %d.' % i, '%032x' % (i + 1))
+        self.link(); core.task_new(self.root, 'T1', 'Receipt checksum'); core.claim(self.root, 'T1', 'synthetic')
+        core.remember(self.root, 'Store totals as integer units.')
+        text = core.brief(self.root)
+        self.assertEqual(text.count('Team (untrusted'), 2, text)
+        self.assertTrue(text.endswith('+98 or more team notes: ws know list --layer team'), text)
+
     def test_shown_decisions_and_lessons_do_not_hide_the_more_notes_pointer(self):
         row = lambda source, summary: dict(source=source, category='other', summary=summary, tags='', author='test', date='2026-10-18')
         rows = [row('decision:D1', 'Receipt approval policy uses stable keys.'), row('lesson:L1', 'Receipt approval policy needs a replay check.'),
