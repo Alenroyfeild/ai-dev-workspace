@@ -89,6 +89,7 @@ class CatalogCapTests(unittest.TestCase):
         listing = knowledge.list_entries(self.root, limit=5)
         self.assertEqual([r['id'] for r in listing['entries']], [f'{i:032x}' for i in (129, 128, 127, 126, 125)])
         self.assertIn('newest 5 of 130', listing['warnings'][0])
+        self.assertTrue(listing['warnings'][0].startswith(knowledge.CAP_PREFIX))
 
 
 class LessonRelevanceTests(Base):

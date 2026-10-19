@@ -73,6 +73,9 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
     return row, body
 
 
+CAP_PREFIX = 'Catalog examines the newest'
+
+
 def _newest(path):
     try: return (-path.stat().st_mtime_ns, path.name)
     except OSError: return (0, path.name)
@@ -86,7 +89,7 @@ def list_entries(root, value='', layer='all', _index=False, _all=False, limit=10
                  and not p.stem.endswith('.local') and core.ID_RE.fullmatch(p.stem)]
         files.sort(key=_newest)
         if limit and len(files) > limit:
-            warnings.append(f'Catalog examines the newest {limit} of {len(files)} {name} entries; use ws know show for omitted IDs.')
+            warnings.append(f'{CAP_PREFIX} {limit} of {len(files)} {name} entries; use ws know show for omitted IDs.')
             files = files[:limit]
         for path in files:
             try: row, _ = _read(root, path, name, team_id, summary=True, include_all=_all)
