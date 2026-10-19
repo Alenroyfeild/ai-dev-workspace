@@ -8,7 +8,7 @@ from . import cards, core, knowledge, sharing
 HINT='Folder pull stopped; retain both copies, resolve conflicts/partial files or pending local edits manually, then retry.'
 
 # Metadata that Windows, macOS, SMB and sync services add on their own; never read or published.
-OS_JUNK=re.compile(r'desktop\.ini|Thumbs\.db|\._.*|\.localized|\.Spotlight-V100|\.fseventsd|\.Trashes|\.TemporaryItems|~\$.*', re.I)
+OS_JUNK=re.compile(r'desktop\.ini|Thumbs\.db|\._.*|\.localized|\.Spotlight-V100|\.fseventsd|\.Trashes|\.TemporaryItems|~\$.*|\.dropbox\.cache|.*\.tmp\.drivedownload|\.~lock\..*#', re.I)
 
 
 def _decode(text):

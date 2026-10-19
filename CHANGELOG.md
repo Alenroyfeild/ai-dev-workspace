@@ -10,7 +10,7 @@
 - One hand-edited private Knowledge note (wrong category, for example) no longer blocks every `ws know add` and team share: it is skipped with a warning that names the file. Categories are accepted in any letter case, and a UTF-8 byte-order mark at the start of a note is tolerated.
 - `ws search --category` now looks at every note, not the first 100 by random ID; `ws know list` caps at the newest 100 per layer and says "newest N of M" when it does.
 - A lesson is no longer ranked as relevant to a task just because both contain words like "the" or "for"; `ws lesson search` ignores the hidden paths/area metadata and rejects a query without a 3+ letter word.
-- Team folder pulls ignore `desktop.ini`, `Thumbs.db`, `._*`, `.localized`, `.Spotlight-V100`, `.fseventsd`, `.Trashes`, `.TemporaryItems` and `~$*` files instead of stopping, and never publish them.
+- Team folder pulls ignore `desktop.ini`, `Thumbs.db`, `._*`, `.localized`, `.Spotlight-V100`, `.fseventsd`, `.Trashes`, `.TemporaryItems`, `~$*`, `.dropbox.cache`, `*.tmp.drivedownload` and `.~lock.*#` files instead of stopping, and never publish them.
 - `ws assist decide <id> snoozed --until` accepts only `YYYY-MM-DD` and refuses a date that is not in the future (Python 3.11+ used to accept `20261001` and snooze to the end of the year).
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws upgrade --dry-run` now prints one line per file (new or changed, and why a new hook file is added) instead of hundreds of diff lines; `--diff` shows the full diff.

@@ -107,7 +107,7 @@ class FolderJunkTests(unittest.TestCase):
     def test_os_metadata_files_never_stop_a_pull_or_get_copied(self):
         from ws import team_auto
         self.link()
-        names = ('desktop.ini', 'Thumbs.db', '._team.json', '._x.md', '.localized', '~$lock.tmp')
+        names = ('desktop.ini', 'Thumbs.db', '._team.json', '._x.md', '.localized', '~$lock.tmp', '.dropbox.cache', 'a.tmp.drivedownload', '.~lock.x.ods#')
         for folder in (self.folder, self.folder / 'entries'):
             for name in names: (folder / name).write_text('metadata')
         for name in ('.Spotlight-V100', '.fseventsd', '.TemporaryItems'): (self.folder / name).mkdir()
