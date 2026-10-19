@@ -32,6 +32,9 @@ Semantic versioning in `kit.json`:
 
 ## Cutting a release
 
+Before step 1, run `bin/release-smoke` (stdlib, offline, throwaway HOME): it builds the sdist and wheel, installs the wheel in a temp venv and runs version, demo, start, remember, checkpoint, brief, token redaction, doctor, recap, pr-notes, MCP and `ws start --undo` against a toy repo, then checks the artifacts for tests, `.ws` files and stray paths. Exit 0 means every required step passed.
+`--wheel PATH` tests an existing wheel, `--source` runs `bin/ws` from the checkout without building (fast, used by the tests) and `--json` prints machine-readable results.
+
 1. Move the `CHANGELOG.md` entries under a new `## <version> (<YYYY-MM-DD>)` heading. Write it for users: first line is a one-sentence summary (the update notice shows it), then Improved, Fixed, Measured and Known limits, each line saying what changes for the user. Use absolute links; relative ones break on the release page.
 2. Set the same version in `kit.json`. Save this release's record corpus under `tests/fixtures/records/<version>/` (see `docs/UPGRADE-CHECK.md`).
 3. Commit, then `git tag v<version> && git push --tags`. Do not create the GitHub Release by hand.
