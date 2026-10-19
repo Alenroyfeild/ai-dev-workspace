@@ -1,11 +1,10 @@
 import json
 import os
-import subprocess
-import sys
 from pathlib import Path
 from unittest import mock
-from test_ws import Base, KIT
+from test_ws import Base
 from ws import core
+from testutil import run_ws
 
 
 class SessionClientTests(Base):
@@ -48,7 +47,7 @@ class SessionClientTests(Base):
         cursor.mkdir(parents=True); gemini.mkdir(parents=True)
         (cursor / 'chat.txt').write_text(json.dumps({'role': 'user', 'message': {'content': 'Searchneedle Cursor fixture'}}))
         (gemini / 'session.json').write_text(json.dumps({'messages': [{'type': 'user', 'content': 'Searchneedle Gemini fixture'}]}))
-        run = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'sessions', 'search', 'Searchneedle'], cwd=self.root,
-                             env={**os.environ, 'HOME': str(home), 'USERPROFILE': str(home), 'CODEX_HOME': str(home / '.codex')}, text=True, capture_output=True, timeout=10)
+        run = run_ws('sessions', 'search', 'Searchneedle', cwd=self.root,
+                     env={**os.environ, 'HOME': str(home), 'USERPROFILE': str(home), 'CODEX_HOME': str(home / '.codex')})
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual({h['tool'] for h in json.loads(run.stdout)}, {'cursor', 'gemini'})

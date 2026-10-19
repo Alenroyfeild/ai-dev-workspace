@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 from unittest import mock
 from test_ws import Base
+from testutil import seeded_repo
 from ws import cli, core, workers
 
 
@@ -13,10 +14,7 @@ class WorkerPrepareTests(Base):
     def setUp(self):
         super().setUp()
         self.repo = self.root / 'source'; self.repo.mkdir()
-        self.git('init', '-q', '-b', 'feature/fixture')
-        (self.repo / 'calc.py').write_text('answer = 1\n')
-        (self.repo / '.gitignore').write_text('ignored.txt\n')
-        self.git('add', '.'); self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'fixture')
+        seeded_repo(self.repo, 'feature/fixture', {'calc.py': 'answer = 1\n', '.gitignore': 'ignored.txt\n'})
         cfg = core.config(self.root); cfg['repos'] = [str(self.repo)]; (self.root / 'workspace.json').write_text(json.dumps(cfg))
         core.task_new(self.root, 'W-1', 'Fix fixture', objective='Update calc.py', repo=str(self.repo))
         core.claim(self.root, 'W-1', 'lead')

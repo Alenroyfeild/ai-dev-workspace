@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 from ws import cli, core
+from testutil import seeded_repo
 
 
 class StartTests(unittest.TestCase):
@@ -19,10 +20,7 @@ class StartTests(unittest.TestCase):
         self.repo = Path(self.tmp.name) / 'repo'; self.repo.mkdir()
         patch = mock.patch.dict(os.environ, HOME=str(self.home), USERPROFILE=str(self.home), CODEX_HOME=str(self.home / '.codex'), WS_OFFLINE='1')
         patch.start(); self.addCleanup(patch.stop)
-        subprocess.run(['git', 'init', '-q', '-b', 'feature/synthetic'], cwd=self.repo, check=True)
-        (self.repo / 'AGENTS.md').write_text('User rules remain.\n')
-        subprocess.run(['git', 'add', 'AGENTS.md'], cwd=self.repo, check=True)
-        subprocess.run(['git', '-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'fixture'], cwd=self.repo, check=True)
+        seeded_repo(self.repo, 'feature/synthetic', {'AGENTS.md': 'User rules remain.\n'})
         self.old = Path.cwd(); os.chdir(self.repo); self.addCleanup(os.chdir, self.old)
         detection = mock.patch('ws.setup.detect', return_value=[]); detection.start(); self.addCleanup(detection.stop)
 

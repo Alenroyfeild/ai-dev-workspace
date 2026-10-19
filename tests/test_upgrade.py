@@ -1,10 +1,9 @@
 import json
-import subprocess
-import sys
 from unittest import mock
 from pathlib import Path
 from test_ws import Base, KIT
 from ws import core
+from testutil import run_ws
 
 
 class UpgradeTests(Base):
@@ -47,7 +46,7 @@ class UpgradeTests(Base):
     def test_dry_run_prints_a_short_summary_and_diff_flag_the_full_diff(self):
         self.old_workspace()
         (self.root / '.claude/settings.json').unlink()  # a beta.4 kit never had one, so upgrade adds it
-        run = lambda *a: subprocess.run([sys.executable, str(KIT / 'bin/ws'), *a], cwd=self.root, capture_output=True, text=True)
+        run = lambda *a: run_ws(*a, cwd=self.root)
         before = self.snapshot()
         short, full = run('upgrade', '--dry-run'), run('upgrade', '--dry-run', '--diff')
         self.assertEqual((short.returncode, full.returncode, before), (0, 0, self.snapshot()))
@@ -61,7 +60,7 @@ class UpgradeTests(Base):
         self.assertRegex(short.stdout, r'~ workspace\.json \(changed, \d+ lines; keys ')
 
     def confirm_run(self, *args, stdin):
-        return subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'upgrade', *args], cwd=self.root, capture_output=True, text=True, input=stdin)
+        return run_ws('upgrade', *args, cwd=self.root, input=stdin)
 
     def test_upgrade_previews_then_asks_before_applying(self):
         self.old_workspace(); before = self.snapshot()

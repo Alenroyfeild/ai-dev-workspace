@@ -1,13 +1,6 @@
-import subprocess
-import sys
 import unittest
-from pathlib import Path
 
-CLI = Path(__file__).resolve().parents[1] / 'bin/ws'
-
-
-def ws(*args):
-    return subprocess.run([sys.executable, str(CLI), *args], text=True, capture_output=True)
+from testutil import run_ws as ws
 
 
 class DailyHelpTests(unittest.TestCase):

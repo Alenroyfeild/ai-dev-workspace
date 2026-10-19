@@ -82,7 +82,8 @@ class AssistTests(Base):
 
     def test_sessions_checkpoint_lessons_long_session_and_notices(self):
         core.claim(self.root, 'T-1', 'synthetic')
-        with mock.patch.object(core, 'tools', return_value=[]), mock.patch.object(assist, 'cost_data', return_value=({}, {})):
+        with mock.patch.object(core, 'tools', return_value=[]), mock.patch.object(assist, 'cost_data', return_value=({}, {})), \
+                mock.patch.dict(os.environ, WS_OFFLINE='1'):  # notices would otherwise call GitHub for the update check
             for i in range(3): assist.observe(self.root, {'hook_event_name': 'SessionStart', 'session_id': str(i)})
             self.assertIn('checkpoint-T-1', [s['id'] for s in assist.suggestions(self.root)])
             for i in range(5): core.checkpoint(self.root, 'T-1', 'in_progress', 'Synthetic next')

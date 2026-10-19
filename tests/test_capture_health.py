@@ -1,9 +1,8 @@
 import json
-import subprocess
-import sys
 from unittest import mock
-from test_ws import Base, KIT
+from test_ws import Base
 from ws import core
+from testutil import run_ws
 
 
 class CaptureHealthTests(Base):
@@ -11,15 +10,14 @@ class CaptureHealthTests(Base):
         def capturing(*args):
             with self.assertRaises(core.WsError), core.lock(self.root): pass
             return 'captured'
-        with mock.patch.object(core, '_capture_decisions', side_effect=capturing):
+        with mock.patch.object(core, 'LOCK_WAIT', 0.05), mock.patch.object(core, '_capture_decisions', side_effect=capturing):  # contention only; the real 4 s wait adds nothing
             self.assertTrue(core.capture_decisions(self.root, 'synthetic'))
         (self.root / '.ws/capture-health.json').write_bytes(b'\xff')
         self.assertEqual(core.capture_health(self.root)['reason'], 'unreadable_health')
 
     def hook(self, path):
-        result = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook'],
-            cwd=self.root, input=json.dumps({'hook_event_name': 'Stop', 'transcript_path': str(path)}),
-            capture_output=True, text=True)
+        result = run_ws('nudge', '--hook', cwd=self.root,
+            input=json.dumps({'hook_event_name': 'Stop', 'transcript_path': str(path)}))
         self.assertEqual(result.returncode, 0, result.stderr)
         return core.doctor(self.root)['capture_health']
 
@@ -41,7 +39,7 @@ class CaptureHealthTests(Base):
         diagnostic = json.dumps(core.doctor(self.root)['capture_health'])
         self.assertNotIn('private transcript', diagnostic)
         self.assertNotIn(str(path), diagnostic)
-        out = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'doctor', '--text'], cwd=self.root, capture_output=True, text=True)
+        out = run_ws('doctor', '--text', cwd=self.root)
         self.assertIn('Last capture outcome:', out.stdout)
         self.assertIn('unchanged', out.stdout)
 

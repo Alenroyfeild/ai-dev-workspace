@@ -1,9 +1,14 @@
 """Shared test helpers: structural home isolation and Windows-safe temp cleanup."""
+import atexit
+import contextlib
+import io
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
+import traceback
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -46,3 +51,68 @@ def _can_symlink():
 
 # Skips only where this host really cannot create symlinks (Windows without Developer Mode/admin); windows-latest can.
 needs_symlinks = unittest.skipUnless(_can_symlink(), 'symlinks cannot be created on this host')
+
+
+def run_ws(*args, cwd=None, input=None, env=None, check=False):
+    """Run `ws <args>` in-process (no Python start-up per call) and return a subprocess.CompletedProcess.
+
+    Use it where the test is about command behaviour. Keep a real `bin/ws` subprocess where the process
+    boundary matters (encoding of real pipes, cwd discovery without --workspace-root, stdin EOF, locks).
+    """
+    from ws import cli
+    stdin = io.TextIOWrapper(io.BytesIO((input or '').encode('utf-8')), encoding='utf-8')
+    out, err = io.StringIO(), io.StringIO()
+    previous = Path.cwd()
+    with contextlib.ExitStack() as stack:
+        if env is not None:
+            stack.enter_context(mock.patch.dict(os.environ, env, clear=True))
+        if 'COLUMNS' not in os.environ:  # a child with piped output wraps --help at 80 columns, whatever the terminal
+            stack.enter_context(mock.patch.dict(os.environ, COLUMNS='80'))
+        stack.enter_context(mock.patch.object(sys, 'stdin', stdin))
+        stack.enter_context(contextlib.redirect_stdout(out))
+        stack.enter_context(contextlib.redirect_stderr(err))
+        if cwd is not None:
+            os.chdir(cwd)
+        try:
+            code = cli.main([str(a) for a in args])
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+            if isinstance(exc.code, str): print(exc.code, file=sys.stderr)
+        except Exception:
+            traceback.print_exc(file=sys.stderr); code = 1
+        finally:
+            os.chdir(previous)
+    result = subprocess.CompletedProcess(['ws', *map(str, args)], code or 0, out.getvalue(), err.getvalue())
+    if check:
+        result.check_returncode()
+    return result
+
+
+_REPO_TEMPLATES = {}
+
+
+def _drop_template(path):
+    try:
+        rmtree_owned(path, path)  # read-only git objects need the Windows-safe remover
+    except OSError:
+        pass
+
+
+def seeded_repo(dest, branch, files, message='fixture'):
+    """Make `dest` a git repo on `branch` with one commit of `files` ({name: text}).
+
+    The repo is built once per process and then copied, so a test pays one directory copy instead of
+    `git init`, `git add` and `git commit` (three process launches, slow on Windows).
+    """
+    key = (branch, message, tuple(sorted(files.items())))
+    if key not in _REPO_TEMPLATES:
+        template = Path(tempfile.mkdtemp(prefix='ws-test-repo-'))
+        atexit.register(_drop_template, template)
+        git = lambda *a: subprocess.run(['git', *a], cwd=template, check=True, capture_output=True)
+        git('init', '-q', '-b', branch)
+        for name, text in files.items():
+            (template / name).write_text(text)
+        git('add', '.')
+        git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', message)
+        _REPO_TEMPLATES[key] = template
+    shutil.copytree(_REPO_TEMPLATES[key], dest, symlinks=True, dirs_exist_ok=True)

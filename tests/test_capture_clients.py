@@ -3,6 +3,7 @@ import subprocess
 import sys
 from test_ws import Base, KIT
 from ws import core
+from testutil import run_ws
 
 
 class ClientCaptureTests(Base):
@@ -41,7 +42,7 @@ class ClientCaptureTests(Base):
             data['custom'] = 'keep'; path.write_text(json.dumps(data))
             core.upgrade_workspace(self.root)
             self.assertEqual(json.loads(path.read_text())['custom'], 'keep')
-            run = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'brief', '--hook', '--client', client], cwd=self.root, input=json.dumps({'hook_event_name': event}), capture_output=True, text=True)
+            run = run_ws('brief', '--hook', '--client', client, cwd=self.root, input=json.dumps({'hook_event_name': event}))
             self.assertEqual(run.returncode, 0, run.stderr)
             self.assertIn('T-1', run.stdout); json.loads(run.stdout)
 
