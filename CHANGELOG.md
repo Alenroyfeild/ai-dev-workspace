@@ -6,6 +6,7 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- Slack and Discord webhook URLs are now redacted like other secrets, `ws brief` no longer stalls (about 7 s on a 60,000-space line) on a Learnings.md line with a long run of spaces, and two docs nits are fixed (pack `kind` list, internal gate names in the parallel-workers note).
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws upgrade --dry-run` now prints one line per file (new or changed, and why a new hook file is added) instead of hundreds of diff lines; `--diff` shows the full diff.
 - `ws upgrade` now shows the summary and asks `Apply this upgrade? [y/N]` before writing, like `ws start`; `--yes` skips the question; no answer (closed input) refuses, so scripts must pass `--yes`. If files change while the question is open, it refuses ("Workspace changed during confirmation; run ws upgrade again") instead of applying a different plan.

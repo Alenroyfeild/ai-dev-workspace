@@ -1,7 +1,7 @@
 # Parallel worker plans and reviewed unit branches
 
 Status: design note for an unreleased feature. No parallel execution is enabled, and no `ws worker plan` command exists in this version.
-Rendering-integrity checks (#123) have landed; implementation still waits for a passing live Codex isolation check.
+Rendering-integrity checks have landed; implementation still waits for a passing live Codex isolation check.
 Rendering integrity is checked against the immutable collected tree. Claude
 workers stay preparation-only until Claude completes the matching native-sandbox probe.
 Known limit: Codex 0.155.1 sandbox permits /tmp writes; worker launch stays disabled.
@@ -23,7 +23,7 @@ leave the user's checkout, branch, index and dirty files untouched.
   Dependent work becomes a new plan after the preceding result is integrated.
 - Default concurrency two, bounded to one through four; no nested worker spawning.
 - Codex only where the live isolation check has passed. No provider fallback or installation to make a run work.
-- Reuse O2 preparation, native permission profiles, collection, review, acceptance,
+- Reuse the existing single-worker preparation, native permission profiles, collection, review, acceptance,
   process-group cancellation and owned-path cleanup; do not extend route/delegate.
 - Lead proposals and worker output are untrusted data. They cannot grant paths,
   change checks, accept output, raise concurrency or turn on network access.
@@ -56,7 +56,7 @@ No caller-supplied extra roots.
 
 ## Execution and collection
 
-Create independent O2 runs for the parent claim; do not create child task IDs.
+Create independent single-worker runs for the parent claim; do not create child task IDs.
 A short lead-side lock binds each run to the plan; release it before client execution.
 The scheduler launches at most the confirmed concurrency and records start/finish,
 exit/check evidence, immutable tree/diff identities and available usage per run.
@@ -80,16 +80,16 @@ ownership. Retain existing runs and accepted commits for inspection.
 | running | Collect independent results; cancel remaining work explicitly. |
 | interrupted-running | Recorded group survived restart; inspect or explicitly cancel with the start-time guard. |
 | needs-review | Review units; blocked units require replacement in a new plan. |
-| accepted | Selected units have reviewed O2 branches; merge through the normal PR flow. |
+| accepted | Selected units have reviewed worker branches; merge through the normal PR flow. |
 | discarded | Owned artifacts removed; tombstone and accepted source branches retained. |
 
 ## Review and acceptance
 
-For each unit, use O2 lead review and acceptance to create `ws/worker/<run-id>`.
+For each unit, use the existing single-worker lead review and acceptance to create `ws/worker/<run-id>`.
 Approval binds the displayed diff to immutable tree/check identities. Required
 checks must run against that same collected tree; any later edit invalidates their
 evidence and requires collection and checks again before acceptance. This matching
-check-input identity is an O3 implementation requirement, not a claim about current O2.
+check-input identity is a requirement for parallel workers, not a claim about the current single-worker flow.
 Later checkout edits are excluded and warned about; acceptance uses the reviewed commit.
 The warning can appear for unchanged files with Git eol normalization.
 
@@ -120,7 +120,7 @@ No benchmarks. This design PR stops at review; it does not authorize implementat
 ## Official references
 
 [Git worktrees](https://git-scm.com/docs/git-worktree) share repository metadata;
-O2's private clones are the isolation building block here.
+The single-worker flow's private clones are the isolation building block here.
 [Git merge](https://git-scm.com/docs/git-merge) documents the normal branch merging
 flow; conflicts remain the lead's responsibility.
 [Git update-ref](https://git-scm.com/docs/git-update-ref) supports expected-old-value

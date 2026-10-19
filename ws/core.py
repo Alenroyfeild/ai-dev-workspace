@@ -117,6 +117,7 @@ SECRET_RE = re.compile(
     r'|npm_[A-Za-z0-9]{36}'  # npm
     r'|hf_[A-Za-z0-9]{30,}'  # Hugging Face
     r'|[rs]k_(?:live|test)_[A-Za-z0-9]{20,})(?:\b|(?<=-))'  # Stripe
+    r'|https://(?:hooks\.slack\.com/(?:services|workflows)/[A-Za-z0-9/_-]{20,512}|discord(?:app)?\.com/api/webhooks/[0-9]{1,25}/[A-Za-z0-9_-]{20,512})'  # Slack/Discord webhook URLs
     r'|(?<!claim_)(?i:(?:api[_-]?key|token|secret|password)["\']?\s*[:=]\s*["\']?)[A-Za-z0-9/+_.-]{12,}'
     r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
@@ -1737,12 +1738,12 @@ def relevant_lessons(root, task):
         return git_files['tracked']
     ranked = []
     for line in saved:
-        match = re.search(r'\s*<!-- ws:lesson (.*?) -->$', line)
+        match = re.search(r'<!-- ws:lesson (.*?) -->$', line)  # no leading \s*: it made a long space run quadratic
         metadata = {}
         if match:
             try: metadata = json.loads(match[1])
             except ValueError: pass
-            line = line[:match.start()]
+            line = line[:match.start()].rstrip()
         if not isinstance(metadata, dict): metadata = {}
         paths = metadata.get('paths', [])
         if not isinstance(paths, list): paths = []
