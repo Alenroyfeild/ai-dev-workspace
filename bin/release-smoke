@@ -119,11 +119,15 @@ class Smoke:
         self.repo.mkdir()
         self.run(git + ['init', '-q'])
         (self.repo / 'app.py').write_text('print("hello")\n')
+        (self.repo / 'lib.py').write_text('X = 1\n')
         self.run(git + ['add', '.'])
         self.run(git + ['commit', '-q', '-m', 'init'])
         self.run(git + ['checkout', '-q', '-b', 'feature-x'])
         (self.repo / 'app.py').write_text('print("hello")\nprint("uncommitted edit")\n')  # work in progress ws must not touch
         (self.repo / 'notes.txt').write_text('untracked\n')
+        (self.repo / 'lib.py').write_text('X = 2\n')  # staged change, then a further unstaged edit on top of it
+        self.run(['git', 'add', 'lib.py'])
+        (self.repo / 'lib.py').write_text('X = 3\n')
         shutil.copytree(self.repo, self.before)
 
     def kit(self):
@@ -205,15 +209,22 @@ class Smoke:
         return {p.relative_to(base).as_posix(): p.read_bytes() for p in base.rglob('*')
                 if p.is_file() and '.git' not in p.relative_to(base).parts}
 
+    def index_state(self, base):
+        git = lambda *a: self.run(['git', '-C', base] + list(a)).stdout
+        return git('ls-files', '-s'), git('diff', '--cached'), git('diff')
+
     def s_undo(self):
         self.ws('start', '--undo')
+        for label, now, before in zip(('index entries', 'staged content', 'unstaged content'),
+                                      self.index_state(self.repo), self.index_state(self.before)):
+            if now != before: raise Fail('%s differ after --undo (git index not restored)' % label)
         now, before = self.tree(self.repo), self.tree(self.before)
         diff = sorted(set(now) ^ set(before)) + sorted(n for n in set(now) & set(before) if now[n] != before[n])
         if diff: raise Fail('repo differs after --undo: ' + ', '.join(diff[:4]))
         for name in ('info/exclude', 'HEAD', 'config'):
             a, b = self.repo / '.git' / name, self.before / '.git' / name
             if a.exists() != b.exists() or a.exists() and a.read_bytes() != b.read_bytes(): raise Fail('.git/%s changed' % name)
-        return '%d files and .git/info/exclude identical' % len(before)
+        return '%d files, index and .git/info/exclude identical' % len(before)
 
     def s_package(self):
         problems = []
