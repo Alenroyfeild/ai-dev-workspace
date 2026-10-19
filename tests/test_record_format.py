@@ -62,3 +62,23 @@ class NewerFormatTests(Base):
         self.assertIn('format 2', core.task_find(self.root, 'T-1')[0]['format_warning'])
         self.assertEqual(core.brief(self.root, 'T-1').count('newer ai-dev-workspace'), 1)
         self.assertEqual(core.task_read(self.root, 'T-1')['task'], 'T-1')
+
+
+class WindowsLineEndingTests(Base):
+    def test_crlf_newer_task_is_still_read_only_and_warns(self):
+        path = self.root / 'vault/Tasks/T-1.md'
+        path.write_bytes(path.read_bytes().replace(b'format: 1', b'format: 2').replace(b'\n', b'\r\n'))
+        before = path.read_bytes()
+        with self.assertRaisesRegex(core.WsError, r'format 2'):
+            core.atomic_write(path, 'replacement\n')
+        with self.assertRaisesRegex(core.WsError, r'format 2'):
+            core.claim(self.root, 'T-1', 'w')
+        self.assertEqual(path.read_bytes(), before)
+        self.assertIn('format 2', core.task_find(self.root, 'T-1')[0]['format_warning'])
+        self.assertEqual(core.brief(self.root, 'T-1').count('newer ai-dev-workspace'), 1)
+
+    def test_bom_newer_task_is_still_read_only(self):
+        path = self.root / 'vault/Tasks/T-1.md'
+        path.write_bytes(b'\xef\xbb\xbf' + path.read_bytes().replace(b'format: 1', b'format: 2').replace(b'\n', b'\r\n'))
+        with self.assertRaisesRegex(core.WsError, r'format 2'):
+            core.atomic_write(path, 'replacement\n')
