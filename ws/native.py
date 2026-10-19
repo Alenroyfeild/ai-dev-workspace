@@ -1,7 +1,6 @@
 """Read-only import of assistant-native memories and Codex goals. Never writes to native stores."""
 import os
 import re
-import sqlite3
 from pathlib import Path
 
 from . import core
@@ -29,6 +28,7 @@ def _query(name, sql, columns, table):
     path = _codex_home() / name
     if not path.is_file():
         return None, f'{name} not found'
+    import sqlite3  # lazy: not needed on the hook path
     try:
         db = sqlite3.connect(path.as_uri() + '?mode=ro', uri=True)
         try:
