@@ -6,6 +6,12 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- A stray non-UTF-8 byte in `Learnings.md`, `Feedback.md`, a task or a `Runs/*.jsonl` file no longer crashes `ws brief`, `status`, `notices`, `assist`, `recap`, `pr-notes`, `doctor` or `task show` (and so no longer silently drops the SessionStart brief): reads show the bad byte as a replacement character. Commands that would rewrite such a file stop with "<file> is not valid UTF-8 (byte offset N)" instead of a traceback, and `ws validate` lists every undecodable file with its byte offset.
+- Obsidian's `.trash/` and `.obsidian/` (any dot-directory in the vault) are no longer searched or validated, so deleted notes stop resurfacing in `ws search`.
+- `ws validate` no longer flags valid Obsidian links (`![[image.png]]` embeds of existing files, case-insensitive names, `[[Note.md]]`, `[[Tasks/../Note]]`) or links inside code fences and inline code. It now warns about duplicate frontmatter keys, `depends_on` naming a missing task, and dependency cycles.
+- A task's `repo:` (relative or `~/...`) now resolves the same way in every command: `~` expands, then relative paths are taken from the workspace root, not the current directory.
+- `ws recap --since Nd` counts days in UTC, matching task `updated:` stamps, so tasks touched early in a local day are no longer dropped east of UTC.
+- `ws scope lesson:<id>` / `decision:<id>` on a missing record says "No lesson record <id>; kinds are ..." instead of "File cannot be read safely".
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws upgrade --dry-run` now prints one line per file (new or changed, and why a new hook file is added) instead of hundreds of diff lines; `--diff` shows the full diff.
 - `ws upgrade` now shows the summary and asks `Apply this upgrade? [y/N]` before writing, like `ws start`; `--yes` skips the question; no answer (closed input) refuses, so scripts must pass `--yes`. If files change while the question is open, it refuses ("Workspace changed during confirmation; run ws upgrade again") instead of applying a different plan.

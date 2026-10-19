@@ -42,7 +42,7 @@ def import_usage(root, since=None, task_id=None):
         end = timestamp(meta.get('checkpoint_at') or meta.get('updated') or core.now()) if meta.get('status') == 'done' else timestamp(core.now())
         if meta.get('status') == 'done' and len(meta.get('updated', '')) == 10 and not meta.get('checkpoint_at'):
             end += datetime.timedelta(days=1)
-        windows.append((identifier, {str(Path(p).expanduser().resolve()) for p in projects}, start, end))
+        windows.append((identifier, {str(core.repo_path(root, p)) for p in projects}, start, end))
     pending, ambiguous = [], 0
     for row in data['records']:
         try:

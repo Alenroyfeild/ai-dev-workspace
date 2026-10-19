@@ -13,6 +13,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shlex
 import shutil
@@ -271,10 +272,32 @@ def read_roots(root):
     repos = config(root).get('repos', [])
     if not isinstance(repos, list) or any(not isinstance(p, str) or not p for p in repos):
         raise WsError('Repos must be a list of paths; review workspace.json, then run ws doctor.')
-    return [root] + [Path(p).expanduser() for p in repos]
+    return [root] + [repo_path(root, p) for p in repos]
 
 
 MAX_READ_BYTES = 50 * 1024 * 1024
+
+
+def read_lenient(path):
+    """Display read: a stray non-UTF-8 byte becomes U+FFFD instead of crashing the command."""
+    return Path(path).read_text(encoding='utf-8', errors='replace')
+
+
+def read_exact(path):
+    """Rewrite read: never rewrite a file we cannot decode; name it instead."""
+    try: return Path(path).read_text(encoding='utf-8')
+    except UnicodeDecodeError as error:
+        raise WsError(f'{Path(path).name} is not valid UTF-8 (byte offset {error.start}); re-save it as UTF-8, then retry. Run ws validate to list such files.') from None
+
+
+def repo_path(root, repo):
+    """One rule for a task or config repo: expand ~, then resolve relative to the workspace root."""
+    return (Path(root) / Path(str(repo)).expanduser()).resolve()
+
+
+def vault_notes(v):
+    """Markdown notes in the vault, skipping dot-directories such as .trash, .obsidian and .git."""
+    return [p for p in sorted(v.rglob('*.md')) if not any(part.startswith('.') for part in p.relative_to(v).parts)]
 
 
 def read_text(path, roots=None, errors='replace', preserve_newlines=False):
@@ -1149,7 +1172,7 @@ def task_depend(root, task_id, other):
                 raise WsError(f'{task_id} -> {other} would create a dependency cycle.')
             deps = deps + [other]
             path = task_path(root, task_id)
-            atomic_write(path, set_meta(path.read_text(encoding='utf-8'), {'depends_on': ', '.join(deps)}))
+            atomic_write(path, set_meta(read_exact(path), {'depends_on': ', '.join(deps)}))
     return {'task': task_id, 'depends_on': deps}
 
 
@@ -1241,7 +1264,7 @@ def task_import(root, file, prefix='SPEC', write=False):
                 path = task_path(root, ref)
                 meta = {'status': i['status']}
                 if i['depends_on']: meta['depends_on'] = ', '.join(i['depends_on'])
-                atomic_write(path, set_meta(path.read_text(encoding='utf-8'), meta))
+                atomic_write(path, set_meta(read_exact(path), meta))
     return result
 
 
@@ -1261,7 +1284,7 @@ def task_read(root, task_id, sections=None):
     path = task_path(root, task_id)
     if not path.is_file():
         raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
-    text = path.read_text(encoding='utf-8')
+    text = read_lenient(path)
     bad = {'conflicted': True} if conflicted(text) else {}
     if not sections:
         return {'task': task_id, 'sha': digest_text(text), 'text': text, **bad}
@@ -1276,7 +1299,7 @@ def claim(root, task_id, worker):
         raise WsError('Worker is a short label such as claude-main or codex-1.')
     with lock(root):
         path = existing_task_path(root, task_id)
-        text = path.read_text(encoding='utf-8')
+        text = read_exact(path)
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by'):
@@ -1305,7 +1328,7 @@ def release(root, task_id, worker=None, token=None):
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = existing_task_path(root, task_id)
-        text = path.read_text(encoding='utf-8')
+        text = read_exact(path)
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by') != worker or meta.get('claim_token') != token:
@@ -1324,7 +1347,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = existing_task_path(root, task_id)
-        text = path.read_text(encoding='utf-8')
+        text = read_exact(path)
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
@@ -1379,7 +1402,7 @@ def remember(root, text, task_id=None):
         path = task_path(root, task_id)
         if not path.is_file():
             raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
-        original = path.read_text(encoding='utf-8')
+        original = read_exact(path)
         if conflicted(original): raise WsError(conflict_hint(task_id))
         meta = parse_meta(original)
         worker, token = _claim_defaults(root, task_id, None, None)
@@ -1499,8 +1522,8 @@ def search(root, query, limit=20, category=''):
     if not words:
         raise WsError('Search needs at least one word of 3+ letters.')
     hits, paths = [], []
-    for path in vault(root).rglob('*.md'):
-        if '.ws' not in path.parts and 'Runs' not in path.parts:
+    for path in vault_notes(vault(root)):
+        if 'Runs' not in path.parts:
             paths.append((path, path.relative_to(root).as_posix()))
     for repo in config(root).get('repos', []):
         report = _graphify_report(Path(repo).expanduser())
@@ -1632,7 +1655,7 @@ def lesson_add(root, text, tags=(), paths=(), area=''):
 def lesson_search(root, query):
     path = vault(root) / 'Learnings.md'
     words = list(dict.fromkeys(w.lower() for w in re.findall(r'\w{3,}', query)))[:MAX_QUERY_WORDS]
-    lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- ')] if path.exists() else []
+    lines = [l for l in read_lenient(path).splitlines() if l.startswith('- ')] if path.exists() else []
     return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
 
 
@@ -1664,7 +1687,7 @@ def _task_git(root, task_id, *args):
     try:
         repo = task_read(root, task_id, ['Objective'])['meta'].get('repo')
         if not repo: return ''
-        path = inside(root / repo, read_roots(root))
+        path = inside(repo_path(root, repo), read_roots(root))
         return git_read(path, *args)
     except (WsError, OSError, ValueError, subprocess.SubprocessError):
         return ''
@@ -2208,7 +2231,7 @@ def feedback_add(root, text, kind='idea', source='user'):
 
 def feedback_list(root, open_only=True):
     path = vault(root) / 'Feedback.md'
-    lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- [')] if path.exists() else []
+    lines = [l for l in read_lenient(path).splitlines() if l.startswith('- [')] if path.exists() else []
     return [l for l in lines if l.startswith('- [ ]')] if open_only else lines
 
 
@@ -2402,7 +2425,7 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
                 raise WsError('Imported usage requires a Codeburn source and stable import ID.')
             entry.update(source=source, import_id=import_id)
             if path.is_file():
-                lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+                lines = read_exact(path).splitlines(keepends=True)
                 matches = []
                 for raw in lines:
                     try:
@@ -2446,7 +2469,7 @@ def run_entries(root, task_id):
     if not path.exists():
         return []
     entries = []
-    with path.open(encoding='utf-8') as stream:
+    with path.open(encoding='utf-8', errors='replace') as stream:
         for line in stream:
             try:
                 entries.append(json.loads(line))
@@ -2493,7 +2516,7 @@ def run_report(root, task_id=None):
     for path in files:
         if not path.exists():
             continue
-        for line in path.read_text(encoding='utf-8').splitlines():
+        for line in read_lenient(path).splitlines():
             e = json.loads(line)
             steps += 1
             b = by.setdefault(e['provider'], {'steps': 0, 'tokens_in': 0, 'tokens_out': 0, 'seconds': 0.0, 'failed': 0})
@@ -2507,11 +2530,26 @@ def run_report(root, task_id=None):
 
 # --- health ----------------------------------------------------------------------
 
+FENCE_RE = re.compile(r'^[ \t]*(`{3,}|~{3,}).*?(?:^[ \t]*\1[`~]*[ \t]*$|\Z)', re.M | re.S)
+
+
 def validate(root):
-    errors, warnings = [], []
+    errors, warnings, texts = [], [], {}
     v = vault(root)
+
+    def decode(path):
+        # Strict first so a bad byte is reported (name + offset); links and secrets still scan the replaced text.
+        if path not in texts:
+            try: texts[path] = path.read_text(encoding='utf-8'), True
+            except UnicodeDecodeError as error:
+                errors.append(f'{path.relative_to(root)}: not valid UTF-8 (byte offset {error.start}); re-save it as UTF-8')
+                texts[path] = path.read_text(encoding='utf-8', errors='replace'), False
+        return texts[path]
+    for path in sorted((v / 'Runs').glob('*.jsonl')): decode(path)
+    graph = {}
     for path in sorted((v / 'Tasks').glob('*.md')):
-        text = path.read_text(encoding='utf-8')
+        text, ok = decode(path)
+        if not ok: continue
         if conflicted(text):
             errors.append(f'{path.name}: ' + conflict_hint(path.stem)); continue
         meta = parse_meta(text)
@@ -2525,13 +2563,27 @@ def validate(root):
         # A task ws start just created has no next step until the first checkpoint; the brief already asks for one.
         if meta.get('status') not in ('done', 'backlog') and meta.get('checkpoint_at') and not section(text, 'Next action'):
             errors.append(f'{path.name}: empty Next action')
-    names = {p.stem for p in v.rglob('*.md')} | {p.relative_to(v).as_posix()[:-3] for p in v.rglob('*.md')}
-    for path in v.rglob('*.md'):
-        text = path.read_text(encoding='utf-8', errors='replace')
+        keys = re.findall(r'^([A-Za-z_][\w-]*):', text.split('\n---', 1)[0][4:], re.M) if text.startswith('---\n') else []
+        for key in sorted({k for k in keys if keys.count(k) > 1}):
+            warnings.append(f'{path.name}: duplicate frontmatter key {key}; the last value wins')
+        graph[path.stem] = [d.strip() for d in meta.get('depends_on', '').split(',') if d.strip()]
+    for task, deps in graph.items():
+        for dep in deps:
+            if dep not in graph: warnings.append(f'{task}.md: depends_on names missing task {dep}')
+        if _cycle_through(graph, task): warnings.append(f'{task}.md: depends_on forms a dependency cycle')
+    # Obsidian links are case-insensitive and may name any vault file, with or without .md.
+    names = set()
+    for path in (p for p in v.rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(v).parts)):
+        rel = path.relative_to(v).as_posix().casefold()
+        names |= {path.name.casefold(), rel}
+        if path.suffix.lower() == '.md': names |= {path.stem.casefold(), rel[:-3]}
+    for path in vault_notes(v):
+        text, _ = decode(path)
         if redact(text) != text:
             warnings.append(f'{path.relative_to(root)}: looks like it contains a secret; remove it')
-        for target in re.findall(r'\[\[([^\]|#]+)', text):
-            if target.strip() not in names:
+        scanned = re.sub(r'`[^`\n]*`', '', FENCE_RE.sub('', text))  # links in code are examples, not links
+        for target in re.findall(r'\[\[([^\]|#]+)', scanned):
+            if posixpath.normpath(target.strip()).casefold() not in names:
                 errors.append(f'{path.relative_to(root)}: broken link [[{target}]]')
     return {'valid': not errors, 'errors': errors, 'warnings': warnings}
 
@@ -2960,9 +3012,9 @@ def update_kit():
 FEEDBACK_RE = re.compile(r'^- \[( |x)\] (\S+) \*\*(\w+)\*\* \(([^)]*)\): (.*?)(?: — issue: (\S+))?$')
 
 
-def _feedback_lines(root):
+def _feedback_lines(root, exact=False):
     path = vault(root) / 'Feedback.md'
-    return path, (path.read_text(encoding='utf-8').splitlines() if path.exists() else [])
+    return path, ((read_exact if exact else read_lenient)(path).splitlines() if path.exists() else [])
 
 
 def feedback_items(root):
@@ -3012,7 +3064,7 @@ def feedback_link(root, n, url):
     if not re.fullmatch(r'https://github\.com/[\w.-]+/[\w.-]+/issues/\d+', url):
         raise WsError('Expected a GitHub issue URL like https://github.com/owner/repo/issues/12')
     with lock(root):
-        path, lines = _feedback_lines(root)
+        path, lines = _feedback_lines(root, exact=True)
         item = next((i for i in feedback_items(root) if i['n'] == n), None)
         if not item:
             raise WsError(f'No feedback item {n}.')
@@ -3028,7 +3080,7 @@ def feedback_sync(root, fetch=None):
     fetch = fetch or _get_json
     closed = []
     with lock(root):
-        path, lines = _feedback_lines(root)
+        path, lines = _feedback_lines(root, exact=True)
         for item in feedback_items(root):
             if item['issue'] and not item['done']:
                 m = re.match(r'https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)', item['issue'])
@@ -3079,8 +3131,8 @@ RECAP_ORDER = ('done', 'review', 'in_progress', 'blocked', 'ready', 'backlog')
 
 def recap(root, since='7d'):
     """Tasks touched since a date with their explicit decisions, plus team notes and status; read-only, safe to paste."""
-    if m := re.fullmatch(r'(\d{1,3})d', since or ''):
-        cutoff = (datetime.date.today() - datetime.timedelta(days=int(m[1]))).isoformat()
+    if m := re.fullmatch(r'(\d{1,3})d', since or ''):  # UTC day, like the task updated: stamps
+        cutoff = (datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=int(m[1]))).isoformat()
     elif re.fullmatch(r'\d{4}-\d{2}-\d{2}', since or ''):
         try:
             cutoff = datetime.date.fromisoformat(since).isoformat()

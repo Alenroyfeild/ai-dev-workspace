@@ -28,7 +28,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if task.get('conflicted') or meta.get('status') == 'done' or not token or meta.get('claimed_by') != worker or meta.get('claim_token') != token:
         raise core.WsError('Worker preparation needs a current local task claim; claim the task first.')
-    source = Path(meta.get('repo') or '').expanduser().resolve()
+    source = core.repo_path(root, meta.get('repo') or '.')
     if source not in [p.resolve() for p in core.read_roots(root)[1:]]:
         raise core.WsError('Worker repository must be one declared workspace repo.')
     if Path(git(source, 'rev-parse', '--show-toplevel')).resolve() != source:
@@ -162,7 +162,7 @@ def _approved(root, run_id):
             or approval.get('reviewer') != state['claimed_by']):
         raise core.WsError('Worker needs a current lead review before acceptance.')
     task = _claim(root, state); source = Path(state['source']).resolve()
-    if (source != Path(task['meta'].get('repo') or '').expanduser().resolve() or source not in [p.resolve() for p in core.read_roots(root)[1:]]
+    if (source != core.repo_path(root, task['meta'].get('repo') or '.') or source not in [p.resolve() for p in core.read_roots(root)[1:]]
             or Path(git(source, 'rev-parse', '--show-toplevel')).resolve() != source):
         raise core.WsError('Worker source repository changed.')
     return directory, state, source
