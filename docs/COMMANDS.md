@@ -232,7 +232,7 @@ Details:
 | Command | What it does |
 |---|---|
 | `ws update [--check]` | Update the kit if it is a git clone, or print the pipx command for a pipx install. `--check` only looks. |
-| `ws upgrade [--dry-run] [--diff] [--yes]` | Apply this kit version's managed workspace rules, hook handlers and Claude/Codex handoff, pickup and lesson skills. Prints one line per file (new, changed, with a reason for new files); `--diff` shows the full diff. Asks `Apply this upgrade? [y/N]` after the summary; `--yes` skips the question, and with no terminal and no `--yes` it refuses. |
+| `ws upgrade [--dry-run] [--diff] [--yes]` | Apply this kit version's managed workspace rules, hook handlers and Claude/Codex handoff, pickup and lesson skills. Prints one line per file (new, changed, with a reason for new files); `--diff` shows the full diff. Asks `Apply this upgrade? [y/N]` after the summary; `--yes` skips the question. No answer (closed input) refuses, so scripts need `--yes`; a piped `y` is an answer, as in `ws start`. If files change while the question is open, it refuses with "Workspace changed during confirmation; run ws upgrade again" and writes nothing. |
 | `ws notices` | Show a new release, fixed issues and unshared feedback. Your assistant runs it once per session and asks before acting. |
 | `ws feedback add "<text>" [--kind K] [--source S]` | Record feedback about the workspace. `--kind` defaults to `idea`, `--source` to `user`. |
 | `ws feedback list [--all]` / `ws feedback sync` | List items, or tick items whose issue is closed. |

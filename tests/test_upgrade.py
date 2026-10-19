@@ -77,6 +77,24 @@ class UpgradeTests(Base):
         self.assertTrue((self.root / 'routing.json').exists())
         self.assertEqual(self.confirm_run(stdin='').stdout.splitlines()[0], 'No changes.')  # nothing to apply, nothing to ask
 
+    def test_piped_answer_applies_like_ws_start_and_closed_input_refuses(self):
+        self.old_workspace()
+        self.assertEqual(self.confirm_run(stdin='y\n').returncode, 0)  # same EOF semantics as ws start: an answer is an answer
+        self.assertTrue((self.root / 'routing.json').exists())
+
+    def test_files_changing_during_the_prompt_refuse_with_no_writes(self):
+        from io import StringIO
+        from contextlib import redirect_stderr, redirect_stdout
+        from ws import cli
+        self.old_workspace(); settings = self.root / '.claude/settings.json'
+        def answer(*args): settings.unlink(); return 'y'  # a previewed .ws-new sidecar would become active hooks
+        before = self.snapshot(); before.pop('.claude/settings.json'); err = StringIO()
+        with redirect_stdout(StringIO()), redirect_stderr(err), mock.patch('builtins.input', side_effect=answer):
+            result = cli.main(['--workspace-root', str(self.root), 'upgrade'])
+        self.assertEqual(result, 2); self.assertIn('Workspace changed during confirmation; run ws upgrade again', err.getvalue())
+        after = self.snapshot(); after.pop('.ws/lock', None)  # the empty lock file is not a managed write
+        self.assertEqual(before, after)  # settings stays deleted, nothing else written
+
     def test_json_key_summary(self):
         from ws.upgrade import json_keys
         self.assertEqual(json_keys(b'{"a": {"x": 1, "y": 2}, "b": 1}', b'{"a": {"x": 1, "y": 3, "z": 4}}'), '+1 -1 ~1')

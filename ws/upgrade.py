@@ -142,7 +142,7 @@ def summary(changes):
     return '\n'.join(lines)
 
 
-def upgrade(root, dry_run=False):
+def upgrade(root, dry_run=False, expected=None):
     root = Path(root).resolve()
     def safe(path):
         if any(p.is_symlink() for p in (path, *path.parents) if p != root and root in p.parents):
@@ -202,6 +202,7 @@ def upgrade(root, dry_run=False):
             old.decode(errors='replace').splitlines(True), new.decode(errors='replace').splitlines(True),
             fromfile=p.relative_to(root).as_posix(), tofile=p.relative_to(root).as_posix()))) for p, old, new in operations]
         backups = []
+        if expected is not None and changes != expected: raise core.WsError('Workspace changed during confirmation; run ws upgrade again.')  # before any write
         if not dry_run and changes:
             stamp = core.now().replace(':', '').replace('+', '-') + '-' + core.uuid.uuid4().hex[:8]
             for path, old, new in operations:

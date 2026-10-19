@@ -389,7 +389,7 @@ def main(argv=None):
     f.add_parser('sync', help='tick items whose issue is closed')
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
     sub.add_parser('version', help='print the installed kit version')
-    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true', help='print the changes without writing them'); s.add_argument('--diff', action='store_true', help='show the full diff of every file, not the summary'); s.add_argument('--yes', action='store_true', help='apply without asking')
+    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true', help='print the changes without writing them'); s.add_argument('--diff', action='store_true', help='show the full diff of every file, not the summary'); s.add_argument('--yes', action='store_true', help='apply without asking (needed in scripts: closed input is no answer and refuses)')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
     s = sub.add_parser('assist', help='suggest improvements; apply only after explicit permission')
     s.add_argument('action', nargs='?', choices=('apply', 'decide')); s.add_argument('id', nargs='?')
@@ -638,7 +638,7 @@ def main(argv=None):
                     try: go = input().strip().lower() in ('y', 'yes')
                     except EOFError: print(file=sys.stderr); raise core.WsError('No confirmation; use ws upgrade --yes or --dry-run.')
                     if not go: out('Not applied.'); return 0
-                result = core.upgrade_workspace(root, False)
+                result = core.upgrade_workspace(root, False, result['changes'])  # refuses if the plan changed since the preview
             out({'pending_review': result['pending'], 'backups': result['backups']}); return 0
         if a.cmd == 'assist':
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
