@@ -872,7 +872,9 @@ def main(argv=None):
         if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
             print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
             print('{}'); return 0
-        if isinstance(exc, OSError):  # a file that cannot be read or written is a user-fixable state, not a ws bug
+        if isinstance(exc, OSError) and exc.filename is None:  # e.g. a failed launchd call: its own words say more than a file hint
+            exc = core.WsError(str(exc))
+        elif isinstance(exc, OSError):  # a file that cannot be read or written is a user-fixable state, not a ws bug
             exc = core.WsError(f'Cannot read or write {exc.filename or "a file"}: {exc.strerror or exc}. Next: check that path (permissions, or a directory where a file should be), then retry.')
         elif isinstance(exc, UnicodeDecodeError):
             exc = core.WsError(f'A file is not valid UTF-8 ({exc.reason}). Next: fix or remove the bad bytes in the file named by the command, then retry.')

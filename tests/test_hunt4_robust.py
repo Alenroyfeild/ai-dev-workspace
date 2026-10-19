@@ -94,6 +94,12 @@ class Hunt4RobustTests(unittest.TestCase):
         code, _, err = self.ws('lesson', 'add', 'a lesson under a read-only vault')
         self.assertEqual(code, 2); self.assertTrue(err.startswith('ws: ')); self.assertNotIn('Traceback', err)
 
+    def test_os_error_without_a_path_keeps_its_own_message(self):
+        self.started()
+        with mock.patch('ws.core.lesson_add', side_effect=OSError('launchd registration failed')):
+            code, _, err = self.ws('lesson', 'add', 'any lesson')
+        self.assertEqual(code, 2); self.assertIn('launchd registration failed', err); self.assertNotIn('Cannot read or write', err)
+
     # C: ws pack add before ws start
 
     def test_pack_add_before_start_says_to_run_start_first(self):
