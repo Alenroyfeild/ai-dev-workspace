@@ -99,7 +99,7 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
             privacy.get('remote') != link.get('remote') or privacy.get('method') not in ('gh', 'glab', 'attested') or
             (not folder_host and team._git(clone, 'remote', 'get-url', 'origin').strip() != link.get('remote'))):
         raise core.WsError('Team identity or privacy consent changed; link again before sharing.')
-    registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = json.loads(state_text or '{}')
+    registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = core.load_json(state_text or '{}', '.ws/shares.json')
     if not isinstance(state, dict): raise core.WsError('Invalid local share receipts; retain them for recovery.')
     key = link['id'] + ':' + item + (':' + as_format if as_format else ''); receipt = state.get(key, {})
     if not isinstance(receipt, dict): raise core.WsError('Invalid local share receipt.')
@@ -148,7 +148,7 @@ def apply(root, plan):
         current = preview(root, plan['item'], plan['unshare'], plan['author'], plan['entry'], plan['date'], plan['as_format'])
         if current != plan: raise core.WsError('Source, destination or configuration changed; preview again.')
         if plan['unchanged']: return {'unchanged': True}
-        registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = json.loads(state_text or '{}')
+        registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = core.load_json(state_text or '{}', '.ws/shares.json')
         target = _safe(root, root / '.ws/team' / plan['destination']); old = _text(target)
         if plan['unshare']: state.pop(plan['key'])
         else: state[plan['key']] = {'id': plan['entry'], 'sha': core.digest_text(plan['content']), 'date': plan['date']}
