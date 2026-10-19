@@ -53,7 +53,7 @@ def _claude(root):
             for path in sorted(directory.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True):
                 if path.name == 'MEMORY.md' or path.is_symlink():
                     continue
-                try: text = path.read_text(encoding='utf-8', errors='replace')[:20000]
+                try: text = path.read_text(encoding='utf-8', errors='replace').lstrip('\ufeff')[:20000]
                 except OSError: continue
                 head = re.match(r'---\n(.*?)\n---\n?(.*)', text, re.S)
                 meta = {k: v.strip('"\' ') for k, v in re.findall(r'^(name|description):[ \t]*(.*)$', head[1], re.M)} if head else {}
