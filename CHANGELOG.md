@@ -23,6 +23,7 @@
 - Windows: deep paths no longer fail on the 260-character limit when ws writes backups under `.ws/backups` (`\\?\` form) or creates worker checkouts (`core.longpaths=true`).
 - Windows: junctions (`mklink /J`) are now detected by the checks that refuse symlinks (private packs, setup, upgrade, repo start, memory import, worker runs and collection, team folders).
 - Tests: twelve symlink tests that were skipped on Windows now run wherever symlinks can be created, as on `windows-latest`.
+- Imported memory stays unverified and private-aware: `ws import native` text appears in the brief as imported context (not as your decisions, and it no longer switches off team onboarding), honours `#private`, `<private>` and `/private`, and drops control characters; `ws start` import skips now name the file and the real reason, and the 16-file cap counts only usable files.
 
 ### New
 - `bin/release-smoke` runs the release smoke in one command: it builds the artifacts offline, installs the wheel in a temp venv and drives `ws` end to end in a toy repo with a throwaway HOME (`--wheel PATH`, `--source`, `--json`). See [Cutting a release](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/MAINTAINING.md#cutting-a-release).
