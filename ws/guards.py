@@ -7,6 +7,7 @@ A best-effort safety net, not a sandbox: it reads command text, it never runs it
 import base64
 import collections
 import itertools
+import json
 import os
 import posixpath
 import re
@@ -79,8 +80,9 @@ class _Frame:
         self.mode, self.words, self.cur, self.started, self.bodies, self.start, self.pipe = mode, [], [], False, [], 0, None
 
 
-_PLAIN = re.compile(r'[^\s\'"\\$`;&|()<#]+')
-_PLAIN_PS = re.compile(r'[^\s\'"$`;&|(){}<#]+')
+_PLAIN = re.compile(r'[^\s\'"\\$`;&|()<>#]+')
+_PLAIN_PS = re.compile(r'[^\s\'"$`;&|(){}<>#]+')
+_REDIRECT_OP = re.compile(r'>{1,2}[|&]?')
 _DQ = re.compile(r'[^"\\$`]+')
 _HEREDOC = re.compile(r'<<(-?)[ \t]*(?:"([^"\n]*)"|\'([^\'\n]*)\'|\\?([A-Za-z_][\w.-]*))')
 _KEYWORDS = frozenset(('if', 'then', 'do', 'else', 'elif', 'while', 'until', '!', '{', '}', 'fi', 'done', 'esac'))
@@ -201,6 +203,9 @@ def _scan(text, ps=False):
         elif c == '#':
             if o.started: add('#'); i += 1
             else: j = text.find('\n', i); i = n if j < 0 else j
+        elif c == '>':  # `a>f` is the word a, then >f; an fd (2>f) or & (&>f) stays attached to it
+            if o.started and not (len(o.cur) == 1 and re.fullmatch(r'\d*|&', o.cur[0])): endword()
+            m = _REDIRECT_OP.match(text, i); add(m[0]); i = m.end()
         elif c == '<':
             m = _HEREDOC.match(text, i) if text.startswith('<<', i) and not text.startswith('<<<', i) else None
             if m: pending.append((m[2] or m[3] or m[4], bool(m[1]), m[2] is not None or m[3] is not None or '\\' in m[0], o.bodies)); i = m.end()
@@ -215,6 +220,16 @@ def _scan(text, ps=False):
 _WRAP = {'sudo': 'ughpCTrtUDR', 'doas': 'uC', 'env': 'uCS', 'command': '', 'exec': 'a', 'nohup': '', 'time': 'fo', 'nice': 'n', 'ionice': 'cnp', 'timeout': 'sk',
          'setsid': '', 'stdbuf': 'ioe', 'watch': 'n', 'busybox': '', 'xargs': 'nILPsdEa', 'wsl': 'du'}
 
+# Long options that take a separate value (`sudo --user root git ...`); `--user=root` is one word and needs nothing. GNU getopt accepts unambiguous abbreviations.
+_WRAP_LONG = {'sudo': ('--user', '--group', '--host', '--prompt', '--chdir', '--close-from', '--role', '--type', '--other-user', '--command-timeout', '--login-class'),
+              'env': ('--chdir', '--unset', '--split-string', '--argv0'), 'timeout': ('--signal', '--kill-after'), 'nice': ('--adjustment',),
+              'ionice': ('--class', '--classdata', '--pid', '--pgid', '--uid'), 'stdbuf': ('--input', '--output', '--error'), 'time': ('--format', '--output'), 'watch': ('--interval',),
+              'xargs': ('--max-args', '--max-lines', '--max-procs', '--max-chars', '--delimiter', '--arg-file', '--eof', '--process-slot-var')}
+
+
+def _long_takes_value(name, option):
+    return len(option) > 2 and any(long.startswith(option) for long in _WRAP_LONG.get(name, ()))
+
 
 def _strip(words):
     """(words without NAME=value prefixes and wrapper commands + their options, whether xargs was one of them)."""
@@ -228,7 +243,8 @@ def _strip(words):
         while k < n and words[k][:1] == '-' and words[k] != '-':
             option = words[k]; k += 1
             if option == '--': break
-            if option[:2] != '--':
+            if option[:2] == '--': k += _long_takes_value(name, option) and k < n
+            else:
                 for j, char in enumerate(option[1:], 1):
                     if char in _WRAP[name]: k += j == len(option) - 1; break  # value is the next word unless attached (-n5)
         if name == 'timeout' and k < n and re.fullmatch(r'\d[\d.]*[smhd]?', words[k]): k += 1
@@ -262,8 +278,47 @@ _HOOK_FILE = re.compile(r'(?i)(?:^|[\\/])(?:\.claude[\\/]settings[\w.-]*\.json|\
 _NO_DISABLE = 'Ask the user to remove the guards pack themselves.'
 
 
+_REDIR = re.compile(r'(?:\d+|&)?>{1,2}[|&]?(.*)', re.S)  # one word of a redirect: >f, >>f, 2>f, &>f, >|f, or a bare operator (the target is the next word)
+_GUARD_TOOLS = ('Bash', 'PowerShell', 'Write', 'Edit', 'MultiEdit', 'Monitor', 'NotebookEdit')  # what the guards pack's matcher covers
+
+
 def _guard_marks(text):
     return len(re.findall(r'\bguard\b|PreToolUse', text))
+
+
+def _redirect_targets(words):
+    targets = []
+    for k, word in enumerate(words):
+        m = _REDIR.fullmatch(word)
+        if m: targets.append(m[1] or (words[k + 1] if k + 1 < len(words) else ''))  # appends too: they leave invalid JSON, which switches the hooks off
+    return targets
+
+
+def _operands(args):
+    """Non-option words without redirects and their targets."""
+    out, skip = [], False
+    for a in args:
+        if skip: skip = False; continue
+        m = _REDIR.fullmatch(a)
+        if m: skip = not m[1]
+        elif a[:1] != '-': out.append(a)
+    return out
+
+
+def _hook_arg(word):
+    """True when a word names a hook config file, also as -Path:file or of=file."""
+    if word[:1] == '-' and ':' in word: word = word.partition(':')[2]
+    elif word[:3] == 'of=': word = word[3:]
+    return bool(_HOOK_FILE.search(word))
+
+
+def _undoes_start(name, args):
+    """`ws start --undo` (any spelling of the ws command and of the option): it removes the repo hooks the guards run from."""
+    words = [name, *args]
+    for k, word in enumerate(words):
+        if word == 'start' and any(_exe(w) in ('ws', 'ws-plugin') for w in words[:k]):
+            return any(len(a) >= 3 and a[:2] == '--' and '--undo'.startswith(a) for a in words[k + 1:])
+    return False
 
 
 def _test_file(word):
@@ -282,9 +337,13 @@ def _shell_command(args):
 def _edits_hooks(name, args, words):
     """Shell commands that remove the guards pack or rewrite the assistant's hook config; the assistant must not switch its own guard off."""
     if any(args[k:k + 3] == ['pack', 'remove', 'guards'] for k in range(len(args))): return f'This would remove the guards pack. {_NO_DISABLE}'
-    targets = [w.lstrip('>&') or (words[k + 1] if k + 1 < len(words) else '') for k, w in enumerate(words) if w[:1] == '>' and w[:2] != '>>']
+    if _undoes_start(name, args): return f'This would remove the repo hooks (ws start --undo). {_NO_DISABLE}'
     inplace = name in ('sed', 'perl') and any(a[:1] == '-' and a[1:2] != '-' and 'i' in a for a in args)
-    if any(_HOOK_FILE.search(t) for t in targets) or (name in ('rm', 'mv', 'unlink', 'shred', 'truncate', 'tee') or inplace) and any(_HOOK_FILE.search(a) for a in args):
+    operands = _operands(args)
+    if (any(_HOOK_FILE.search(t) for t in _redirect_targets(words))
+            or (name in ('rm', 'mv', 'unlink', 'shred', 'truncate', 'tee') or inplace) and any(_hook_arg(a) for a in args)
+            or name in ('cp', 'install', 'ln') and operands and _hook_arg(operands[-1])  # the destination; reading a hook file is fine
+            or name == 'dd' and any(a[:3] == 'of=' and _hook_arg(a) for a in args)):
         return f'This would change the hook config that runs the guards. {_NO_DISABLE}'
     return ''
 
@@ -418,6 +477,23 @@ def _ps_home_or_root(a):
     return not a.startswith('-') and (not a.strip('\\/') or _is_home(a) or _is_root(a))
 
 
+PS_HOOK_WRITE = {'set-content', 'sc', 'add-content', 'ac', 'out-file', 'clear-content', 'clc', 'new-item', 'ni', 'rename-item', 'ren', 'rni', 'move-item', 'move', 'mi', 'mv', 'tee-object', 'tee'} | PS_REMOVE
+PS_HOOK_COPY = {'copy-item', 'copy', 'cp', 'cpi'}
+
+
+def _ps_edits_hooks(words):
+    """A PowerShell writer, mover, remover or redirect aimed at a hook config file (a copy only when the file is the destination)."""
+    name, args = words[0].lower(), words[1:]
+    if any(_HOOK_FILE.search(t) for t in _redirect_targets(words)): return True
+    if name in PS_HOOK_WRITE: return any(_hook_arg(a) for a in args)
+    if name in PS_HOOK_COPY:
+        flag = lambda a: a[:1] == '-' and len(a) > 1 and 'destination'.startswith(a[1:].partition(':')[0].lower())  # -Destination, -Dest, -D:value
+        named = [a.partition(':')[2] for a in args if flag(a) and ':' in a] + [args[k + 1] for k, a in enumerate(args[:-1]) if flag(a) and ':' not in a]
+        operands = _operands(args)
+        return any(_hook_arg(a) for a in named) or not named and bool(operands) and _hook_arg(operands[-1])
+    return False
+
+
 def powershell_reason(command, _depth=0):
     """Remove-Item (and aliases) -Recurse -Force on home or a drive root, also when piped in; skipped with -WhatIf; iex strings are checked too. Git and secrets go through command_reason."""
     for cmd in _scan(command, True):
@@ -425,6 +501,7 @@ def powershell_reason(command, _depth=0):
         if words[0].lower() in ('iex', 'invoke-expression') and _depth < 20:
             why = _nested(' '.join(words[1:]), [4 * len(command) + 50000], _depth)
             if why: return why
+        if _ps_edits_hooks(words): return f'This would change the hook config that runs the guards. {_NO_DISABLE}'
         if words[0].lower() not in PS_REMOVE: continue
         args = words[1:]
         if not (any(_ps_flag(a, 'recurse') for a in args) and any(_ps_flag(a, 'force') for a in args)) or any(_ps_flag(a, 'whatif') for a in args): continue
@@ -469,20 +546,132 @@ def _added(tool_input, cwd):
     return '', ''
 
 
-def _edit_reason(new, old, hook_file=False):
-    if hook_file and (_guard_marks(new) < _guard_marks(old) or 'WS_GUARDS' in new and 'WS_GUARDS' not in old):
+def _fragment_reason(new, old):
+    """Hook-config edit seen only as text (the file cannot be read): fewer guard words or a new WS_GUARDS switch."""
+    if _guard_marks(new) < _guard_marks(old) or 'WS_GUARDS' in new and 'WS_GUARDS' not in old:
         return f'This edit would switch the ws guards hook off. {_NO_DISABLE}'
+    return ''
+
+
+def _is_guard_command(command):
+    """A ws guard hook command: `<python> <kit>/bin/ws ... guard --hook ...`, plain or in the encoded Windows launcher."""
+    try:
+        parts = shlex.split(command, posix=not core.WINDOWS)
+        if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
+    except ValueError: return False
+    return 'guard' in parts and '--hook' in parts and any(_exe(w) in ('ws', 'ws-plugin') for w in parts)
+
+
+def _guard_entries(text):
+    """{command: tools its matcher covers} of the ws guard PreToolUse hooks in a hook-config text; None when the text is not a JSON object."""
+    try: data = json.loads(text)
+    except ValueError: return None
+    if not isinstance(data, dict): return None
+    groups = (data.get('hooks') or {}).get('PreToolUse') if isinstance(data.get('hooks'), dict) else None
+    found = {}
+    for group in groups if isinstance(groups, list) else []:
+        if not isinstance(group, dict) or not isinstance(group.get('hooks'), list): continue
+        matcher = group.get('matcher')
+        for entry in group['hooks']:
+            command = entry.get('command') if isinstance(entry, dict) else None
+            if not isinstance(command, str) or not _is_guard_command(command) or entry.get('type', 'command') != 'command': continue
+            covered = set()
+            for tool in _GUARD_TOOLS:
+                try: covered.add(tool) if matcher in (None, '', '*') or isinstance(matcher, str) and re.fullmatch(matcher, tool) else None
+                except re.error: pass
+            found[command] = found.get(command, set()) | covered
+    return found
+
+
+def _config_reason(before, after):
+    """Deny when a ws guard hook that `before` has is gone, rewritten or no longer matches a tool it guarded in `after`, or hooks get switched off."""
+    old, new = _guard_entries(before) or {}, _guard_entries(after)
+    off = f'This edit would switch the ws guards hook off. {_NO_DISABLE}'
+    if 'WS_GUARDS' in after and 'WS_GUARDS' not in before: return off
+    if new is None: return off if old else ''  # not valid JSON any more: the client ignores the whole file
+    if any(command not in new or not covered <= new[command] for command, covered in old.items()): return off
+    try: disabled = lambda text: bool(json.loads(text).get('disableAllHooks'))
+    except (ValueError, AttributeError): return ''
+    return off if disabled(after) and not disabled(before) else ''
+
+
+def _read(path, cwd):
+    try: return (Path(cwd or '.') / os.path.expanduser(path)).read_text(encoding='utf-8')
+    except (OSError, ValueError): return None
+
+
+def _after_edit(tool_input, before):
+    """Text of the file once a Claude Edit / MultiEdit / Write is applied to `before`; None when an edit does not apply (the tool itself will refuse it)."""
+    if 'content' in tool_input: return str(tool_input['content'])
+    edits = tool_input['edits'] if isinstance(tool_input.get('edits'), list) else [tool_input]
+    text = before
+    for edit in edits:
+        if not isinstance(edit, dict) or 'new_string' not in edit: continue
+        old = str(edit.get('old_string', ''))
+        if not old or old not in text: return None
+        text = text.replace(old, str(edit['new_string']), -1 if edit.get('replace_all') else 1)
+    return text
+
+
+def _hook_edit_reason(tool_input, path, cwd):
+    before = _read(path, cwd)
+    if before is None:
+        new, old = _added(tool_input, cwd)
+        return _fragment_reason(new, old)
+    after = _after_edit(tool_input, before)
+    return '' if after is None else _config_reason(before, after)
+
+
+def _edit_reason(new, old):
     if len(MUTED.findall(new)) > len(MUTED.findall(old)): return 'This edit skips or narrows tests (skip/only); fix the test or ask the user first.'
     if secret_values(new) - secret_values(old): return 'This edit writes what looks like a secret (token, key or password) into a file.'
     return ''
 
 
-def _patch_reason(patch):
-    lines = patch.splitlines()
-    new = '\n'.join(l[1:] for l in lines if l.startswith('+')); old = '\n'.join(l[1:] for l in lines if l.startswith('-'))
-    files = re.findall(r'(?m)^\*\*\* (Update|Delete) File: (.+?)\s*$', patch)
-    if any(kind == 'Delete' and _HOOK_FILE.search(path) for kind, path in files): return f'This patch deletes the hook config that runs the guards. {_NO_DISABLE}'
-    return _edit_reason(new, old, any(_HOOK_FILE.search(path) for _, path in files))
+_PATCH_FILE = re.compile(r'(?m)^\*\*\* (Update|Add|Delete) File: (.+?)\s*$')
+
+
+def _apply_hunks(text, lines):
+    """Text after the hunks of one `*** Update File` section (' ' context, '-' removed, '+' added lines), or None when a hunk does not match."""
+    hunks, cur = [], None
+    for line in lines:
+        if line.startswith('@@'): cur = None; continue
+        if line.startswith('***'): continue
+        if cur is None: cur = []; hunks.append(cur)
+        cur.append(line if line[:1] in (' ', '-', '+') else ' ' + line)
+    pos = 0
+    for hunk in hunks:
+        old = '\n'.join(l[1:] for l in hunk if l[0] != '+'); new = '\n'.join(l[1:] for l in hunk if l[0] != '-')
+        at = text.find(old, pos)
+        if at < 0: return None
+        text = text[:at] + new + text[at + len(old):]; pos = at + len(new)
+    return text
+
+
+def _patch_reason(patch, cwd=None):
+    """Each file of an apply_patch is judged on its own lines, so a hook removal or a new skip/secret in one file is never masked by text in another."""
+    marks = list(_PATCH_FILE.finditer(patch))
+    if not marks: return _edit_reason('\n'.join(l[1:] for l in patch.splitlines() if l.startswith('+')), '\n'.join(l[1:] for l in patch.splitlines() if l.startswith('-')))
+    for k, mark in enumerate(marks):
+        kind, path = mark[1], mark[2]
+        lines = patch[mark.end():marks[k + 1].start() if k + 1 < len(marks) else len(patch)].splitlines()
+        move = next((l[len('*** Move to: '):].strip() for l in lines if l.startswith('*** Move to: ')), '')
+        body = [l for l in lines if l.strip() and not l.startswith('*** ')] if kind != 'Update' else lines
+        new = '\n'.join(l[1:] for l in body if l.startswith('+')); old = '\n'.join(l[1:] for l in body if l.startswith('-'))
+        target = move or path
+        if kind == 'Delete' and _HOOK_FILE.search(path) or move and _HOOK_FILE.search(path) and not _HOOK_FILE.search(move):
+            return f'This patch deletes the hook config that runs the guards. {_NO_DISABLE}'
+        if _HOOK_FILE.search(target):
+            before = _read(target, cwd)
+            source = before if kind != 'Update' or not move else _read(path, cwd)
+            if kind == 'Add': after = new
+            elif source is None: after = None
+            else: after = _apply_hunks(source, lines)
+            why = _fragment_reason(new, old) if before is None or after is None else _config_reason(before, after)
+            if why: return why
+        why = _edit_reason(new, old)
+        if why: return why
+    return ''
 
 
 def _command_text(tool_name, tool_input):
@@ -498,10 +687,11 @@ def reason(tool_name, tool_input, cwd=None):
     if os.environ.get('WS_GUARDS', '').lower() in ('off', '0', 'false'): return ''
     if not isinstance(tool_input, dict): return ''
     command = _command_text(tool_name, tool_input)
-    if tool_name == 'apply_patch' or command.lstrip().startswith('*** Begin Patch'): return _patch_reason(command)
+    if tool_name == 'apply_patch' or command.lstrip().startswith('*** Begin Patch'): return _patch_reason(command, cwd)
     if command: return command_reason(command, tool_name == 'PowerShell') or powershell_reason(command)  # PowerShell rules for every tool: Codex on Windows runs PowerShell under a Bash-named tool
-    new, old = _added(tool_input, cwd)
-    return _edit_reason(new, old, bool(_HOOK_FILE.search(str(tool_input.get('file_path') or tool_input.get('notebook_path') or ''))))
+    path = str(tool_input.get('file_path') or tool_input.get('notebook_path') or '')
+    why = _hook_edit_reason(tool_input, path, cwd) if _HOOK_FILE.search(path) else ''
+    return why or _edit_reason(*_added(tool_input, cwd))
 
 
 def hook(payload):
