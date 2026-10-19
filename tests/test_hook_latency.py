@@ -39,8 +39,11 @@ class HookLatencyTests(Base):
         def spy(cmd, *args, **kwargs):
             if cmd and cmd[0] == 'git': calls.append(tuple(cmd))
             return real(cmd, *args, **kwargs)
-        with mock.patch.object(subprocess, 'run', spy):
-            self.hook(argv, payload)
+        err = io.StringIO()
+        with mock.patch.object(subprocess, 'run', spy), contextlib.redirect_stderr(err):
+            code, _ = self.hook(argv, payload)
+        self.assertEqual(code, 0, err.getvalue())  # a hook that fails after its first git call must not pass
+        self.assertNotIn('Traceback', err.getvalue())
         return calls
 
     def test_importing_the_cli_does_not_load_network_or_rare_command_modules(self):
