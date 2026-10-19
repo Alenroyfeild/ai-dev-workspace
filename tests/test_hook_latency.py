@@ -14,7 +14,7 @@ from test_ws import Base
 from ws import cli, core
 
 KIT = Path(__file__).resolve().parents[1]
-HEAVY = ('urllib.request', 'http.client', 'ssl', 'difflib', 'sqlite3', 'ws.orchestration', 'ws.workers', 'ws.setup', 'ws.repo')
+HEAVY = ('urllib.request', 'http.client', 'ssl', 'difflib', 'sqlite3', 'ws.orchestration', 'ws.workers', 'ws.setup', 'ws.repo', 'ws.upgrade')
 
 
 class HookLatencyTests(Base):
