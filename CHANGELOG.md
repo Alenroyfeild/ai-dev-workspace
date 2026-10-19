@@ -27,6 +27,7 @@
 - `ws delegate --run` now stops the worker on Ctrl-C or any error after it starts, instead of leaving a paid worker running. A `timeout_seconds` that is not a whole number from 1 to 86400 is refused with a clear error before anything starts (a huge value used to crash after the worker was spawned).
 - `ws delegate --diff` no longer runs the repository's `core.fsmonitor` command or hooks; it uses the same hardened Git calls as `ws worker`.
 - A damaged `.ws/delegate-selftests.json` is rebuilt before `ws delegate --selftest --run` spends a paid run, instead of failing afterwards. A worker answer such as `token: ...` is no longer redacted into a false INCONCLUSIVE.
+- `ws delegate --selftest` now re-reads `.ws/delegate-selftests.json` under the lock before saving, so a result another provider saved while the worker ran is kept, and it refuses before starting the (paid) worker when that file is a directory or `.ws` is not writable.
 - Worker output saved as delegate Evidence has `<!--` markers and `<private>` spans neutralised, like other saved text.
 - `ws worker prepare --scope` refuses `.Claude`, `.GIT` and other case variants of protected paths.
 

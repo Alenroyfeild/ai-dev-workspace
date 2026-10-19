@@ -285,6 +285,33 @@ class OrchestrationTests(Base):
             with self.assertRaises(core.WsError): orchestration.selftest(self.root, 'codex')
         self.assertFalse(marker.exists())
 
+    def _git_on_path(self, git):
+        binary = Path(os.environ['PATH']) / 'git'
+        if os.name == 'nt': self.executable(binary.parent, 'git', 'import subprocess,sys; sys.exit(subprocess.call([' + repr(git) + ', *sys.argv[1:]]))')
+        elif not binary.exists(): binary.symlink_to(git)
+
+    def test_selftest_merges_into_the_cache_another_provider_wrote_meanwhile(self):
+        cache = self.root / '.ws/delegate-selftests.json'; cache.parent.mkdir(exist_ok=True)
+        cache.write_text(json.dumps({'claude': {'result': 'OLD'}})); git = shutil.which('git')
+        code = ('import json; from pathlib import Path\n'
+                'Path(%r).write_text(json.dumps({"claude": {"result": "SELFTEST OK"}}))\n'
+                'print(Path("token.txt").read_text())' % str(cache))
+        with self.fake(code):
+            self._git_on_path(git)
+            result = orchestration.selftest(self.root, 'codex')
+        records = json.loads(cache.read_text())
+        self.assertEqual(result['result'], 'SELFTEST OK')
+        self.assertEqual(records['claude']['result'], 'SELFTEST OK')  # the concurrent result survives
+        self.assertEqual(records['codex']['result'], 'SELFTEST OK')
+
+    def test_selftest_refuses_an_unrepairable_cache_before_the_paid_run(self):
+        marker = self.root / 'ran'; cache = self.root / '.ws/delegate-selftests.json'
+        cache.parent.mkdir(exist_ok=True); cache.mkdir(); git = shutil.which('git')
+        with self.fake('open(%r, "w").write("x")' % str(marker)):
+            self._git_on_path(git)
+            with self.assertRaises(core.WsError): orchestration.selftest(self.root, 'codex')
+        self.assertFalse(marker.exists())
+
     def test_selftest_control_survives_redaction_of_the_worker_answer(self):
         git = shutil.which('git')
         code = 'from pathlib import Path; print("token: " + Path("token.txt").read_text())'

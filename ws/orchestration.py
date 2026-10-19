@@ -279,10 +279,14 @@ def selftest(root, provider=None, run=True):
     directory = None
     if (root / '.ws').is_symlink(): raise core.WsError('Selftest refuses symlinked metadata directory.')
     cache = root / '.ws/delegate-selftests.json'
-    try:
-        records = json.loads(core.read_text(cache, [root])) if cache.exists() else {}
-    except (OSError, ValueError, core.WsError): records = {}
-    if not isinstance(records, dict): records = {}  # damaged cache is rebuilt; checked before any paid run
+    if cache.exists() and not cache.is_file() or (root / '.ws').exists() and not os.access(root / '.ws', os.W_OK | os.X_OK):
+        raise core.WsError('Selftest cache .ws/delegate-selftests.json cannot be written; fix or remove it. No worker was started.')  # before any paid run
+
+    def load():
+        try: records = json.loads(core.read_text(cache, [root])) if cache.exists() else {}
+        except (OSError, ValueError, core.WsError): records = {}
+        return records if isinstance(records, dict) else {}  # a damaged cache is rebuilt
+
     try:
         if not binding['available'] or binding['provider'] not in ('codex', 'claude'):
             result['reason'] = 'Selected read-only provider unavailable; no fallback.'
@@ -332,7 +336,7 @@ Print one outcome per step. Never touch any other path. Missing tools must be re
     finally:
         if directory and run: core.shutil.rmtree(directory, ignore_errors=True)
     with core.lock(root):
-        path = cache
+        records = load()  # re-read under the lock so a result another provider saved meanwhile is kept
         records[result['provider']] = {k: v for k, v in result.items() if k not in ('directory', 'command', 'output', 'binding')}
-        core.atomic_write(path, json.dumps(records, indent=2) + '\n')
+        core.atomic_write(cache, json.dumps(records, indent=2) + '\n')
     return result
