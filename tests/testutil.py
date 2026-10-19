@@ -108,11 +108,12 @@ def seeded_repo(dest, branch, files, message='fixture'):
     if key not in _REPO_TEMPLATES:
         template = Path(tempfile.mkdtemp(prefix='ws-test-repo-'))
         atexit.register(_drop_template, template)
-        git = lambda *a: subprocess.run(['git', *a], cwd=template, check=True, capture_output=True)
+        # No background maintenance: it can still hold .git/objects/maintenance.lock while the template is copied.
+        git = lambda *a: subprocess.run(['git', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0', *a], cwd=template, check=True, capture_output=True)
         git('init', '-q', '-b', branch)
         for name, text in files.items():
             (template / name).write_text(text)
         git('add', '.')
         git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', message)
         _REPO_TEMPLATES[key] = template
-    shutil.copytree(_REPO_TEMPLATES[key], dest, symlinks=True, dirs_exist_ok=True)
+    shutil.copytree(_REPO_TEMPLATES[key], dest, symlinks=True, dirs_exist_ok=True, ignore=shutil.ignore_patterns('*.lock'))

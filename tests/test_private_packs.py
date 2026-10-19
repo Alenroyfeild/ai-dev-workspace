@@ -1,9 +1,10 @@
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from test_ws import Base, KIT
 from ws import core
-from testutil import run_ws
 
 
 class PrivatePackTests(Base):
@@ -18,8 +19,9 @@ class PrivatePackTests(Base):
         (self.source / 'vault/asset.bin').write_bytes(b'\xff\x00v1')
 
     def cli(self, *args):
-        proc = run_ws('pack', *args, cwd=self.root,
-                      env={**os.environ, 'HOME': self.tmp.name, 'CODEX_HOME': str(Path(self.tmp.name) / '.codex')})
+        proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'pack', *args], cwd=self.root,
+                              env={**os.environ, 'HOME': self.tmp.name, 'CODEX_HOME': str(Path(self.tmp.name) / '.codex')},
+                              text=True, capture_output=True, timeout=10)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout)
 

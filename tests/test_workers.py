@@ -22,6 +22,13 @@ class WorkerPrepareTests(Base):
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True).strip()
 
+    def test_seeded_repo_copy_skips_git_lock_files(self):
+        import testutil
+        (next(iter(testutil._REPO_TEMPLATES.values())) / '.git/objects/maintenance.lock').write_text('')  # a racing maintenance run
+        copy = self.root / 'copy'; copy.mkdir()
+        seeded_repo(copy, 'feature/fixture', {'calc.py': 'answer = 1\n', '.gitignore': 'ignored.txt\n'})
+        self.assertEqual(list(copy.rglob('*.lock')), [])
+
     def prepare(self, **kw):
         with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
             return workers.prepare(self.root, 'W-1', ['calc.py'], **kw)
