@@ -224,6 +224,14 @@ class TeamFolderTests(unittest.TestCase):
         self.assertEqual(text.count('Team (untrusted'), 2, text)
         self.assertTrue(text.endswith('+98 or more team notes: ws know list --layer team'), text)
 
+    def test_capped_scan_with_zero_counted_hidden_still_points_at_the_rest(self):
+        row = lambda source, summary: dict(source=source, category='other', summary=summary, tags='', author='test', date='2026-10-18')
+        rows = [row('knowledge:K%d' % i, 'Receipt approval policy %d.' % i) for i in range(2)] + [row('decision:D%d' % i, 'Receipt decision.') for i in range(98)]
+        with mock.patch.object(core, 'config', return_value={'team_workspace': True}), \
+                mock.patch.object(knowledge, 'list_entries', return_value={'entries': rows, 'warnings': [knowledge.CAP_WARNING]}):
+            fields = knowledge.brief_fields(None, 'Receipt approval policy', '')
+        self.assertIn(('More team notes:', 'ws know list --layer team', 12), fields)
+
     def test_shown_decisions_and_lessons_do_not_hide_the_more_notes_pointer(self):
         row = lambda source, summary: dict(source=source, category='other', summary=summary, tags='', author='test', date='2026-10-18')
         rows = [row('decision:D1', 'Receipt approval policy uses stable keys.'), row('lesson:L1', 'Receipt approval policy needs a replay check.'),

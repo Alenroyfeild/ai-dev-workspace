@@ -125,8 +125,11 @@ def search(root, query, value='', layer='all', include_all=False):
 
 def _more_note(hidden, at_least=False):
     # core._bounded_brief fills this last, so it is the first line dropped when the brief is full.
-    # at_least: the scan stopped at the catalog cap, so the real count is only bounded from below.
-    return [(f'+{hidden} or more team notes:' if at_least else f'+{hidden} more team notes:', 'ws know list --layer team', 12)] if hidden > 0 else []
+    # at_least: the scan stopped at the catalog cap; uncounted rows may exist even when hidden is 0.
+    if at_least: label = f'+{hidden} or more team notes:' if hidden > 0 else 'More team notes:'
+    elif hidden > 0: label = f'+{hidden} more team notes:'
+    else: return []
+    return [(label, 'ws know list --layer team', 12)]
 
 
 def onboarding_fields(root):
