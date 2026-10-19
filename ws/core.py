@@ -506,9 +506,9 @@ def install_memory_hooks(root, collisions, clients=None):
         write_preserving(root / relative, data, collisions)
 
 
-def upgrade_workspace(root, dry_run=False):
+def upgrade_workspace(root, dry_run=False, expected=None):
     from .upgrade import upgrade
-    return upgrade(root, dry_run)
+    return upgrade(root, dry_run, expected)
 
 
 def mcp_command(root):
