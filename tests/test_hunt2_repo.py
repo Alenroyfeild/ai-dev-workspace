@@ -27,6 +27,11 @@ class Hunt2RepoTests(unittest.TestCase):
     def git(self, *args):
         subprocess.run(['git', '-C', str(self.repo), *args], check=True, capture_output=True)
 
+    def move_repo(self, name='moved'):
+        os.chdir(self.base)  # Windows cannot rename a directory that is the process cwd
+        moved = self.base / name; self.repo.rename(moved); os.chdir(moved); self.repo = moved
+        return moved
+
     def ws(self, *args):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err): code = cli.main(list(args))
@@ -43,7 +48,7 @@ class Hunt2RepoTests(unittest.TestCase):
 
     def test_moved_repo_can_be_relinked_by_start_and_undone(self):
         self.assertEqual(self.ws('start', '--yes')[0], 0)
-        moved = self.base / 'moved'; self.repo.rename(moved); os.chdir(moved); self.repo = moved
+        moved = self.move_repo()
         code, _, err = self.ws('start', '--yes')
         self.assertEqual(code, 0, err)
         root = core.find_root(moved)
@@ -55,7 +60,7 @@ class Hunt2RepoTests(unittest.TestCase):
 
     def test_moved_repo_undo_works_from_the_new_location(self):
         self.assertEqual(self.ws('start', '--yes')[0], 0)
-        moved = self.base / 'moved'; self.repo.rename(moved); os.chdir(moved); self.repo = moved
+        moved = self.move_repo()
         code, _, err = self.ws('start', '--undo')
         self.assertEqual(code, 0, err)
         self.assertNotIn('ws:start', (moved / '.git/info/exclude').read_text())
@@ -73,7 +78,7 @@ class Hunt2RepoTests(unittest.TestCase):
         root = core.find_root(self.repo); cfg = core.config(root)
         away = str(self.base / 'unmounted-drive' / 'other'); cfg['repos'].append(away)
         (root / 'workspace.json').write_text(json.dumps(cfg))
-        moved = self.base / 'moved'; self.repo.rename(moved); os.chdir(moved); self.repo = moved
+        moved = self.move_repo()
         self.assertEqual(self.ws('start', '--yes')[0], 0)
         self.assertEqual(core.config(root)['repos'], [away, str(moved)])
 
@@ -89,9 +94,24 @@ class Hunt2RepoTests(unittest.TestCase):
             self.assertEqual(original.read_bytes(), before)
         self.assertNotIn(str(copied), core.config(core.find_root(self.base / 'repo'))['repos'])
 
+    def test_copied_repo_with_symlinked_info_dir_or_git_is_refused_and_original_untouched(self):
+        self.assertEqual(self.ws('start', '--yes')[0], 0)
+        original = self.repo / '.git/info/exclude'; before = original.read_bytes()
+        for n, which in enumerate(('info', '.git')):
+            copied = self.base / ('copy%d' % n); shutil.copytree(self.repo, copied, ignore=shutil.ignore_patterns('*.lock'))
+            if which == 'info':
+                shutil.rmtree(copied / '.git/info'); (copied / '.git/info').symlink_to(self.repo / '.git/info', target_is_directory=True)
+            else:
+                shutil.rmtree(copied / '.git'); (copied / '.git').symlink_to(self.repo / '.git', target_is_directory=True)
+            os.chdir(copied)
+            for args in (('start', '--undo'), ('start', '--yes')):
+                code, _, err = self.ws(*args)
+                self.assertEqual(code, 2, (which, args)); self.assertIn('symlink', err)
+                self.assertEqual(original.read_bytes(), before)
+
     def test_interrupted_relink_is_finished_by_a_retry_and_undo_works(self):
         self.assertEqual(self.ws('start', '--yes')[0], 0)
-        old = self.repo; moved = self.base / 'moved'; old.rename(moved); os.chdir(moved); self.repo = moved
+        old = self.repo; moved = self.move_repo()
         root = Path(wsrepo.load(moved)['workspace']); real = core.atomic_write
         def stop(path, data):
             if Path(path) == moved / wsrepo.LINK: raise OSError('synthetic interruption after config write')

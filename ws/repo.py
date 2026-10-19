@@ -54,10 +54,12 @@ def moved(repo, state):
 
 
 def own_exclude(repo):
-    """This repo's Git exclude path; a symlink (or a symlinked .git/info) is refused before it is resolved or used."""
+    """This repo's Git exclude path; a symlinked .git, git dir, info dir or exclude file is refused before any resolve."""
     expected = Path(subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--git-path', 'info/exclude'], encoding='utf-8', errors='replace').strip())
     if not expected.is_absolute(): expected = repo / expected
-    if expected.resolve() != expected.parent.resolve() / expected.name: raise core.WsError('This repo\'s Git exclude file is a symlink (or under one); restore a plain file before ws start or undo.')
+    # .git may be a gitdir-pointer file (worktree/submodule): git's own answer is checked instead of .git/info/exclude.
+    parts = [repo / '.git', expected.parent.parent, expected.parent, expected]
+    if any(p.is_symlink() for p in parts): raise core.WsError('This repo\'s Git exclude file is a symlink (or under one); restore a plain file before ws start or undo.')
     return expected
 
 
