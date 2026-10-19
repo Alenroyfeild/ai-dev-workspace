@@ -18,7 +18,7 @@
 
 ### New
 - Task records carry `format: 1` and new lesson metadata carries `"format": 1`. A record written by a newer kit opens read-only: `ws brief`, `ws task find` and `ws recap` show it with a warning, and claim, checkpoint and remember refuse with "written by a newer ai-dev-workspace (format N); update the kit". Old records without the marker work unchanged. The record-corpus test now also covers this (EXIT-04).
-- The brief now ends with `+N more team notes: ws know list --layer team` when the team has more notes than the cards it shows (`+N or more` once the 100-note catalog cap stops the count); it is the first line dropped when the brief is full.
+- The brief now ends with `+N more team notes: ws know list --layer team` when the team has more notes than the cards it shows (`+N or more` once the 100-note catalog cap stops the count, or `More team notes:` when the cap was hit but every counted note is shown); it is the first line dropped when the brief is full.
 
 ## 0.1.0-beta.5 (2026-10-19)
 
