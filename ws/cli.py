@@ -508,13 +508,13 @@ def main(argv=None):
             out(audit.text(report) if a.text or human() else report); return 0
         if a.cmd == 'guard':  # no workspace lookup: runs before every tool call, and any error must allow the call
             from . import guards
-            try: payload = json.load(sys.stdin)
+            try: payload = core.stdin_json()
             except ValueError: payload = {}
             print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}))); return 0
         if a.cmd == 'discipline':  # advisory only: any error prints {} so the tool result reaches the model unchanged
             from . import discipline
             try:
-                payload = json.load(sys.stdin)
+                payload = core.stdin_json()
                 result = discipline.hook(core.find_root(a.workspace_root), payload) if isinstance(payload, dict) and payload.get('hook_event_name') in ('PostToolUse', 'PostToolUseFailure') else {}
             except (ValueError, OSError, core.WsError): result = {}
             print(json.dumps(result)); return 0
@@ -676,7 +676,7 @@ def main(argv=None):
             out(result)
         elif a.cmd in ('brief', 'nudge'):
             if a.hook: core.memo_git(True)  # session_task, observe and the brief share one git state
-            try: payload = json.load(sys.stdin) if a.hook else {}
+            try: payload = core.stdin_json() if a.hook else {}
             except ValueError: raise core.WsError('Hook input must be a JSON object; stdin was empty or not JSON.')
             branch_task = None
             if not isinstance(payload, dict):
@@ -724,7 +724,8 @@ def main(argv=None):
                     linked = ', '.join(result['skills']['linked']) or 'none'
                     kept = ', '.join(result['skills']['kept']) or 'none'
                     skipped = ', '.join(result['skills']['skipped']) or 'none'
-                    print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+                    copied = f"; copied because links are not allowed here: {', '.join(result['skills']['copied'])} (rerun after a kit upgrade)" if result['skills'].get('copied') else ''
+                    print(f"Skills for {a.client}: linked {linked}{copied}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
                 else:
                     count = core.skills_to_link(a.client, root)
                     if count:
@@ -832,7 +833,7 @@ def main(argv=None):
                     raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
                 out(core.paste_save(root, text)['digest'])
             else:
-                try: payload = json.loads(_read_limited_stdin())
+                try: payload = core.json_loads(_read_limited_stdin())
                 except core.WsError as exc:
                     if '50 MB' not in str(exc): out({}); return 0  # unreadable input: allow the prompt rather than block every one
                     return _block_prompt(a.client, 'Prompt hook input exceeds 50 MB. Save the source as a file and run `ws digest <file> --focus "<pattern>"` instead.')

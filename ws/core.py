@@ -60,6 +60,16 @@ _HOOK_SCRIPT = (
 )
 
 
+def needs_encoded_launcher(arguments):
+    """Windows paths with % (cmd), $ or backtick (Git Bash/PowerShell) or ! would be expanded inside double quotes."""
+    return WINDOWS and any(c in a for a in arguments for c in '%$`!')
+
+
+def git_timeout():
+    """Seconds for the quick git probes on the hook path; a cold git.exe start under Defender can take a few seconds."""
+    return 6 if WINDOWS else 2
+
+
 def encoded_hook_command(arguments):
     # Native Process.Start avoids cmd expansion of every path; stdin is forwarded as UTF-8 bytes.
     data = {'argv': arguments, 'arguments': subprocess.list2cmdline(arguments[1:])}
@@ -232,8 +242,19 @@ def find_root(start=None):
     raise WsError('No workspace.json found here or above. In a git repo run `ws start`; otherwise `ws init <dir>`, or set WS_ROOT.')
 
 
+def json_loads(text):
+    """json.loads that tolerates a UTF-8 BOM, which Windows PowerShell 5.1 and some editors put at the start of a file."""
+    return json.loads(text.lstrip('\ufeff'))
+
+
+def stdin_json():
+    """Hook payload from stdin, decoded as UTF-8 (BOM tolerated)."""
+    stream = getattr(sys.stdin, 'buffer', None)
+    return json_loads(stream.read().decode('utf-8-sig') if stream is not None else sys.stdin.read())
+
+
 def config(root):
-    return json.loads((root / 'workspace.json').read_text(encoding='utf-8'))
+    return json_loads((root / 'workspace.json').read_text(encoding='utf-8'))
 
 
 def vault(root):
@@ -535,12 +556,12 @@ def memory_hooks(root, client='claude'):
     for event in events:
         suffix = ['brief' if event.lower() == 'sessionstart' else 'nudge', '--hook'] + ([] if client == 'claude' else ['--client', client])
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
-                'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
+                'command': encoded_hook_command(arguments + suffix) if needs_encoded_launcher(arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][event] = [hook if client in ('cursor', 'vscode') else {'hooks': [hook]}]
     if prompt_event:
         suffix = ['paste', '--hook', '--client', client]
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
-                'command': encoded_hook_command(arguments + suffix) if WINDOWS and any('%' in a for a in arguments) else command + ' ' + ' '.join(suffix)}
+                'command': encoded_hook_command(arguments + suffix) if needs_encoded_launcher(arguments) else command + ' ' + ' '.join(suffix)}
         result['hooks'][prompt_event] = [hook if client == 'cursor' else {'hooks': [hook]}]
     return result
 
@@ -554,7 +575,7 @@ def pack_hooks(root, client):
     packs = config(root).get('packs', [])
     def hook(*suffix):
         arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root), *suffix, '--hook', '--client', client]
-        return {'type': 'command', 'timeout': 10, 'command': encoded_hook_command(arguments) if WINDOWS and any('%' in a for a in arguments) else command_line(arguments)}
+        return {'type': 'command', 'timeout': 10, 'command': encoded_hook_command(arguments) if needs_encoded_launcher(arguments) else command_line(arguments)}
     result = {}
     if 'guards' in packs:  # Codex: every tool; the guard allows tools it cannot read
         result['PreToolUse'] = [{'matcher': 'Bash|PowerShell|Write|Edit|MultiEdit', 'hooks': [hook('guard')]} if client == 'claude' else {'hooks': [hook('guard')]}]
@@ -752,7 +773,7 @@ def client_connected(root, client, global_only=False):
     path, key = (root / locations[client][0], locations[client][1]) if client in locations else (None, None)
     if path is None: return False
     try:
-        data = json.loads(path.read_text(encoding='utf-8'))
+        data = json_loads(path.read_text(encoding='utf-8'))
         return data.get(key, {}).get('ai-dev-workspace') == mcp_command(root)
     except (OSError, ValueError, AttributeError):
         return False
@@ -765,13 +786,27 @@ def skills_to_link(client, root):
     return sum(1 for s in (KIT / 'skills').iterdir() if (s / 'SKILL.md').is_file() and s.name not in have)
 
 
+def _link_dir(link, target):
+    """Symlink a skill folder; when the OS refuses (Windows without Developer Mode) use a junction, then a copy. Returns how."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+        return 'symlink'
+    except FileExistsError: raise
+    except OSError:
+        if WINDOWS:
+            done = subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(target)], capture_output=True)
+            if done.returncode == 0 and link.is_dir(): return 'junction'
+        shutil.copytree(target, link)  # a copy does not follow kit upgrades; rerun ws connect --skills after one
+        return 'copy'
+
+
 def link_skills(client, root):
     location = '.claude/skills' if client == 'claude' else '.agents/skills'
     directory = Path.home() / location
     project = Path(root) / location
     workspace_names = {p.name for p in project.iterdir()
                        if p.is_dir() and (p / 'SKILL.md').is_file()} if project.is_dir() else set()
-    linked, kept, skipped = [], [], []
+    linked, kept, skipped, copied = [], [], [], []
     try:
         directory.mkdir(parents=True, exist_ok=True)
         for source in sorted((KIT / 'skills').iterdir()):
@@ -783,13 +818,12 @@ def link_skills(client, root):
                     kept.append(source.name)
                 continue
             try:
-                (directory / source.name).symlink_to(source.resolve(), target_is_directory=True)
-                linked.append(source.name)
+                (copied if _link_dir(directory / source.name, source.resolve()) == 'copy' else linked).append(source.name)
             except FileExistsError:
                 kept.append(source.name)
     except OSError as exc:
         raise WsError(f'Could not link skills into {directory}: {exc}. Existing names were kept.')
-    return {'directory': str(directory), 'linked': linked, 'kept': kept, 'skipped': skipped}
+    return {'directory': str(directory), 'linked': linked, 'copied': copied, 'kept': kept, 'skipped': skipped}
 
 
 def connect(root, client, write=False, skills=False, verify=False):
@@ -820,7 +854,7 @@ def _connect_gemini(root):
     path = inside(root / '.gemini/settings.json', [root])
     with lock(root):
         try:
-            data = json.loads(read_text(path, [root])) if path.exists() else {}
+            data = json_loads(read_text(path, [root])) if path.exists() else {}
             if not isinstance(data, dict): raise ValueError()
             if not isinstance(data.get('mcpServers', {}), dict) or not isinstance(data.get('hooks', {}), dict): raise ValueError()
             for groups in data.get('hooks', {}).values():
@@ -880,7 +914,7 @@ def _connect_config(root, client, write=False):
     data = {key: {}}
     if path.exists():
         try:
-            existing = json.loads(path.read_text(encoding='utf-8'))
+            existing = json_loads(path.read_text(encoding='utf-8'))
             if isinstance(existing, dict) and isinstance(existing.get(key), dict):
                 data = existing
         except (OSError, ValueError):
@@ -903,6 +937,14 @@ def _connect_config(root, client, write=False):
 MAX_FRONTMATTER = 1024 * 1024  # a task's frontmatter is never this large; refuse rather than guess
 
 
+def replace_file(source, target):
+    """os.replace; on Windows retry for about 1.5 s while another program (sync client, antivirus, editor) holds the file (WinError 5/32)."""
+    for delay in ((0.05, 0.1, 0.2, 0.4, 0.8) if WINDOWS else ()):
+        try: return os.replace(source, target)
+        except PermissionError: time.sleep(delay)
+    os.replace(source, target)
+
+
 def atomic_write(path, text):
     if path.parent.name == 'Tasks' and path.suffix == '.md' and path.is_file():  # a task from a newer kit stays read-only
         try:
@@ -920,7 +962,7 @@ def atomic_write(path, text):
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(tmp, path)
+        replace_file(tmp, path)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -1648,7 +1690,7 @@ def git_read(path, *args):
     """stdout of a read-only `git -C path ...` ('' on failure); memoised while memo_git is on."""
     memo = getattr(_BRIEF_GIT, 'memo', None)
     if memo is not None and (str(path), args) in memo: return memo[str(path), args]
-    result = subprocess.run(['git', '-C', str(path), *args], capture_output=True, encoding='utf-8', errors='replace', timeout=2)
+    result = subprocess.run(['git', '-C', str(path), *args], capture_output=True, encoding='utf-8', errors='replace', timeout=git_timeout())
     out = result.stdout if result.returncode == 0 else ''
     if memo is not None: memo[str(path), args] = out
     return out
@@ -1688,7 +1730,7 @@ def session_task(root, cwd=None):
     location = repos[0] if (not cwd or Path(cwd).resolve() == root.resolve()) and isinstance(repos, list) and len(repos) == 1 else cwd or root
     location = inside(root / Path(location), read_roots(root))
     try:
-        result = subprocess.run(['git', '-C', str(location), 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=2)
+        result = subprocess.run(['git', '-C', str(location), 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=git_timeout())
     except (OSError, subprocess.SubprocessError): return None
     if result.returncode: return None
     repo = inside(Path(result.stdout.strip()), read_roots(root))
@@ -1940,7 +1982,7 @@ def _branch_hint(root):
     from . import repo as repo_mod
     try:
         repos = config(root).get('repos', [])
-        top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=2).stdout.strip()
+        top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=git_timeout()).stdout.strip()
         here = next((Path(r).resolve() for r in repos if top and Path(r).resolve() == Path(top).resolve()), None) or (Path(repos[0]).resolve() if len(repos) == 1 else None)
         name = current_branch(here) if here else ''
         if not name or LINE_BREAK_RE.search(name): return ''
@@ -2660,7 +2702,7 @@ def _mcp_config(root, client):
     if not path.exists():
         return None
     try:
-        server = json.loads(path.read_text(encoding='utf-8'))[key]['ai-dev-workspace']
+        server = json_loads(path.read_text(encoding='utf-8'))[key]['ai-dev-workspace']
         command, args = server['command'], server.get('args', [])
         if not isinstance(command, str) or not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
             raise ValueError('command and args must be strings')

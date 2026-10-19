@@ -34,7 +34,7 @@ def _refs(text):
 
 def _session_start_command(path):
     """True when a hooks file has at least one SessionStart command (not just an empty list)."""
-    try: entries = json.loads(path.read_text(encoding='utf-8')).get('hooks', {}).get('SessionStart')
+    try: entries = core.json_loads(path.read_text(encoding='utf-8')).get('hooks', {}).get('SessionStart')
     except (OSError, ValueError, AttributeError): return False
     if not isinstance(entries, list): return False
     hooks = [h for e in entries if isinstance(e, dict) for h in (e.get('hooks') if isinstance(e.get('hooks'), list) else [e])]
@@ -43,7 +43,7 @@ def _session_start_command(path):
 
 def _mcp_servers(repo):
     names = set()
-    try: servers = json.loads((repo / '.mcp.json').read_text(encoding='utf-8')).get('mcpServers')
+    try: servers = core.json_loads((repo / '.mcp.json').read_text(encoding='utf-8')).get('mcpServers')
     except (OSError, ValueError, AttributeError): servers = None
     if isinstance(servers, dict): names |= set(servers)
     try: names |= set(re.findall(r'(?m)^\[mcp_servers\.([^\].]+)\]', (repo / '.codex/config.toml').read_text(encoding='utf-8')))

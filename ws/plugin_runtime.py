@@ -24,7 +24,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         text = cli._read_limited_stdin()
-        payload = json.loads(text)
+        payload = core.json_loads(text)
         if not isinstance(payload, dict): raise ValueError('Expected an object')
         cwd = payload.get('cwd')
         if cwd is not None and (not isinstance(cwd, str) or not cwd): raise ValueError('Invalid cwd')
