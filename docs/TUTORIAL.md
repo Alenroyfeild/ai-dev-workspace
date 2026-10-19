@@ -20,15 +20,18 @@ The branch name becomes the task name.
 ws start
 ```
 
-It prints a preview and asks once. Add `--yes` to skip the question. Use `--dry-run` to see every file without writing.
+It prints a preview and asks once (`Apply this setup? [y/N]`). Add `--yes` to skip the question. Use `--dry-run` to see every file without writing.
 
 ```text
 Preview: local repo files (Git-excluded) and private workspace ~/.ai-dev-workspace/demo-app
+  ~/code/demo-app/.ws-start.json
   ~/code/demo-app/CLAUDE.local.md
   ~/code/demo-app/AGENTS.override.md
   ~/code/demo-app/.claude/settings.local.json
   ~/code/demo-app/.codex/hooks.json
-  ...
+  ~/code/demo-app/.mcp.json
+  ~/code/demo-app/.codex/config.toml
+  ~/code/demo-app/.git/info/exclude (local exclusions)
   plus 25 private workspace files (ws start --dry-run lists them)
 Set up: ~/.ai-dev-workspace/demo-app; assistants: claude, codex; Codex: connected
 Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.
@@ -77,7 +80,7 @@ ws checkpoint fix-login --status in_progress \
 }
 ```
 
-`ws task show fix-login` prints the record. The dead end sits in its own section:
+`ws task show fix-login` prints the whole record: front matter, then sections. These three matter here, and the dead end sits in its own:
 
 ```text
 ## Next action
@@ -90,7 +93,7 @@ Decision: Use argon2 for password hashing, not bcrypt
 Session cookies were tried; they break the mobile app
 ```
 
-The "Do not redo" section is saved in the task. The session-start brief below does not show it yet.
+The "Do not redo" section is saved in the task, and the session-start brief below shows it.
 
 ## 4. Session 2: what the next assistant sees
 
@@ -106,6 +109,7 @@ Task fix-login: fix-login
 Explicit Handoff (saved task record): Decision: Use argon2 for password hashing, not bcrypt
 Next action: Add the rate limit to /login, then run the auth tests
 Blockers: None yet.
+Do not redo: Session cookies were tried; they break the mobile app
 Claim: claimed in this workspace: continue; ws claim resumes it
 ```
 
@@ -119,7 +123,7 @@ python3 -c 'import json, os; print(json.dumps({"hook_event_name": "SessionStart"
 "systemMessage": "Remembered: 1 decision · next: Add the rate limit to /login, then run the auth tests"
 ```
 
-(The full output is JSON. The assistant gets the brief above in `additionalContext`.)
+(The full output is JSON. The assistant gets the brief above, including "Do not redo", in `additionalContext`.)
 
 ## 5. Use the memory
 
@@ -135,6 +139,9 @@ ws pr-notes
 #### Decisions
 - Use argon2 for password hashing, not bcrypt
 
+#### Tried and rejected
+- Session cookies were tried; they break the mobile app
+
 <sub>Decisions recorded with [ai-dev-workspace](https://github.com/Alenroyfeild/ai-dev-workspace).</sub>
 ```
 
@@ -148,6 +155,7 @@ ws recap
 ### Recap since 2026-10-10
 - **fix-login** (in progress, 2026-10-17)
   - Decision: Use argon2 for password hashing, not bcrypt
+  - Rejected: Session cookies were tried; they break the mobile app
   - Next: Add the rate limit to /login, then run the auth tests
 ```
 
