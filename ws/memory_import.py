@@ -24,11 +24,13 @@ def _read(path, base):
 def _limited(paths, label):
     safe = []
     for path in sorted(paths):
-        try: _read(path, path.parent)
+        try:
+            _read(path, path.parent)
+            updated = path.stat().st_mtime_ns
         except (core.WsError, OSError, ValueError):
             print('Memory import skipped unsafe/unreadable ' + label + ' source.', file=sys.stderr); continue
-        safe.append(path)
-    paths = safe
+        safe.append((updated, path))
+    paths = [p for _, p in sorted(safe, key=lambda item: (-item[0], item[1].name))]
     if len(paths) > 16:
         print(f'Memory import: {len(paths) - 16} {label} file(s) skipped: 16-file limit.', file=sys.stderr)
     return paths[:16]
@@ -45,7 +47,8 @@ def preview(repo, memory_dir=None, dry_run=False):
     project = project or re.sub(r'[^A-Za-z0-9]', '-', str(repo))
     base = Path(memory_dir).expanduser().absolute() if memory_dir else home / 'projects' / project / 'memory'
     if base.is_dir() and not base.is_symlink() and not any(p.is_symlink() for p in base.parents if p == Path.home() or Path.home() in p.parents):
-        paths += [(p, base, 'Claude memory/' + p.name) for p in _limited(base.glob('*.md'), 'Claude memory')]
+        topics = (p for p in base.glob('*.md') if p.name != 'MEMORY.md')
+        paths += [(p, base, 'Claude memory/' + p.name) for p in _limited(topics, 'Claude memory')]
     rows = []; total = 0
     for path, parent, label in paths:
         label = ''.join(c for c in ' '.join(label.split()) if c.isprintable())
