@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 from ws import cli, core, repo as wsrepo
+from testutil import rmtree_owned
 
 
 class Hunt2RepoTests(unittest.TestCase):
@@ -100,9 +101,9 @@ class Hunt2RepoTests(unittest.TestCase):
         for n, which in enumerate(('info', '.git')):
             copied = self.base / ('copy%d' % n); shutil.copytree(self.repo, copied, ignore=shutil.ignore_patterns('*.lock'))
             if which == 'info':
-                shutil.rmtree(copied / '.git/info'); (copied / '.git/info').symlink_to(self.repo / '.git/info', target_is_directory=True)
+                rmtree_owned(copied / '.git/info', self.base); (copied / '.git/info').symlink_to(self.repo / '.git/info', target_is_directory=True)
             else:
-                shutil.rmtree(copied / '.git'); (copied / '.git').symlink_to(self.repo / '.git', target_is_directory=True)
+                rmtree_owned(copied / '.git', self.base); (copied / '.git').symlink_to(self.repo / '.git', target_is_directory=True)
             os.chdir(copied)
             for args in (('start', '--undo'), ('start', '--yes')):
                 code, _, err = self.ws(*args)
