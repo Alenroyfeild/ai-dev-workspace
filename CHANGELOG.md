@@ -23,6 +23,7 @@
 - Windows: deep paths no longer fail on the 260-character limit when ws writes backups under `.ws/backups` (`\\?\` form) or creates worker checkouts (`core.longpaths=true`).
 - Windows: junctions (`mklink /J`) are now detected by the checks that refuse symlinks (private packs, setup, upgrade, repo start, memory import, worker runs and collection, team folders).
 - Tests: twelve symlink tests that were skipped on Windows now run wherever symlinks can be created, as on `windows-latest`.
+- `ws task new --branch/--repo` (and the automatic task from `ws start`) refuse branch or repo values containing `<private>` or `#private` instead of saving them into the task file; use the real branch name or path.
 
 ### New
 - `bin/release-smoke` runs the release smoke in one command: it builds the artifacts offline, installs the wheel in a temp venv and drives `ws` end to end in a toy repo with a throwaway HOME (`--wheel PATH`, `--source`, `--json`). See [Cutting a release](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/MAINTAINING.md#cutting-a-release).
@@ -70,7 +71,6 @@ Team workspaces can now receive approved shared updates automatically or be read
 - `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 - Team sync no longer stops when two teammates publish at once: the derived `INDEX.md` is rebuilt after the pull, so both entries are listed, and any remaining pull conflict names the file and the recovery command. A corrupt `team.json` now reports its path, shows in `ws doctor`, and no longer blocks `ws sync --pull-only` from pulling a teammate's fix.
 - Source builds and installed CLI/MCP entry points work from the packaged kit, including builds through pip.
-- `ws task new --branch/--repo` (and the automatic task from `ws start`) refuse branch or repo values containing `<private>` or `#private` instead of saving them into the task file; use the real branch name or path.
 - `ws doctor` reports your saved automatic team-pull consent instead of saying pulls are not active yet. [Team setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
 - Assistant hooks (`ws brief`, `ws nudge`, `ws paste`, and the opt-in guard and discipline hooks) no longer exit 2, print a traceback or block a prompt or session end when their input is malformed, the workspace is missing or corrupt, or a transcript is unreadable; they allow the action and print `{}`. A bad `cwd` no longer hides the session brief. A large prompt is still saved and blocked.
 - Redaction (used for team sharing, captures and PR notes) now also hides bare provider tokens recognisable by prefix: GitHub (`ghp_`, `github_pat_`), OpenAI-style `sk-`, Slack `xox*-` (all prefixes, including `xoxc-` and `xoxd-`), AWS `AKIA` key IDs, GitLab `glpat-`, Google API keys `AIza`, npm `npm_`, Hugging Face `hf_` and Stripe `sk_`/`rk_` `live_`/`test_` keys (Anthropic `sk-ant-` is covered by `sk-`).
