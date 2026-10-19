@@ -5,6 +5,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import tempfile
 import time
 import unittest
@@ -31,6 +32,15 @@ class FeedbackTests(Base):
         self.assertNotIn('/Users/bob', preview['title'] + preview['body'])
 
     def test_gh_success_with_empty_output_is_an_error_not_an_index_error(self):  # 27
+        core.feedback_add(self.root, 'something broke', 'bug')
+        done = subprocess.CompletedProcess([], 0, stdout='', stderr='')  # mocked: a shebang-only fake gh cannot run on Windows
+        with mock.patch.dict(os.environ, {'WS_OFFLINE': '0'}), mock.patch.object(core.subprocess, 'run', return_value=done) as run, \
+                self.assertRaisesRegex(core.WsError, 'no issue URL.*ws feedback link 1'):
+            core.feedback_submit(self.root, 1, yes=True, use_gh='gh')
+        self.assertEqual(run.call_args.args[0][:3], ['gh', 'issue', 'create'])
+
+    @unittest.skipIf(os.name == 'nt', 'POSIX fake CLI shebang; the mocked test above is portable')
+    def test_real_fake_gh_executable_with_empty_output(self):
         core.feedback_add(self.root, 'something broke', 'bug')
         gh = Path(self.tmp.name) / 'gh'
         gh.write_text('#!/bin/sh\nexit 0\n'); gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
