@@ -56,6 +56,16 @@ class RedactSpeedTests(Base):
         self.assertEqual(core.redact(s), '[REDACTED]\nafter')
         self.assertEqual(core.redact('a ' + s + ' -----BEGIN RSA PRIVATE KEY-----\nZZZ\n-----END RSA PRIVATE KEY----- b'), 'a [REDACTED]\nafter [REDACTED] b')
 
+    def test_private_key_closes_only_at_its_own_end_label(self):
+        rsa, ec = '-----BEGIN RSA PRIVATE KEY-----', '-----END EC PRIVATE KEY-----'
+        self.assertEqual(core.redact(f'{rsa}\nAAA\n{ec}\nKEYTAIL\n-----END RSA PRIVATE KEY-----\nafter'), '[REDACTED]\nafter')
+        nested = f'{rsa}\nAAA\n-----BEGIN EC PRIVATE KEY-----\nBBB\n{ec}\nKEYTAIL\n-----END RSA PRIVATE KEY-----ok'
+        self.assertEqual(core.redact(nested), '[REDACTED]ok')
+        self.assertEqual(core.redact(f'{rsa}\nAAA\n{ec}\nKEYTAIL'), '[REDACTED]')  # no matching END: hide to the end
+        two = f'{rsa}\nA\n-----END RSA PRIVATE KEY-----\nmid\n-----BEGIN PRIVATE KEY-----\nB\n-----END PRIVATE KEY-----\nend'
+        self.assertEqual(core.redact(two), '[REDACTED]\nmid\n[REDACTED]\nend')
+        self.assertEqual(core.redact('-----BEGIN PRIVATE KEY-----\nA\n-----END RSA PRIVATE KEY-----\nTAIL'), '[REDACTED]')
+
 
 class BomTaskTests(Base):
     def test_task_file_with_bom_keeps_its_frontmatter(self):

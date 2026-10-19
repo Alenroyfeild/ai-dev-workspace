@@ -106,8 +106,7 @@ SECRET_RE = re.compile(
     r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
     r'|(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*(?:"[^"\n]*"|\'[^\'\n]*\'|[^\s"\']+)', re.S)
-PRIVATE_KEY_BEGIN_RE = re.compile(r'-----BEGIN [^-]*PRIVATE KEY-----')
-PRIVATE_KEY_END_RE = re.compile(r'-----END [^-]*PRIVATE KEY-----')
+PRIVATE_KEY_BEGIN_RE = re.compile(r'-----BEGIN ([^-]*PRIVATE KEY)-----')
 URL_CREDENTIALS_RE = re.compile(r'(?<=[A-Za-z0-9+.-])(://)[^\s/@:]+:[^\s/@]+@')  # anchored on `://`: no rescan of a long scheme-like run
 PRIVATE_TAG_RE = re.compile(r'</?private>', re.I)
 PRIVATE_RE = re.compile(r'<private>.*?(?:</private>|\Z)', re.I | re.S)  # Deprecated: .sub() misses nested spans; use strip_private() (kept so older branches still import)
@@ -123,15 +122,17 @@ def now():
 
 
 def redact_private_keys(text):
-    """Hide each BEGIN..END private-key block whole (any marker inside it too); no END hides the rest. One pass, no backtracking."""
+    """Hide each private-key block whole: `BEGIN <label>` closes only at the exact `END <label>`; anything between
+    (other markers too) is hidden, and no matching END hides the rest. One pass; str.find, no backtracking."""
     out, pos = [], 0
     while True:
         begin = PRIVATE_KEY_BEGIN_RE.search(text, pos)
         if not begin: break
-        end = PRIVATE_KEY_END_RE.search(text, begin.end())
         out += [text[pos:begin.start()], '[REDACTED]']
-        if not end: pos = len(text); break
-        pos = end.end()
+        end_marker = f"-----END {' '.join(begin[1].split())}-----"
+        end = text.find(end_marker, begin.end())
+        if end < 0: pos = len(text); break
+        pos = end + len(end_marker)
     return ''.join(out) + text[pos:]
 
 
