@@ -407,6 +407,10 @@ def pack_add(root, name):
 
 def init(target, name, packs=(), repos=(), clients=None):
     target = Path(target).resolve()
+    # A workspace.json in a shared folder becomes the root for every folder below it (find_root walks up).
+    shared = {Path(target.anchor), Path.home().resolve(), Path(tempfile.gettempdir()).resolve(), Path('/tmp').resolve(), Path('/private/tmp').resolve()}
+    if target in shared:
+        raise WsError(f'Refusing to create a workspace in {target}: every folder below it would use it. Try `ws init ~/work/<name>-ws`, or run `ws start` inside a repo.')
     if (target / 'workspace.json').exists():
         raise WsError(f'{target} is already a workspace.')
     for pack in packs:
@@ -772,11 +776,20 @@ def client_connected(root, client, global_only=False):
     locations = MCP_LOCATIONS
     path, key = (root / locations[client][0], locations[client][1]) if client in locations else (None, None)
     if path is None: return False
-    try:
-        data = json_loads(path.read_text(encoding='utf-8'))
-        return data.get(key, {}).get('ai-dev-workspace') == mcp_command(root)
-    except (OSError, ValueError, AttributeError):
-        return False
+    def has_entry(file):
+        try: return json_loads(file.read_text(encoding='utf-8')).get(key, {}).get('ai-dev-workspace') == mcp_command(root)
+        except (OSError, ValueError, AttributeError): return False
+    if has_entry(path): return True
+    if client != 'claude' or global_only: return False
+    from . import repo  # `ws start` writes Claude's files into the repo, not the private workspace
+    try: repos = read_roots(root)[1:]
+    except WsError: return False
+    for checkout in repos:
+        try: state = repo.load(checkout); files = state['files']
+        except (OSError, ValueError, WsError): continue
+        if state.get('plugin') is True: return True  # Claude Code plugin mode: the plugin brings the MCP server
+        if {'.mcp.json', '.claude/settings.local.json'} <= set(files) and has_entry(checkout / '.mcp.json'): return True
+    return False
 
 
 def skills_to_link(client, root):
@@ -951,7 +964,7 @@ def _connect_config(root, client, write=False):
     locations = MCP_LOCATIONS
     relative, key = locations[client]
     path = inside(root / relative, [root])
-    if client_connected(root, client):
+    if client_connected(root, client, global_only=True):
         return {'client': client, 'connected': True, 'path': str(path)}
     data = {key: {}}
     if path.exists():
@@ -1406,6 +1419,7 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     if not next_action.strip():
         raise WsError('Next action is required: say exactly what the next person or AI should do.')
     with lock(root):
+        task_id = claimed_task_id(root, task_id, 'pass the ID: `ws checkpoint <id> --status ... --next ...`')
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = existing_task_path(root, task_id)
         text = path.read_text(encoding='utf-8')
@@ -1448,6 +1462,17 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     return result
 
 
+NEW_TASK_STEP = '`ws task list` to see task IDs, or `ws task new <id> "<title>"` to create one'
+
+
+def claimed_task_id(root, task_id=None, how='pass --task <id>'):
+    """The given task ID, else the one claimed task; the error says how to get an ID (`how` is the command's own form)."""
+    task_id = task_id or sole_local_claim(root)
+    if not task_id:
+        raise WsError(f'No single claimed task. Run {NEW_TASK_STEP}, then `ws claim <id>` (or {how}).')
+    return task_id
+
+
 def remember(root, text, task_id=None):
     """Save one explicit decision in the task's Handoff, where the brief lists decisions (before captured blocks)."""
     if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
@@ -1457,9 +1482,7 @@ def remember(root, text, task_id=None):
     if not decision:
         raise WsError('Nothing to save: say the decision, e.g. ws remember "use Postgres, not SQLite".')
     with lock(root):
-        task_id = task_id or sole_local_claim(root)
-        if not task_id:
-            raise WsError('No single claimed task. Run `ws claim <ID>` or pass --task <ID>.')
+        task_id = claimed_task_id(root, task_id)
         path = task_path(root, task_id)
         if not path.is_file():
             raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
@@ -1926,6 +1949,7 @@ def _imported_items(text, limit):
 
 def _bounded_brief(fields, truncated=False):
     bounded, remaining = [], 194  # four words reserved for the record pointer
+    fields = sorted(fields, key=lambda f: f[0].endswith('team notes:'))  # stable: that hint goes last, so it drops first
     for prefix, value, limit in fields:
         if not value: continue
         value = redact(value)
@@ -2050,7 +2074,7 @@ def _brief_once(root, task_id=None):
         return ['Others working: ' + ', '.join(shown)] if shown else []
     if not task:
         from . import knowledge
-        fields = [('', guard or ('No in-progress task. ' + (_branch_hint(root) or 'Find or create the task before working.')), 194)]
+        fields = [('', guard or ('No in-progress task. ' + (_branch_hint(root) or f'Find or create the task before working: {NEW_TASK_STEP}.')), 194)]
         fields += [('', line, 18) for line in others_line()]
         return _bounded_brief(fields + knowledge.onboarding_fields(root)), ''
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
@@ -2558,7 +2582,13 @@ def repeat_guard(root):
     return ''
 
 
+def _need_task(root, task_id):
+    if not task_path(root, task_id).is_file():
+        raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
+
+
 def trace(root, task_id):
+    _need_task(root, task_id)
     entries = run_entries(root, task_id)
     lines = [f'# Trace: {task_id}', '', 'Checks and verdicts are reported by the caller; ws does not execute checks.']
     for number, entry in enumerate(entries, 1):
@@ -2574,6 +2604,7 @@ def trace(root, task_id):
 
 
 def run_report(root, task_id=None):
+    if task_id: _need_task(root, task_id)
     files = [vault(root) / 'Runs' / f'{task_id}.jsonl'] if task_id else sorted((vault(root) / 'Runs').glob('*.jsonl'))
     by = {}
     steps = 0
@@ -2929,6 +2960,7 @@ def doctor(root=None, mcp=False):
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
+        report['upgrade_due'] = upgrade_due(root)
         report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
         team = _team_checks(root)
         if team is not None: report['team'] = team
@@ -2968,6 +3000,13 @@ def doctor(root=None, mcp=False):
 
 def kit_meta():
     return json.loads((KIT / 'kit.json').read_text(encoding='utf-8'))
+
+
+def upgrade_due(root):
+    """Kit is newer than the workspace, or .ws-new proposals await review (shared by ws assist and ws doctor)."""
+    cfg = config(root)
+    pending = cfg.get('upgrade_pending') or any(p.is_file() for p in root.rglob('*.ws-new*'))
+    return bool(_vtuple(kit_meta()['version']) > _vtuple(cfg.get('kit_version', '0')) or pending)
 
 
 def _vtuple(v):

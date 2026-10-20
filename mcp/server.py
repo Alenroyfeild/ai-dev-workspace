@@ -42,6 +42,7 @@ def S(**props):
 # Listed by default: what a session needs to read and save memory. Every other tool stays callable by name.
 CORE_TOOLS = ('brief', 'find_task', 'read_task', 'checkpoint', 'remember', 'search_vault', 'add_lesson')
 PLUGIN_INACTIVE = False
+NO_WORKSPACE = 'No ai-dev-workspace here: run `ws start` in your repo (or pass --workspace-root).'
 
 
 def listed_tools(root):
@@ -232,7 +233,8 @@ def _dispatch(root, msg):
         except ValueError as exc:
             return rpc_error(mid, -32602, str(exc))
         try:
-            if root is None: raise core.WsError('Run ws start in this repo.')
+            if root is None:
+                return {'jsonrpc': '2.0', 'id': mid, 'result': {'content': [{'type': 'text', 'text': NO_WORKSPACE}], 'isError': True}}
             value = TOOLS[name][2](root, args)
             result = {'content': [{'type': 'text', 'text': json.dumps(value, ensure_ascii=False, indent=1)}], 'isError': False}
         except Exception as exc:  # a tool bug or odd argument must end this call, never the server
@@ -317,7 +319,7 @@ def main():
     if os.name == 'nt':
         for stream in (sys.stdin, sys.stdout, sys.stderr): stream.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser()
-    p.add_argument('--root', help='workspace directory (default: WS_ROOT or current directory)')
+    p.add_argument('--root', '--workspace-root', help='workspace directory (default: WS_ROOT or current directory)')
     p.add_argument('--plugin', action='store_true', help='optional plugin mode: inactive outside ws-started repos')
     args = p.parse_args()
     if args.plugin:
@@ -325,7 +327,8 @@ def main():
         try: root = plugin_runtime.workspace(args.root)
         except (core.WsError, OSError, ValueError, TypeError, KeyError): root = None
     else:
-        root = core.find_root(args.root)
+        try: root = core.find_root(args.root)
+        except core.WsError: root = None  # still answer initialize/tools/list; tools/call reports NO_WORKSPACE
     PLUGIN_INACTIVE = args.plugin and root is None
     legacy = {}
     for raw in sys.stdin.buffer:

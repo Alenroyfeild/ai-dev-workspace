@@ -175,4 +175,10 @@ Removed repo wiring; private memory kept at ~/.ai-dev-workspace/demo-app
 
 This removes the repo files. Your memory stays in `~/.ai-dev-workspace/demo-app`. Delete that folder yourself when you no longer want it.
 
+## Remove it
+
+- In each repo: `ws start --undo` (removes the repo files; your memory stays).
+- The program: `pipx uninstall ai-dev-workspace` (or `pip uninstall ai-dev-workspace`).
+- Saved memory: delete the private folder yourself, `~/.ai-dev-workspace/<name>`.
+
 Next: [SETUP.md](SETUP.md) for connecting each assistant, [CONCEPTS.md](CONCEPTS.md) for tasks and claims.

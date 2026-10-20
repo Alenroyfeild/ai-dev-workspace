@@ -15,7 +15,7 @@ Sections: [Daily use](#daily-use), [Tasks and checkpoints](#tasks-and-checkpoint
 | `ws nudge` | Print the checkpoint reminder for unrecorded work. The Stop and pre-compact hooks run it (`--hook`, `--client` as for `ws brief`). |
 | `ws status` | Workspace overview. `--text` gives a readable summary. |
 | `ws audit [repo] [--text]` | Score a repo's AI assistant setup (instruction files and size, references to missing files, memory, hooks, MCP server count, stale tasks) and list the top 3 fixes. Read-only, offline, safe to paste. `--text` forces the readable summary. |
-| `ws doctor` | Show what is installed, which assistants are connected and what is missing. `--mcp` runs the MCP connection checks. |
+| `ws doctor` | Show what is installed, which assistants are connected and what is missing. `--mcp` runs the MCP connection checks. In a terminal it prints a short text summary starting with an `OK:` or `Needs attention:` line (`--text` forces it); piped output and scripts get JSON, and `--json` forces JSON in a terminal. |
 
 Details:
 

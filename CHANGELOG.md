@@ -3,9 +3,12 @@
 ## 0.1.0-beta.6 (unreleased)
 
 ### Improved
+- The MCP server started outside a ws workspace (as MCP directory sites do to list tools) no longer exits with a Python traceback: it answers `initialize` and `tools/list`, and each tool call returns "No ai-dev-workspace here: run `ws start` in your repo (or pass --workspace-root)." `--workspace-root` is now accepted as an alias of `--root`.
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- `ws doctor` no longer reports Claude as not configured in a repo set up by `ws start` (the Claude files live in the repo, not the private workspace). Its text summary now opens with an `OK:` or `Needs attention:` line and no longer prints empty parentheses after `Setup preset`; `ws doctor --json` forces JSON in a terminal (piped output is still JSON). It also says `Needs attention` with `ws upgrade` as the next step when the workspace was written by an older kit; [SETUP.md](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/SETUP.md) has an Upgrading section.
+- `ws init` refuses the filesystem root, your home folder and the system temp folder (subfolders are fine), `ws trace` and `ws run report` stop with `No task <ID>` for an unknown task, and `ws task show --section` lists the valid sections for an unknown one.
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws upgrade --dry-run` now prints one line per file (new or changed, and why a new hook file is added) instead of hundreds of diff lines; `--diff` shows the full diff.
 - `ws upgrade` now shows the summary and asks `Apply this upgrade? [y/N]` before writing, like `ws start`; `--yes` skips the question; no answer (closed input) refuses, so scripts must pass `--yes`. If files change while the question is open, it refuses ("Workspace changed during confirmation; run ws upgrade again") instead of applying a different plan.
@@ -49,6 +52,8 @@
 - `ws start` names the file and says JSON comments are not supported when a local settings file is not valid JSON.
 
 ### New
+- The brief now ends with `+N more team notes: ws know list --layer team` when the team has more notes than the cards it shows (`+N or more` once the 100-note catalog cap stops the count, or `More team notes:` when the cap was hit but every counted note is shown); it is the first line dropped when the brief is full.
+- Friendlier first-run errors: `ws undo`, `ws uninstall` and `ws remove` point to `ws start --undo`, "no task" errors name `ws task list` and `ws task new`, `ws checkpoint` defaults to your only claimed task like `ws remember`, and the start, checkpoint, task and lesson help show examples. `ws demo` is in the short `ws --help` list, and the tutorial has a "Remove it" section.
 - `bin/release-smoke` runs the release smoke in one command: it builds the artifacts offline, installs the wheel in a temp venv and drives `ws` end to end in a toy repo with a throwaway HOME (`--wheel PATH`, `--source`, `--json`). See [Cutting a release](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/MAINTAINING.md#cutting-a-release).
 - Task records carry `format: 1` and new lesson metadata carries `"format": 1`. A record written by a newer kit opens read-only: `ws brief`, `ws task find` and `ws recap` show it with a warning, and claim, checkpoint and remember refuse with "written by a newer ai-dev-workspace (format N); update the kit". Old records without the marker work unchanged. The record-corpus test now also covers this (EXIT-04).
 
