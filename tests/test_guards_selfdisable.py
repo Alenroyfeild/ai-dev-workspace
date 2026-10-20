@@ -71,7 +71,8 @@ class ShellRoutesTests(GuardTestCase):
     def test_undo_text_is_data_unless_ws_is_the_command(self):
         self.check(allowed=('echo ws start --undo', "printf '%s' 'ws start --undo'", 'python3 -c "print(\"ws start --undo\")"',
                             'ws task start --undo', 'ws --workspace-root start status --undo'))
-        self.check(denied=('sudo ws start --undo', 'env X=1 python3 -m ws start --undo',
+        self.check(denied=('python3 -u /kit/bin/ws start --undo', 'python3 -I -m ws start --undo', 'python3 -X dev /kit/bin/ws start --undo',
+                           'sudo ws start --undo', 'env X=1 python3 -m ws start --undo',
                            'ws --workspace-root=. start --undo', 'bash -c "ws start --undo"'))
 
 

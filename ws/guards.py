@@ -320,7 +320,11 @@ def _hook_arg(word):
 def _undoes_start(name, args):
     """`ws start --undo` (any spelling of the ws command and of the option): it removes the repo hooks the guards run from."""
     if re.fullmatch(r'python(?:w|[0-9.]*)|py', name):
-        if args[:1] == ['-m']: args = args[1:]
+        while args and args[0].startswith('-'):
+            option, args = args[0], args[1:]
+            if option == '-m': break
+            if option.startswith('-c') or option in ('--help', '-V', '--version'): return False
+            if option in ('-W', '-X'): args = args[1:]
         if not args: return False
         name, args = _exe(args[0]), args[1:]
     if name not in ('ws', 'ws-plugin'): return False
