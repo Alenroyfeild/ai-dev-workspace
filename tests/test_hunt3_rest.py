@@ -101,6 +101,7 @@ class DeepJsonTests(Base):
         deep = '[' * 200000 + ']' * 200000
         saved = core.paste_save(self.root, deep)
         self.assertIn('lines', saved['digest'])
+        self.assertEqual(saved['digest'].get('json_shape'), 'JSON nested too deeply to summarize')
         code, out, err = run_cli(self.root, 'digest', str(saved['path']))
         self.assertEqual(code, 0, err)
 
