@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from test_ws import Base, KIT
@@ -160,14 +161,15 @@ class BomTests(Base):
 
 class SkillLinkFallbackTests(Base):
     def setUp(self):
-        # WINDOWS off before Base.setUp: init must write the same python command connect/client_connected compare against, or a real Windows runner (sys.executable vs python3) stages .mcp.json.ws-new instead.
-        # Off also pins the copy fallback; otherwise the junction step would succeed there (the junction tests below mock it).
-        patch = mock.patch.object(core, 'WINDOWS', False)
-        patch.start(); self.addCleanup(patch.stop)
         super().setUp()
         self.home = Path(self.tmp.name) / 'home'
+        self.link_dir = core._link_dir
+        def copy_only(link, target):
+            with mock.patch.object(core, 'WINDOWS', False):
+                return self.link_dir(link, target)
         refused = OSError(22, 'A required privilege is not held by the client', None, 1314)
-        for patch in (mock.patch.object(Path, 'home', return_value=self.home), mock.patch.object(Path, 'symlink_to', side_effect=refused)):
+        for patch in (mock.patch.object(Path, 'home', return_value=self.home), mock.patch.object(Path, 'symlink_to', side_effect=refused),
+                      mock.patch.object(core, '_link_dir', side_effect=copy_only)):
             patch.start(); self.addCleanup(patch.stop)
 
     def test_refused_symlink_falls_back_to_a_copy_and_connect_still_succeeds(self):
@@ -183,13 +185,13 @@ class SkillLinkFallbackTests(Base):
         def mklink(command, **_):
             Path(command[-2]).mkdir(parents=True)  # what mklink /J does: a directory entry that resolves to the target
             return subprocess.CompletedProcess(command, 0)
-        with mock.patch.object(core, 'WINDOWS', True), mock.patch.object(subprocess, 'run', side_effect=mklink) as run:
+        with mock.patch.object(core, '_link_dir', self.link_dir), mock.patch.object(core, 'WINDOWS', True), mock.patch.object(subprocess, 'run', side_effect=mklink) as run:
             result = core.link_skills('claude', self.root)
         self.assertIn('thinkbeforeact', result['linked']); self.assertEqual(result['copied'], [])
         self.assertEqual(run.call_args[0][0][:4], ['cmd', '/c', 'mklink', '/J'])
 
     def test_failed_junction_falls_back_to_a_copy(self):
-        with mock.patch.object(core, 'WINDOWS', True), mock.patch.object(subprocess, 'run', return_value=subprocess.CompletedProcess([], 1)):
+        with mock.patch.object(core, '_link_dir', self.link_dir), mock.patch.object(core, 'WINDOWS', True), mock.patch.object(subprocess, 'run', return_value=subprocess.CompletedProcess([], 1)):
             result = core.link_skills('claude', self.root)
         self.assertIn('thinkbeforeact', result['copied'])
 
@@ -246,6 +248,23 @@ class SkillLinkFallbackTests(Base):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
             code = cli.main(['--workspace-root', str(self.root), 'connect', 'claude', '--skills'])
         self.assertEqual(code, 0); self.assertIn('copied because links are not allowed', err.getvalue())
+
+
+class SkillLinkFixtureScopeTests(unittest.TestCase):
+    def test_fixture_keeps_native_windows_during_base_setup_and_outside_link_simulation(self):
+        fixture = SkillLinkFallbackTests('test_refused_symlink_falls_back_to_a_copy_and_connect_still_succeeds')
+        seen = []
+        with tempfile.TemporaryDirectory() as tmp:
+            def base_setup(case):
+                case.tmp = SimpleNamespace(name=tmp)
+                seen.append(core.WINDOWS)
+            try:
+                with mock.patch.object(core, 'WINDOWS', True), mock.patch.object(Base, 'setUp', base_setup):
+                    fixture.setUp()
+                    self.assertEqual(seen, [True])
+                    self.assertTrue(core.WINDOWS)
+            finally:
+                fixture.doCleanups()
 
 
 class PluginLauncherTests(unittest.TestCase):
