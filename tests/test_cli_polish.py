@@ -110,6 +110,27 @@ class CliPolishTests(unittest.TestCase):
                 cli.main(['--workspace-root', str(workspace), 'doctor'])
             self.assertTrue(stream.getvalue().startswith(('OK:', 'Needs attention:')), stream.getvalue()[:80])  # terminal default is text
 
+    def test_unreadable_workspace_keeps_json_and_actionable_doctor_verdict(self):
+        from ws import cli
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / 'home'; home.mkdir()
+            workspace = Path(temporary) / 'workspace'; workspace.mkdir()
+            (workspace / 'workspace.json').write_text('{ invalid', encoding='utf-8')
+            env = dict(HOME=str(home), USERPROFILE=str(home), WS_OFFLINE='1')
+            with mock.patch.dict(os.environ, env), mock.patch.object(cli, 'human', return_value=True):
+                for mode in ('--json', '--text'):
+                    with self.subTest(mode=mode), contextlib.redirect_stdout(io.StringIO()) as stream:
+                        self.assertEqual(cli.main(['--workspace-root', str(workspace), 'doctor', mode]), 0)
+                        output = stream.getvalue()
+                        if mode == '--json':
+                            report = json.loads(output)
+                            self.assertIn('workspace.json is unreadable', report['workspace_error'])
+                            verdict = cli.doctor_verdict(report)
+                        else:
+                            verdict = output.splitlines()[0]
+                        self.assertTrue(verdict.startswith('Needs attention: workspace.json is unreadable'), verdict)
+                        self.assertIn('fix or restore', verdict)
+
     def test_doctor_verdict_asks_for_ws_upgrade_when_workspace_is_older(self):
         from ws import cli, core
         with tempfile.TemporaryDirectory() as temporary:
