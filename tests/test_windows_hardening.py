@@ -158,16 +158,36 @@ class BomTests(Base):
         self.assertEqual(core.json_loads('\ufeff{"a": "\ufeff"}'), {'a': '\ufeff'})
 
 
+class SkillFixturePlatformTests(unittest.TestCase):
+    def test_base_setup_keeps_the_host_platform_flag(self):
+        for native in (False, True):
+            case = SkillLinkFallbackTests('test_refused_symlink_falls_back_to_a_copy_and_connect_still_succeeds')
+            seen = []
+            def base_setup(_):
+                seen.append(core.WINDOWS)
+                raise RuntimeError('base setup reached')
+            with self.subTest(native=native), mock.patch.object(core, 'WINDOWS', native), mock.patch.object(Base, 'setUp', base_setup):
+                try:
+                    with self.assertRaisesRegex(RuntimeError, 'base setup reached'):
+                        case.setUp()
+                finally:
+                    case.doCleanups()
+                self.assertEqual(seen, [native])
+
+
 class SkillLinkFallbackTests(Base):
     def setUp(self):
-        # WINDOWS off before Base.setUp: init must write the same python command connect/client_connected compare against, or a real Windows runner (sys.executable vs python3) stages .mcp.json.ws-new instead.
-        # Off also pins the copy fallback; otherwise the junction step would succeed there (the junction tests below mock it).
-        patch = mock.patch.object(core, 'WINDOWS', False)
-        patch.start(); self.addCleanup(patch.stop)
         super().setUp()
         self.home = Path(self.tmp.name) / 'home'
         refused = OSError(22, 'A required privilege is not held by the client', None, 1314)
-        for patch in (mock.patch.object(Path, 'home', return_value=self.home), mock.patch.object(Path, 'symlink_to', side_effect=refused)):
+        real_run = subprocess.run
+        def refuse_junction(command, *args, **kwargs):
+            if list(command)[:4] == ['cmd', '/c', 'mklink', '/J']:
+                return subprocess.CompletedProcess(command, 1)
+            return real_run(command, *args, **kwargs)
+        # Simulate link refusal only; setup, config generation and locks keep the native platform.
+        for patch in (mock.patch.object(Path, 'home', return_value=self.home), mock.patch.object(Path, 'symlink_to', side_effect=refused),
+                      mock.patch.object(subprocess, 'run', side_effect=refuse_junction)):
             patch.start(); self.addCleanup(patch.stop)
 
     def test_refused_symlink_falls_back_to_a_copy_and_connect_still_succeeds(self):
