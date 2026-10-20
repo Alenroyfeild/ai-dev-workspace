@@ -25,3 +25,9 @@ class FreshTaskValidateTests(Base):
         path = core.task_path(self.root, 'T-1'); text = path.read_text()
         path.write_text(core.set_section(text, 'Next action', ''))
         self.assertIn('T-1.md: empty Next action', core.validate(self.root)['errors'])
+
+    def test_task_file_with_an_invalid_id_name_is_reported_not_silently_hidden(self):
+        (self.root / 'vault/Tasks/my task.md').write_text(core.task_path(self.root, 'T-1').read_text().replace('id: T-1', 'id: my task'))
+        self.assertEqual(['T-1'], [t['id'] for t in core.task_list(self.root)])
+        errors = core.validate(self.root)['errors']
+        self.assertEqual(1, len(errors)); self.assertIn('my task.md: task file hidden', errors[0])

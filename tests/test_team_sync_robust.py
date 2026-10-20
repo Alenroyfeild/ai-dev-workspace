@@ -75,6 +75,17 @@ class TeamSyncRobustTests(unittest.TestCase):
             code = cli.main(['--workspace-root', str(self.b), 'know', 'list', '--layer', 'team'])
         self.assertEqual(2, code); self.assertIn(path, err.getvalue()); self.assertNotIn('Traceback', err.getvalue())
 
+    def test_corrupt_manifest_does_not_block_private_reads(self):
+        item = knowledge.add(self.b, 'Private note about queues.', 'other', False)
+        self.corrupt()
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            listing = knowledge.list_entries(self.b)
+            hits = core.search(self.b, 'queues', category='other')
+        self.assertEqual(1, len(listing['entries'])); self.assertIn('team.json', listing['warnings'][0])
+        self.assertEqual(1, len(hits)); self.assertIn('team.json', err.getvalue())
+        with self.assertRaises(core.WsError): knowledge.list_entries(self.b, layer='team')
+
     def test_doctor_reports_a_corrupt_manifest(self):
         self.assertFalse(core.doctor(self.b)['team_workspace'].get('problem'))
         self.corrupt()
@@ -93,6 +104,24 @@ class TeamSyncRobustTests(unittest.TestCase):
         self.assertTrue(team_auto.pull(self.b)['updated'])  # was blocked by the local corrupt manifest
         self.assertEqual(good, (self.cb / 'team.json').read_text())
         knowledge._bases(self.b, 'team')
+
+    def push_from_alice(self, name, text):
+        (self.ca / name).write_text(text)
+        team._git(self.ca, 'add', name); team._git(self.ca, *IDENT, 'commit', '-qm', name); team._git(self.ca, 'push', '-q', 'origin', 'HEAD')
+
+    def test_failed_pull_keeps_the_local_index(self):
+        self.push_from_alice('notice.md', 'one\n')
+        (self.cb / 'notice.md').write_text('bob edit\n'); (self.cb / 'INDEX.md').write_text('local index\n')
+        with self.assertRaises(core.WsError): team_sync.preview(self.b)
+        self.assertEqual('local index\n', (self.cb / 'INDEX.md').read_text())
+
+    def test_pulled_foreign_index_is_a_warning_not_a_failed_pull(self):
+        self.push_from_alice('INDEX.md', 'teammate hand-written index\n')
+        (self.cb / 'INDEX.md').write_text('local index\n')
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err): result = team_auto.pull(self.b)
+        self.assertTrue(result['updated']); self.assertIn('INDEX.md', err.getvalue())
+        self.assertEqual('teammate hand-written index\n', (self.cb / 'INDEX.md').read_text())
 
 
 if __name__ == '__main__':
