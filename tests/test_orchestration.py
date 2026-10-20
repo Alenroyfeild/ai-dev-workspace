@@ -325,6 +325,21 @@ class OrchestrationTests(Base):
             finally: self.root.chmod(original)
         self.assertFalse(marker.exists())  # worker never launched
 
+    @unittest.skipIf(os.name == 'nt' or (hasattr(os, 'geteuid') and os.geteuid() == 0), 'needs POSIX permissions and a non-root user')
+    def test_selftest_refuses_readonly_cache_dir_even_with_a_writable_lock(self):
+        metadata = self.root / '.ws'; metadata.mkdir(exist_ok=True)
+        (metadata / 'lock').touch()
+        marker = self.root / 'ran'; git = shutil.which('git'); original = metadata.stat().st_mode
+        with self.fake('open(%r, "w").write("x")' % str(marker)):
+            self._git_on_path(git)
+            metadata.chmod(0o555)
+            try:
+                with self.assertRaisesRegex(core.WsError, 'No worker was started'):
+                    orchestration.selftest(self.root, 'codex')
+            finally:
+                metadata.chmod(original)
+        self.assertFalse(marker.exists())
+
     def test_selftest_control_survives_redaction_of_the_worker_answer(self):
         git = shutil.which('git')
         code = 'from pathlib import Path; print("token: " + Path("token.txt").read_text())'
