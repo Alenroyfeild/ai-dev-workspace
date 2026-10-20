@@ -2,6 +2,7 @@
 import json
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from test_guards_hunt import GuardTestCase
 from ws import guards
@@ -67,6 +68,13 @@ class ShellRoutesTests(GuardTestCase):
         self.check(allowed=('ws start', 'ws start --dry-run', 'ws start --yes', 'ws status', 'echo start --undo', 'git start --undo', 'ws task start --undo-me', 'ws pack add guards'))
 
 
+    def test_undo_text_is_data_unless_ws_is_the_command(self):
+        self.check(allowed=('echo ws start --undo', "printf '%s' 'ws start --undo'", 'python3 -c "print(\"ws start --undo\")"',
+                            'ws task start --undo', 'ws --workspace-root start status --undo'))
+        self.check(denied=('sudo ws start --undo', 'env X=1 python3 -m ws start --undo',
+                           'ws --workspace-root=. start --undo', 'bash -c "ws start --undo"'))
+
+
 class WrapperLongOptionTests(GuardTestCase):
     def test_long_wrapper_options_with_a_separate_value_still_reach_the_command(self):
         for prefix in ('sudo --user root', 'sudo --group staff', 'sudo --host box', 'sudo --prompt p', 'sudo --chdir /tmp', 'sudo --close-from 5', 'sudo --role r', 'sudo --type t', 'sudo --other-user me',
@@ -79,6 +87,17 @@ class WrapperLongOptionTests(GuardTestCase):
     def test_safe_commands_behind_those_options_are_allowed(self):
         self.check(allowed=('sudo --user root git status', 'env --chdir /tmp git status', 'env --unset FOO git log', 'timeout --signal KILL 5 git status', 'nice --adjustment 5 git diff', 'sudo --user=root ls',
                             'sudo --user root rm -rf build', 'env --chdir /tmp rm -rf build'))
+
+
+    def test_env_split_strings_are_commands_not_discarded_option_values(self):
+        for option in ("-S '{cmd}'", "--split-string '{cmd}'", "--split-string='{cmd}'", "-S'{cmd}'"):
+            for command in ('git reset --hard', 'rm -rf ~', 'ws start --undo'):
+                with self.subTest(option=option, command=command):
+                    self.assertTrue(self.deny('sudo env -i ' + option.format(cmd=command)))
+            self.assertEqual(self.deny('env ' + option.format(cmd='git status')), '')
+            self.assertEqual(self.deny('env ' + option.format(cmd='echo ws start --undo')), '')
+        self.assertTrue(self.deny("env -S 'git reset' --hard"))
+        self.assertEqual(self.deny("env -S 'echo' 'git reset --hard'"), '')
 
 
 class EditRouteTests(GuardTestCase):
@@ -125,6 +144,14 @@ class EditRouteTests(GuardTestCase):
         plain = self.put('{"permissions": {}}\n', '.claude/settings.json')
         self.assertEqual(self.edit(plain, '"permissions": {}', '"hooks": {}'), '')  # no guard hook there to protect
         self.assertEqual(guards.reason('Write', {'file_path': 'notes.json', 'content': '{}'}, self.work), '')
+
+    def test_quoted_windows_guard_commands_are_protected(self):
+        from ws import core
+        with mock.patch.object(core, 'WINDOWS', True):
+            command = core.command_line([r'C:\Python\python.exe', r'C:\kit\bin\ws', '--workspace-root', r'C:\ws', 'guard', '--hook', '--client', 'claude'])
+            name = self.put(config(command))
+            self.assertIn(ASK, guards.reason('Write', {'file_path': name, 'content': '{}'}, self.work))
+            self.assertEqual(self.edit(name, '"permissions": {}', '"model": "opus"'), '')
 
     def test_encoded_windows_launcher_entries_are_recognized(self):
         from ws import core

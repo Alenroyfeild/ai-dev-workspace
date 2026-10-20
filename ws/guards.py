@@ -243,6 +243,11 @@ def _strip(words):
         while k < n and words[k][:1] == '-' and words[k] != '-':
             option = words[k]; k += 1
             if option == '--': break
+            if name == 'env':
+                if option in ('-S', '--split-string'): return ['env', '-S', *words[k:]], xargs
+                if option.startswith('--split-string=') or option.startswith('-S'):
+                    payload = option.partition('=')[2] if option.startswith('--') else option[2:]
+                    return ['env', '-S', payload, *words[k:]], xargs
             if option[:2] == '--': k += _long_takes_value(name, option) and k < n
             else:
                 for j, char in enumerate(option[1:], 1):
@@ -314,11 +319,16 @@ def _hook_arg(word):
 
 def _undoes_start(name, args):
     """`ws start --undo` (any spelling of the ws command and of the option): it removes the repo hooks the guards run from."""
-    words = [name, *args]
-    for k, word in enumerate(words):
-        if word == 'start' and any(_exe(w) in ('ws', 'ws-plugin') for w in words[:k]):
-            return any(len(a) >= 3 and a[:2] == '--' and '--undo'.startswith(a) for a in words[k + 1:])
-    return False
+    if re.fullmatch(r'python(?:w|[0-9.]*)|py', name):
+        if args[:1] == ['-m']: args = args[1:]
+        if not args: return False
+        name, args = _exe(args[0]), args[1:]
+    if name not in ('ws', 'ws-plugin'): return False
+    while args and args[0].startswith('--workspace-root'):
+        if args[0] == '--workspace-root': args = args[2:]
+        elif args[0].startswith('--workspace-root='): args = args[1:]
+        else: return False
+    return bool(args and args[0] == 'start' and any(len(a) >= 3 and a[:2] == '--' and '--undo'.startswith(a) for a in args[1:]))
 
 
 def _test_file(word):
@@ -371,6 +381,8 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
         if inner is None and '<<<' in args[:-1]: inner = args[args.index('<<<') + 1]
         if inner is None and not cmd.bodies and cmd.pipe_in and _exe(cmd.pipe_in[0]) in ('echo', 'printf'): inner = ' '.join(cmd.pipe_in[1:])
         return next(filter(None, (command_reason(text, False, budget, depth + 1) for text in ([inner] if inner is not None else cmd.bodies))), '')
+    if name == 'env' and args[:1] == ['-S'] and len(args) > 1:
+        return command_reason(args[1] + ' ' + shlex.join(args[2:]), False, budget, depth + 1)
     if name == 'eval': return command_reason(' '.join(args), False, budget, depth + 1)
     if name in ('powershell', 'pwsh', 'cmd'):
         return next(filter(None, (_nested(inner, budget, depth) for inner in _wrapped(cmd, name, args, budget))), '')
@@ -557,6 +569,7 @@ def _is_guard_command(command):
     """A ws guard hook command: `<python> <kit>/bin/ws ... guard --hook ...`, plain or in the encoded Windows launcher."""
     try:
         parts = shlex.split(command, posix=not core.WINDOWS)
+        if core.WINDOWS: parts = [_unquote(word) for word in parts]
         if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
     except ValueError: return False
     return 'guard' in parts and '--hook' in parts and any(_exe(w) in ('ws', 'ws-plugin') for w in parts)
