@@ -6,6 +6,7 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- Redaction hides the whole JWT after a recognized header/payload prefix, including oversized payloads, and private spans stay hidden with long opening-tag attributes.
 - PGP private key blocks (`BEGIN PGP PRIVATE KEY BLOCK`) are redacted; `redact()` is linear on repeated `eyJ-` (JWT segments are bounded); a multi-line `<private>` span in a Handoff no longer leaks into `ws pr-notes` or `ws recap`; `<private x=1>`, `<private >`, `< private>` and `</ private>` count as private tags everywhere.
 - Imported brief excerpts keep whole items and source IDs together.
 - `ws upgrade --dry-run` now prints one line per file (new or changed, and why a new hook file is added) instead of hundreds of diff lines; `--diff` shows the full diff.

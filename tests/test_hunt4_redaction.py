@@ -23,6 +23,23 @@ class JwtLinearTests(Base):
         core.redact('eyJ-' * 100_000)  # 400 KB; was ~57 s
         self.assertLess(time.monotonic() - start, 3)
 
+    def test_oversized_jwt_is_consumed_after_its_recognized_prefix(self):
+        import base64
+        encode = lambda data: base64.urlsafe_b64encode(json.dumps(data).encode()).decode().rstrip('=')
+        token = '.'.join((encode({'alg': 'HS256', 'typ': 'JWT'}), encode({'ctx': 'x' * 13000}), 's' * 43))
+        self.assertGreater(len(token.split('.')[1]), 17000)
+        self.assertEqual(core.redact('auth ' + token + ' done'), 'auth [REDACTED] done')
+        self.assertEqual(core.redact('note-' + token), 'note-[REDACTED]')
+        prefix = '.'.join(token.split('.')[:2])
+        self.assertEqual(core.redact(prefix), '[REDACTED]')
+
+    def test_one_megabyte_jwt_candidates_stay_linear(self):
+        for text in ('eyJ-' * 250000, 'eyJabc.' + 'a' * 1000000 + '.sig'):
+            start = time.monotonic()
+            out = core.redact(text)
+            self.assertLess(time.monotonic() - start, 3)
+            if '.sig' in text: self.assertEqual(out, '[REDACTED]')
+
     def test_normal_jwt_is_still_redacted(self):
         jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk'
         self.assertEqual(core.redact(f'auth {jwt} done'), 'auth [REDACTED] done')
@@ -54,6 +71,20 @@ class PrivateSpanTests(Base):
         core.remember(self.root, 'A < private >LEAKONE</ private > a', 'T-1')
         for out in (core.pr_notes(self.root, 'T-1')['markdown'], core.recap(self.root)['markdown']):
             self.assertNotIn('LEAK', out)
+
+    def test_overlong_private_attribute_still_opens_a_private_span(self):
+        opener = '<private note="' + 'a' * 1000 + '">'
+        for text, expected in ((f'a {opener}LEAK</private> b', 'a  b'),
+                               (f'a {opener}LEAK', 'a '),
+                               (f'a {opener}<private>LEAK</private>TAIL</private> b', 'a  b')):
+            self.assertEqual(core.strip_private(text, ''), expected)
+            self.assertNotIn('LEAK', core.plain_text(text))
+
+    def test_one_megabyte_private_candidates_stay_linear(self):
+        for text in ('<private ' * 112000, '<private note="' + 'a' * 1000000 + '">LEAK</private>'):
+            start = time.monotonic()
+            self.assertEqual(core.strip_private(text, ''), '')
+            self.assertLess(time.monotonic() - start, 3)
 
     def test_tag_regex_is_not_quadratic(self):
         for text in ('<private ' * 50_000, '<' + ' ' * 200_000):
