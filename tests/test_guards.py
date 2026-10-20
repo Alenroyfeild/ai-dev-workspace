@@ -56,8 +56,8 @@ class GuardRuleTests(unittest.TestCase):
                         'Remove-Item ~ -Recurse -Force:$false', 'Remove-Item ~ -Recurse:$false -Force', 'Get-ChildItem .\\build | Remove-Item -Recurse -Force'):
             with self.subTest(command): self.assertEqual(guards.reason('PowerShell', {'command': command}), '')
 
-    def test_powershell_rules_do_not_apply_to_other_tools(self):
-        self.assertEqual(self.deny('Remove-Item -Recurse -Force ~'), '')
+    def test_powershell_rules_apply_to_every_tool(self):
+        self.assertTrue(self.deny('Remove-Item -Recurse -Force ~'))  # Codex on Windows runs PowerShell under a Bash-named tool
         self.assertEqual(guards.reason('SomeNewTool', {'path': 'x'}), '')
         self.assertEqual(guards.reason('SomeNewTool', None), '')
 
@@ -121,7 +121,7 @@ class GuardHookWiringTests(Base):
         self.assertTrue(any('ws start again' in line for line in result['next']))
         claude = core.pack_hooks(self.root, 'claude')['PreToolUse'][0]
         codex = core.pack_hooks(self.root, 'codex')['PreToolUse'][0]
-        self.assertEqual(claude['matcher'], 'Bash|PowerShell|Write|Edit|MultiEdit')
+        self.assertEqual(claude['matcher'], 'Bash|PowerShell|Write|Edit|MultiEdit|Monitor|NotebookEdit')
         self.assertNotIn('matcher', codex)
         self.assertTrue(codex['hooks'][0]['command'].endswith(core.command_line(['guard', '--hook', '--client', 'codex'])))  # Windows quotes args
         self.assertEqual(core.pack_hooks(self.root, 'cursor'), {})
