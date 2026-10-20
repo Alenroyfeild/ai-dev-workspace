@@ -11,6 +11,19 @@ DISCORD_APP = 'https://discordapp' + '.com/api/webhooks/' + '0' * 18 + '/' + 'X'
 
 
 class WebhookRedactionTests(Base):
+    def test_slack_workflow_trigger_url_is_redacted(self):
+        url = SLACK_HOST + 'triggers/T' + '0' * 8 + '/' + '0' * 13 + '/' + 'X' * 32
+        self.assertEqual(core.redact(f'post to {url} now'), 'post to [REDACTED] now')
+
+    def test_webhook_hosts_are_case_insensitive_but_paths_are_not(self):
+        for url in (SLACK, SLACK_FLOW, DISCORD, DISCORD_APP):
+            host, path = url.split('/', 3)[2:]
+            mixed = 'https://' + host.upper() + '/' + path
+            with self.subTest(host=host):
+                self.assertEqual(core.redact(f'post to {mixed} now'), 'post to [REDACTED] now')
+        upper_path = SLACK.replace('/services/', '/SERVICES/')
+        self.assertEqual(core.redact(upper_path), upper_path)
+
     def test_slack_and_discord_webhook_urls_are_redacted(self):
         for url in (SLACK, SLACK_FLOW, DISCORD, DISCORD_APP):
             with self.subTest(url):
