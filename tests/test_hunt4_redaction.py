@@ -30,6 +30,8 @@ class JwtLinearTests(Base):
         self.assertGreater(len(token.split('.')[1]), 17000)
         self.assertEqual(core.redact('auth ' + token + ' done'), 'auth [REDACTED] done')
         self.assertEqual(core.redact('note-' + token), 'note-[REDACTED]')
+        self.assertEqual(core.redact('auth ' + token + '. Done.'), 'auth [REDACTED]. Done.')
+        self.assertEqual(core.redact(token + '-'), '[REDACTED]')
         prefix = '.'.join(token.split('.')[:2])
         self.assertEqual(core.redact(prefix), '[REDACTED]')
 

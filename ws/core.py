@@ -107,7 +107,7 @@ SECRET_RE = re.compile(
     r'-----BEGIN [^-]*PRIVATE KEY(?: BLOCK)?-----'
     r'|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}'
     # Bounded dot precheck keeps repeated eyJ- fast; a recognized header/payload prefix hides the whole token.
-    r'|\beyJ(?=.{1,4097}\.)[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-][A-Za-z0-9_.-]*'
+    r'|\beyJ(?=.{1,4097}\.)[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*'
     # Provider tokens recognisable by prefix alone. The group may also end on a `-` (Google keys can).
     r'|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}'  # GitHub
     r'|sk-[A-Za-z0-9_-]{20,}'  # OpenAI-style, Anthropic (sk-ant-)
