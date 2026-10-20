@@ -28,7 +28,7 @@ class ClaudePluginTests(Base):
         self.assertEqual(set(hooks), set(core.memory_hooks(self.root, 'claude')['hooks']))
         for event, entries in hooks.items():
             command = entries[0]['hooks'][0]['command']
-            self.assertEqual(command, 'python3 "${CLAUDE_PLUGIN_ROOT}/bin/ws-plugin" --client claude', event)
+            self.assertEqual(command, 'sh "${CLAUDE_PLUGIN_ROOT}/bin/ws-python" "${CLAUDE_PLUGIN_ROOT}/bin/ws-plugin" --client claude', event)
 
 
 if __name__ == '__main__':

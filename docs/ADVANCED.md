@@ -91,4 +91,4 @@ The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires 
 /plugin install ai-dev-workspace@ai-dev-workspace
 ```
 
-Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. Needs `python3` on PATH; Windows is untested.
+Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. The hooks run through `bin/ws-python`, which uses the first working `python3`, `python` or `py -3` (needs `sh`, as in Git Bash). The plugin's MCP server entry is started directly by the client and still calls `python3`; on Windows installs that only provide `python` or `py`, add a `python3.exe` copy or alias to PATH, or use `ws start` instead of the plugin. Windows is untested.

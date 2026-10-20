@@ -3,7 +3,9 @@
 Claude Code and Codex read the same deny JSON. Any error lets the tool run (both clients fail open), so a guard
 bug never blocks work; WS_GUARDS=off in the shell that starts the assistant turns every rule off.
 """
+import base64
 import os
+import posixpath
 import re
 import shlex
 from pathlib import Path
@@ -51,9 +53,10 @@ def _segments(command):
 def _canon(path):
     """Path with ~, $HOME, ${HOME}, $env:USERPROFILE swapped for the real home, then slashes, `/.`, `//` and a trailing `/*` folded."""
     home = os.path.expanduser('~')
-    path = re.sub(r'(?i)^(?:~|\$home|\$\{home\}|\$env:userprofile)(?=$|[\\/])', lambda _: home, path)
+    path = re.sub(r'(?i)^(?:~|\$home|\$\{home\}|\$env:userprofile|\$env:home|\$userprofile|\$\{userprofile\}|%userprofile%|%homedrive%%homepath%)(?=$|[\\/])', lambda _: home, path)
     path = re.sub(r'/\.?\*$', '/', re.sub(r'[\\/]+', '/', path))
-    return os.path.normcase(os.path.normpath(path))
+    path = re.sub(r'(?i)^/([a-z])(?=/|$)', r'\1:', path)  # Git Bash /c/Users -> c:/Users
+    return posixpath.normpath(path).lower()  # case-insensitive on every OS so a Windows home matches however it is typed
 
 
 def _is_home(path):
@@ -62,10 +65,38 @@ def _is_home(path):
 
 
 def _is_root(path):
-    return _canon(path) == _canon('/')
+    """The filesystem root or a drive root: /, C:/, C:/*, /c/*."""
+    return _canon(path) == '/' or bool(re.fullmatch(r'[a-z]:', _canon(path)))
+
+
+# PowerShell takes any unique prefix of a parameter name (-e, -enc, -comm; -ec is an alias), so match every prefix; a quoted path to the executable counts too.
+_PREFIXES = lambda name, low: '|'.join(sorted((name[:n] for n in range(low, len(name) + 1)), key=len, reverse=True))
+_EXE = r'(?<![\w.-])(?:"[^"]*[\\/]|\'[^\']*[\\/]|["\']|[^\s;&|"\']*[\\/])?'
+_PS_WRAP = re.compile(r'(?is)' + _EXE + r'(?:powershell|pwsh)(?:\.exe)?["\']?\s(?:.*?\s)?-(' + _PREFIXES('encodedcommand', 1) + r'|ec|' + _PREFIXES('commandwithargs', 1) + r')\b\s*(.*)')
+_CMD_WRAP = re.compile(r'(?is)' + _EXE + r'cmd(?:\.exe)?["\']?\s+(?:.*?\s)?/[ck]\s+(.*)')
+
+
+def _unquote(text):
+    text = text.strip().replace('\\"', '"')
+    return text[1:].rstrip('"\'') if text[:1] in '"\'' else text
+
+
+def _wrapped(command):
+    """Inner command strings of powershell/pwsh -Command and cmd /c invocations, so the same rules see them under the Bash tool."""
+    for match in _PS_WRAP.finditer(command):
+        inner = _unquote(match[2])
+        if match[1].lower() == 'ec' or 'encodedcommand'.startswith(match[1].lower()):
+            try: inner = base64.b64decode((inner.split() or [''])[0].strip('"\''), validate=True).decode('utf-16-le')
+            except ValueError: continue  # includes UnicodeDecodeError and binascii.Error
+        yield inner
+    for match in _CMD_WRAP.finditer(command):
+        yield _unquote(match[1])
 
 
 def command_reason(command):
+    for inner in _wrapped(command):
+        why = command_reason(inner) or powershell_reason(inner) or cmd_reason(inner)
+        if why: return why
     for words in _segments(command):
         name, args = os.path.basename(words[0]), words[1:]
         if name in SHELLS and len(args) >= 2 and re.fullmatch(r'-\w*c', args[0]):  # bash -lc "<command>"
@@ -99,9 +130,7 @@ def _ps_flag(arg, full):
 
 
 def _ps_home_or_root(a):
-    if a.startswith('-'): return False
-    target = _canon(a).lower()
-    return not a.strip('\\/') or _is_home(a) or _is_root(a) or bool(re.fullmatch(r'[a-z]:[\\/]?', target))
+    return not a.startswith('-') and (not a.strip('\\/') or _is_home(a) or _is_root(a))
 
 
 def powershell_reason(command):
@@ -118,6 +147,23 @@ def powershell_reason(command):
         for a in args + piped:
             if _ps_home_or_root(a):
                 return f'Remove-Item -Recurse -Force on {a} would delete your home folder or a drive root.'
+    return ''
+
+
+CMD_REMOVE = {'rd', 'rmdir', 'del', 'erase'}
+
+
+def cmd_reason(command):
+    """cmd.exe rd/rmdir/del /s on home or a drive root (%USERPROFILE%, C:\\, %SystemDrive%\\)."""
+    for part in re.split(r'&&|\|\||[&;|\n]', command):
+        words = [w.strip('"\'') for w in re.findall(r'"[^"]*"|\'[^\']*\'|\S+', part)]
+        while words and words[0].lower() in ('call', '@'): words = words[1:]
+        if not words or words[0].lower().lstrip('@') not in CMD_REMOVE: continue
+        args = words[1:]
+        if not any(a.lower() == '/s' for a in args): continue
+        for a in args:
+            if not re.fullmatch(r'/[a-z?]', a, re.I) and (_ps_home_or_root(a) or a.lower().rstrip('\\/') == '%systemdrive%'):
+                return f'{words[0]} /s on {a} would delete your home folder or a drive root.'
     return ''
 
 

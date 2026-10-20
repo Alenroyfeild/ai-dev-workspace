@@ -120,7 +120,7 @@ def manage(root, action, remote='', apply=False, attest=False, auto_pull=False, 
                                          'privacy': verified, 'auto_pull': bool(auto_pull)}
                 updated = json.dumps(cfg, indent=2) + '\n'
                 try:
-                    core.atomic_write(metadata, updated); os.replace(clone, target)
+                    core.atomic_write(metadata, updated); core.replace_file(clone, target)
                 except OSError:
                     if metadata.read_text(encoding='utf-8') == updated: core.atomic_write(metadata, original)
                     raise core.WsError('Team link write failed; configuration preserved. Preview before retrying.')
