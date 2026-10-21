@@ -115,9 +115,10 @@ STATUSES = ('backlog', 'ready', 'in_progress', 'review', 'blocked', 'done')
 ID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 SECRET_RE = re.compile(
     # Marker only: redact() splices whole key blocks (linear); this still locates a key for line numbers.
-    r'-----BEGIN [^-]*PRIVATE KEY-----'
+    r'-----BEGIN [^-]*PRIVATE KEY(?: BLOCK)?-----'
     r'|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}'
-    r'|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
+    # Bounded dot precheck keeps repeated eyJ- fast; a recognized header/payload prefix hides the whole token.
+    r'|\beyJ(?=.{1,4097}\.)[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*'
     # Provider tokens recognisable by prefix alone. The group may also end on a `-` (Google keys can).
     r'|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}'  # GitHub
     r'|sk-[A-Za-z0-9_-]{20,}'  # OpenAI-style, Anthropic (sk-ant-)
@@ -132,9 +133,9 @@ SECRET_RE = re.compile(
     r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
     r'|(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*(?:"[^"\n]*"|\'[^\'\n]*\'|[^\s"\']+)', re.S)
-PRIVATE_KEY_BEGIN_RE = re.compile(r'-----BEGIN ([^-]*PRIVATE KEY)-----')
+PRIVATE_KEY_BEGIN_RE = re.compile(r'-----BEGIN ([^-]*PRIVATE KEY(?: BLOCK)?)-----')
 URL_CREDENTIALS_RE = re.compile(r'(?<=[A-Za-z0-9+.-])(://)[^\s/@:]+:[^\s/@]+@')  # anchored on `://`: no rescan of a long scheme-like run
-PRIVATE_TAG_RE = re.compile(r'</?private>', re.I)
+PRIVATE_TAG_RE = re.compile(r'<\s{0,64}(?:(/)\s{0,64}private\b[^>]{0,256}>|private\b)', re.I)  # opener prefix fails closed for long attributes; group 1 = complete closer
 PRIVATE_RE = re.compile(r'<private>.*?(?:</private>|\Z)', re.I | re.S)  # Deprecated: .sub() misses nested spans; use strip_private() (kept so older branches still import)
 HOME_PATH_RE = re.compile(r'(?<![\w.~-])(?:/Users|/home)/[^/\s]+|(?<![\w.~-])[A-Za-z]:\\Users\\[^\\\s]+')
 
@@ -191,7 +192,7 @@ def strip_private(text, replacement=' '):
     """Drop <private> spans, nesting included: text stays hidden until the matching close; an unclosed opener hides the rest."""
     out, depth, pos = [], 0, 0
     for tag in PRIVATE_TAG_RE.finditer(text):
-        if tag[0][1] != '/':
+        if not tag[1]:
             if not depth: out.append(text[pos:tag.start()])
             depth += 1
         elif depth:
@@ -1582,7 +1583,7 @@ def pr_notes(root, task_id=None, link=True):
         return '' if value == section(template, name) or value.lower().rstrip('.') in ('none', 'none yet') else value
 
     decisions = []
-    for raw in body('Handoff').splitlines():
+    for raw in strip_private(body('Handoff'), '').splitlines():  # strip first: a multi-line <private> span must not feed Decision:/Reason: lines
         line = raw.strip()
         if line.startswith('Decision:'): decisions.append('- ' + line[9:].strip())
         elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
@@ -3332,7 +3333,7 @@ def recap(root, since='7d'):
         if updated < cutoff: continue
         # Captured blocks (also unterminated ones) are unverified guesses; placeholders and bullets are dropped as in pr_notes.
         explicit = lambda name: re.sub(r'<!-- ws:captured:.*\Z', '', re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections'][name], flags=re.S), flags=re.S)
-        handoff = explicit('Handoff')
+        handoff = strip_private(explicit('Handoff'), '')  # before splitting lines: a multi-line <private> span stays hidden
         rejected = [item for n in ('Failures', 'Do not redo') for item in _list_items(explicit(n))]
         rejected = [r for r in rejected if r and r.lower().rstrip('.') not in ('none', 'none yet')]
         tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
