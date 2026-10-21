@@ -224,10 +224,10 @@ def delegate(root, task_id, role, run=False, diff=None):
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if run and meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
         raise core.WsError('Task claimed elsewhere; cannot append worker evidence.')
-    paths = [Path(meta.get('repo') or next(iter(core.config(root).get('repos', [])), str(root))).expanduser().resolve()]
+    paths = [core.repo_path(root, meta.get('repo') or next(iter(core.config(root).get('repos', [])), str(root)))]
     if not paths[0].is_dir(): raise core.WsError('Task repository is not a directory.')
     if diff is not None:
-        allowed = [Path(root).resolve()] + [Path(p).expanduser().resolve() for p in core.config(root).get('repos', [])]
+        allowed = [Path(root).resolve()] + [core.repo_path(root, p) for p in core.config(root).get('repos', [])]
         if not any(paths[0] == p or p in paths[0].parents for p in allowed):
             raise core.WsError('Review repository is outside declared roots; add it to workspace.json repos, then run ws delegate again.')
     body = '# Bounded delegation (UNVERIFIED)\nLead decides and reviews; workers do bounded work. Read only allowed paths; no credentials or external services.\n'
@@ -259,7 +259,7 @@ def delegate(root, task_id, role, run=False, diff=None):
     findings = len(set(line.strip() for line in rendered.splitlines() if re.match(r'^(?:UNVERIFIED\s+)?[^:\n]+:\d+:\s+\S', line))) if role == 'reviewer' else None
     with core.lock(root):
         core.atomic_write(output, 'UNVERIFIED worker output\n' + rendered)
-        path = core.task_path(root, task_id); text = path.read_text(encoding='utf-8'); current = core.parse_meta(text)
+        path = core.task_path(root, task_id); text = core.read_exact(path); current = core.parse_meta(text)
         if current.get('claimed_by') and (worker != current['claimed_by'] or token != current.get('claim_token')):
             raise core.WsError('Claim changed during delegation; output saved, task evidence not changed.')
         match = re.search(r'^## Evidence[^\n]*\n.*?(?=^## |\Z)', text, re.M | re.S)

@@ -627,7 +627,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     core.claim(root, task, 'local')
     if new_task:
         with core.lock(root):
-            target = core.task_path(root, task); text = target.read_text(encoding='utf-8')
+            target = core.task_path(root, task); text = core.read_exact(target)
             meta = core.parse_meta(text)
             template = core.section((core.KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Next action')
             if (core._local_claim_matches(root, task, meta) and meta.get('status') == 'ready'

@@ -139,7 +139,7 @@ def import_native(root, client='all', task=None, yes=False):
         with core.lock(root):
             worker, token = core._claim_defaults(root, tid, None, None)
             path = core.task_path(root, tid)
-            text = path.read_text(encoding='utf-8')
+            text = core.read_exact(path)
             meta = core.parse_meta(text)
             if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
                 raise core.WsError(f'{tid} is claimed by {meta["claimed_by"]}; pass its worker and token.')

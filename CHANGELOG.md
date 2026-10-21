@@ -7,6 +7,12 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- A stray non-UTF-8 byte in `Learnings.md`, `Feedback.md`, a task or a `Runs/*.jsonl` file no longer crashes `ws brief`, `status`, `notices`, `assist`, `recap`, `pr-notes`, `doctor` or `task show` (and so no longer silently drops the SessionStart brief): reads show the bad byte as a replacement character. Commands that would rewrite such a file stop with "<file> is not valid UTF-8 (byte offset N)" instead of a traceback, and `ws validate` lists every undecodable file with its byte offset.
+- Obsidian's `.trash/` and `.obsidian/` (any dot-directory in the vault) are no longer searched or validated, so deleted notes stop resurfacing in `ws search`.
+- `ws validate` no longer flags valid Obsidian links (`![[image.png]]` embeds of existing files, case-insensitive names, `[[Note.md]]`, `[[Tasks/../Note]]`) or links inside code fences and inline code. It now warns about duplicate frontmatter keys, `depends_on` naming a missing task, and dependency cycles.
+- A task's `repo:` (relative or `~/...`) now resolves the same way in every command: `~` expands, then relative paths are taken from the workspace root, not the current directory. `ws search` finds a configured repo's Graphify report the same way (`../repo1` works from any directory).
+- `ws recap --since Nd` counts days in UTC, matching task `updated:` stamps, so tasks touched early in a local day are no longer dropped east of UTC.
+- `ws scope lesson:<id>` / `decision:<id>` on a missing record says "No lesson record <id>; kinds are ..." instead of "File cannot be read safely".
 - Delegation selftests refuse an unwritable cache directory before starting a worker, even when its existing lock file is writable.
 - `ws delegate --run` no longer runs workers when `delegation_mode` in `routing.json` is misspelled or unknown (`off`, `Prepare-Only`, ...). Only `read-only` allows runs; `prepare-only` and anything else stay preparation-only, and the error names the bad value.
 - `ws delegate --run` now stops the worker on Ctrl-C or any error after it starts, instead of leaving a paid worker running. A `timeout_seconds` that is not a whole number from 1 to 86400 is refused with a clear error before anything starts (a huge value used to crash after the worker was spawned).

@@ -98,7 +98,7 @@ def apply(root, repo, task, rows):
             if row['label'] != 'AGENTS.md':
                 snippet = ' '.join(row['text'].split()[:12])
                 snippets.append(row['label'] + ': ' + snippet + ' (' + name + ')')
-        path = core.task_path(root, task); text = path.read_text(encoding='utf-8')
+        path = core.task_path(root, task); text = core.read_exact(path)
         # A dedicated section keeps imported text separate from user-stated decisions.
         core.atomic_write(path, core.set_section(text, 'Imported memory', '\n'.join(snippets)))
         core.refresh_native(root, locked=True)
