@@ -4,7 +4,6 @@
 
 ### Fixed
 - `ws doctor` still checks your workspace when its optional update cache is damaged.
-- File digests hide multiline private-key bodies in focused matches, problem lines and tails, while keeping source line numbers.
 
 ## 0.1.0-beta.5 (2026-10-19)
 
