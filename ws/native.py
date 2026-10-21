@@ -9,8 +9,16 @@ WORDS, MAX_ITEMS, ITEM_CHARS = 150, 20, 200
 CLIENTS = ('claude', 'codex', 'gemini')
 
 
+def _private(text):
+    """The same markers `ws remember` refuses: #private anywhere, or a /private first line."""
+    return bool(re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'))
+
+
 def _line(text, limit=ITEM_CHARS):
-    text = ' '.join(core.redact(str(text)).replace('<!--', '').split())
+    text = str(text)
+    if _private(text): return ''
+    text = ''.join(c for c in core.strip_private(text, ' ') if c.isprintable() or c.isspace())  # no ESC/OSC/bidi/NUL
+    text = ' '.join(core.redact(text).replace('<!--', '').split())
     return text if len(text) <= limit else text[:limit - 1].rstrip() + '…'
 
 
@@ -53,9 +61,12 @@ def _claude(root):
             for path in sorted(directory.glob('*.md'), key=lambda p: p.stat().st_mtime, reverse=True):
                 if path.name == 'MEMORY.md' or path.is_symlink():
                     continue
-                try: text = path.read_text(encoding='utf-8', errors='replace').lstrip('\ufeff')[:20000]
+                try: text = path.read_text(encoding='utf-8', errors='replace').lstrip('\ufeff')  # BOM off first so the privacy checks see the real start
                 except OSError: continue
+                if _private(text): continue  # whole file first, so a marker past the window still hides it
+                text = core.strip_private(text, ' ')[:20000]
                 head = re.match(r'---\n(.*?)\n---\n?(.*)', text, re.S)
+                if head and _private(head[2]): continue  # a /private first body line after the frontmatter
                 meta = {k: v.strip('"\' ') for k, v in re.findall(r'^(name|description):[ \t]*(.*)$', head[1], re.M)} if head else {}
                 body = next((l for l in (head[2] if head else text).splitlines() if l.strip()), '')
                 desc = meta.get('description') or body
@@ -71,7 +82,7 @@ def _codex(root):
     items = []
     for thread, raw, summary, slug in rows or []:
         hay = f'{slug or ""}\n{raw or ""}'.lower()
-        if any(n in hay for n in needles):
+        if any(n in hay for n in needles) and not _private(raw or '') and not _private(summary or ''):  # either field private hides the row
             items.append({'client': 'codex', 'source': f'codex:{slug or str(thread)[:8]}', 'text': _line(summary or raw or '')})
     return items
 
@@ -80,6 +91,7 @@ def _gemini(root):
     path = Path.home() / '.gemini/GEMINI.md'
     try: text = path.read_text(encoding='utf-8', errors='replace')[:200000]
     except OSError: return []
+    text = core.strip_private(text, ' ')
     found = re.search(r'^## Gemini Added Memories[ \t]*\n(.*?)(?=^## |\Z)', text, re.M | re.S)
     return [{'client': 'gemini', 'source': 'gemini:GEMINI.md', 'text': _line(l[2:])}
             for l in (found[1].splitlines() if found else []) if l.startswith('- ') and l[2:].strip()]
@@ -127,7 +139,7 @@ def import_native(root, client='all', task=None, yes=False):
         with core.lock(root):
             worker, token = core._claim_defaults(root, tid, None, None)
             path = core.task_path(root, tid)
-            text = path.read_text(encoding='utf-8')
+            text = core.read_exact(path)
             meta = core.parse_meta(text)
             if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
                 raise core.WsError(f'{tid} is claimed by {meta["claimed_by"]}; pass its worker and token.')

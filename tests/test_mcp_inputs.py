@@ -184,6 +184,11 @@ class InjectionTests(Base):
 
 
 class StrayTaskFileTests(Base):
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.dict(os.environ, WS_OFFLINE='1')  # notices would otherwise call GitHub for the update check
+        patch.start(); self.addCleanup(patch.stop)
+
     def test_task_file_with_an_invalid_id_does_not_break_brief_or_notices(self):
         (self.root / 'vault/Tasks/bad name.md').write_text('---\nid: bad name\nstatus: ready\nclaimed_by: x\nclaim_token: y\n---\n# Bad\n', encoding='utf-8')
         self.ok('brief', {})

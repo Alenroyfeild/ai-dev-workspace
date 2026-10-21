@@ -154,8 +154,11 @@ class BranchTaskTests(unittest.TestCase):
         task = core.sole_local_claim(self.root)
         def start(session):
             assist.observe(self.root, {'hook_event_name': 'SessionStart', 'session_id': session})
-        for i in range(200):
+        for i in range(3):
             start(str(i))
+        data = assist.state(self.root)  # seed the other bindings directly: 200 hook runs only repeat the same step
+        data['session_tasks'].update({core.digest_text(str(i)): task for i in range(3, 200)})
+        assist.save(self.root, data)
         start('0')  # Refresh an existing binding before the next insertion.
         start('200')
         self.assertEqual(len(assist.state(self.root)['session_tasks']), 200)

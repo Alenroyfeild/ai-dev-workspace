@@ -1,10 +1,9 @@
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 from test_ws import Base
 from ws import core, discipline
+from testutil import run_ws
 
 KIT = Path(__file__).resolve().parents[1]
 
@@ -80,8 +79,7 @@ class DisciplineTests(Base):
         core.pack_add(self.root, 'discipline')
         self.assertEqual(list(core.pack_hooks(self.root, 'claude')), ['PostToolUseFailure'])
         self.assertEqual(list(core.pack_hooks(self.root, 'codex')), ['PostToolUse'])
-        run = lambda data: json.loads(subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root), 'discipline', '--hook'],
-                                                     input=data, capture_output=True, text=True).stdout)
+        run = lambda data: json.loads(run_ws('--workspace-root', self.root, 'discipline', '--hook', input=data).stdout)
         self.assertEqual(run('not json'), {})
         for _ in range(2): run(json.dumps(claude_failure('cargo test')))
         self.assertIn('additionalContext', run(json.dumps(claude_failure('cargo test')))['hookSpecificOutput'])

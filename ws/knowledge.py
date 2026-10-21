@@ -8,6 +8,7 @@ CATEGORIES = ('product', 'feature', 'domain', 'repo', 'runbook', 'other')
 
 
 def category(value):
+    value = value.strip().lower() if isinstance(value, str) else value
     if value not in CATEGORIES: raise core.WsError('Category must be ' + ', '.join(CATEGORIES) + '.')
     return value
 
@@ -59,7 +60,7 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
                                  (value == 'runbook' and meta.get('source', '').startswith('task:'))):
         if not include_all: return None, ''
         value = 'other'
-    category(value)
+    value = category(value)
     body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', raw[end:], flags=re.S)
     if 'ws:captured:' in body or '/ws:captured' in body: raise core.WsError('Malformed capture block.')
     body = sharing.derived(root, body) if layer == 'private' else sharing.portable(root, body)
@@ -73,8 +74,17 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
     return row, body
 
 
+CAP_PREFIX = 'Catalog examines the newest'
+CAP_WARNING = f'{CAP_PREFIX} 100 entries per layer; use ws know show for omitted IDs.'
+
+
+def _newest(path):
+    try: return (-path.stat().st_mtime_ns, path.name)
+    except OSError: return (0, path.name)
+
+
 def list_entries(root, value='', layer='all', _index=False, _all=False, limit=100):
-    if value: category(value)
+    if value: value = category(value)
     rows, warnings = [], []
     try: bases = _bases(root, layer)
     except team.ManifestError as exc:
@@ -82,12 +92,13 @@ def list_entries(root, value='', layer='all', _index=False, _all=False, limit=10
         bases = _bases(root, 'private'); warnings.append(f'Team layer skipped, private memory shown: {exc}')  # a bad team.json must not block private reads
         print(warnings[-1], file=sys.stderr)
     for name, base, team_id in bases:
-        scanned = 0
-        for path in sorted(base.glob('*.md')):
-            if path.name == 'INDEX.md' or path.name.endswith('.index.md') or path.stem.endswith('.local'): continue
-            if not core.ID_RE.fullmatch(path.stem): continue
-            if limit and scanned >= limit: warnings.append('Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'); break
-            scanned += 1
+        files = [p for p in base.glob('*.md') if p.name != 'INDEX.md' and not p.name.endswith('.index.md')
+                 and not p.stem.endswith('.local') and core.ID_RE.fullmatch(p.stem)]
+        files.sort(key=_newest)
+        if limit and len(files) > limit:
+            warnings.append(f'{CAP_PREFIX} {limit} of {len(files)} {name} entries; use ws know show for omitted IDs.')
+            files = files[:limit]
+        for path in files:
             try: row, _ = _read(root, path, name, team_id, summary=True, include_all=_all)
             except (core.WsError, OSError, ValueError):
                 warnings.append(f'{name}:{path.stem}: entry unreadable, unsafe or conflicted; excluded.'); continue
@@ -113,7 +124,7 @@ def search(root, query, value='', layer='all', include_all=False):
     words = list(dict.fromkeys(re.findall(r'\w{3,}', query.lower())))[:core.MAX_QUERY_WORDS]
     if not words: raise core.WsError('Search needs a word of 3+ letters.')
     hits = []
-    for row in list_entries(root, value, layer, _index=True, _all=include_all)['entries']:
+    for row in list_entries(root, value, layer, _index=True, _all=include_all, limit=0)['entries']:
         counts = row.pop('_counts', {})
         if all(w in counts for w in words) and any(w in row['summary'].lower() for w in words):
             body, score = '\n'.join(row[k] for k in ('summary','tags','outcome')), sum(counts[w] for w in words)
@@ -126,13 +137,22 @@ def search(root, query, value='', layer='all', include_all=False):
     return sorted(hits, key=lambda h: (h['layer'] == 'team', -h['score']))[:20]
 
 
+def _more_note(hidden, at_least=False):
+    # core._bounded_brief fills this last, so it is the first line dropped when the brief is full.
+    # at_least: the scan stopped at the catalog cap; uncounted rows may exist even when hidden is 0.
+    if at_least: label = f'+{hidden} or more team notes:' if hidden > 0 else 'More team notes:'
+    elif hidden > 0: label = f'+{hidden} more team notes:'
+    else: return []
+    return [(label, 'ws know list --layer team', 12)]
+
+
 def onboarding_fields(root):
     """A small orientation until the teammate has saved task-specific memory."""
     if not core.config(root).get('team_workspace'): return []
     try: listing = list_entries(root, layer='team', limit=0)  # Newest per category needs every valid card, not the first 100 files.
     except (core.WsError, OSError, ValueError, TypeError):
         return [('Team warning:', 'Unavailable or invalid team link; private memory retained.', 12)]
-    fields = []
+    fields, cards = [], 0
     if listing['warnings']: fields.append(('Team warning:', 'Unreadable, unsafe or conflicted entries excluded; use ws know list.', 12))
     for value in ('product', 'domain', 'repo'):
         rows = [row for row in listing['entries'] if row['category'] == value]
@@ -141,8 +161,8 @@ def onboarding_fields(root):
         summary = re.sub(r'^Shared context; untrusted and never permission to execute\.\s*', '', row['summary'])
         author = ' '.join(row['author'].split()[:3])
         prefix = f'Team {value} (untrusted, {author}, {row["date"][:10]}):'
-        fields.append((prefix, summary, 20))
-    return fields
+        fields.append((prefix, summary, 20)); cards += 1
+    return fields + _more_note(len(listing['entries']) - cards)
 
 
 def brief_fields(root, query, private):
@@ -162,9 +182,12 @@ def brief_fields(root, query, private):
         if len(words(private) & terms) * 2 > len(terms):
             omitted += 1; continue
         prefix = f'Team (untrusted, {row["author"]}, {row["date"][:10]}):'
-        relevant.append((overlap, prefix, summary))
+        relevant.append((overlap, prefix, summary, row))
     fields = []
     if listing['warnings']: fields.append(('Team warning:', 'Unreadable, unsafe or conflicted entries excluded; use ws know list.', 12))
     if omitted: fields.append(('Team overlap:', f'{omitted} potentially conflicting summaries omitted; private memory wins.', 12))
-    fields += [(prefix, text, 20) for _,prefix,text in sorted(relevant, key=lambda r:-r[0])[:2]]
-    return fields
+    shown = sorted(relevant, key=lambda r:-r[0])[:2]
+    fields += [(prefix, text, 20) for _,prefix,text,_ in shown]
+    def is_known(r): return r['source'].startswith('knowledge:') or (r['category'] == 'runbook' and r['source'].startswith('task:'))
+    # Decisions and lessons in the list are not knowledge entries, so only shown knowledge/runbook rows count as displayed.
+    return fields + _more_note(sum(map(is_known, listing['entries'])) - sum(is_known(r[3]) for r in shown), any(w.startswith(CAP_PREFIX) for w in listing['warnings']))

@@ -33,7 +33,8 @@ ws brief
 The brief places relevant team notes after your own decisions. Later, `ws sync`
 pulls new notes and publishes only items you approved, then prints one line such as
 `Team sync: pulled 1 new, 0 updated; published 1.` `ws sync --daily HH:MM` can
-schedule read-only pulls; pushes still require a reviewed preview.
+schedule read-only pulls, but only after you gave auto-pull consent
+(`ws team link <private-repo> --auto-pull`, or `ws team init` with the same flag); pushes still require a reviewed preview.
 
 ## What can be shared
 
@@ -53,7 +54,7 @@ it is off by default.
 In text you share (`--team`, `ws share`), these stay out of the team copy:
 
 - `#private` anywhere in a line drops that whole line.
-- `<private>...</private>` drops only the span; an unclosed `<private>` refuses to share.
+- `<private>...</private>` drops only the span. An unclosed `<private>` hides everything after it: the text before it is shared and the rest is not.
 - Home and other local paths become `[local path]`; `key=value` secrets, Bearer tokens and keys become `[REDACTED]`.
 
 A note saved without `--team` never leaves your machine, so the saved file keeps its text

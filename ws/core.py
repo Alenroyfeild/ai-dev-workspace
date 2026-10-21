@@ -13,6 +13,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shlex
 import shutil
@@ -114,9 +115,10 @@ STATUSES = ('backlog', 'ready', 'in_progress', 'review', 'blocked', 'done')
 ID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 SECRET_RE = re.compile(
     # Marker only: redact() splices whole key blocks (linear); this still locates a key for line numbers.
-    r'-----BEGIN [^-]*PRIVATE KEY-----'
+    r'-----BEGIN [^-]*PRIVATE KEY(?: BLOCK)?-----'
     r'|\bBearer\s+[A-Za-z0-9._~+/=-]{8,}'
-    r'|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+'
+    # Bounded dot precheck keeps repeated eyJ- fast; a recognized header/payload prefix hides the whole token.
+    r'|\beyJ(?=.{1,4097}\.)[A-Za-z0-9_-]{1,4096}\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*'
     # Provider tokens recognisable by prefix alone. The group may also end on a `-` (Google keys can).
     r'|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_\w{40,}'  # GitHub
     r'|sk-[A-Za-z0-9_-]{20,}'  # OpenAI-style, Anthropic (sk-ant-)
@@ -127,19 +129,28 @@ SECRET_RE = re.compile(
     r'|npm_[A-Za-z0-9]{36}'  # npm
     r'|hf_[A-Za-z0-9]{30,}'  # Hugging Face
     r'|[rs]k_(?:live|test)_[A-Za-z0-9]{20,})(?:\b|(?<=-))'  # Stripe
+    r'|https://(?:(?i:hooks\.slack\.com)/(?:services|workflows|triggers)/[A-Za-z0-9/_-]{20,512}|(?i:discord(?:app)?\.com)/api/webhooks/[0-9]{1,25}/[A-Za-z0-9_-]{20,512})'  # Slack/Discord webhook URLs
     r'|(?<!claim_)(?i:(?:api[_-]?key|token|secret|password)["\']?\s*[:=]\s*["\']?)[A-Za-z0-9/+_.-]{12,}'
     r'|(?i:authorization["\']?\s*[:=]\s*["\']?(?:basic|bearer|digest|token)\s+)[^\s"\']{8,}'
     # .env-style names ending in KEY/TOKEN/SECRET/PASSWORD; upper case only, so prose is left alone.
     r'|(?<![A-Za-z0-9_])[A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)\s*=\s*(?:"[^"\n]*"|\'[^\'\n]*\'|[^\s"\']+)', re.S)
-PRIVATE_KEY_BEGIN_RE = re.compile(r'-----BEGIN ([^-]*PRIVATE KEY)-----')
+PRIVATE_KEY_BEGIN_RE = re.compile(r'-----BEGIN ([^-]*PRIVATE KEY(?: BLOCK)?)-----')
 URL_CREDENTIALS_RE = re.compile(r'(?<=[A-Za-z0-9+.-])(://)[^\s/@:]+:[^\s/@]+@')  # anchored on `://`: no rescan of a long scheme-like run
-PRIVATE_TAG_RE = re.compile(r'</?private>', re.I)
+PRIVATE_TAG_RE = re.compile(r'<\s{0,64}(?:(/)\s{0,64}private\b[^>]{0,256}>|private\b)', re.I)  # opener prefix fails closed for long attributes; group 1 = complete closer
 PRIVATE_RE = re.compile(r'<private>.*?(?:</private>|\Z)', re.I | re.S)  # Deprecated: .sub() misses nested spans; use strip_private() (kept so older branches still import)
 HOME_PATH_RE = re.compile(r'(?<![\w.~-])(?:/Users|/home)/[^/\s]+|(?<![\w.~-])[A-Za-z]:\\Users\\[^\\\s]+')
 
 
 class WsError(ValueError):
     """A user-facing error; the message says what to do."""
+
+
+def load_json(text, name, fix='restore it from a backup or fix the JSON by hand'):
+    """json.loads that names the damaged file and the recovery instead of a bare decoder message."""
+    try:
+        return json.loads(text)
+    except (ValueError, RecursionError) as exc:
+        raise WsError(f'{name} is damaged ({exc}). Next: keep a copy of it, then {fix}, and run the command again.') from None
 
 
 def now():
@@ -182,7 +193,7 @@ def strip_private(text, replacement=' '):
     """Drop <private> spans, nesting included: text stays hidden until the matching close; an unclosed opener hides the rest."""
     out, depth, pos = [], 0, 0
     for tag in PRIVATE_TAG_RE.finditer(text):
-        if tag[0][1] != '/':
+        if not tag[1]:
             if not depth: out.append(text[pos:tag.start()])
             depth += 1
         elif depth:
@@ -292,10 +303,32 @@ def read_roots(root):
     repos = config(root).get('repos', [])
     if not isinstance(repos, list) or any(not isinstance(p, str) or not p for p in repos):
         raise WsError('Repos must be a list of paths; review workspace.json, then run ws doctor.')
-    return [root] + [Path(p).expanduser() for p in repos]
+    return [root] + [repo_path(root, p) for p in repos]
 
 
 MAX_READ_BYTES = 50 * 1024 * 1024
+
+
+def read_lenient(path):
+    """Display read: a stray non-UTF-8 byte becomes U+FFFD instead of crashing the command."""
+    return Path(path).read_text(encoding='utf-8', errors='replace')
+
+
+def read_exact(path):
+    """Rewrite read: never rewrite a file we cannot decode; name it instead."""
+    try: return Path(path).read_text(encoding='utf-8')
+    except UnicodeDecodeError as error:
+        raise WsError(f'{Path(path).name} is not valid UTF-8 (byte offset {error.start}); re-save it as UTF-8, then retry. Run ws validate to list such files.') from None
+
+
+def repo_path(root, repo):
+    """One rule for a task or config repo: expand ~, then resolve relative to the workspace root."""
+    return (Path(root) / Path(str(repo)).expanduser()).resolve()
+
+
+def vault_notes(v):
+    """Markdown notes in the vault, skipping dot-directories such as .trash, .obsidian and .git."""
+    return [p for p in sorted(v.rglob('*.md')) if not any(part.startswith('.') for part in p.relative_to(v).parts)]
 
 
 def read_text(path, roots=None, errors='replace', preserve_newlines=False):
@@ -407,6 +440,10 @@ def pack_add(root, name):
 
 def init(target, name, packs=(), repos=(), clients=None):
     target = Path(target).resolve()
+    # A workspace.json in a shared folder becomes the root for every folder below it (find_root walks up).
+    shared = {Path(target.anchor), Path.home().resolve(), Path(tempfile.gettempdir()).resolve(), Path('/tmp').resolve(), Path('/private/tmp').resolve()}
+    if target in shared:
+        raise WsError(f'Refusing to create a workspace in {target}: every folder below it would use it. Try `ws init ~/work/<name>-ws`, or run `ws start` inside a repo.')
     if (target / 'workspace.json').exists():
         raise WsError(f'{target} is already a workspace.')
     for pack in packs:
@@ -772,11 +809,20 @@ def client_connected(root, client, global_only=False):
     locations = MCP_LOCATIONS
     path, key = (root / locations[client][0], locations[client][1]) if client in locations else (None, None)
     if path is None: return False
-    try:
-        data = json_loads(path.read_text(encoding='utf-8'))
-        return data.get(key, {}).get('ai-dev-workspace') == mcp_command(root)
-    except (OSError, ValueError, AttributeError):
-        return False
+    def has_entry(file):
+        try: return json_loads(file.read_text(encoding='utf-8')).get(key, {}).get('ai-dev-workspace') == mcp_command(root)
+        except (OSError, ValueError, AttributeError): return False
+    if has_entry(path): return True
+    if client != 'claude' or global_only: return False
+    from . import repo  # `ws start` writes Claude's files into the repo, not the private workspace
+    try: repos = read_roots(root)[1:]
+    except WsError: return False
+    for checkout in repos:
+        try: state = repo.load(checkout); files = state['files']
+        except (OSError, ValueError, WsError): continue
+        if state.get('plugin') is True: return True  # Claude Code plugin mode: the plugin brings the MCP server
+        if {'.mcp.json', '.claude/settings.local.json'} <= set(files) and has_entry(checkout / '.mcp.json'): return True
+    return False
 
 
 def skills_to_link(client, root):
@@ -951,7 +997,7 @@ def _connect_config(root, client, write=False):
     locations = MCP_LOCATIONS
     relative, key = locations[client]
     path = inside(root / relative, [root])
-    if client_connected(root, client):
+    if client_connected(root, client, global_only=True):
         return {'client': client, 'connected': True, 'path': str(path)}
     data = {key: {}}
     if path.exists():
@@ -1137,14 +1183,22 @@ def _claim_defaults(root, task_id, worker, token):
     return worker if worker is not None else local.get('worker'), token if token is not None else local.get('token')
 
 
+def _refuse_private_identifiers(*values):
+    # Branch/repo are identifiers: stripping would corrupt them, so refuse private markers.
+    if any(isinstance(v, str) and (PRIVATE_TAG_RE.search(v) or re.search(r'#private\b', v, re.I)) for v in values):
+        raise WsError('Branch and repo values cannot contain private markers (<private>, #private); use the real branch name or path.')
+
+
 def task_new(root, task_id, title, objective='', branch='', repo=''):
     title = plain_text(redacted_line(title, 'Title'))
+    _refuse_private_identifiers(branch, repo)
     branch = redacted_line(branch, 'Branch')
     repo = redacted_line(repo, 'Repo')
     configured_repos = config(root).get('repos', [])
     if not repo and isinstance(configured_repos, list) and len(configured_repos) == 1:
         candidate = configured_repos[0]
         if isinstance(candidate, str):
+            _refuse_private_identifiers(candidate)  # the fallback is validated too
             normalized = redacted_line(candidate, 'Repo')
             repo = normalized if normalized == candidate else ''
     path = task_path(root, task_id)
@@ -1233,7 +1287,7 @@ def task_depend(root, task_id, other):
                 raise WsError(f'{task_id} -> {other} would create a dependency cycle.')
             deps = deps + [other]
             path = task_path(root, task_id)
-            atomic_write(path, set_meta(path.read_text(encoding='utf-8'), {'depends_on': ', '.join(deps)}))
+            atomic_write(path, set_meta(read_exact(path), {'depends_on': ', '.join(deps)}))
     return {'task': task_id, 'depends_on': deps}
 
 
@@ -1325,7 +1379,7 @@ def task_import(root, file, prefix='SPEC', write=False):
                 path = task_path(root, ref)
                 meta = {'status': i['status']}
                 if i['depends_on']: meta['depends_on'] = ', '.join(i['depends_on'])
-                atomic_write(path, set_meta(path.read_text(encoding='utf-8'), meta))
+                atomic_write(path, set_meta(read_exact(path), meta))
     return result
 
 
@@ -1345,7 +1399,7 @@ def task_read(root, task_id, sections=None):
     path = task_path(root, task_id)
     if not path.is_file():
         raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
-    text = path.read_text(encoding='utf-8')
+    text = read_lenient(path)
     bad = {'conflicted': True} if conflicted(text) else {}
     if not sections:
         return {'task': task_id, 'sha': digest_text(text), 'text': text, **bad}
@@ -1360,7 +1414,7 @@ def claim(root, task_id, worker):
         raise WsError('Worker is a short label such as claude-main or codex-1.')
     with lock(root):
         path = existing_task_path(root, task_id)
-        text = path.read_text(encoding='utf-8')
+        text = read_exact(path)
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by'):
@@ -1389,7 +1443,7 @@ def release(root, task_id, worker=None, token=None):
     with lock(root):
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = existing_task_path(root, task_id)
-        text = path.read_text(encoding='utf-8')
+        text = read_exact(path)
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by') != worker or meta.get('claim_token') != token:
@@ -1406,9 +1460,10 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     if not next_action.strip():
         raise WsError('Next action is required: say exactly what the next person or AI should do.')
     with lock(root):
+        task_id = claimed_task_id(root, task_id, 'pass the ID: `ws checkpoint <id> --status ... --next ...`')
         worker, token = _claim_defaults(root, task_id, worker, token)
         path = existing_task_path(root, task_id)
-        text = path.read_text(encoding='utf-8')
+        text = read_exact(path)
         if conflicted(text): raise WsError(conflict_hint(task_id))
         meta = parse_meta(text)
         if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
@@ -1448,6 +1503,17 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
     return result
 
 
+NEW_TASK_STEP = '`ws task list` to see task IDs, or `ws task new <id> "<title>"` to create one'
+
+
+def claimed_task_id(root, task_id=None, how='pass --task <id>'):
+    """The given task ID, else the one claimed task; the error says how to get an ID (`how` is the command's own form)."""
+    task_id = task_id or sole_local_claim(root)
+    if not task_id:
+        raise WsError(f'No single claimed task. Run {NEW_TASK_STEP}, then `ws claim <id>` (or {how}).')
+    return task_id
+
+
 def remember(root, text, task_id=None):
     """Save one explicit decision in the task's Handoff, where the brief lists decisions (before captured blocks)."""
     if re.search(r'#private\b', text, re.I) or text.lstrip().lower().startswith('/private'):
@@ -1457,13 +1523,11 @@ def remember(root, text, task_id=None):
     if not decision:
         raise WsError('Nothing to save: say the decision, e.g. ws remember "use Postgres, not SQLite".')
     with lock(root):
-        task_id = task_id or sole_local_claim(root)
-        if not task_id:
-            raise WsError('No single claimed task. Run `ws claim <ID>` or pass --task <ID>.')
+        task_id = claimed_task_id(root, task_id)
         path = task_path(root, task_id)
         if not path.is_file():
             raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
-        original = path.read_text(encoding='utf-8')
+        original = read_exact(path)
         if conflicted(original): raise WsError(conflict_hint(task_id))
         meta = parse_meta(original)
         worker, token = _claim_defaults(root, task_id, None, None)
@@ -1494,6 +1558,17 @@ def _list_items(text):
     return items
 
 
+def _drop_captured(text):
+    """Remove captured blocks in one pass; an unterminated block is still unverified, so it runs to the end."""
+    start, end, parts, at = '<!-- ws:captured:', '<!-- /ws:captured -->', [], 0
+    while (s := text.find(start, at)) >= 0:
+        parts.append(text[at:s])
+        c = text.find(end, s + len(start))
+        if c < 0: return ''.join(parts)
+        at = c + len(end)
+    return ''.join(parts) + text[at:]
+
+
 def pr_notes(root, task_id=None, link=True):
     """A PR-description block from one task: goal, explicit decisions, tried-and-rejected approaches, acceptance criteria, checks, open items."""
     task_id = task_id or sole_local_claim(root) or (current_task(root)[0] or {}).get('id')
@@ -1505,12 +1580,11 @@ def pr_notes(root, task_id=None, link=True):
 
     def body(name):
         # Captured blocks are unverified guesses; only text the user or assistant saved explicitly goes into a PR.
-        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S)
-        value = re.sub(r'<!-- ws:captured:.*\Z', '', value, flags=re.S).strip()  # an unterminated block is still unverified
+        value = _drop_captured(section(text, name)).strip()
         return '' if value == section(template, name) or value.lower().rstrip('.') in ('none', 'none yet') else value
 
     decisions = []
-    for raw in body('Handoff').splitlines():
+    for raw in strip_private(body('Handoff'), '').splitlines():  # strip first: a multi-line <private> span must not feed Decision:/Reason: lines
         line = raw.strip()
         if line.startswith('Decision:'): decisions.append('- ' + line[9:].strip())
         elif line.startswith('Reason:') and decisions: decisions.append('  - Why: ' + line[7:].strip())
@@ -1583,11 +1657,11 @@ def search(root, query, limit=20, category=''):
     if not words:
         raise WsError('Search needs at least one word of 3+ letters.')
     hits, paths = [], []
-    for path in vault(root).rglob('*.md'):
-        if '.ws' not in path.parts and 'Runs' not in path.parts:
+    for path in vault_notes(vault(root)):
+        if 'Runs' not in path.parts:
             paths.append((path, path.relative_to(root).as_posix()))
     for repo in config(root).get('repos', []):
-        report = _graphify_report(Path(repo).expanduser())
+        report = _graphify_report(repo_path(root, repo))
         if report:
             paths.append((report, str(report)))
     for path, shown in paths:
@@ -1693,6 +1767,7 @@ def session_search(query, roots=None, hide_private=False):
 def _append_line(root, rel, line):
     path = inside(root / rel, [root])
     with lock(root):
+        if path.exists(): read_exact(path)  # refuse a file that is not valid UTF-8; valid files are appended byte for byte
         old = path.read_bytes() if path.exists() else b''  # bytes in, bytes out: older (even newer-format) lines stay exactly as written
         eol = b'\r\n' if b'\r\n' in old else b'\n'
         atomic_write(path, old + (b'' if not old or old.endswith(b'\n') else eol) + line.encode('utf-8') + eol)
@@ -1713,11 +1788,21 @@ def lesson_add(root, text, tags=(), paths=(), area=''):
     return {'added': True}
 
 
+LESSON_META_RE = re.compile(r'<!-- ws:lesson (.*?) -->$')  # no leading \s*: it rescans a space run from every start (quadratic); callers rstrip
+STOPWORDS = frozenset('the and for with from this that these those are was were been being have has had not but all any can could should would will may might must into onto over out our you your when then than them they their its via per also only just more most some such use used using'.split())
+
+
+def _words(text):
+    return {w for w in re.findall(r'\w{3,}', text.lower()) if w not in STOPWORDS}
+
+
 def lesson_search(root, query):
     path = vault(root) / 'Learnings.md'
     words = list(dict.fromkeys(w.lower() for w in re.findall(r'\w{3,}', query)))[:MAX_QUERY_WORDS]
-    lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- ')] if path.exists() else []
-    return [l for l in lines if any(w in l.lower() for w in words)] if words else lines
+    if query.strip() and not words: raise WsError('Search needs at least one word of 3+ letters.')
+    lines = [l for l in read_lenient(path).splitlines() if l.startswith('- ')] if path.exists() else []
+    # Match the lesson text, not the hidden paths/area metadata comment.
+    return [l for l in lines if any(w in LESSON_META_RE.sub('', l.rstrip()).lower() for w in words)] if words else lines
 
 
 _BRIEF_GIT = threading.local()  # memo of read-only git output for one hook/brief; absent otherwise
@@ -1748,7 +1833,7 @@ def _task_git(root, task_id, *args):
     try:
         repo = task_read(root, task_id, ['Objective'])['meta'].get('repo')
         if not repo: return ''
-        path = inside(root / repo, read_roots(root))
+        path = inside(repo_path(root, repo), read_roots(root))
         return git_read(path, *args)
     except (WsError, OSError, ValueError, subprocess.SubprocessError):
         return ''
@@ -1797,7 +1882,7 @@ def session_task(root, cwd=None):
 
 
 def relevant_lessons(root, task):
-    title = set(re.findall(r'\w{3,}', task['title'].lower()))
+    title = _words(task['title'])
     saved = lesson_search(root, '')
     if not saved: return []
     git_files = {}  # git file lists, read only once a path-scoped lesson needs them
@@ -1821,17 +1906,17 @@ def relevant_lessons(root, task):
         return git_files['tracked']
     ranked = []
     for line in saved:
-        match = re.search(r'\s*<!-- ws:lesson (.*?) -->$', line)
+        match = LESSON_META_RE.search(line.rstrip())
         metadata = {}
         if match:
             try: metadata = json.loads(match[1])
             except ValueError: pass
-            line = line[:match.start()]
+            line = line[:match.start()].rstrip()
         if not isinstance(metadata, dict): metadata = {}
         paths = metadata.get('paths', [])
         if not isinstance(paths, list): paths = []
         overlap = sum(any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for p in paths) for f in changed_files()) if paths else 0
-        score = len(title & set(re.findall(r'\w{3,}', (line + ' ' + str(metadata.get('area', ''))).lower())))
+        score = len(title & _words(line + ' ' + str(metadata.get('area', ''))))
         gone = paths and tracked_files() != [''] and not any(isinstance(p, str) and fnmatch.fnmatchcase(f, p) for f in tracked_files() for p in paths)
         if overlap or score: ranked.append((overlap, score, ('(paths gone) ' if gone else '') + line))
     ranked.sort(key=lambda item: (-item[0], -item[1]))
@@ -1926,6 +2011,7 @@ def _imported_items(text, limit):
 
 def _bounded_brief(fields, truncated=False):
     bounded, remaining = [], 194  # four words reserved for the record pointer
+    fields = sorted(fields, key=lambda f: f[0].endswith('team notes:'))  # stable: that hint goes last, so it drops first
     for prefix, value, limit in fields:
         if not value: continue
         value = redact(value)
@@ -2050,7 +2136,7 @@ def _brief_once(root, task_id=None):
         return ['Others working: ' + ', '.join(shown)] if shown else []
     if not task:
         from . import knowledge
-        fields = [('', guard or ('No in-progress task. ' + (_branch_hint(root) or 'Find or create the task before working.')), 194)]
+        fields = [('', guard or ('No in-progress task. ' + (_branch_hint(root) or f'Find or create the task before working: {NEW_TASK_STEP}.')), 194)]
         fields += [('', line, 18) for line in others_line()]
         return _bounded_brief(fields + knowledge.onboarding_fields(root)), ''
     record = task_read(root, task['id'], ['Next action', 'Blockers'])
@@ -2071,7 +2157,10 @@ def _brief_once(root, task_id=None):
     handoff = task_read(root, task['id'], ['Handoff'])['sections']['Handoff']
     capture_pattern = r'(?:<!-- ws:captured:[^\n]* -->\n)?### Captured [^\n]*\n(.*?)\n<!-- /ws:captured -->'
     captured = re.findall(capture_pattern, handoff, re.S)
-    explicit = re.sub(capture_pattern, '', handoff, flags=re.S).strip()
+    # `ws import native` blocks are unverified context, never the user's own decisions.
+    native_pattern = r'### Imported [^\n]*\n(.*?)\n<!-- /ws:imported -->'
+    native_lines = [l.removeprefix('- ') for block in re.findall(native_pattern, handoff, re.S) for l in block.splitlines() if l.strip()]
+    explicit = re.sub(native_pattern, '', re.sub(capture_pattern, '', handoff, flags=re.S), flags=re.S).strip()
     placeholder = section((KIT / 'template/vault/Templates/Task.md').read_text(encoding='utf-8'), 'Handoff')
     explicit = explicit if explicit != placeholder else ''
     decisions, prose = [], []
@@ -2104,7 +2193,7 @@ def _brief_once(root, task_id=None):
                ('', _memory_check(root, task['id'], record['meta'], next_action + '\n' + '\n'.join(decisions)), 18),
                ('Claim:', record['claim'], 12)]
     truncated |= len(' '.join(decisions).split()) > 25
-    imported = task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory']
+    imported = '\n'.join(filter(None, [task_read(root, task['id'], ['Imported memory'])['sections']['Imported memory'], *native_lines]))
     if imported: fields.append(('Imported context (unverified):', imported, 35))
     fields += [('', line, 18) for line in others_line(task['id'])]
     from . import knowledge
@@ -2292,7 +2381,7 @@ def feedback_add(root, text, kind='idea', source='user'):
 
 def feedback_list(root, open_only=True):
     path = vault(root) / 'Feedback.md'
-    lines = [l for l in path.read_text(encoding='utf-8').splitlines() if l.startswith('- [')] if path.exists() else []
+    lines = [l for l in read_lenient(path).splitlines() if l.startswith('- [')] if path.exists() else []
     return [l for l in lines if l.startswith('- [ ]')] if open_only else lines
 
 
@@ -2489,7 +2578,7 @@ def run_log(root, task_id, step, provider, model='', tokens_in=0, tokens_out=0, 
                 raise WsError('Imported usage requires a Codeburn source and stable import ID.')
             entry.update(source=source, import_id=import_id)
             if path.is_file():
-                lines = path.read_text(encoding='utf-8').splitlines(keepends=True)
+                lines = read_exact(path).splitlines(keepends=True)
                 matches = []
                 for raw in lines:
                     try:
@@ -2532,14 +2621,28 @@ def run_entries(root, task_id):
     path = vault(root) / 'Runs' / f'{task_id}.jsonl'
     if not path.exists():
         return []
-    entries = []
-    with path.open(encoding='utf-8') as stream:
+    entries, skipped = [], 0
+    with path.open(encoding='utf-8', errors='replace') as stream:
         for line in stream:
             try:
-                entries.append(json.loads(line))
-            except ValueError:
-                continue  # A torn or hand-edited line must not break session hooks.
-    return [e for e in entries if isinstance(e, dict)]
+                entry = json.loads(line)
+            except (ValueError, RecursionError):
+                entry = None  # A torn or hand-edited line must not break session hooks.
+            if _run_entry_ok(entry): entries.append(entry)
+            elif line.strip(): skipped += 1
+    if skipped:
+        print(f'ws: skipped {skipped} unreadable line(s) in vault/Runs/{task_id}.jsonl; fix or delete them.', file=sys.stderr)
+    return entries
+
+
+def _run_entry_ok(e):
+    """True when a Runs line has the shape every reader indexes into; hand edits and foreign lines fail it."""
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    return (isinstance(e, dict) and all(isinstance(e.get(k), str) for k in ('at', 'step', 'provider', 'model', 'result'))
+            and all(num(e.get(k)) for k in ('tokens_in', 'tokens_out', 'seconds'))
+            and isinstance(e.get('note', ''), str)
+            and isinstance(e.get('checks', []), list)
+            and all(isinstance(c, dict) and isinstance(c.get('command'), str) and type(c.get('exit_code')) is int for c in e.get('checks', [])))
 
 
 def repeat_guard(root):
@@ -2558,13 +2661,19 @@ def repeat_guard(root):
     return ''
 
 
+def _need_task(root, task_id):
+    if not task_path(root, task_id).is_file():
+        raise WsError(f'No task {task_id}. Create it with `ws task new {task_id} "<title>"`.')
+
+
 def trace(root, task_id):
+    _need_task(root, task_id)
     entries = run_entries(root, task_id)
     lines = [f'# Trace: {task_id}', '', 'Checks and verdicts are reported by the caller; ws does not execute checks.']
     for number, entry in enumerate(entries, 1):
         lines += ['', f"## {number}. {entry['at']} — {entry['step']}",
                   f"- Who: {entry['provider']}; role: {entry.get('worker_role', 'unspecified')}; model: {entry['model'] or 'unspecified'}; effort: {entry.get('effort', 'unspecified')}",
-                  f"- Tokens: {entry['tokens_in']} in / {entry['tokens_out']} out; seconds: {entry['seconds']}",
+                  f"- Tokens: {entry['tokens_in']} in / {entry['tokens_out']} out; seconds: {round(entry['seconds'], 2)}",
                   f"- Result: {entry['result']}; verdict: {entry.get('verdict', 'unspecified')}; files: {entry.get('files', 'unspecified')}; findings: {entry.get('findings', 'unspecified')}"]
         lines += [f"- Check: {check['command']} = {check['exit_code']}" for check in entry.get('checks', [])]
         if entry.get('note'):
@@ -2574,14 +2683,14 @@ def trace(root, task_id):
 
 
 def run_report(root, task_id=None):
+    if task_id: _need_task(root, task_id)
     files = [vault(root) / 'Runs' / f'{task_id}.jsonl'] if task_id else sorted((vault(root) / 'Runs').glob('*.jsonl'))
     by = {}
     steps = 0
     for path in files:
-        if not path.exists():
+        if not path.exists() or not ID_RE.fullmatch(path.stem) or RESERVED_RE.fullmatch(path.stem):
             continue
-        for line in path.read_text(encoding='utf-8').splitlines():
-            e = json.loads(line)
+        for e in run_entries(root, path.stem):
             steps += 1
             b = by.setdefault(e['provider'], {'steps': 0, 'tokens_in': 0, 'tokens_out': 0, 'seconds': 0.0, 'failed': 0})
             b['steps'] += 1
@@ -2594,13 +2703,28 @@ def run_report(root, task_id=None):
 
 # --- health ----------------------------------------------------------------------
 
+FENCE_RE = re.compile(r'^[ \t]*(`{3,}|~{3,}).*?(?:^[ \t]*\1[`~]*[ \t]*$|\Z)', re.M | re.S)
+
+
 def validate(root):
-    errors, warnings = [], []
+    errors, warnings, texts = [], [], {}
     v = vault(root)
+
+    def decode(path):
+        # Strict first so a bad byte is reported (name + offset); links and secrets still scan the replaced text.
+        if path not in texts:
+            try: texts[path] = path.read_text(encoding='utf-8'), True
+            except UnicodeDecodeError as error:
+                errors.append(f'{path.relative_to(root)}: not valid UTF-8 (byte offset {error.start}); re-save it as UTF-8')
+                texts[path] = path.read_text(encoding='utf-8', errors='replace'), False
+        return texts[path]
+    for path in sorted((v / 'Runs').glob('*.jsonl')): decode(path)
+    graph = {}
     for path in sorted((v / 'Tasks').glob('*.md')):
         if not ID_RE.fullmatch(path.stem):  # task_list hides these, so say why here
             errors.append(f'{path.name}: task file hidden: the name is not a valid task ID (letters, digits, . _ -, at most 80, starting with a letter or digit); rename it'); continue
-        text = path.read_text(encoding='utf-8')
+        text, ok = decode(path)
+        if not ok: continue
         if conflicted(text):
             errors.append(f'{path.name}: ' + conflict_hint(path.stem)); continue
         meta = parse_meta(text)
@@ -2614,13 +2738,27 @@ def validate(root):
         # A task ws start just created has no next step until the first checkpoint; the brief already asks for one.
         if meta.get('status') not in ('done', 'backlog') and meta.get('checkpoint_at') and not section(text, 'Next action'):
             errors.append(f'{path.name}: empty Next action')
-    names = {p.stem for p in v.rglob('*.md')} | {p.relative_to(v).as_posix()[:-3] for p in v.rglob('*.md')}
-    for path in v.rglob('*.md'):
-        text = path.read_text(encoding='utf-8', errors='replace')
+        keys = re.findall(r'^([A-Za-z_][\w-]*):', text.split('\n---', 1)[0][4:], re.M) if text.startswith('---\n') else []
+        for key in sorted({k for k in keys if keys.count(k) > 1}):
+            warnings.append(f'{path.name}: duplicate frontmatter key {key}; the last value wins')
+        graph[path.stem] = [d.strip() for d in meta.get('depends_on', '').split(',') if d.strip()]
+    for task, deps in graph.items():
+        for dep in deps:
+            if dep not in graph: warnings.append(f'{task}.md: depends_on names missing task {dep}')
+        if _cycle_through(graph, task): warnings.append(f'{task}.md: depends_on forms a dependency cycle')
+    # Obsidian links are case-insensitive and may name any vault file, with or without .md.
+    names = set()
+    for path in (p for p in v.rglob('*') if p.is_file() and not any(part.startswith('.') for part in p.relative_to(v).parts)):
+        rel = path.relative_to(v).as_posix().casefold()
+        names |= {path.name.casefold(), rel}
+        if path.suffix.lower() == '.md': names |= {path.stem.casefold(), rel[:-3]}
+    for path in vault_notes(v):
+        text, _ = decode(path)
         if redact(text) != text:
             warnings.append(f'{path.relative_to(root)}: looks like it contains a secret; remove it')
-        for target in re.findall(r'\[\[([^\]|#]+)', text):
-            if target.strip() not in names:
+        scanned = re.sub(r'`[^`\n]*`', '', FENCE_RE.sub('', text))  # links in code are examples, not links
+        for target in re.findall(r'\[\[([^\]|#]+)', scanned):
+            if posixpath.normpath(target.strip()).casefold() not in names:
                 errors.append(f'{path.relative_to(root)}: broken link [[{target}]]')
     return {'valid': not errors, 'errors': errors, 'warnings': warnings}
 
@@ -2929,11 +3067,14 @@ def doctor(root=None, mcp=False):
         selftests = root / '.ws/delegate-selftests.json'
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
+        report['upgrade_due'] = upgrade_due(root)
         report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
         team = _team_checks(root)
         if team is not None: report['team'] = team
         from . import repo
         report['codex_manual_pending'] = repo.codex_pending(root)
+        report['claude_plugin_duplicates'] = repo.plugin_duplicates(root)
+        report['claude_plugin_missing'] = repo.plugin_missing(root)
         if report['codex_manual_pending']: report['codex_status'] = 'manual step pending'
         report['stale_hooks'] = repo.stale_hooks(root)
         report['configured_clients'] = {client: client_connected(root, client)
@@ -2968,6 +3109,13 @@ def doctor(root=None, mcp=False):
 
 def kit_meta():
     return json.loads((KIT / 'kit.json').read_text(encoding='utf-8'))
+
+
+def upgrade_due(root):
+    """Kit is newer than the workspace, or .ws-new proposals await review (shared by ws assist and ws doctor)."""
+    cfg = config(root)
+    pending = cfg.get('upgrade_pending') or any(p.is_file() for p in root.rglob('*.ws-new*'))
+    return bool(_vtuple(kit_meta()['version']) > _vtuple(cfg.get('kit_version', '0')) or pending)
 
 
 def _vtuple(v):
@@ -3049,9 +3197,9 @@ def update_kit():
 FEEDBACK_RE = re.compile(r'^- \[( |x)\] (\S+) \*\*(\w+)\*\* \(([^)]*)\): (.*?)(?: — issue: (\S+))?$')
 
 
-def _feedback_lines(root):
+def _feedback_lines(root, exact=False):
     path = vault(root) / 'Feedback.md'
-    return path, (path.read_text(encoding='utf-8').splitlines() if path.exists() else [])
+    return path, ((read_exact if exact else read_lenient)(path).splitlines() if path.exists() else [])
 
 
 def feedback_items(root):
@@ -3073,9 +3221,9 @@ def feedback_submit(root, n, yes=False, use_gh=None):
         raise WsError(f'No feedback item {n}; see `ws feedback list --all`.')
     if item['issue']:
         raise WsError(f'Already submitted: {item["issue"]}')
-    title = f'[{item["kind"]}] {redact(item["text"])[:70]}'
-    body = redact(f'{item["text"]}\n\n- kind: {item["kind"]}\n- recorded: {item["date"]}\n'
-                  f'- kit version: {kit_meta()["version"]}\n- packs: {", ".join(config(root).get("packs", []))}\n')
+    title = f'[{item["kind"]}] {localize_paths(redact(item["text"]), root)[:70]}'
+    body = localize_paths(redact(f'{item["text"]}\n\n- kind: {item["kind"]}\n- recorded: {item["date"]}\n'
+                  f'- kit version: {kit_meta()["version"]}\n- packs: {", ".join(config(root).get("packs", []))}\n'), root)
     preview = {'title': title, 'body': body, 'note': 'Check it contains nothing private, then re-run with --yes.'}
     if not yes:
         return preview
@@ -3088,7 +3236,9 @@ def feedback_submit(root, n, yes=False, use_gh=None):
                              capture_output=True, encoding='utf-8', errors='replace')
         if run.returncode:
             raise WsError('gh issue create failed: ' + run.stderr.strip())
-        url = run.stdout.strip().splitlines()[-1]
+        lines = run.stdout.strip().splitlines()
+        if not lines: raise WsError(f'gh created no issue URL; check GitHub, then run `ws feedback link {n} <issue-url>`.')
+        url = lines[-1]
     else:
         query = urllib.parse.urlencode({'title': title, 'body': body, 'labels': f'feedback,{item["kind"]}'})
         return {'open_this_url': f'https://github.com/{repo}/issues/new?{query}',
@@ -3101,7 +3251,7 @@ def feedback_link(root, n, url):
     if not re.fullmatch(r'https://github\.com/[\w.-]+/[\w.-]+/issues/\d+', url):
         raise WsError('Expected a GitHub issue URL like https://github.com/owner/repo/issues/12')
     with lock(root):
-        path, lines = _feedback_lines(root)
+        path, lines = _feedback_lines(root, exact=True)
         item = next((i for i in feedback_items(root) if i['n'] == n), None)
         if not item:
             raise WsError(f'No feedback item {n}.')
@@ -3117,7 +3267,7 @@ def feedback_sync(root, fetch=None):
     fetch = fetch or _get_json
     closed = []
     with lock(root):
-        path, lines = _feedback_lines(root)
+        path, lines = _feedback_lines(root, exact=True)
         for item in feedback_items(root):
             if item['issue'] and not item['done']:
                 m = re.match(r'https://github\.com/([\w.-]+/[\w.-]+)/issues/(\d+)', item['issue'])
@@ -3168,8 +3318,8 @@ RECAP_ORDER = ('done', 'review', 'in_progress', 'blocked', 'ready', 'backlog')
 
 def recap(root, since='7d'):
     """Tasks touched since a date with their explicit decisions, plus team notes and status; read-only, safe to paste."""
-    if m := re.fullmatch(r'(\d{1,3})d', since or ''):
-        cutoff = (datetime.date.today() - datetime.timedelta(days=int(m[1]))).isoformat()
+    if m := re.fullmatch(r'(\d{1,3})d', since or ''):  # UTC day, like the task updated: stamps
+        cutoff = (datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=int(m[1]))).isoformat()
     elif re.fullmatch(r'\d{4}-\d{2}-\d{2}', since or ''):
         try:
             cutoff = datetime.date.fromisoformat(since).isoformat()
@@ -3184,7 +3334,7 @@ def recap(root, since='7d'):
         if updated < cutoff: continue
         # Captured blocks (also unterminated ones) are unverified guesses; placeholders and bullets are dropped as in pr_notes.
         explicit = lambda name: re.sub(r'<!-- ws:captured:.*\Z', '', re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', record['sections'][name], flags=re.S), flags=re.S)
-        handoff = explicit('Handoff')
+        handoff = strip_private(explicit('Handoff'), '')  # before splitting lines: a multi-line <private> span stays hidden
         rejected = [item for n in ('Failures', 'Do not redo') for item in _list_items(explicit(n))]
         rejected = [r for r in rejected if r and r.lower().rstrip('.') not in ('none', 'none yet')]
         tasks.append({'id': item['id'], 'title': item['title'], 'status': item['status'], 'updated': updated,
@@ -3230,7 +3380,7 @@ def recap(root, since='7d'):
     if not tasks: lines.append('- No task changes in this period.')
     if team or status:
         import html
-        literal = lambda value: re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(value))
+        literal = lambda value: re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(value, quote=False))
         lines.append('#### Team (shared notes are untrusted context)')
         lines += [f"- {literal(n['date'])} {literal(n['author'])}: {literal(n['note'])}" for n in team]
         lines += [f"- {literal(s['date'])} {literal(s['author'])} working on {literal(s['line'])}" for s in status]

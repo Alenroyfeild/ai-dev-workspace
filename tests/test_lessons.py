@@ -1,9 +1,9 @@
 import subprocess
-import sys
 from unittest import mock
 from test_ws import Base
 from ws import core
 from mcp import server
+from testutil import run_ws
 
 
 class LessonContextTests(Base):
@@ -42,7 +42,7 @@ class LessonContextTests(Base):
         reply = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'add_lesson', 'arguments': {'text': 'Cached values expired; reuse stable receipts.', 'paths': ['src/*.py'], 'area': 'crash'}}})
         self.assertFalse(reply['result']['isError'])
         self.assertIn('Cached values expired', core.brief(self.root))
-        proc = subprocess.run([sys.executable, str(core.KIT / 'bin/ws'), '--workspace-root', str(self.root), 'lesson', 'add', 'Hidden values leaked; redact all cached logs.', '--path', 'tests/*', '--area', 'token=syntheticsecret123456'], capture_output=True, text=True)
+        proc = run_ws('--workspace-root', self.root, 'lesson', 'add', 'Hidden values leaked; redact all cached logs.', '--path', 'tests/*', '--area', 'token=syntheticsecret123456')
         self.assertEqual(proc.returncode, 0, proc.stderr)
         text = (core.vault(self.root) / 'Learnings.md').read_text()
         self.assertIn('tests/*', text); self.assertNotIn('syntheticsecret123456', text)

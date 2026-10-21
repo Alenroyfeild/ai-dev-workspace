@@ -1,13 +1,12 @@
 import datetime
 import json
-import subprocess
-import sys
 import unittest
 from unittest import mock
 
 import test_sharing
-from test_ws import Base, KIT
+from test_ws import Base
 from ws import core, knowledge, sharing
+from testutil import run_ws
 
 
 def age(root, task_id, days):
@@ -112,8 +111,7 @@ class RecapTests(Base):
             self.assertNotIn(hidden, result)
 
     def test_cli_markdown_and_json(self):
-        run = lambda *a: subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root), 'recap', *a],
-                                        capture_output=True, text=True, check=True).stdout
+        run = lambda *a: run_ws('--workspace-root', self.root, 'recap', *a, check=True).stdout
         self.assertIn('### Recap since', run())
         self.assertEqual(json.loads(run('--json', '--since', '30d'))['tasks'][0]['id'], 'T-1')
 

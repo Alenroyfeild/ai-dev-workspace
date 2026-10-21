@@ -1,8 +1,7 @@
 import json
-import subprocess
-import sys
-from test_ws import Base, KIT
+from test_ws import Base
 from ws import cli, core
+from testutil import run_ws
 
 
 def use(name, **data):
@@ -13,8 +12,8 @@ class FinishNudgeTests(Base):
     def stop(self, uses, **payload):
         path = self.root / 'session.jsonl'
         path.write_text(json.dumps({'type': 'assistant', 'message': {'content': uses}}) + '\n')
-        proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook'], cwd=self.root, capture_output=True, text=True,
-                              input=json.dumps(dict(hook_event_name='Stop', transcript_path=str(path), **payload)))
+        proc = run_ws('nudge', '--hook', cwd=self.root,
+                      input=json.dumps(dict(hook_event_name='Stop', transcript_path=str(path), **payload)))
         self.assertEqual(proc.returncode, 0, proc.stderr)
         return json.loads(proc.stdout)
 

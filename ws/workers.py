@@ -28,7 +28,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if task.get('conflicted') or meta.get('status') == 'done' or not token or meta.get('claimed_by') != worker or meta.get('claim_token') != token:
         raise core.WsError('Worker preparation needs a current local task claim; claim the task first.')
-    source = Path(meta.get('repo') or '').expanduser().resolve()
+    source = (core.repo_path(root, meta['repo']) if meta.get('repo') else Path.cwd().resolve())  # no repo: the checkout the user is in
     if source not in [p.resolve() for p in core.read_roots(root)[1:]]:
         raise core.WsError('Worker repository must be one declared workspace repo.')
     if Path(git(source, 'rev-parse', '--show-toplevel')).resolve() != source:
@@ -40,7 +40,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     if not scope: raise core.WsError('Worker needs at least one relative --scope path.')
     for name in scope:
         parts = PurePosixPath(name.replace('\\', '/')).parts
-        if not parts or not name.isprintable() or PureWindowsPath(name).anchor or name.startswith('/') or '..' in parts or any(p in ('.git', '.ws', '.codex', '.claude') for p in parts):
+        if not parts or not name.isprintable() or PureWindowsPath(name).anchor or name.startswith('/') or '..' in parts or any(p.lower() in ('.git', '.ws', '.codex', '.claude') for p in parts):
             raise core.WsError('Worker scope must stay inside checkout files, away from metadata and client config.')
     scope = [str(PurePosixPath(n.replace('\\', '/'))) for n in scope]
     tree = git(source, 'ls-tree', '-r', commit)
@@ -92,7 +92,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
 
 
 def launch(root, run_id):
-    raise core.WsError('Write workers remain preparation-only until the O2d real-client hostile probe passes.')
+    raise core.WsError('Write workers are preparation-only for now; launching one is not available yet.')
 
 
 def _record(root, run_id, require_checkout=True):
@@ -162,7 +162,7 @@ def _approved(root, run_id):
             or approval.get('reviewer') != state['claimed_by']):
         raise core.WsError('Worker needs a current lead review before acceptance.')
     task = _claim(root, state); source = Path(state['source']).resolve()
-    if (source != Path(task['meta'].get('repo') or '').expanduser().resolve() or source not in [p.resolve() for p in core.read_roots(root)[1:]]
+    if (source != (core.repo_path(root, task['meta']['repo']) if task['meta'].get('repo') else Path.cwd().resolve()) or source not in [p.resolve() for p in core.read_roots(root)[1:]]
             or Path(git(source, 'rev-parse', '--show-toplevel')).resolve() != source):
         raise core.WsError('Worker source repository changed.')
     return directory, state, source
@@ -357,7 +357,7 @@ def collect(root, run_id):
 
 
 def _launch(root, run_id):
-    """Internal probe path only; public launch stays gated until O2d."""
+    """Internal probe path only; public launch stays closed."""
     directory, state = _record(root, run_id); checkout = directory / 'checkout'
     with core.lock(root):
         _claim(root, state)

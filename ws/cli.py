@@ -36,7 +36,7 @@ def _block_prompt(client, reason):
     return 0
 
 
-DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
+DAILY_COMMANDS = ('demo', 'start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
@@ -103,6 +103,8 @@ def text_route(report):
              'Available: ' + ('yes' if report['available'] else 'no')]
     if report.get('reason'):
         lines.append('Reason: ' + report['reason'])
+    if report.get('mode_error'):
+        lines.append('Warning: ' + report['mode_error'])
     if report.get('model_source'):
         lines.append('Model source: ' + report['model_source'])
     if report.get('model_warning'):
@@ -112,10 +114,26 @@ def text_route(report):
     return '\n'.join(lines)
 
 
+def doctor_verdict(report):
+    """One line first: OK, or what needs attention and the next step."""
+    if report.get('workspace_error'): return 'Needs attention: ' + report['workspace_error']
+    core = report.get('core', {})
+    names = {'claude': 'Claude', 'codex': 'Codex', 'cursor': 'Cursor', 'vscode': 'VS Code', 'gemini': 'Gemini'}
+    connected = [names.get(n, n) for n, ok in report.get('configured_clients', {}).items() if ok]
+    for key, label in (('python3', 'Python 3'), ('git', 'Git')):
+        if key in core and not core[key]: return f'Needs attention: {label} is missing. Next: install it, then run ws doctor again.'
+    if not report.get('workspace'): return 'Needs attention: no workspace found. Next: in a git repo run ws start; otherwise ws init <dir>.'
+    if not report.get('valid'): return 'Needs attention: workspace invalid. Next: run ws validate.'
+    if report.get('upgrade_due'): return 'Needs attention: workspace was written by an older kit. Next: ws upgrade --dry-run to preview, then ws upgrade.'
+    if report.get('codex_manual_pending'): return 'Needs attention: Codex needs a manual step. Next: paste the printed Codex config block (see below).'
+    if report.get('stale_hooks'): return 'Needs attention: repo hooks point to something missing. Next: run ws start again in that repo.'
+    if not connected: return 'Needs attention: no assistant connected. Next: run ws start in your repo, or ws connect claude.'
+    return 'OK: workspace valid; ' + '; '.join(n + ' connected' for n in connected)
+
+
 def text_doctor(report):
     core = report.get('core', {})
-    lines = ['Needs attention: ' + report['workspace_error']] if report.get('workspace_error') else []
-    lines += [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
+    lines = [doctor_verdict(report), f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
     if report.get('team_workspace'):
@@ -127,6 +145,8 @@ def text_doctor(report):
         lines.append('Setup preset: ' + report['setup']['preset'] + (f' ({assistants})' if assistants else ''))
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
     for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
+    for path in report.get('claude_plugin_duplicates', []): lines.append('Claude: plugin and ws start hooks both active (two briefs per session) — ' + path + '; disable one')
+    for path in report.get('claude_plugin_missing', []): lines.append('Claude: the plugin was enabled when ws start ran but is not now, so Claude has no memory hooks — ' + path + '; run ws start to restore Claude hooks')
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Workspace-level connections: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
@@ -232,11 +252,17 @@ def ask(prompt=''):
     except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
 
 
+UNDO_GUESSES = ('undo', 'uninstall', 'remove')  # not commands; `ws start --undo` is the way back
+
+
 class WsParser(argparse.ArgumentParser):
     """Subparsers inherit this class: a mistyped command gets a short hint, not argparse's list of every name."""
     def error(self, message):
         bad = re.search(r"invalid choice: '(.*?)' \(choose from (.*)\)$", message)
         if not bad: return super().error(message)
+        if self.prog == 'ws' and bad[1] in UNDO_GUESSES:
+            self.print_usage(sys.stderr)
+            self.exit(2, f"ws: unknown command '{bad[1]}'. To remove ws from a repo run `ws start --undo`. Run ws --help\n")
         choices = [c.strip("'") for c in bad[2].split(', ')]
         import difflib  # lazy: only for mistyped commands
         near = difflib.get_close_matches(bad[1], choices, n=3)
@@ -273,13 +299,13 @@ def main(argv=None):
     w = sub.add_parser('worker', help='prepare an isolated implementation checkout; no worker launch').add_subparsers(dest='action', required=True)
     s = w.add_parser('prepare'); s.add_argument('task'); s.add_argument('--scope', action='append', required=True)
     s.add_argument('--base', default='HEAD'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
-    s = w.add_parser('launch', help='gated until the real-client hostile probe passes'); s.add_argument('id')
+    s = w.add_parser('launch', help='not available yet (write workers are preparation-only)'); s.add_argument('id')
     s = w.add_parser('review', help='show diff/checks or record the current lead review'); s.add_argument('id')
     s.add_argument('--approve', action='store_true'); s.add_argument('--yes', action='store_true')
     for action in ('accept', 'discard'):
         s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
-    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary (default in a terminal)'); s.add_argument('--json', action='store_true', help='print JSON even in a terminal')
     s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('guard', help='guards pack: PreToolUse check that denies destructive commands, secrets and muted tests'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('discipline', help='discipline pack: advisory nudge after the same command fails 3 times'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
@@ -288,7 +314,9 @@ def main(argv=None):
     s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
     s.add_argument('--skills', action='store_true', help='also link the kit skills into your global ~/.claude/skills or ~/.agents/skills')
-    s = sub.add_parser('start', help='connect this repo to private memory outside the checkout')
+    s = sub.add_parser('start', help='connect this repo to private memory outside the checkout', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       description='Connect this repo to private task memory kept outside the checkout.\nShows a preview first; nothing is written until you confirm.',
+                       epilog='Examples:\n  ws start --dry-run   preview only\n  ws start             preview, then confirm\n  ws start --undo      remove the repo wiring again')
     s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
@@ -312,7 +340,7 @@ def main(argv=None):
     s.add_argument('--automatic', action='store_true', help=argparse.SUPPRESS)
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink', 'status')); s.add_argument('remote', nargs='?', default='')
-    s.add_argument('--folder', action='store_true', help='link an attested existing synced folder (read-only)')
+    s.add_argument('--folder', nargs='?', const=True, default=False, metavar='PATH', help='link an attested existing synced folder (read-only); PATH may also come first')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s.add_argument('--attest-private', action='store_true', help='I confirm this exact remote is private to my team')
     s.add_argument('--verify-with', choices=('gh', 'glab'), default='')
@@ -331,7 +359,8 @@ def main(argv=None):
     choice.add_argument('--dry-run', action='store_true', help='preview only (default)')
     choice.add_argument('--apply', action='store_true', help='apply the previewed preset and project connections')
 
-    t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
+    t = sub.add_parser('task', help='task records', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws task new fix-login "Fix login redirect"\n  ws task list\n  ws task show fix-login').add_subparsers(dest='action', required=True)
     s = t.add_parser('new', help='create a task record'); s.add_argument('id', help='short ID such as JIRA-123 or fix-login'); s.add_argument('title')
     s.add_argument('--objective', default='', help='one-line goal'); s.add_argument('--branch', default='', help='Git branch the task belongs to'); s.add_argument('--repo', default='', help='repo path the task belongs to')
     t.add_parser('list', help='list tasks with status, claim and next action')
@@ -347,9 +376,11 @@ def main(argv=None):
     s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
     valid_notes = ', '.join(core.NOTE_SECTIONS)
     s = sub.add_parser('checkpoint', help='save task status and next action',
-                       description='Save task status, next action, and optional notes.',
-                       epilog='Valid note sections: ' + valid_notes)
-    s.add_argument('id', help='task ID (see ws task list)'); s.add_argument('--status', required=True, choices=core.STATUSES)
+                       description='Save task status, next action, and optional notes.', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws checkpoint --status in_progress --next "Write the migration"\n'
+                              '  ws checkpoint fix-login --status done --next "Open the PR" --note "Do not redo=Session cookies break mobile"\n\n'
+                              'Valid note sections: ' + valid_notes)
+    s.add_argument('id', nargs='?', help='task ID (default: your only claimed task; see ws task list)'); s.add_argument('--status', required=True, choices=core.STATUSES)
     s.add_argument('--next', required=True, help='exactly what the next person or AI should do')
     s.add_argument('--expected-sha', help='refuse if the task changed since you read it'); s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
     s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT', help='save text into a section, e.g. "Handoff=Decision: use Postgres"; repeatable')
@@ -377,7 +408,8 @@ def main(argv=None):
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
     s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
-    l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
+    l = sub.add_parser('lesson', help='add or search reusable lessons', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws lesson add "Mocked DB hid a bad migration; run migrations in tests" --tag testing\n  ws lesson search migration').add_subparsers(dest='action', required=True)
     s = l.add_parser('add', help='save a lesson: what happened -> rule'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[], help='topic tag; repeatable')
     s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
@@ -430,6 +462,9 @@ def main(argv=None):
         p.print_help()
         return 0
     a = p.parse_args(argv)
+    if a.cmd == 'team' and isinstance(a.folder, str):  # `--folder PATH` supplies the remote
+        if a.remote and a.remote != a.folder: p.error('give the folder path once: ws team link --folder PATH')
+        a.remote, a.folder = a.folder, True
     try:
         for value in vars(a).values():  # a lone surrogate or invalid byte would crash every write path
             for text in (value if isinstance(value, list) else [value]):
@@ -454,6 +489,8 @@ def main(argv=None):
                 print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
                 print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
                 if result.get('starter'): print(f"Looks like {repo.STARTERS[result['starter']]}: ws pack add {result['starter']} adds a few starter rules (optional).")
+                if repo.plugin_duplicates(Path(result['root']), only=result.get('repo')):
+                    print('Note: the ai-dev-workspace Claude Code plugin is also enabled, so Claude gets two briefs per session. Disable the plugin, or run ws start --undo here.', file=sys.stderr)
             return 2 if result and result.get('partial') else 0
         if a.cmd == 'setup' and a.detect:
             from . import setup
@@ -501,7 +538,9 @@ def main(argv=None):
                 problem = f'workspace.json is unreadable ({exc}); fix or restore it, or run ws start --undo in a started repo.'
                 report = core.doctor(None, a.mcp)
             if problem: report['workspace_error'] = problem
-            out(text_doctor(report) if a.text or human() else report); return 0
+            if a.json and not a.text: print(json.dumps(report, indent=2, ensure_ascii=False))
+            else: out(text_doctor(report) if a.text or human() else report)
+            return 0
         if a.cmd == 'audit':
             from . import audit
             report = audit.audit(a.repo)
@@ -528,7 +567,11 @@ def main(argv=None):
                         raise core.WsError('Use ws sessions search <query> --root cursor=<dir> (or claude, codex, gemini).')
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
-        root = core.find_root(a.workspace_root)
+        try: root = core.find_root(a.workspace_root)
+        except core.WsError as exc:
+            if a.cmd != 'pack' or not str(exc).startswith('No workspace.json found'): raise
+            name = a.name or '<name>'  # a pack needs a workspace, which `ws start` creates
+            raise core.WsError(f'No workspace.json found here or above. In a git repo run `ws start` first, then `ws pack {a.action} {name}` and `ws start` again to wire it; otherwise `ws init <dir>`, or set WS_ROOT.')
         @core.contextlib.contextmanager
         def saved_locally():  # the record is already saved; say so when sharing it cannot go ahead
             try: yield
@@ -565,7 +608,7 @@ def main(argv=None):
             plan = team_sync.preview(root); show(plan, team_ui.sync); published = None
             if not (a.dry_run or not plan['files']) and (a.yes or ask('Publish this exact team sync preview? [y/N] ')):
                 out(team_sync.apply(root, plan)); published = list(plan['files'])
-            print(team_ui.sync_line(before, team_ui.entries(root), published), file=sys.stderr)  # stderr: stdout stays JSON for scripts
+            print(team_ui.sync_line(before, team_ui.entries(root), published, len(plan['files'])), file=sys.stderr)  # stderr: stdout stays JSON for scripts
             return 0
         if a.cmd == 'team':
             if a.action == 'status':
@@ -755,6 +798,8 @@ def main(argv=None):
                 res = core.task_import(root, a.file, a.prefix, a.yes); out(res)
                 if res['errors']: return 1
             else:
+                for name in a.section or ():
+                    if name not in core.NOTE_SECTIONS: raise core.WsError(f'Unknown section {name}. Valid sections: {", ".join(core.NOTE_SECTIONS)}.')
                 res = core.task_read(root, a.id, a.section)
                 out(res['text'] if 'text' in res else res)
         elif a.cmd == 'next':
@@ -868,7 +913,13 @@ def main(argv=None):
         if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
             print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
             print('{}'); return 0
-        if not isinstance(exc, (core.WsError, FileNotFoundError, json.JSONDecodeError)): raise
+        if isinstance(exc, OSError) and exc.filename is None:  # e.g. a failed launchd call: its own words say more than a file hint
+            exc = core.WsError(str(exc))
+        elif isinstance(exc, OSError):  # a file that cannot be read or written is a user-fixable state, not a ws bug
+            exc = core.WsError(f'Cannot read or write {exc.filename or "a file"}: {exc.strerror or exc}. Next: check that path (permissions, or a directory where a file should be), then retry.')
+        elif isinstance(exc, UnicodeDecodeError):
+            exc = core.WsError(f'A file is not valid UTF-8 ({exc.reason}). Next: fix or remove the bad bytes in the file named by the command, then retry.')
+        if not isinstance(exc, (core.WsError, json.JSONDecodeError)): raise
         message = str(exc)
         if isinstance(exc, core.WsError) and not any(hint in message.lower() for hint in ('`ws ', 'run ws ', 'see ws ', 'next:')):
             message += ('' if message.endswith(('.', '!', '?', ':')) else '.') + f' Next: run `ws {a.cmd} --help`.'

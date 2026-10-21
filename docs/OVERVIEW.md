@@ -21,6 +21,8 @@ Same task, same prompts, fresh sessions. Product decisions were given only in co
 | Claude Code → Codex (different assistant) | 0/5 | **5/5** |
 | Codex → Codex | 0/3 | **3/3** |
 
+Later Codex → Codex runs (n=5 each) were less favourable: the workspace passed 1/5 and 2/5, while a plain `HANDOFF.md` control passed 4/5 and 5/5. See [bench/README.md](../bench/README.md).
+
 In the first golden run, when product decisions were given in one session, a fresh session followed all of them in 5 of 5 runs with the workspace and 0 of 5 without, for about $0.06 more per session. Small n and synthetic tasks: this shows decisions surviving across sessions and assistants, not general productivity.
 
 ## What it looks like
@@ -106,13 +108,13 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 
 | Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI |
 |---|---|---|---|---|---|
-| Rules | proven | proven | documented, untested | documented, untested | documented, untested |
-| MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
-| Hooks | proven | proven | documented, untested | fixture-tested, Local only | documented, untested |
+| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested |
+| MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested |
+| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested |
 | Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
-| Automatic capture | proven | proven | documented, untested | fixture-tested, v1 transcript only | documented, untested |
+| Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested |
 
-"Proven" means exercised in real sessions of that client. Copilot hooks target the VS Code Local harness ([details](SETUP.md)).
+"Proven" means exercised in real sessions of that client. "Fixture-tested" means automated tests check the generated config and hook input/output against saved fixtures and the client's docs; no live session was run. Copilot hooks target the VS Code Local harness ([details](SETUP.md)).
 
 ## FAQ
 
@@ -122,9 +124,9 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 
 **Does it send my code anywhere?** No. Everything is local files. Your assistant still sends prompts to its own provider; the kit only checks GitHub for a new release once a day (`WS_OFFLINE=1` turns that off).
 
-**Does it cost tokens?** The brief is under 200 words. In the benchmark a completion session cost about $0.05 more with the workspace; the gain is correctness across sessions, not lower spend.
+**Does it cost tokens?** The brief is under 200 words. In the benchmark a completion session cost about $0.05 to $0.06 more with the workspace ($0.047 and $0.058 in the two Claude runs in [MEASUREMENTS.md](MEASUREMENTS.md)); the gain is correctness across sessions, not lower spend.
 
-**Can a team share it?** The workspace is plain files: commit it to a private repo. Claims show who is working on which task. A team can also link a synced folder and read its shared notes, read-only (`ws team link --folder`). See [docs/TEAM.md](TEAM.md).
+**Can a team share it?** The workspace is plain files: commit it to a private repo. Claims show who is working on which task. A team can also link a synced folder and read its shared notes, read-only (`ws team link /path/to/shared-folder --folder --attest-private`). See [docs/TEAM.md](TEAM.md).
 
 ## Optional packs
 
@@ -133,7 +135,7 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 | `obsidian` | Open the memory as a linked Obsidian vault | [Obsidian](https://obsidian.md) |
 | `local-llm` | Free on-device log triage | [Ollama](https://ollama.com) and a small model |
 | `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |
-| `guards` | Claude Code and Codex hooks (Windows PowerShell too) that deny `rm -rf` / `Remove-Item -Recurse -Force` on home or root, `git reset --hard`, force push, `git clean -f`, secrets in commands or files, and newly skipped tests. Run `ws start` again in each repo after adding or removing it; `WS_GUARDS=off` turns it off for one session. A best-effort safety net for honest mistakes, not a sandbox or a security boundary: it reads the command text and cannot see through variables, scripts or MCP shell tools | nothing |
+| `guards` | Claude Code and Codex hooks (Windows PowerShell too) that deny `rm -rf` / `Remove-Item -Recurse -Force` on home or root, `git reset --hard`, force push, `git clean -f`, secrets in commands or files, and newly skipped tests. Run `ws start` again in each repo after adding or removing it; `WS_GUARDS=off` turns it off for one session. A best-effort safety net for honest mistakes, not a sandbox or a security boundary: it reads the command text and cannot see through variables, scripts or MCP shell tools. Claude Code shows a denial as "PreToolUse:Bash hook error": that is its label for any hook block, and the command was stopped as intended. | nothing |
 | `discipline` | Advisory only: after the same shell command fails 3 times in a session, Claude Code and Codex are told to stop retrying, form one hypothesis and save the dead end. Never blocks; stores a hash of the command, not the text | nothing |
 | `web`, `library`, `ml` | A few starter rules for that kind of repo (under 70 words each); the first `ws start` suggests the one that fits | nothing |
 | `codex-worker` | Legacy ACP read-only worker, kept for existing users | Node, `acpx`, a Codex sign-in |

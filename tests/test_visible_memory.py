@@ -1,15 +1,14 @@
 import json
-import subprocess
-import sys
 
-from test_ws import Base, KIT
+from test_ws import Base
 from ws import core
+from testutil import run_ws
 
 
 class VisibleMemoryTests(Base):
     def hook(self, *client):
-        run = subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root), 'brief', '--hook', *client],
-                             input=json.dumps({'hook_event_name': 'SessionStart', 'source': 'startup'}), capture_output=True, text=True)
+        run = run_ws('--workspace-root', self.root, 'brief', '--hook', *client,
+                     input=json.dumps({'hook_event_name': 'SessionStart', 'source': 'startup'}))
         self.assertEqual(run.returncode, 0, run.stderr)
         return json.loads(run.stdout)
 
@@ -82,8 +81,7 @@ class VisibleMemoryTests(Base):
             self.assertIn('use Postgres', data['hookSpecificOutput']['additionalContext'])
 
     def test_no_task_keeps_todays_output(self):
-        run = subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root), 'brief', '--hook'],
-                             input='{"hook_event_name":"SessionStart"}', capture_output=True, text=True)
+        run = run_ws('--workspace-root', self.root, 'brief', '--hook', input='{"hook_event_name":"SessionStart"}')
         self.assertEqual(run.stdout.strip(), core.brief(self.root))
         self.assertNotIn('systemMessage', run.stdout)
 

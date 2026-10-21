@@ -51,7 +51,7 @@ def index_body(rows, public, prefix=None):
     return '\n'.join(lines)
 
 
-def plan(root, layer, replacements=None):
+def plan(root, layer, replacements=None, warnings=None):
     from . import knowledge
     overrides = replacements or {}; changes = {}; public = layer == 'team'
     for name, base, team_id in knowledge._bases(root, layer):
@@ -65,7 +65,12 @@ def plan(root, layer, replacements=None):
             if path in overrides and overrides[path] is None:
                 text = managed(root, card, None, public)
             else:
-                row, body = knowledge._read(root, path, name, team_id, summary=True, include_all=True, raw=overrides.get(path))
+                try: row, body = knowledge._read(root, path, name, team_id, summary=True, include_all=True, raw=overrides.get(path))
+                except (core.WsError, OSError, ValueError) as error:
+                    if path in overrides: raise
+                    # One hand-edited note must not block every add/share: skip it and name the file.
+                    if warnings is not None: warnings.append(f'{path.relative_to(root).as_posix()}: skipped, {error}')
+                    continue
                 row['summary'] = row['summary'][:240]; rows.append(row)
                 counts = row.get('_counts')
                 if counts is None:

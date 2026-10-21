@@ -77,9 +77,8 @@ speaks MCP, but tools return “Run ws start in this repo”; it does not use `W
 the existing memory hooks only for a validated repo link. Unknown events or invalid
 links return `{}`. Existing CLI and server invocations are unchanged.
 
-This is runtime groundwork, not an installable marketplace package. Keep existing
-repo-local connections until packaging, duplicate-connection detection and live
-client checks are complete. Installing or enabling a Codex plugin does not trust
+No Codex plugin package is published yet: keep existing repo-local connections for Codex
+until packaging, duplicate-connection detection and live client checks are complete. Installing or enabling a Codex plugin does not trust
 its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
 
 ### Claude Code plugin (preview)
@@ -92,3 +91,5 @@ The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires 
 ```
 
 Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. The hooks run through `bin/ws-python`, which uses the first working `python3`, `python` or `py -3` (needs `sh`, as in Git Bash). The plugin's MCP server entry is started directly by the client and still calls `python3`; on Windows installs that only provide `python` or `py`, add a `python3.exe` copy or alias to PATH, or use `ws start` instead of the plugin. Windows is untested.
+
+With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.

@@ -78,7 +78,7 @@ class PluginRuntimeTests(unittest.TestCase):
         self.assertEqual([t['name'] for t in replies[1]['tools']], ['brief'])
         self.assertLess(len(json.dumps(replies[1])), 500)
         self.assertTrue(replies[2]['isError'])
-        self.assertIn('Run ws start in this repo', replies[2]['content'][0]['text'])
+        self.assertIn('No ai-dev-workspace here: run `ws start`', replies[2]['content'][0]['text'])
         self.assertEqual(replies[3]['resources'], [])
         self.assertNotIn('integer cents', json.dumps(replies))
         self.assertEqual(before, {p: p.read_bytes() for p in self.base.rglob('*') if p.is_file()})

@@ -115,7 +115,7 @@ class TeamAutoTests(unittest.TestCase):
     def test_contended_automatic_pull_returns_without_git(self):
         from ws import team_auto
         self.consent()
-        with core.lock(self.root),mock.patch('ws.team_sync._git',side_effect=AssertionError('must not reach Git')):
+        with core.lock(self.root),mock.patch.object(core,'LOCK_WAIT',0.05),mock.patch('ws.team_sync._git',side_effect=AssertionError('must not reach Git')):
             result=team_auto.maybe_pull(self.root)
         self.assertIn('warning',result);self.assertFalse(result['pushed'])
 

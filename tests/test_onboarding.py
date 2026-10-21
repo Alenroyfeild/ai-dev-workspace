@@ -10,25 +10,32 @@ from testutil import rmtree_owned
 
 
 class OnboardingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # The published team repo is read-only for every test, so build it once; each test links its own peer to it.
+        cls.shared = Path(tempfile.mkdtemp()).resolve()
+        cls.addClassCleanup(rmtree_owned, cls.shared, cls.shared)
+        cls.host, cls.remote = cls.shared / 'host-memory', cls.shared / 'team.git'
+        home = cls.shared / 'host-home'; home.mkdir()
+        with mock.patch.dict(os.environ, HOME=str(home), USERPROFILE=str(home), WS_OFFLINE='1'):
+            core.init(cls.host, 'host', clients=[])
+            team._git(cls.shared, 'init', '--bare', '-q', str(cls.remote))
+            team.manage(cls.host, 'init', str(cls.remote), apply=True, attest=True)
+            for category, text in [('product', 'The product tracks household budgets.'),
+                                   ('domain', 'Store totals as integer cents.'),
+                                   ('repo', 'Storage tests live in the ledger directory.'),
+                                   ('runbook', 'Unrelated deployment runbook.')]:
+                item = knowledge.add(cls.host, text, category, True)
+                sharing.apply(cls.host, sharing.preview(cls.host, item, author='teammate'))
+            knowledge.add(cls.host, 'Hidden personal product plan.', 'product')
+            team_sync.apply(cls.host, team_sync.preview(cls.host))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.base = Path(self.tmp.name).resolve()
         self.addCleanup(rmtree_owned, self.base, self.base)
-        self.host, self.peer = self.base / 'host-memory', self.base / 'peer-memory'
-        self.remote = self.base / 'team.git'
-        with self.home('host'):
-            core.init(self.host, 'host', clients=[])
-            team._git(self.base, 'init', '--bare', '-q', str(self.remote))
-            team.manage(self.host, 'init', str(self.remote), apply=True, attest=True)
-            for category, text in [('product', 'The product tracks household budgets.'),
-                                   ('domain', 'Store totals as integer cents.'),
-                                   ('repo', 'Storage tests live in the ledger directory.'),
-                                   ('runbook', 'Unrelated deployment runbook.')]:
-                item = knowledge.add(self.host, text, category, True)
-                sharing.apply(self.host, sharing.preview(self.host, item, author='teammate'))
-            knowledge.add(self.host, 'Hidden personal product plan.', 'product')
-            team_sync.apply(self.host, team_sync.preview(self.host))
+        self.peer = self.base / 'peer-memory'
         with self.home('peer'):
             core.init(self.peer, 'peer', clients=[])
             team.manage(self.peer, 'link', str(self.remote), apply=True, attest=True)
@@ -99,7 +106,7 @@ class OnboardingTests(unittest.TestCase):
         with self.home('peer'):
             plain = self.base / 'plain'
             core.init(plain, 'plain', clients=[])
-            self.assertEqual(core.brief(plain), 'No in-progress task. Find or create the task before working.')
+            self.assertTrue(core.brief(plain).startswith('No in-progress task. Find or create the task before working'))
 
     def test_hook_created_branch_task_gets_orientation_until_something_is_saved(self):
         import subprocess
