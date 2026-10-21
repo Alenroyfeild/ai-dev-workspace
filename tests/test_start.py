@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-from ws import cli, core
+from ws import cli, core, repo as repo_module
 
 
 class StartTests(unittest.TestCase):
@@ -132,6 +132,168 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--yes')[0], 0)
         self.assertIn(b'remember', (self.repo / 'AGENTS.override.md').read_bytes())
 
+    def test_claude_permissions_edit_does_not_freeze_hooks_and_undo_start_rewires(self):
+        """Audit blocker: Claude Code writes `permissions` into settings.local.json; ws must merge, not give up."""
+        self.assertEqual(self.start('--yes')[0], 0)
+        settings = self.repo / '.claude/settings.local.json'
+        data = json.loads(settings.read_text()); data['permissions'] = {'allow': ['Bash(ls)']}
+        data['hooks'].setdefault('SessionStart', []).append({'hooks': [{'type': 'command', 'command': 'echo mine'}]})
+        settings.write_text(json.dumps(data))
+        core.pack_add(core.find_root(self.repo), 'guards')
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0, err); self.assertNotIn('Kept your edits', err)
+        data = json.loads(settings.read_text())
+        self.assertIn('PreToolUse', data['hooks']); self.assertEqual(data['permissions'], {'allow': ['Bash(ls)']})
+        commands = [h['command'] for e in data['hooks']['SessionStart'] for h in e['hooks']]
+        self.assertEqual(commands.count('echo mine'), 1); self.assertEqual(len(commands), 2)  # one ws hook, not duplicated
+        state = json.loads((self.repo / '.ws-start.json').read_text())
+        self.assertEqual(state['files']['.claude/settings.local.json']['sha'], hashlib.sha256(settings.read_bytes()).hexdigest())
+        self.assertEqual(self.start('--yes')[1].count('Already'), 1)  # settled: nothing left pending
+        self.assertEqual(self.start('--undo')[0], 0)
+        data = json.loads(settings.read_text())
+        self.assertEqual(data, {'permissions': {'allow': ['Bash(ls)']}, 'hooks': {'SessionStart': [{'hooks': [{'type': 'command', 'command': 'echo mine'}]}]}})
+        for name in ('CLAUDE.local.md', 'AGENTS.override.md', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.ws-start.json'):
+            self.assertFalse((self.repo / name).exists(), name)
+        exclude = (self.repo / '.git/info/exclude').read_text()
+        self.assertNotIn('ws:start', exclude)
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0, err)
+        for name in ('CLAUDE.local.md', 'AGENTS.override.md', '.codex/hooks.json', '.mcp.json', '.codex/config.toml'):
+            self.assertTrue((self.repo / name).is_file(), name)
+        self.assertIn('PreToolUse', json.loads(settings.read_text())['hooks'])
+        self.assertEqual((self.repo / '.git/info/exclude').read_text().count('# ws:start:'), 1)
+
+    def test_json_edit_during_refresh_confirmation_is_kept(self):
+        """Reviewer repro: a permission added while the preview is open must survive the approved write."""
+        self.assertEqual(self.start('--yes')[0], 0)
+        settings = self.repo / '.claude/settings.local.json'
+        core.pack_add(core.find_root(self.repo), 'guards')
+        def edit_then_yes():
+            data = json.loads(settings.read_text()); data['permissions'] = {'allow': ['Bash(ls)']}; settings.write_text(json.dumps(data)); return 'y'
+        with mock.patch('builtins.input', side_effect=edit_then_yes):
+            code, _, err = self.start()
+        self.assertEqual(code, 0, err)
+        data = json.loads(settings.read_text())
+        self.assertEqual(data['permissions'], {'allow': ['Bash(ls)']}); self.assertIn('PreToolUse', data['hooks'])
+        state = json.loads((self.repo / '.ws-start.json').read_text())
+        self.assertEqual(state['files']['.claude/settings.local.json']['sha'], hashlib.sha256(settings.read_bytes()).hexdigest())
+
+    def test_json_edit_during_confirmation_is_kept_for_a_file_ws_newly_creates(self):
+        """Plugin mode wires no settings file; a pack makes ws add hooks to the user's existing one, edited meanwhile."""
+        settings = self.repo / '.claude/settings.local.json'
+        settings.parent.mkdir(); settings.write_text(json.dumps({'enabledPlugins': {repo_module.PLUGIN: True}}))
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertNotIn('hooks', json.loads(settings.read_text()))
+        core.pack_add(core.find_root(self.repo), 'guards')
+        def edit_then_yes():
+            data = json.loads(settings.read_text()); data['permissions'] = {'allow': ['Bash(ls)']}; settings.write_text(json.dumps(data)); return 'y'
+        with mock.patch('builtins.input', side_effect=edit_then_yes):
+            code, _, err = self.start()
+        self.assertEqual(code, 0, err)
+        data = json.loads(settings.read_text())
+        self.assertEqual(data['permissions'], {'allow': ['Bash(ls)']}); self.assertIn('PreToolUse', data['hooks']); self.assertIn('enabledPlugins', data)
+
+    def test_json_replaced_by_invalid_json_during_refresh_confirmation_is_refused(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        settings = self.repo / '.claude/settings.local.json'
+        core.pack_add(core.find_root(self.repo), 'guards')
+        def break_then_yes(): settings.write_text('{not json'); return 'y'
+        with mock.patch('builtins.input', side_effect=break_then_yes):
+            code, _, err = self.start()
+        self.assertEqual(code, 2); self.assertIn('changed during confirmation; rerun ws start: .claude/settings.local.json', err)
+        self.assertEqual(settings.read_text(), '{not json')
+
+    def test_json_edit_landing_just_before_undo_write_is_kept(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        settings = self.repo / '.claude/settings.local.json'
+        real, edited = repo_module.stripped, []
+        def stripped_after_edit(name, raw, *rest):
+            result = real(name, raw, *rest)
+            if name == '.claude/settings.local.json' and not edited:  # the first read: the user edits right after it
+                edited.append(1); data = json.loads(raw); data['permissions'] = {'allow': ['Bash(ls)']}; settings.write_text(json.dumps(data))
+            return result
+        with mock.patch.object(repo_module, 'stripped', stripped_after_edit):
+            self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(json.loads(settings.read_text()), {'permissions': {'allow': ['Bash(ls)']}})
+
+    def test_users_empty_hook_event_and_version_key_survive_refresh_and_undo(self):
+        """Reviewer finding: only what ws's removal emptied may be deleted, and `version` is the user's unless ws added it."""
+        settings = self.repo / '.claude/settings.local.json'
+        self.assertEqual(self.start('--yes')[0], 0)
+        data = json.loads(settings.read_text()); data['version'] = 77; data['hooks']['UserReserved'] = []; settings.write_text(json.dumps(data))
+        self.assertIn('UserReserved', repo_module.stripped('.claude/settings.local.json', settings.read_bytes())['hooks'])
+        core.pack_add(core.find_root(self.repo), 'guards')
+        self.assertEqual(self.start('--yes')[0], 0)
+        data = json.loads(settings.read_text())
+        self.assertEqual((data['version'], data['hooks']['UserReserved']), (77, [])); self.assertIn('PreToolUse', data['hooks'])
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(json.loads(settings.read_text()), {'version': 77, 'hooks': {'UserReserved': []}})
+
+    def test_undo_restores_a_users_json_file_with_empty_events_and_version_byte_for_byte(self):
+        settings = self.repo / '.claude/settings.local.json'
+        settings.parent.mkdir(); original = b'{"version": 3, "hooks": {"Stop": []}, "permissions": {"allow": []}}\n'; settings.write_bytes(original)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(settings.read_bytes(), original)
+
+    def test_undo_removes_the_version_key_cursor_hooks_got_from_ws_but_not_a_users(self):
+        detect = [{'assistant': 'cursor', 'cli_available': True, 'apps': []}]
+        hooks = self.repo / '.cursor/hooks.json'
+        with mock.patch('ws.setup.detect', return_value=detect):
+            self.assertEqual(self.start('--yes')[0], 0)
+            self.assertEqual(json.loads(hooks.read_text())['version'], 1)
+            self.assertEqual(self.start('--undo')[0], 0)
+            self.assertFalse(hooks.exists())
+            self.assertEqual(self.start('--yes')[0], 0)
+            data = json.loads(hooks.read_text()); data['version'] = 77; hooks.write_text(json.dumps(data))
+            self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(json.loads(hooks.read_text()), {'version': 77})
+
+    def test_undo_keeps_cursor_hooks_version_when_the_user_added_their_own_hook(self):
+        detect = [{'assistant': 'cursor', 'cli_available': True, 'apps': []}]
+        hooks = self.repo / '.cursor/hooks.json'
+        with mock.patch('ws.setup.detect', return_value=detect):
+            self.assertEqual(self.start('--yes')[0], 0)
+            data = json.loads(hooks.read_text()); data['hooks']['afterFileEdit'] = [{'command': 'echo mine'}]; hooks.write_text(json.dumps(data))
+            self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(json.loads(hooks.read_text()), {'version': 1, 'hooks': {'afterFileEdit': [{'command': 'echo mine'}]}})  # Cursor needs the version
+
+    def test_undo_restores_a_zero_byte_json_file_as_zero_bytes(self):
+        for name in ('.claude/settings.local.json', '.mcp.json'):
+            (self.repo / name).parent.mkdir(exist_ok=True); (self.repo / name).write_bytes(b'')
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual(self.start('--undo')[0], 0)
+        for name in ('.claude/settings.local.json', '.mcp.json'): self.assertEqual((self.repo / name).read_bytes(), b'', name)
+
+    def test_undo_continues_after_the_user_deleted_a_json_file_ws_merged_into(self):
+        mine = self.repo / '.mcp.json'; mine.write_text('{"mcpServers": {"other": {"command": "x"}}}')
+        self.assertEqual(self.start('--yes')[0], 0)
+        mine.unlink(); (self.repo / '.claude/settings.local.json').unlink()
+        code, _, err = self.start('--undo')
+        self.assertEqual(code, 0, err); self.assertNotIn('Kept edited', err)
+        self.assertFalse((self.repo / '.ws-start.json').exists())
+        self.assertFalse(mine.exists())
+        self.assertNotIn('ws:start', (self.repo / '.git/info/exclude').read_text())
+
+    def test_refresh_and_undo_keep_other_mcp_servers_and_delete_ws_only_files(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        mcp = self.repo / '.mcp.json'
+        data = json.loads(mcp.read_text()); data['mcpServers']['other'] = {'command': 'x'}; mcp.write_text(json.dumps(data))
+        self.age_setup('CLAUDE.local.md', b'old instruction\n')
+        self.assertEqual(self.start('--yes')[0], 0)
+        servers = json.loads(mcp.read_text())['mcpServers']
+        self.assertEqual(sorted(servers), ['ai-dev-workspace', 'other'])
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(json.loads(mcp.read_text()), {'mcpServers': {'other': {'command': 'x'}}})
+
+    def test_undo_deletes_edited_ws_created_json_when_only_ws_entries_remain(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        hooks = self.repo / '.codex/hooks.json'
+        data = json.loads(hooks.read_text()); data['note'] = 'x'; hooks.write_text(json.dumps(data))
+        data.pop('note'); hooks.write_text(json.dumps(data, indent=4))  # reformatted, same content: sha differs
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertFalse(hooks.exists())
+
     def test_rerun_with_an_older_kit_never_downgrades_newer_setup(self):
         self.assertEqual(self.start('--yes')[0], 0)
         self.age_setup('CLAUDE.local.md', b'newer instruction\n')
@@ -228,7 +390,7 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0); self.assertEqual(local.read_bytes(), before)
         self.assertIn(b'user-pattern', (self.repo / '.git/info/exclude').read_bytes())
         self.assertEqual(self.start('--yes')[0], 0); local.unlink()
-        self.assertEqual(self.start('--undo')[0], 2); self.assertFalse(local.exists())
+        self.assertEqual(self.start('--undo')[0], 0); self.assertFalse(local.exists())  # deleted by the user: nothing of ws's is left to take out
 
     def test_readable_branch_id_has_no_saved_placeholder_next(self):
         self.assertEqual(self.start('--yes')[0], 0)
@@ -333,6 +495,17 @@ class StartTests(unittest.TestCase):
         local = self.repo / 'CLAUDE.local.md'; local.write_text('User changed this file\n')
         self.assertEqual(self.start('--undo')[0], 2); self.assertEqual(local.read_text(), 'User changed this file\n')
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
+
+    def test_start_after_undo_that_kept_a_file_never_reports_already_set_up(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        (self.repo / 'CLAUDE.local.md').write_text('User changed this file\n')
+        self.assertEqual(self.start('--undo')[0], 2)
+        code, out, err = self.start('--yes')
+        self.assertNotEqual(code, 0); self.assertIn('incomplete', err)
+        (self.repo / 'CLAUDE.local.md').unlink()
+        self.assertEqual(self.start('--undo')[0], 0)
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertEqual((self.repo / '.git/info/exclude').read_text().count('# ws:start:'), 1)
 
     def test_interrupted_setup_reports_partial_and_can_be_undone(self):
         with mock.patch('ws.repo.record_file', side_effect=OSError('fixture interrupted write')):
