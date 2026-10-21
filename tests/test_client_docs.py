@@ -19,9 +19,10 @@ class ClientDocShapeTests(unittest.TestCase):
         self.assertEqual(set(self.hooks('gemini')), {'SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd', 'BeforeAgent'})
         self.assertEqual(set(self.hooks('vscode')), {'SessionStart', 'PreCompact', 'Stop'})
         self.assertEqual(set(self.hooks('codex')), {'SessionStart', 'PreCompact', 'Stop', 'UserPromptSubmit'})
+        self.assertEqual(set(self.hooks('antigravity')), {'SessionStart'})
         self.assertEqual(core.memory_hooks('/r', 'cursor')['version'], 1)
         # Gemini timeouts are milliseconds; Cursor, VS Code, Claude Code and Codex use seconds.
-        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
+        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini', 'antigravity'):
             for event, entries in self.hooks(client).items():
                 for entry in entries:
                     for hook in entry.get('hooks', [entry]):
@@ -29,7 +30,7 @@ class ClientDocShapeTests(unittest.TestCase):
                             self.assertEqual(hook['timeout'], 10000 if client == 'gemini' else 10)
 
     def test_session_start_context_output(self):
-        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
+        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini', 'antigravity'):
             output = io.StringIO()
             with mock.patch.object(core, 'find_root', return_value=ROOT), \
                     mock.patch.object(core, 'brief_and_summary', return_value=('Saved next action.', 'Remembered: 1 decision')), \
@@ -39,14 +40,14 @@ class ClientDocShapeTests(unittest.TestCase):
                 self.assertEqual(cli.main(['brief', '--hook', '--client', client]), 0)
             expected_output = {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': 'Saved next action.'}}
             if client in ('claude', 'codex'): expected_output['systemMessage'] = 'Remembered: 1 decision'
-            expected = {'additional_context': 'Saved next action.'} if client == 'cursor' else expected_output
+            expected = {'injectSteps': [{'systemMessage': {'systemMessage': 'Saved next action.'}}]} if client == 'antigravity' else {'additional_context': 'Saved next action.'} if client == 'cursor' else expected_output
             self.assertEqual(json.loads(output.getvalue()), expected)
 
     def test_entry_nesting(self):
-        # Cursor and VS Code take flat hook entries; Claude Code, Codex and Gemini nest them under "hooks".
+        # Cursor and VS Code take flat hook entries; Claude Code, Codex, Gemini and Antigravity nest them under "hooks".
         self.assertEqual(self.hooks('cursor')['stop'][0]['type'], 'command')
         self.assertEqual(self.hooks('vscode')['Stop'][0]['type'], 'command')
-        for client in ('claude', 'codex', 'gemini'):
+        for client in ('claude', 'codex', 'gemini', 'antigravity'):
             self.assertEqual(self.hooks(client)['SessionStart'][0]['hooks'][0]['type'], 'command')
 
     def test_static_config_locations(self):

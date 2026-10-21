@@ -586,7 +586,7 @@ def codebase_map(root, repo=None, allow_external=False):
 def memory_hooks(root, client='claude'):
     arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root)]
     command = command_line(arguments)
-    events = ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop')
+    events = ('SessionStart',) if client == 'antigravity' else ('sessionStart', 'preCompact', 'stop', 'sessionEnd') if client == 'cursor' else ('SessionStart', 'PreCompress', 'AfterAgent', 'SessionEnd') if client == 'gemini' else ('SessionStart', 'PreCompact', 'Stop')
     prompt_event = {'claude': 'UserPromptSubmit', 'codex': 'UserPromptSubmit', 'cursor': 'beforeSubmitPrompt', 'gemini': 'BeforeAgent'}.get(client)
     result = {'hooks': {}}
     if client == 'cursor': result['version'] = 1
@@ -608,7 +608,7 @@ HOOK_PACKS = ('guards', 'discipline')  # packs that add repo hooks; ws start ref
 
 def pack_hooks(root, client):
     """Hooks for the opt-in guards and discipline packs (repo setup only, so the kit fingerprint stays config-free)."""
-    if client not in ('claude', 'codex') or not (Path(root) / 'workspace.json').is_file(): return {}
+    if client not in ('claude', 'codex', 'antigravity') or not (Path(root) / 'workspace.json').is_file(): return {}
     packs = config(root).get('packs', [])
     def hook(*suffix):
         arguments = [python_command(), str(KIT / 'bin/ws'), '--workspace-root', str(root), *suffix, '--hook', '--client', client]
@@ -616,7 +616,7 @@ def pack_hooks(root, client):
     result = {}
     if 'guards' in packs:  # Codex: every tool; the guard allows tools it cannot read
         result['PreToolUse'] = [{'matcher': 'Bash|PowerShell|Write|Edit|MultiEdit|Monitor|NotebookEdit', 'hooks': [hook('guard')]} if client == 'claude' else {'hooks': [hook('guard')]}]
-    if 'discipline' in packs:  # Claude reports failed commands separately; Codex reports every Bash call
+    if 'discipline' in packs and client in ('claude', 'codex'):  # Claude reports failed commands separately; Codex reports every Bash call
         result['PostToolUseFailure' if client == 'claude' else 'PostToolUse'] = [{'matcher': 'Bash', 'hooks': [hook('discipline')]}]
     return result
 def install_memory_hooks(root, collisions, clients=None):
@@ -932,8 +932,8 @@ def connect(root, client, write=False, skills=False, verify=False):
             else: write_preserving(path, candidate.encode(), collisions)
         result['hooks'] = {'path': str(path), 'collisions': collisions}
     if client == 'antigravity':
-        result['support'] = 'rules+MCP; fixture-tested'
-        result['note'] = result.get('note', '') + ' Reads AGENTS.md/GEMINI.md; hooks and automatic capture are not wired.'
+        result['support'] = 'rules+MCP+hooks; fixture-tested'
+        result['note'] = result.get('note', '') + ' Reads AGENTS.md/GEMINI.md; automatic capture is not wired.'
     if skills and client in ('claude', 'codex'):
         result['skills'] = link_skills(client, root)
     if verify and client in ('claude', 'cursor', 'vscode', 'gemini', 'antigravity'):
