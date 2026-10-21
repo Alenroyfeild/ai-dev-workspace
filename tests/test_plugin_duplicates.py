@@ -442,3 +442,27 @@ class PluginDuplicateTests(Base):
                 cli.main(['start', '--yes', '--no-import', '--workspace', str(root)])
         finally: os.chdir(cwd)
         self.assertNotIn('two briefs', err.getvalue())
+
+    def test_refresh_keeps_both_settings_edits_made_during_confirmation(self):
+        repo, root = self.started_repo()
+        core.pack_add(root, 'guards')
+        names = ('.claude/settings.local.json', '.codex/hooks.json')
+
+        def confirm(*args):
+            for name in names:
+                target = repo / name
+                data = json.loads(target.read_text())
+                data['user_setting'] = name
+                target.write_text(json.dumps(data))
+            return True
+
+        with mock.patch.object(repo_setup, 'confirm', side_effect=confirm), contextlib.redirect_stderr(io.StringIO()):
+            repo_setup.refresh(repo, root, repo_setup.load(repo), False, False)
+        for name in names:
+            with self.subTest(name=name):
+                data = json.loads((repo / name).read_text())
+                self.assertEqual(data.get('user_setting'), name)
+                self.assertIn('PreToolUse', data['hooks'])
+        self.assertEqual(self.start_here(repo, '--undo'), 0)
+        for name in names:
+            self.assertEqual(json.loads((repo / name).read_text()), {'user_setting': name})
