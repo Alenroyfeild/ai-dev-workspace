@@ -41,15 +41,15 @@ On Windows, generated hooks containing `%` in a workspace, kit or interpreter pa
 
 | Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI |
 |---|---|---|---|---|---|
-| Rules | proven | proven | documented, untested | documented, untested | documented, untested |
-| MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
-| Hooks | proven | proven | documented, untested | fixture-tested, Local only | documented, untested |
+| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested |
+| MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested |
+| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested |
 | Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
-| Automatic capture | proven | proven | documented, untested | fixture-tested, v1 transcript only | documented, untested |
+| Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested |
 
 **VS Code Local hooks:** `ws connect vscode` installs `.github/hooks/ai-dev-workspace.json` with SessionStart brief context and non-blocking Stop/PreCompact capture. `ws upgrade` updates managed commands and keeps other settings/hooks. Approve hooks in the client and select the Local harness; no user configuration is modified. The [Local reference](https://code.visualstudio.com/docs/agents/reference/hooks-reference) documents optional `transcript_path`, but not a stable transcript format. Capture accepts only the observed `copilot-agent` version-1 JSONL [Microsoft implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/chat/vscode-node/sessionTranscriptService.ts): conversational content and tool-use presence, excluding attachments, reasoning and tool arguments/results. Missing/unknown transcripts do nothing. This is fixture-tested, not editor-session proof. Agent Host Copilot uses the [different Copilot SDK protocol](https://code.visualstudio.com/docs/agent-customization/hooks) and is **rules plus MCP only** here.
 
-“Proven” means exercised with that client; “documented, untested” means configuration is provided but has not been tested in a live client. “Not wired yet” means the client supports the feature but the workspace does not install it for that client yet. Captured text is always unverified and should be reviewed.
+“Proven” means exercised with that client. “Fixture-tested” means the generated config and hook input/output are checked by automated tests against saved fixtures and the client's docs, but not run in a live client session. “Not wired yet” means the client supports the feature but the workspace does not install it for that client yet. Captured text is always unverified and should be reviewed.
 
 **Claude Code** – open the workspace folder. `CLAUDE.md` loads `AGENTS.md`; `.mcp.json` registers the MCP server. Claude Code asks once to approve the project MCP server; approve it (or check with `claude mcp list`). To work on code in another folder, add that folder as an additional working directory.
 
@@ -98,10 +98,6 @@ The model only sees the deterministic digest, and its answer is checked against 
 `ws packs` lists them (e.g. `ios`). `ws pack add ios` adds runbooks and rules for that platform. Missing your domain? Write a pack: [PACKS.md](PACKS.md).
 
 ## Updates and feedback
-
-### Maintainer: prepare a PyPI upload
-
-The GitHub release workflow publishes GitHub release notes only. For a PyPI release, build `dist/` from the release tag with `python3 setup.py sdist bdist_wheel`, then upload those artifacts using the maintainer's configured PyPI publishing tool. Keep publishing credentials outside the repository; maintainers handle the upload.
 
 The assistant can check `ws notices` at session start. `ws tools` lists optional tools; nothing installs automatically. `ws assist` offers local workspace suggestions and asks before applying. Optional routing, tool profiles and cost controls are in [Advanced settings](ADVANCED.md).
 

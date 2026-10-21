@@ -77,9 +77,8 @@ speaks MCP, but tools return “Run ws start in this repo”; it does not use `W
 the existing memory hooks only for a validated repo link. Unknown events or invalid
 links return `{}`. Existing CLI and server invocations are unchanged.
 
-This is runtime groundwork, not an installable marketplace package. Keep existing
-repo-local connections until packaging, duplicate-connection detection and live
-client checks are complete. Installing or enabling a Codex plugin does not trust
+No Codex plugin package is published yet: keep existing repo-local connections for Codex
+until packaging, duplicate-connection detection and live client checks are complete. Installing or enabling a Codex plugin does not trust
 its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
 
 ### Claude Code plugin (preview)

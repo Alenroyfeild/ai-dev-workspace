@@ -26,6 +26,7 @@ You: “Yes, continue.”
 | Claude Code → Codex | 0/5 | **5/5** |
 | Codex → Codex | 0/3 | **3/3** |
 
+Later Codex → Codex runs (n=5 each) were less favourable: the workspace passed 1/5 and 2/5, while a plain `HANDOFF.md` control passed 4/5 and 5/5. See [bench/README.md](bench/README.md).
 ## Team sharing
 Your notes stay private. Share only what you approve, and your teammates' assistants start with it: after `ws start`, `ws team init <private-repo> --attest-private` (`--yes` in scripts) · `ws know add "Payments API rejects floats" --category domain --team` · `ws sync`. A teammate runs `ws team link <private-repo>`; their next brief shows the note, labelled as shared team context, and their own decisions still win. [Team quick start](docs/TEAM-WORKSPACE.md#quick-start)
 ## Compatibility

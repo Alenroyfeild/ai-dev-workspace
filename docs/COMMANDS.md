@@ -171,7 +171,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 - Unapproved files, staged edits or unpublished local commits stop the sync with a hint and stay intact. An empty remote receives only the bootstrap manifest plus approved copies.
 - `ws sync --pull-only` only fetches and fast-forwards; it never checks publishing receipts or pushes. With `--dry-run` it refuses without contacting Git.
 - Auto-pull: explicit `--auto-pull` consent at link (or `team_workspace.auto_pull=true`) allows quiet read-only pulls at session start and after share or checkpoint (4-second budget). A failure keeps local memory and prints a hint. `ws brief` and `ws search` never pull. `auto_pull=false` stops future automatic pulls.
-- `ws sync --daily HH:MM` previews one managed macOS launchd job (local time) before activating it. `--dry-run` previews only, including any existing managed time. Unmanaged jobs, invalid intervals and changes made after the preview refuse replacement. Other platforms print a cron or Task Scheduler suggestion and change nothing. Each run rechecks consent. Nothing is published or installed automatically.
+- `ws sync --daily HH:MM` needs auto-pull consent first (`ws team link --auto-pull`, or `team_workspace.auto_pull=true`); without it the command stops with "Automatic pulls need explicit link consent". It previews one managed macOS launchd job (local time) before activating it. `--dry-run` previews only, including any existing managed time. Unmanaged jobs, invalid intervals and changes made after the preview refuse replacement. Other platforms print a cron or Task Scheduler suggestion and change nothing. Each run rechecks consent. Nothing is published or installed automatically.
 - `ws team status` saves only alias, task title, a bounded one-line text and the date, for a task you have claimed. `publish_status` defaults to off, and nothing is broadcast on claim or checkpoint. Confirm once, or use `--dry-run` / `--yes`. The brief shows the two newest snapshots, labelled untrusted and last reported, never live availability.
 - `--disable-status` previews removing that alias's approved copy. Git history and other copies keep it, and copies changed by others are not overwritten. Use `ws sync` to move approved records.
 
@@ -219,13 +219,13 @@ Claude's [memory documentation](https://code.claude.com/docs/en/memory#storage-l
 | `ws packs` | List available packs. |
 | `ws pack add <name>` | Add a bundled pack. |
 | `ws pack add --from <dir>` | Add a private local pack. |
-| `ws pack remove <name>` | Remove a private pack. |
+| `ws pack remove <name>` | Remove a private pack, or a bundled pack that has no vault files (`guards`, `discipline`, `web`, `library`, `ml`, `local-llm`, `codex-worker`). |
 
 Details:
 
 - `ws pack remove <name>` deletes only unchanged files that the pack created. Pre-existing or edited files are kept.
 - `ws guard --hook` and `ws discipline --hook [--client C]` are the hook entry points the opt-in `guards` and `discipline` packs install. They read hook JSON on stdin and are not meant to be run by hand.
-- Bundled packs are additive and are not removed by this command.
+- Bundled packs with vault files (`ios`, `obsidian`) are not removed by this command: it reports "No private pack".
 
 ## Maintenance and upgrades
 
