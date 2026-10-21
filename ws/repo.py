@@ -519,7 +519,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
             raw = path(repo, name).read_bytes() if path(repo, name).exists() else None
             if raw == basis.get(name): return desired[name]
             if raw is not None and stripped(name, raw) is None: break
-            basis.clear(); desired[name] = render(repo, root, clients, before, plugin)[name]
+            basis.clear(); desired.update(render(repo, root, clients, before, plugin))
         raise core.WsError('Local file changed during confirmation; rerun ws start: ' + name)
     codex = state['files'].get('.codex/config.toml')
     if codex and codex.get('before') is None: desired['.codex/config.toml'] = core.codex_mcp_config(root).encode()
