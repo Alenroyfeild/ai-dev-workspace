@@ -21,6 +21,7 @@ def isolate_home(case, tmp):
     patch = mock.patch.dict(os.environ, HOME=str(home), USERPROFILE=str(home))
     patch.start()
     case.addCleanup(patch.stop)
+    os.environ.pop('CLAUDE_CONFIG_DIR', None)  # restored by patch.dict; a real one would leak the developer's settings in
     return home
 
 

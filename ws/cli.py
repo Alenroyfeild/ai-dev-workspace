@@ -143,6 +143,8 @@ def text_doctor(report):
         lines.append('Setup preset: ' + report['setup']['preset'] + (f' ({assistants})' if assistants else ''))
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
     for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
+    for path in report.get('claude_plugin_duplicates', []): lines.append('Claude: plugin and ws start hooks both active (two briefs per session) — ' + path + '; disable one')
+    for path in report.get('claude_plugin_missing', []): lines.append('Claude: the plugin was enabled when ws start ran but is not now, so Claude has no memory hooks — ' + path + '; run ws start to restore Claude hooks')
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Workspace-level connections: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
@@ -482,6 +484,8 @@ def main(argv=None):
                 print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
                 print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
                 if result.get('starter'): print(f"Looks like {repo.STARTERS[result['starter']]}: ws pack add {result['starter']} adds a few starter rules (optional).")
+                if repo.plugin_duplicates(Path(result['root']), only=result.get('repo')):
+                    print('Note: the ai-dev-workspace Claude Code plugin is also enabled, so Claude gets two briefs per session. Disable the plugin, or run ws start --undo here.', file=sys.stderr)
             return 2 if result and result.get('partial') else 0
         if a.cmd == 'setup' and a.detect:
             from . import setup

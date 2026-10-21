@@ -2966,6 +2966,8 @@ def doctor(root=None, mcp=False):
         if team is not None: report['team'] = team
         from . import repo
         report['codex_manual_pending'] = repo.codex_pending(root)
+        report['claude_plugin_duplicates'] = repo.plugin_duplicates(root)
+        report['claude_plugin_missing'] = repo.plugin_missing(root)
         if report['codex_manual_pending']: report['codex_status'] = 'manual step pending'
         report['stale_hooks'] = repo.stale_hooks(root)
         report['configured_clients'] = {client: client_connected(root, client)

@@ -7,6 +7,7 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- `ws start` after `git clean -fdx` removes only its own leftover block from `.git/info/exclude`. A damaged block (missing end marker or foreign lines inside) is refused with a message naming that file, instead of deleting your own exclude lines.
 - `ws doctor` no longer reports Claude as not configured in a repo set up by `ws start` (the Claude files live in the repo, not the private workspace). Its text summary now opens with an `OK:` or `Needs attention:` line and no longer prints empty parentheses after `Setup preset`; `ws doctor --json` forces JSON in a terminal (piped output is still JSON). It also says `Needs attention` with `ws upgrade` as the next step when the workspace was written by an older kit; [SETUP.md](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/SETUP.md) has an Upgrading section.
 - `ws init` refuses the filesystem root, your home folder and the system temp folder (subfolders are fine), `ws trace` and `ws run report` stop with `No task <ID>` for an unknown task, and `ws task show --section` lists the valid sections for an unknown one.
 - Imported brief excerpts keep whole items and source IDs together.
@@ -57,6 +58,8 @@
 - `bin/release-smoke` runs the release smoke in one command: it builds the artifacts offline, installs the wheel in a temp venv and drives `ws` end to end in a toy repo with a throwaway HOME (`--wheel PATH`, `--source`, `--json`). See [Cutting a release](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/MAINTAINING.md#cutting-a-release).
 - Task records carry `format: 1` and new lesson metadata carries `"format": 1`. A record written by a newer kit opens read-only: `ws brief`, `ws task find` and `ws recap` show it with a warning, and claim, checkpoint and remember refuse with "written by a newer ai-dev-workspace (format N); update the kit". Old records without the marker work unchanged. The record-corpus test now also covers this (EXIT-04).
 
+### Known limits
+- The Claude Code plugin (preview) and the repo connection from `ws start` both add hooks; with the plugin enabled, `ws start` skips its own Claude brief and capture hooks (opt-in guards and discipline hooks stay); repos started earlier get a warning from `ws doctor` until you rerun `ws start`, which follows the plugin and the packs: it takes out ws's Claude brief hooks and MCP entry when the plugin is enabled, puts them back when it is disabled, and creates or removes the Claude settings file when you add or remove guards or discipline later (the preview lists each file); `ws doctor` also warns when a repo was set up for the plugin and the plugin is no longer enabled.
 ## 0.1.0-beta.5 (2026-10-19)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
@@ -97,8 +100,6 @@ Team workspaces can now receive approved shared updates automatically or be read
 
 ### Fixed
 - Native Claude memory with a UTF-8 BOM now imports its description correctly; BOM-only files are skipped as empty.
-- Imported brief excerpts keep whole items and source IDs together.
-- `ws brief` with no claimed task in a started repo now names the current branch's task and the exact `ws claim` or `ws task new` command to use. `ws start` and the SessionStart hook already resolve the same task for one repo and branch; a test now guards that.
 - Team sync no longer stops when two teammates publish at once: the derived `INDEX.md` is rebuilt after the pull, so both entries are listed, and any remaining pull conflict names the file and the recovery command. A corrupt `team.json` now reports its path, shows in `ws doctor`, and no longer blocks `ws sync --pull-only` from pulling a teammate's fix.
 - Source builds and installed CLI/MCP entry points work from the packaged kit, including builds through pip.
 - `ws doctor` reports your saved automatic team-pull consent instead of saying pulls are not active yet. [Team setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/TEAM-WORKSPACE.md).
