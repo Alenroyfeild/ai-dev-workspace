@@ -118,7 +118,7 @@ def doctor_verdict(report):
     """One line first: OK, or what needs attention and the next step."""
     if report.get('workspace_error'): return 'Needs attention: ' + report['workspace_error']
     core = report.get('core', {})
-    names = {'claude': 'Claude', 'codex': 'Codex', 'cursor': 'Cursor', 'vscode': 'VS Code', 'gemini': 'Gemini'}
+    names = {'claude': 'Claude', 'codex': 'Codex', 'cursor': 'Cursor', 'vscode': 'VS Code', 'gemini': 'Gemini', 'antigravity': 'Antigravity'}
     connected = [names.get(n, n) for n, ok in report.get('configured_clients', {}).items() if ok]
     for key, label in (('python3', 'Python 3'), ('git', 'Git')):
         if key in core and not core[key]: return f'Needs attention: {label} is missing. Next: install it, then run ws doctor again.'
@@ -311,7 +311,7 @@ def main(argv=None):
     s = sub.add_parser('discipline', help='discipline pack: advisory nudge after the same command fails 3 times'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
-    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
+    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini', 'antigravity'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
     s.add_argument('--skills', action='store_true', help='also link the kit skills into your global ~/.claude/skills or ~/.agents/skills')
     s = sub.add_parser('start', help='connect this repo to private memory outside the checkout', formatter_class=argparse.RawDescriptionHelpFormatter,

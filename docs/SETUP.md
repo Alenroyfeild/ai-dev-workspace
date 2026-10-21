@@ -31,7 +31,7 @@ Existing files are kept. Proposed kit content goes beside them as `.ws-new`; rev
 
 ## 3. Connect your assistant
 
-Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, or `ws connect gemini`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints a global-config preview; it is not applied unless you run `ws connect codex --write`, which appends it with a backup and refuses conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
+Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, `ws connect gemini`, or `ws connect antigravity`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints a global-config preview; it is not applied unless you run `ws connect codex --write`, which appends it with a backup and refuses conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
 
 On `ws checkpoint` and `ws brief --refresh`, the current brief is also written into a managed `current-task` block in the existing `.github/copilot-instructions.md` and (when `.cursor/` exists) `.cursor/rules/ws-current-task.mdc`, so Copilot and Cursor see the task's decisions at session start; text outside the block is never touched. `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` are left alone because those clients get the brief from their session-start hooks. Set `"native_writeback": false` in `workspace.json` to turn this off.
 
@@ -39,13 +39,15 @@ On Windows, generated hooks containing `%` in a workspace, kit or interpreter pa
 
 ### Client compatibility
 
-| Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI |
-|---|---|---|---|---|---|
-| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested |
-| MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested |
-| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested |
-| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
-| Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested |
+| Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI | Antigravity |
+|---|---|---|---|---|---|---|
+| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
+| MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
+| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | not wired |
+| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
+| Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested | not wired |
+
+**Antigravity (agy):** `ws connect antigravity` writes project `.agents/mcp_config.json`; rules use the existing `AGENTS.md`/`GEMINI.md`. `ws start` detects `agy` or the Antigravity app, previews repo-local MCP and `GEMINI.md` wiring, and restores previous files on undo. Existing project config is preserved or staged as `.ws-new`; no global Gemini/Antigravity state is changed. Restart/trust the project, approve MCP access, then request `brief` and save decisions with `remember`/`checkpoint`. This is rules+MCP **fixture-tested** support (MCP not verified live); a signed-in native session is not yet proved. Automatic hooks/capture and plugin import are not wired. Antigravity has a different hook dialect from Gemini CLI. References: [rules](https://antigravity.google/docs/rules/), [MCP config](https://antigravity.google/docs/mcp?tab=cli), [hooks](https://antigravity.google/docs/hooks/), [plugins](https://antigravity.google/docs/plugins?tab=cli).
 
 **VS Code Local hooks:** `ws connect vscode` installs `.github/hooks/ai-dev-workspace.json` with SessionStart brief context and non-blocking Stop/PreCompact capture. `ws upgrade` updates managed commands and keeps other settings/hooks. Approve hooks in the client and select the Local harness; no user configuration is modified. The [Local reference](https://code.visualstudio.com/docs/agents/reference/hooks-reference) documents optional `transcript_path`, but not a stable transcript format. Capture accepts only the observed `copilot-agent` version-1 JSONL [Microsoft implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/chat/vscode-node/sessionTranscriptService.ts): conversational content and tool-use presence, excluding attachments, reasoning and tool arguments/results. Missing/unknown transcripts do nothing. This is fixture-tested, not editor-session proof. Agent Host Copilot uses the [different Copilot SDK protocol](https://code.visualstudio.com/docs/agent-customization/hooks) and is **rules plus MCP only** here.
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from . import core, setup, upgrade, memory_import
 
 LINK = '.ws-start.json'
-FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.codex/config.toml.ws-backup', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md')
+FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.codex/config.toml.ws-backup', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md', '.agents/mcp_config.json')
 
 
 def path(repo, name):
@@ -242,7 +242,7 @@ def _missing_in_hook(command, root):
     return '' if Path(workspace).resolve() == Path(root).resolve() else workspace  # resolve: /private symlinks on macOS
 
 
-JSON_FILES = HOOK_FILES + ('.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json')  # merged into, so ws owns only its entries
+JSON_FILES = HOOK_FILES + ('.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', '.agents/mcp_config.json')  # merged into, so ws owns only its entries
 WS_CURSOR_VERSION = 1  # the `version` key core.memory_hooks writes into cursor's hooks.json
 MCP_KEYS = {n: k for n, k in core.MCP_LOCATIONS.values()}
 
@@ -408,7 +408,7 @@ def render(repo, root, clients, prior, plugin=False):
     desired = {}
     for name, prefix in (('CLAUDE.local.md', '@AGENTS.md\n' if (repo / 'AGENTS.md').is_file() else ''), ('AGENTS.override.md', 'Read AGENTS.md for repo rules when it exists.\n')):
         desired[name] = (prior(name) or b'') + ('\n' + prefix + instructions).encode()
-    for client, name in (('cursor', '.cursor/rules/ws-current-task.mdc'), ('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md')):
+    for client, name in (('cursor', '.cursor/rules/ws-current-task.mdc'), ('copilot', '.github/copilot-instructions.md'), ('gemini', 'GEMINI.md'), ('antigravity', 'GEMINI.md')):
         if client not in clients: continue
         if subprocess.check_output(['git', '-C', str(repo), 'ls-files', '--', name], encoding='utf-8', errors='replace').strip():
             print('Keeping tracked instructions: ' + name, file=sys.stderr); continue
@@ -590,7 +590,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     if root.exists() and (not (root / 'workspace.json').is_file() or str(repo) not in core.config(root).get('repos', [])):
         raise core.WsError('Workspace belongs elsewhere or is not a workspace; choose ws start --workspace <dir>.')
     task = branch_task(root, repo, current)
-    clients = ['claude', 'codex'] + [d['assistant'] for d in setup.detect() if d['assistant'] in ('cursor', 'copilot', 'gemini') and (d['cli_available'] or d['apps'])]
+    clients = ['claude', 'codex'] + [d['assistant'] for d in setup.detect() if d['assistant'] in ('cursor', 'copilot', 'gemini', 'antigravity') and (d['cli_available'] or d['apps'])]
     plugin = claude_plugin_enabled(repo)  # the plugin brings Claude's memory hooks and MCP server; pack hooks stay
     desired = render(repo, root, clients, lambda n: path(repo, n).read_bytes() if path(repo, n).exists() else None, plugin)
     desired.update(codex_files(repo, root))

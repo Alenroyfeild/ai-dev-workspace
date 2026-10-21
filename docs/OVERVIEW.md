@@ -106,13 +106,13 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 
 ## Client compatibility
 
-| Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI |
-|---|---|---|---|---|---|
-| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested |
-| MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested |
-| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested |
-| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
-| Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested |
+| Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI | Antigravity |
+|---|---|---|---|---|---|---|
+| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
+| MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
+| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | not wired |
+| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
+| Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested | not wired |
 
 "Proven" means exercised in real sessions of that client. "Fixture-tested" means automated tests check the generated config and hook input/output against saved fixtures and the client's docs; no live session was run. Copilot hooks target the VS Code Local harness ([details](SETUP.md)).
 

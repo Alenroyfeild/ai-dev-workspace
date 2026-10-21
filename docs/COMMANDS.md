@@ -181,7 +181,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 |---|---|
 | `ws init <dir> [--name N] [--repo R] [--pack P]` | Create a workspace. `--repo` and `--pack` are repeatable. |
 | `ws setup [--assistants a,b] [--preset NAME] [--detect] [--dry-run \| --apply]` | Choose assistants and configure project connections. Previews unless you pass `--apply`. |
-| `ws connect claude\|codex\|cursor\|copilot\|vscode\|gemini [--write] [--skills]` | Connect one assistant's project config (MCP, hooks). |
+| `ws connect claude\|codex\|cursor\|copilot\|vscode\|gemini|antigravity [--write] [--skills]` | Connect one assistant's project config (MCP, hooks). |
 | `ws map [<repo>]` | Rewrite the codebase map. |
 | `ws tools [--cost]` | List recommended, optional and caution tools. |
 

@@ -3,7 +3,8 @@
   "codex-only": {"assistants": ["codex"]},
   "cursor-only": {"assistants": ["cursor"]},
   "copilot-only": {"assistants": ["copilot"]},
+  "antigravity-only": {"assistants": ["antigravity"]},
   "gemini-only": {"assistants": ["gemini"]},
   "claude+codex": {"assistants": ["claude", "codex"]},
-  "mixed": {"assistants": ["claude", "codex", "cursor", "copilot", "gemini", "ollama"]}
+  "mixed": {"assistants": ["claude", "codex", "cursor", "copilot", "gemini", "antigravity", "ollama"]}
 }
