@@ -348,6 +348,15 @@ def upgrade_codex(repo, root, state, yes, dry_run):
     return True
 
 
+def relink_tasks(root, old, new):
+    """Point task records whose `repo:` is the moved-from path at the new one; other records are untouched."""
+    for task in core.task_list(root):
+        path = core.task_path(root, task['id'])
+        try: text = path.read_text(encoding='utf-8')
+        except UnicodeDecodeError: print(f'Left {path.name} as is: it is not valid UTF-8, so its repo path was not updated.', file=sys.stderr); continue
+        if core.parse_meta(text).get('repo') == old: core.atomic_write(path, core.set_meta(text, {'repo': new}))
+
+
 def rehome(repo, root, state, yes, dry_run):
     """The repo folder was moved or copied: link this path to its workspace (memory and hooks stay as they are)."""
     if not (root / 'workspace.json').is_file(): raise core.WsError('Linked workspace is missing; run ws start --undo here, then ws start.')
@@ -362,6 +371,7 @@ def rehome(repo, root, state, yes, dry_run):
         # Only the path this repo moved from is dropped, and only when it is gone; other entries (unmounted drives) stay.
         cfg['repos'] = [r for r in cfg.get('repos', []) if r != old or Path(r).is_dir()] + [str(repo)] * (str(repo) not in cfg.get('repos', []))
         core.atomic_write(root / 'workspace.json', json.dumps(cfg, indent=2) + '\n')
+        if old and not Path(old).is_dir(): relink_tasks(root, old, str(repo))  # a surviving copy keeps its own records
     state['exclude'] = str(exclude)
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return True
