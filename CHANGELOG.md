@@ -4,7 +4,6 @@
 
 ### Fixed
 - `ws doctor` still checks your workspace when its optional update cache is damaged.
-- `ws start` refresh keeps edits to multiple assistant settings files made during its confirmation prompt.
 
 ## 0.1.0-beta.5 (2026-10-19)
 
