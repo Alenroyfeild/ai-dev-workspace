@@ -8,6 +8,7 @@ CATEGORIES = ('product', 'feature', 'domain', 'repo', 'runbook', 'other')
 
 
 def category(value):
+    value = value.strip().lower() if isinstance(value, str) else value
     if value not in CATEGORIES: raise core.WsError('Category must be ' + ', '.join(CATEGORIES) + '.')
     return value
 
@@ -59,7 +60,7 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
                                  (value == 'runbook' and meta.get('source', '').startswith('task:'))):
         if not include_all: return None, ''
         value = 'other'
-    category(value)
+    value = category(value)
     body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', raw[end:], flags=re.S)
     if 'ws:captured:' in body or '/ws:captured' in body: raise core.WsError('Malformed capture block.')
     body = sharing.derived(root, body) if layer == 'private' else sharing.portable(root, body)
@@ -74,10 +75,16 @@ def _read(root, path, layer, team_id, summary=False, include_all=False, raw=None
 
 
 CAP_WARNING = 'Catalog examines at most 100 entries per layer; use ws know show for omitted IDs.'
+CAP_PREFIX = 'Catalog examines the newest'
+
+
+def _newest(path):
+    try: return (-path.stat().st_mtime_ns, path.name)
+    except OSError: return (0, path.name)
 
 
 def list_entries(root, value='', layer='all', _index=False, _all=False, limit=100):
-    if value: category(value)
+    if value: value = category(value)
     rows, warnings = [], []
     try: bases = _bases(root, layer)
     except team.ManifestError as exc:
@@ -85,12 +92,13 @@ def list_entries(root, value='', layer='all', _index=False, _all=False, limit=10
         bases = _bases(root, 'private'); warnings.append(f'Team layer skipped, private memory shown: {exc}')  # a bad team.json must not block private reads
         print(warnings[-1], file=sys.stderr)
     for name, base, team_id in bases:
-        scanned = 0
-        for path in sorted(base.glob('*.md')):
-            if path.name == 'INDEX.md' or path.name.endswith('.index.md') or path.stem.endswith('.local'): continue
-            if not core.ID_RE.fullmatch(path.stem): continue
-            if limit and scanned >= limit: warnings.append(CAP_WARNING); break
-            scanned += 1
+        files = [p for p in base.glob('*.md') if p.name != 'INDEX.md' and not p.name.endswith('.index.md')
+                 and not p.stem.endswith('.local') and core.ID_RE.fullmatch(p.stem)]
+        files.sort(key=_newest)
+        if limit and len(files) > limit:
+            warnings.append(f'{CAP_PREFIX} {limit} of {len(files)} {name} entries; use ws know show for omitted IDs.')
+            files = files[:limit]
+        for path in files:
             try: row, _ = _read(root, path, name, team_id, summary=True, include_all=_all)
             except (core.WsError, OSError, ValueError):
                 warnings.append(f'{name}:{path.stem}: entry unreadable, unsafe or conflicted; excluded.'); continue
@@ -116,7 +124,7 @@ def search(root, query, value='', layer='all', include_all=False):
     words = list(dict.fromkeys(re.findall(r'\w{3,}', query.lower())))[:core.MAX_QUERY_WORDS]
     if not words: raise core.WsError('Search needs a word of 3+ letters.')
     hits = []
-    for row in list_entries(root, value, layer, _index=True, _all=include_all)['entries']:
+    for row in list_entries(root, value, layer, _index=True, _all=include_all, limit=0)['entries']:
         counts = row.pop('_counts', {})
         if all(w in counts for w in words) and any(w in row['summary'].lower() for w in words):
             body, score = '\n'.join(row[k] for k in ('summary','tags','outcome')), sum(counts[w] for w in words)

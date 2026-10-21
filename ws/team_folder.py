@@ -7,6 +7,9 @@ from . import cards, core, knowledge, sharing
 
 HINT='Folder pull stopped; retain both copies, resolve conflicts/partial files or pending local edits manually, then retry.'
 
+# Metadata that Windows, macOS, SMB and sync services add on their own; never read or published.
+OS_JUNK=re.compile(r'desktop\.ini|Thumbs\.db|\._.*|\.localized|\.Spotlight-V100|\.fseventsd|\.Trashes|\.TemporaryItems|~\$.*|\.dropbox\.cache|.*\.tmp\.drivedownload|\.~lock\..*#', re.I)
+
 
 def _decode(text):
     try: return json.loads(text)
@@ -41,7 +44,7 @@ def snapshot(root, folder, local=False, allow_empty=False):
             name=path.relative_to(folder).as_posix()
             if name=='INDEX.md':continue  # Derived locally; never read a shared index.
             if name in ('entries','status') and path.is_dir() and not core.is_link(path): continue
-            if (path.name in ('.DS_Store','Icon\r','.dropbox','.dropbox.attr') or path.name.startswith('.ws-')) and not core.is_link(path): continue
+            if (path.name in ('.DS_Store','Icon\r','.dropbox','.dropbox.attr') or path.name.startswith('.ws-') or OS_JUNK.fullmatch(path.name)) and not core.is_link(path): continue
             if path.name.startswith('.') and path.name.endswith('.icloud'):
                 raise core.WsError(path.name[1:-7]+' is not downloaded yet; open the folder in Finder or choose Keep Downloaded, then retry.')
             if not re.fullmatch(r'team\.json|INDEX\.md|entries/[a-f0-9]{32}(?:\.index)?\.md|status/[A-Za-z0-9][A-Za-z0-9_.-]{0,39}\.json',name):

@@ -189,8 +189,11 @@ def decide(root, identifier, decision, until=None):
     if decision == 'always' and identifier not in ('map', 'trace'):
         raise core.WsError('Always is allowed only for map and trace, never installs or configuration changes.')
     if decision == 'snoozed':
-        try: datetime.date.fromisoformat(until or '')
+        # Strict YYYY-MM-DD: Python 3.11+ also accepts 20261001 or 2026-W43-1, which would compare wrongly as text.
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', until or ''): raise core.WsError('Snoozed requires --until YYYY-MM-DD.')
+        try: day = datetime.date.fromisoformat(until)
         except ValueError: raise core.WsError('Snoozed requires --until YYYY-MM-DD.')
+        if day <= datetime.date.fromisoformat(core.now()[:10]): raise core.WsError(f'--until {until} is not in the future; pick a later date.')
     if decision == 'declined':
         until = (datetime.date.fromisoformat(core.now()[:10]) + datetime.timedelta(days=30)).isoformat()
     with core.lock(root):
