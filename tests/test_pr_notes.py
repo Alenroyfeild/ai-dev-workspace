@@ -1,9 +1,8 @@
 import json
-import subprocess
-import sys
 
-from test_ws import Base, KIT
+from test_ws import Base
 from ws import core
+from testutil import run_ws
 
 
 class PrNotesTests(Base):
@@ -46,8 +45,7 @@ class PrNotesTests(Base):
 
     def test_cli_prints_markdown_and_json(self):
         core.remember(self.root, 'use Postgres', 'T-1')
-        run = lambda *args: subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root), 'pr-notes', 'T-1', *args],
-                                           capture_output=True, text=True, check=True).stdout
+        run = lambda *args: run_ws('--workspace-root', self.root, 'pr-notes', 'T-1', *args, check=True).stdout
         self.assertIn('- use Postgres', run('--no-link'))
         self.assertEqual(json.loads(run('--json'))['decisions'], 1)
 

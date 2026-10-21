@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from testutil import run_ws
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,13 +29,13 @@ class ConceptsTests(unittest.TestCase):
             env = dict(os.environ, HOME=str(home), USER='demo', WS_ROOT=str(workspace),
                        PATH=str(fake_bin) + os.pathsep + os.environ['PATH'])
 
-            def run(*args):
-                result = subprocess.run([sys.executable, str(ROOT / 'bin/ws'), *args], env=env,
-                                         cwd=ROOT, text=True, capture_output=True)
+            def run(*args, process=False):  # one real `bin/ws` process (the first call); the rest run in-process
+                result = (subprocess.run([sys.executable, str(ROOT / 'bin/ws'), *args], env=env, cwd=ROOT, text=True, capture_output=True)
+                          if process else run_ws(*args, env=env, cwd=ROOT))
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 return result.stdout
 
-            run('init', str(workspace), '--name', 'concepts', '--repo', str(fixture))
+            run('init', str(workspace), '--name', 'concepts', '--repo', str(fixture), process=True)
             run('connect', 'claude')
             run('task', 'new', 'DEMO-2', 'Make a sample change', '--objective', 'Test each concept.')
             run('claim', 'DEMO-2')

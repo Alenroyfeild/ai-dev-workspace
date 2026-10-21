@@ -13,6 +13,7 @@ KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT))
 from ws import cli, core, upgrade  # noqa: E402
 from mcp import server  # noqa: E402
+from testutil import run_ws
 
 
 class PasteGuardTests(unittest.TestCase):
@@ -110,8 +111,7 @@ class PasteGuardTests(unittest.TestCase):
         many.write_text('\n'.join(f'hit {n}' for n in range(100)))
         focused = core.digest_file(many, max_lines=2, focus='hit', root=self.root)['focus_matches']
         self.assertEqual(focused, ['L1: hit 0', 'L2: hit 1'])
-        proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root),
-                               'digest', str(path), '--focus', 'keep'], cwd=self.root, capture_output=True, text=True)
+        proc = run_ws('--workspace-root', self.root, 'digest', path, '--focus', 'keep', cwd=self.root)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout)['focus_matches'], ['L2: keep this'])
         with self.assertRaises(core.WsError): core.digest_file(path, focus='[', root=self.root)

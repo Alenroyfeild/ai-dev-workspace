@@ -1,8 +1,7 @@
 import json
-import subprocess
-import sys
-from test_ws import Base, KIT
+from test_ws import Base
 from ws import core
+from testutil import run_ws
 
 
 class VscodeHookTests(Base):
@@ -54,8 +53,8 @@ class VscodeHookTests(Base):
         self.assertEqual(core.upgrade_workspace(self.root)['changes'], [])
         transcript = self.root / 'local.jsonl'; transcript.write_text('\n'.join(map(json.dumps, self.transcript())))
         for command, event in (('brief', 'SessionStart'), ('nudge', 'PreCompact'), ('nudge', 'Stop')):
-            run = subprocess.run([sys.executable, str(KIT / 'bin/ws'), command, '--hook', '--client', 'vscode'], cwd=self.root,
-                                 input=json.dumps({'hook_event_name': event, 'transcript_path': str(transcript)}), capture_output=True, text=True)
+            run = run_ws(command, '--hook', '--client', 'vscode', cwd=self.root,
+                         input=json.dumps({'hook_event_name': event, 'transcript_path': str(transcript)}))
             self.assertEqual(run.returncode, 0, run.stderr)
             result = json.loads(run.stdout)
             if event == 'SessionStart': self.assertIn('Inspect cached receipts', result['hookSpecificOutput']['additionalContext'])

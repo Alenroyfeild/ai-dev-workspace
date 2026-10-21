@@ -1,6 +1,5 @@
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -9,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from ws import core  # noqa: E402
-from testutil import isolate_home, rmtree_owned  # noqa: E402
+from testutil import isolate_home, rmtree_owned, run_ws  # noqa: E402
 
 FIX = ROOT / 'tests/fixtures/ready_work'
 
@@ -88,7 +87,7 @@ class NextTests(ReadyWorkBase):
         self.new('D-1', 'D-2', status='ready')
         core.task_depend(self.root, 'D-2', 'D-1')
         env = dict(os.environ, WS_ROOT=str(self.root))
-        run = subprocess.run([sys.executable, str(ROOT / 'bin/ws'), 'next'], env=env, text=True, capture_output=True)
+        run = run_ws('next', env=env)
         self.assertEqual(run.returncode, 0, run.stderr)
         self.assertEqual(run.stdout.strip().splitlines(),
                          ['D-1 ready Title D-1 (unblocks: D-2)', '1 waiting on dependencies'])
@@ -151,7 +150,7 @@ class ImportTests(ReadyWorkBase):
 
     def test_cli_preview_default_and_yes(self):
         env = dict(os.environ, WS_ROOT=str(self.root))
-        def run(*a): return subprocess.run([sys.executable, str(ROOT / 'bin/ws'), 'task', 'import', *a], env=env, text=True, capture_output=True)
+        def run(*a): return run_ws('task', 'import', *a, env=env)
         pre = run(str(FIX / 'speckit-tasks.md'), '--prefix', 'SK')
         self.assertEqual(pre.returncode, 0, pre.stderr)
         self.assertTrue(json.loads(pre.stdout)['preview'])
