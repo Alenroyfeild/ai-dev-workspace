@@ -1802,7 +1802,7 @@ def lesson_search(root, query):
     if query.strip() and not words: raise WsError('Search needs at least one word of 3+ letters.')
     lines = [l for l in read_lenient(path).splitlines() if l.startswith('- ')] if path.exists() else []
     # Match the lesson text, not the hidden paths/area metadata comment.
-    return [l for l in lines if any(w in LESSON_META_RE.sub('', l).lower() for w in words)] if words else lines
+    return [l for l in lines if any(w in LESSON_META_RE.sub('', l.rstrip()).lower() for w in words)] if words else lines
 
 
 _BRIEF_GIT = threading.local()  # memo of read-only git output for one hook/brief; absent otherwise
@@ -1906,7 +1906,7 @@ def relevant_lessons(root, task):
         return git_files['tracked']
     ranked = []
     for line in saved:
-        match = LESSON_META_RE.search(line)
+        match = LESSON_META_RE.search(line.rstrip())
         metadata = {}
         if match:
             try: metadata = json.loads(match[1])

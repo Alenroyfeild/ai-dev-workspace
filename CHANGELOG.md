@@ -7,6 +7,7 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- Team briefs keep the capped-catalog hint with newest-first knowledge lists, and trailing whitespace no longer exposes hidden lesson metadata in searches or brief text.
 - Slack Workflow Builder `/triggers/` webhook URLs and Slack/Discord webhook URLs with mixed-case hostnames are redacted too.
 - Slack and Discord webhook URLs are now redacted like other secrets, `ws brief` no longer stalls (about 7 s on a 60,000-space line) on a Learnings.md line with a long run of spaces, and two docs nits are fixed (pack `kind` list, internal gate names in the parallel-workers note).
 - A relinked (moved) repo keeps its tasks: their `repo:` path follows the move, so `ws brief` and the hooks find the branch task instead of suggesting a duplicate. A non-UTF-8 byte in a task file or Learnings.md no longer crashes read commands, an unwritable file gives a one-line `ws:` error (exit 2) instead of a traceback, and `ws pack add` before `ws start` says to run `ws start` first.

@@ -1,7 +1,6 @@
 # AI Dev Workspace
 
-Switch between Claude Code and Codex without re-explaining your decisions. Your assistant remembers work between sessions in Markdown you own.
-It keeps decisions, the next step and what not to retry, and warns when files it names changed or disappeared. Try it before connecting a repo: `ws demo` · [5-minute tutorial](docs/TUTORIAL.md) · [remove it](docs/TUTORIAL.md#remove-it)
+Switch between Claude Code and Codex without re-explaining your decisions. Your assistant remembers work between sessions in Markdown you own. It keeps decisions, the next step and what not to retry, and warns when files it names changed or disappeared. Try it before connecting a repo: `ws demo` · [5-minute tutorial](docs/TUTORIAL.md) · [remove it](docs/TUTORIAL.md#remove-it)
 <!-- Demo GIF -->
 ## Quick start
 
