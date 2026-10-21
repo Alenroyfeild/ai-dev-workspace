@@ -928,7 +928,9 @@ def connect(root, client, write=False, skills=False, verify=False):
         if client == 'antigravity': generated['hooks'].update(pack_hooks(root, client))
         candidate = json.dumps(generated, indent=2) + '\n'
         with lock(root):
-            merged = hooks(path.read_text(encoding='utf-8'), candidate, allow_new=('PreToolUse',) if client == 'antigravity' else ()) if path.exists() else candidate
+            merged = hooks(path.read_text(encoding='utf-8'), candidate,
+                           allow_new=('PreToolUse',) if client == 'antigravity' else (),
+                           remove=('PreToolUse',) if client == 'antigravity' and 'PreToolUse' not in generated['hooks'] else ()) if path.exists() else candidate
             collisions = []
             if merged is not None: atomic_write(path, merged)
             else: write_preserving(path, candidate.encode(), collisions)

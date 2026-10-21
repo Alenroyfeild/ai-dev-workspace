@@ -7,7 +7,7 @@ import subprocess
 from unittest import mock
 
 from test_ws import Base
-from ws import cli, core, guards, repo, setup
+from ws import cli, core, guards, packs, repo, setup
 
 
 class AntigravityHookTests(Base):
@@ -30,6 +30,17 @@ class AntigravityHookTests(Base):
         core.connect(self.root, 'antigravity')
         self.assertEqual(target.read_bytes(), before)
         self.assertFalse((self.root / '.gemini').exists())
+
+    def test_reconnect_after_guards_removed_keeps_only_user_handlers(self):
+        core.pack_add(self.root, 'guards'); core.connect(self.root, 'antigravity')
+        target = self.root / '.agents/hooks.json'; data = json.loads(target.read_text())
+        user = {'type': 'command', 'command': 'echo user-hook'}
+        data['hooks']['PreToolUse'][0]['hooks'].append(user)
+        target.write_text(json.dumps(data))
+        packs.remove(self.root, 'guards')
+        core.connect(self.root, 'antigravity')
+        handlers = json.loads(target.read_text())['hooks']['PreToolUse']
+        self.assertEqual(handlers, [{'hooks': [user]}])
 
     def test_native_file_tools_deny_secrets_and_disabling_guards(self):
         secret = 'sk-' + 'synthetic1234567890' * 3

@@ -62,11 +62,18 @@ def managed_command(command):
             and (len(rest) == 2 or rest[2] == '--client' and rest[3] in ('claude', 'codex', 'cursor', 'gemini', 'vscode', 'antigravity')))
 
 
-def hooks(old, new, allow_new=()):
+def hooks(old, new, allow_new=(), remove=()):
     """Replace only our hook commands (recognized by `ws brief|nudge --hook`); keep every other setting."""
     try:
         data, desired = json.loads(old.lstrip('\ufeff')), json.loads(new)['hooks']
         found, changed = {}, False
+        for event in remove:
+            entries = data.get('hooks', {}).get(event)
+            if isinstance(entries, list):
+                from .repo import _user_entries
+                kept = _user_entries(entries)
+                changed |= entries != kept
+                data['hooks'][event] = kept
         for event, groups in data.get('hooks', {}).items():
             for index, group in enumerate(groups):
                 for i, hook in enumerate(group.get('hooks', [])):
