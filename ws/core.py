@@ -3044,8 +3044,11 @@ def doctor(root=None, mcp=False):
     report['tools'] = listed_tools
     cache = Path.home() / '.cache' / 'ai-dev-workspace' / 'update.json'
     report['kit'] = {'version': kit_meta()['version']}
-    if cache.is_file():
-        report['kit'].update(json.loads(cache.read_text(encoding='utf-8'))['result'])
+    try:
+        cached = json.loads(cache.read_text(encoding='utf-8')).get('result')
+    except (OSError, ValueError, AttributeError, RecursionError):
+        cached = None  # an optional update cache must not hide the health checks
+    if isinstance(cached, dict): report['kit'].update(cached)
     if root:
         report['workspace'] = str(root)
         cfg = config(root)
