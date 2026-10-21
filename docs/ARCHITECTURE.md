@@ -56,7 +56,7 @@ user request
 ## Scaling and maintenance
 
 - **New domain or tool** → a pack. The core never learns about iOS, Android or a specific AI vendor.
-- **Pack contract** (`pack.json`): `name`, `version`, `kind` (domain | worker | editor), `description`, `requires` (each `cmd` or `app`, `why`, `install`, `optional`), optional `setup` and `selftest` scripts. `ws doctor` reads it; nothing else is needed for discovery.
+- **Pack contract** (`pack.json`): `name`, `version`, `kind` (domain | worker | editor | guard), `description`, `requires` (each `cmd` or `app`, `why`, `install`, `optional`), optional `setup` and `selftest` scripts. `ws doctor` reads it; nothing else is needed for discovery.
 - **Versioned formats**: `workspace.json` has `schema_version`; `ws upgrade` (`ws/upgrade.py`) migrates older workspaces.
 - **Third-party pins**: worker packs pin exact upstream versions and verify a hash before patching. An upstream change means re-running the self-test, never silently trusting it.
 - **Tests guard invariants**, not counts: one-writer claims, stale-write rejection, redaction, MCP protocol replies, pack idempotence, and regressions for every bug found.

@@ -7,6 +7,8 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- Slack Workflow Builder `/triggers/` webhook URLs and Slack/Discord webhook URLs with mixed-case hostnames are redacted too.
+- Slack and Discord webhook URLs are now redacted like other secrets, `ws brief` no longer stalls (about 7 s on a 60,000-space line) on a Learnings.md line with a long run of spaces, and two docs nits are fixed (pack `kind` list, internal gate names in the parallel-workers note).
 - A relinked (moved) repo keeps its tasks: their `repo:` path follows the move, so `ws brief` and the hooks find the branch task instead of suggesting a duplicate. A non-UTF-8 byte in a task file or Learnings.md no longer crashes read commands, an unwritable file gives a one-line `ws:` error (exit 2) instead of a traceback, and `ws pack add` before `ws start` says to run `ws start` first.
 - Redaction hides the whole JWT after a recognized header/payload prefix, including oversized payloads, and private spans stay hidden with long opening-tag attributes.
 - PGP private key blocks (`BEGIN PGP PRIVATE KEY BLOCK`) are redacted; `redact()` is linear on repeated `eyJ-` (JWT segments are bounded); a multi-line `<private>` span in a Handoff no longer leaks into `ws pr-notes` or `ws recap`; `<private x=1>`, `<private >`, `< private>` and `</ private>` count as private tags everywhere.
@@ -100,6 +102,8 @@
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
 
 ### New
+- Start with team context: a new teammate's brief shows recent product, domain and repo knowledge cards before task-specific memory exists, within the usual brief budget and labelled untrusted. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#daily-loop).
+- Try remembered decisions with `ws demo`: an offline, disposable walkthrough that saves a decision and reads it back in a fresh process, without starting an assistant. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 - Team previews at a terminal are a short summary (`+ category text`, destination, `[y/N]`) instead of raw JSON; `ws sync` prints a one-line pulled/published count; `ws know add` keeps a private note's `#private` text and paths as written (sharing it later still strips them) and says clearly when a `--team` note is entirely private; the team docs show the real quick-start order, the `#private`/`<private>` markers and a "rotate pushed secrets" warning.
 - `ws start` previews existing project memory and copies approved text into private knowledge. The first brief includes imported context; originals stay untouched. Use `--no-import` to skip or `--memory-dir` for a custom Claude auto-memory directory.
 
@@ -134,6 +138,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - The PyPI page's documentation links now point to GitHub instead of breaking, and the sidebar lists Documentation, Changelog, Issues and Source links.
 
 ### Fixed
+- Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#set-up).
 - Native Claude memory with a UTF-8 BOM now imports its description correctly; BOM-only files are skipped as empty.
 - Team sync no longer stops when two teammates publish at once: the derived `INDEX.md` is rebuilt after the pull, so both entries are listed, and any remaining pull conflict names the file and the recovery command. A corrupt `team.json` now reports its path, shows in `ws doctor`, and no longer blocks `ws sync --pull-only` from pulling a teammate's fix.
 - Source builds and installed CLI/MCP entry points work from the packaged kit, including builds through pip.
@@ -205,6 +210,8 @@ Product, feature, domain and repo knowledge, plus runbooks from finished tasks. 
 Your saved decisions now survive long handoffs, the MCP server works with clients on the newest protocol, and Google ADK and LangGraph agents can share the same task memory.
 
 ### Improved
+- Session-start hooks create local tasks for new git branches and switch the brief with the branch. Existing decisions and claims are preserved; `capture:false` disables automatic task creation. [Branch memory](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/README.md#what-you-get).
+- Start inside your code repo with `ws start`: preview local files, confirm once, connect detected assistants and claim a task for the branch. Existing files are preserved; running it again only shows status. [Quick start](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/README.md#quick-start-2-minutes).
 - Session-start hooks create local tasks for new git branches and switch the brief with the branch. Existing decisions and claims are preserved; `capture:false` disables automatic task creation. [Branch memory](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/REPO-START.md).
 - Start inside your code repo with `ws start`: preview local files, confirm once, connect detected assistants and claim a task for the branch. Existing files are preserved; running it again only shows status. [Quick start](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/README.md#quick-start).
 - **Decisions come first in the session brief.** A long checkpoint (blockers plus a handoff) used to push saved decisions past the 200-word limit, so the next session never saw them. Each section now has its own budget, decisions and corrections are kept first, and the brief points to the task file when it has to cut.
