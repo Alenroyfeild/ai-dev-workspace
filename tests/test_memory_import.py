@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import re
@@ -6,7 +8,7 @@ import unittest
 from testutil import needs_symlinks
 from unittest import mock
 import test_start
-from ws import core
+from ws import core, memory_import
 
 
 class MemoryImportTests(unittest.TestCase):
@@ -134,6 +136,53 @@ class MemoryImportTests(unittest.TestCase):
         for i in range(17): (rules / f'{i:02}.mdc').write_text('Receipt rule.')
         code, _, preview = self.start('--dry-run')
         self.assertEqual(code, 0); self.assertIn('1 Cursor rule file(s) skipped: 16-file limit', preview)
+
+    def test_unusable_files_do_not_consume_the_cap_and_skips_say_why(self):
+        rules = self.repo / '.cursor/rules'; rules.mkdir(parents=True)
+        for i in range(16):
+            (rules / f'{i:02}.mdc').write_text('   \n' if i % 2 else 'mine #private\n')
+        (rules / '50-big.mdc').write_text('x' * 17000)
+        (rules / '99-valid.mdc').write_text('VALID_LATE_SENTINEL')
+        (self.repo / 'CLAUDE.md').write_text('x' * 17000)
+        code, _, preview = self.start('--dry-run')
+        self.assertEqual(code, 0); self.assertIn('VALID_LATE_SENTINEL', preview)
+        for reason in ('50-big.mdc: larger than 16 KiB', '00.mdc: marked private', '01.mdc: empty', 'CLAUDE.md: larger than 16 KiB'):
+            self.assertIn(reason, preview)
+        self.assertNotIn('16-file limit', preview)
+
+    def test_budget_skipped_files_do_not_consume_the_file_cap(self):
+        rules = self.repo / '.cursor/rules'; rules.mkdir(parents=True)
+        for i in range(16): (rules / f'{i:02}.mdc').write_text('x' * 16000 if i < 4 else 'y' * 2000)
+        (rules / '16-small.mdc').write_text('usable small note')
+        for i, path in enumerate(sorted(rules.glob('*.mdc'))): os.utime(path, (1000 - i, 1000 - i))  # newest first = name order
+        code, _, preview = self.start('--dry-run')
+        self.assertEqual(code, 0)
+        self.assertIn('usable small note', preview); self.assertIn('64 KiB import total', preview)
+        self.assertNotIn('16-file limit', preview)
+
+    def test_newest_files_are_kept_first_and_the_claude_index_is_skipped(self):
+        memory = self.home / 'auto-memory'; memory.mkdir()
+        (memory / 'MEMORY.md').write_text('INDEX_ONLY_SENTINEL'); os.utime(memory / 'MEMORY.md', (5000, 5000))
+        for n in range(20):
+            (memory / f'{n:02}.md').write_text(f'Topic {n}.'); os.utime(memory / f'{n:02}.md', (100 + n, 100 + n))
+        with contextlib.redirect_stderr(io.StringIO()):
+            rows = memory_import.preview(self.repo, memory)
+        self.assertEqual([r['path'].name for r in rows if r['base'] == memory], [f'{n:02}.md' for n in range(19, 3, -1)])
+
+    @needs_symlinks
+    def test_symlink_skip_names_the_file_and_reason(self):
+        (self.repo / 'real.md').write_text('real')
+        (self.repo / 'AGENTS.md').unlink(missing_ok=True); (self.repo / 'AGENTS.md').symlink_to(self.repo / 'real.md')
+        _, _, preview = self.start('--dry-run')
+        self.assertIn('AGENTS.md: symlink, not followed', preview)
+
+    def test_total_size_skip_is_reported(self):
+        for name in ('CLAUDE.md', 'AGENTS.md', '.cursorrules'): (self.repo / name).write_text(('word ' * 3000))
+        (self.repo / '.claude').mkdir(); (self.repo / '.claude/CLAUDE.md').write_text('word ' * 3000)
+        rules = self.repo / '.cursor/rules'; rules.mkdir(parents=True)
+        for i in range(3): (rules / f'{i}.mdc').write_text('word ' * 3000)
+        _, _, preview = self.start('--dry-run')
+        self.assertIn('64 KiB import total', preview)
 
     @needs_symlinks
     def test_unsafe_sources_do_not_consume_the_file_limit(self):
