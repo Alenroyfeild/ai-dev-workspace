@@ -157,7 +157,7 @@ def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
 
 
-def redact_private_keys(text):
+def redact_private_keys(text, keep_lines=False):
     """Hide each private-key block whole: `BEGIN <label>` closes only at the exact `END <label>`; anything between
     (other markers too) is hidden, and no matching END hides the rest. One pass; str.find, no backtracking."""
     out, pos = [], 0
@@ -167,8 +167,8 @@ def redact_private_keys(text):
         out += [text[pos:begin.start()], '[REDACTED]']
         end_marker = f"-----END {' '.join(begin[1].split())}-----"
         end = text.find(end_marker, begin.end())
-        if end < 0: pos = len(text); break
-        pos = end + len(end_marker)
+        pos = len(text) if end < 0 else end + len(end_marker)
+        if keep_lines: out.append('\n' * text.count('\n', begin.start(), pos))
     return ''.join(out) + text[pos:]
 
 
@@ -2437,10 +2437,11 @@ def digest_file(path, max_lines=60, root=None, focus=None):
     path = Path(path)
     raw = read_text(path, read_roots(root) if root is not None else None)
     out = {'file': redact(str(path)), 'bytes': len(raw), 'lines': raw.count('\n') + 1}
+    safe_raw = redact_private_keys(raw, keep_lines=True)  # redact spans before selecting individual lines
     if focus is not None:
         pattern = _focus_pattern(focus)
         matches = []
-        for i, line in enumerate(io.StringIO(raw), 1):
+        for i, line in enumerate(io.StringIO(safe_raw), 1):
             match = pattern.search(line[:4096])
             if match:
                 if len(matches) >= max_lines: break
@@ -2463,7 +2464,7 @@ def digest_file(path, max_lines=60, root=None, focus=None):
     except ValueError:
         pass
     seen, picked = {}, []
-    for i, line in enumerate(raw.splitlines(), 1):
+    for i, line in enumerate(safe_raw.splitlines(), 1):
         if ERR_RE.search(line):
             key = re.sub(r'\d+', '#', redact(line.strip()))[:200]
             if key in seen:
@@ -2473,7 +2474,7 @@ def digest_file(path, max_lines=60, root=None, focus=None):
             picked.append((i, key))
     out['distinct_problem_lines'] = len(picked)
     out['problems'] = [f'L{i} (x{seen[k]}): {redact(k)}' for i, k in picked[:max_lines]]
-    out['tail'] = [redact(l)[:200] for l in raw.splitlines()[-5:]]
+    out['tail'] = [redact(l)[:200] for l in safe_raw.splitlines()[-5:]]
     return out
 
 
