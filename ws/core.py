@@ -1150,14 +1150,22 @@ def _claim_defaults(root, task_id, worker, token):
     return worker if worker is not None else local.get('worker'), token if token is not None else local.get('token')
 
 
+def _refuse_private_identifiers(*values):
+    # Branch/repo are identifiers: stripping would corrupt them, so refuse private markers.
+    if any(isinstance(v, str) and (PRIVATE_TAG_RE.search(v) or re.search(r'#private\b', v, re.I)) for v in values):
+        raise WsError('Branch and repo values cannot contain private markers (<private>, #private); use the real branch name or path.')
+
+
 def task_new(root, task_id, title, objective='', branch='', repo=''):
     title = plain_text(redacted_line(title, 'Title'))
+    _refuse_private_identifiers(branch, repo)
     branch = redacted_line(branch, 'Branch')
     repo = redacted_line(repo, 'Repo')
     configured_repos = config(root).get('repos', [])
     if not repo and isinstance(configured_repos, list) and len(configured_repos) == 1:
         candidate = configured_repos[0]
         if isinstance(candidate, str):
+            _refuse_private_identifiers(candidate)  # the fallback is validated too
             normalized = redacted_line(candidate, 'Repo')
             repo = normalized if normalized == candidate else ''
     path = task_path(root, task_id)
