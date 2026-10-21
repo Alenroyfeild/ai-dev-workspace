@@ -548,20 +548,17 @@ def cmd_reason(command):
 
 
 def _added(tool_input, cwd):
-    """(new text, removed text) a file edit would introduce, for Claude Write/Edit/MultiEdit/NotebookEdit, Codex apply_patch and Antigravity write_file/edit_file."""
+    """(new text, removed text) a file edit would introduce, for Claude Write/Edit/MultiEdit/NotebookEdit and Codex apply_patch."""
     if 'edits' in tool_input and isinstance(tool_input['edits'], list):
         pairs = [(e.get('new_string', ''), e.get('old_string', '')) for e in tool_input['edits'] if isinstance(e, dict)]
         return ''.join(p[0] for p in pairs), ''.join(p[1] for p in pairs)
     if 'new_string' in tool_input: return str(tool_input['new_string']), str(tool_input.get('old_string', ''))
-    if 'Replacement' in tool_input: return str(tool_input['Replacement']), str(tool_input.get('Target', ''))
     if 'new_source' in tool_input: return str(tool_input['new_source']), ''
-    if 'content' in tool_input or 'Content' in tool_input:
-        content_val = tool_input.get('content') if 'content' in tool_input else tool_input.get('Content')
-        file_path_val = tool_input.get('file_path') or tool_input.get('Path') or ''
+    if 'content' in tool_input:
         old = ''
-        try: old = (Path(cwd or '.') / str(file_path_val)).read_text(encoding='utf-8', errors='replace')
+        try: old = (Path(cwd or '.') / str(tool_input.get('file_path', ''))).read_text(encoding='utf-8', errors='replace')
         except OSError: pass
-        return str(content_val), old
+        return str(tool_input['content']), old
     return '', ''
 
 
@@ -587,7 +584,7 @@ def _guard_entries(text):
     try: data = json.loads(text)
     except ValueError: return None
     if not isinstance(data, dict): return None
-    groups = (data.get('hooks') or {}).get('PreToolUse') if isinstance(data.get('hooks'), dict) else None
+    groups = data['hooks'].get('PreToolUse') if isinstance(data.get('hooks'), dict) and data['hooks'].get('enabled') is not False else None
     found = {}
     for group in groups if isinstance(groups, list) else []:
         if not isinstance(group, dict) or not isinstance(group.get('hooks'), list): continue
@@ -695,8 +692,8 @@ def _patch_reason(patch, cwd=None):
 
 
 def _command_text(tool_name, tool_input):
-    """The shell command or patch text of a tool call: Claude `command`, Codex `command` (argv list) or `cmd`, a patch in `input`, Antigravity `CommandLine`."""
-    for key in ('command', 'cmd', 'input', 'CommandLine'):
+    """The shell command or patch text of a tool call: Claude `command`, Codex `command` (argv list) or `cmd`, a patch in `input`."""
+    for key in ('command', 'cmd', 'input'):
         value = tool_input.get(key)
         if isinstance(value, list): value = shlex.join(map(str, value))  # Codex sends argv, e.g. ["bash", "-lc", "..."]
         if isinstance(value, str) and value and (key != 'input' or tool_name == 'apply_patch' or value.lstrip().startswith('*** Begin Patch')): return value
@@ -709,21 +706,30 @@ def reason(tool_name, tool_input, cwd=None):
     command = _command_text(tool_name, tool_input)
     if tool_name == 'apply_patch' or command.lstrip().startswith('*** Begin Patch'): return _patch_reason(command, cwd)
     if command: return command_reason(command, tool_name == 'PowerShell') or powershell_reason(command)  # PowerShell rules for every tool: Codex on Windows runs PowerShell under a Bash-named tool
-    path = str(tool_input.get('file_path') or tool_input.get('notebook_path') or tool_input.get('Path') or tool_input.get('path') or '')
+    path = str(tool_input.get('file_path') or tool_input.get('notebook_path') or '')
     why = _hook_edit_reason(tool_input, path, cwd) if _HOOK_FILE.search(path) else ''
     return why or _edit_reason(*_added(tool_input, cwd))
 
 
 def hook(payload, client='claude'):
-    """PreToolUse hook output: deny with a reason, or {} to allow."""
+    """PreToolUse output in the selected client dialect; unknown inputs fail open."""
     if not isinstance(payload, dict): return {}
-    tool_call = payload.get('toolCall') if isinstance(payload.get('toolCall'), dict) else {}
-    tool_name = tool_call.get('name') or payload.get('tool_name') or ''
-    tool_input = tool_call.get('args') if tool_call else payload.get('tool_input')
-    cwd = payload.get('cwd') or (payload.get('workspacePaths', [None])[0] if isinstance(payload.get('workspacePaths'), list) and payload.get('workspacePaths') else None)
-    why = reason(tool_name, tool_input, cwd)
-    if not why: return {}
-    why = f'ws guards: {why} If the user really wants this, they can run it themselves or start the assistant with WS_GUARDS=off.'
     if client == 'antigravity':
-        return {'decision': 'deny', 'reason': why}
+        call = payload.get('toolCall'); call = call if isinstance(call, dict) else {}
+        args = call.get('args'); args = args if isinstance(args, dict) else {}
+        paths = payload.get('workspacePaths')
+        mapped = dict(args)
+        for native, common in (('CommandLine', 'command'), ('TargetFile', 'file_path'),
+                               ('CodeContent', 'content'), ('TargetContent', 'old_string'),
+                               ('ReplacementContent', 'new_string')):
+            if native in args: mapped[common] = args[native]
+        if isinstance(args.get('ReplacementChunks'), list):
+            mapped['edits'] = [{'old_string': chunk.get('TargetContent', ''), 'new_string': chunk.get('ReplacementContent', '')}
+                               for chunk in args['ReplacementChunks'] if isinstance(chunk, dict)]
+        payload = {'tool_name': call.get('name'), 'tool_input': mapped,
+                   'cwd': paths[0] if isinstance(paths, list) and paths else None}
+    why = reason(payload.get('tool_name', ''), payload.get('tool_input'), payload.get('cwd'))
+    if not why: return {'decision': 'allow'} if client == 'antigravity' else {}
+    why = f'ws guards: {why} If the user really wants this, they can run it themselves or start the assistant with WS_GUARDS=off.'
+    if client == 'antigravity': return {'decision': 'deny', 'reason': why}
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': why}}

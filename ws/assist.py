@@ -58,17 +58,14 @@ def _scan():
 
 
 def observe(root, payload):
-    if not isinstance(payload, dict): return
-    session_id = payload.get('session_id') or payload.get('conversationId')
-    transcript_path = payload.get('transcript_path') or payload.get('transcriptPath')
-    if not session_id and not transcript_path:
+    if not payload.get('session_id') and not payload.get('transcript_path'):
         return
     with core.lock(root):
         data = state(root)
-        if payload.get('hook_event_name') in ('SessionStart', 'sessionStart') and session_id:
+        if payload.get('hook_event_name') in ('SessionStart', 'sessionStart') and payload.get('session_id'):
             data.pop('long_session_bytes', None)
             current = core.sole_local_claim(root)
-            bindings = data.setdefault('session_tasks', {}); sid = core.digest_text(str(session_id))
+            bindings = data.setdefault('session_tasks', {}); sid = core.digest_text(str(payload['session_id']))
             previous = bindings.pop(sid, current)
             bindings[sid] = current if previous == current else ''
             while len(bindings) > 200:
@@ -79,11 +76,11 @@ def observe(root, payload):
                 meta = core.task_read(root, task['id'], ['Next action'])['meta']
                 count = meta.get('checkpoint_count', '0')
                 record = data.setdefault('sessions', {}).setdefault(task['id'], {})
-                sid = core.digest_text(str(session_id))
+                sid = core.digest_text(str(payload['session_id']))
                 if record.get('last') != sid:
                     record.update(last=sid, count=(record.get('count', 0) if record.get('checkpoint') == count else 0) + 1, checkpoint=count)
         try:
-            transcript = transcript_path
+            transcript = payload.get('transcript_path')
             size = Path(transcript).stat().st_size if isinstance(transcript, str) and transcript else 0
             if size > 2000000:
                 data['long_session_bytes'] = size

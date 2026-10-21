@@ -28,7 +28,7 @@ def pointer_files():
 
 def fingerprint(root):
     from .orchestration import routing_template
-    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text(encoding='utf-8') + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(pointer_files(), sort_keys=True) + json.dumps([core.memory_hooks(root, c) for c in ('claude', 'codex', 'cursor', 'gemini', 'vscode')], sort_keys=True))
+    return core.digest_text((core.KIT / 'template/AGENTS.md').read_text(encoding='utf-8') + routing_template() + json.dumps(skills(), sort_keys=True) + json.dumps(pointer_files(), sort_keys=True) + json.dumps([core.memory_hooks(root, c) for c in ('claude', 'codex', 'cursor', 'gemini', 'vscode', 'antigravity')], sort_keys=True))
 
 
 def markdown(old, new):
@@ -58,11 +58,11 @@ def managed_command(command):
     rest = parts[2:]
     if rest[:1] == ['--workspace-root']:
         rest = rest[2:]
-    return (len(rest) in (2, 4) and rest[0] in ('brief', 'nudge', 'paste') and rest[1] == '--hook'
-            and (len(rest) == 2 or rest[2] == '--client' and rest[3] in ('claude', 'codex', 'cursor', 'gemini', 'vscode')))
+    return (len(rest) in (2, 4) and (rest[0] in ('brief', 'nudge', 'paste') or rest[0] == 'guard' and rest[-2:] == ['--client', 'antigravity']) and rest[1] == '--hook'
+            and (len(rest) == 2 or rest[2] == '--client' and rest[3] in ('claude', 'codex', 'cursor', 'gemini', 'vscode', 'antigravity')))
 
 
-def hooks(old, new):
+def hooks(old, new, allow_new=()):
     """Replace only our hook commands (recognized by `ws brief|nudge --hook`); keep every other setting."""
     try:
         data, desired = json.loads(old.lstrip('\ufeff')), json.loads(new)['hooks']
@@ -79,7 +79,7 @@ def hooks(old, new):
                     found[event] = found.get(event, 0) + 1
                     want = desired[event][0]; changed |= group != want; groups[index] = want
         additions = set(desired) - set(found)
-        if additions - {'UserPromptSubmit', 'beforeSubmitPrompt', 'BeforeAgent'} or any(n != 1 for n in found.values()):
+        if additions - {'UserPromptSubmit', 'beforeSubmitPrompt', 'BeforeAgent', *allow_new} or any(n != 1 for n in found.values()):
             return None  # Missing lifecycle hooks or duplicate handlers need review.
         for event in additions:
             groups = data.setdefault('hooks', {}).get(event, [])
@@ -165,7 +165,7 @@ def upgrade(root, dry_run=False, expected=None):
             if not isinstance(existing_routing, dict): existing_routing = {}
         except (OSError, ValueError): existing_routing = {}
         selected_routing = routing_template(existing_routing.get('preset', 'mixed'), existing_routing.get('assistants'))
-        clients = {'.claude/settings.json': 'claude', '.codex/hooks.json': 'codex', '.cursor/hooks.json': 'cursor', '.gemini/settings.json': 'gemini', '.github/hooks/ai-dev-workspace.json': 'vscode'}
+        clients = {'.claude/settings.json': 'claude', '.codex/hooks.json': 'codex', '.cursor/hooks.json': 'cursor', '.gemini/settings.json': 'gemini', '.github/hooks/ai-dev-workspace.json': 'vscode', '.agents/hooks.json': 'antigravity'}
         desired = {'AGENTS.md': rules, 'routing.json': selected_routing, **{p: json.dumps(core.memory_hooks(root, c), indent=2) + '\n'
                    for p, c in clients.items() if c in ('claude', 'codex') or (root / p).exists()}, **skills(), **pointer_files()}
         from . import packs

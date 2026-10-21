@@ -44,10 +44,11 @@ class ClientDocShapeTests(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue()), expected)
 
     def test_entry_nesting(self):
-        # Cursor and VS Code take flat hook entries; Claude Code, Codex, Gemini and Antigravity nest them under "hooks".
+        # Cursor/VS Code and Antigravity SessionStart use direct command handlers.
         self.assertEqual(self.hooks('cursor')['stop'][0]['type'], 'command')
         self.assertEqual(self.hooks('vscode')['Stop'][0]['type'], 'command')
-        for client in ('claude', 'codex', 'gemini', 'antigravity'):
+        self.assertEqual(self.hooks('antigravity')['SessionStart'][0]['type'], 'command')
+        for client in ('claude', 'codex', 'gemini'):
             self.assertEqual(self.hooks(client)['SessionStart'][0]['hooks'][0]['type'], 'command')
 
     def test_static_config_locations(self):

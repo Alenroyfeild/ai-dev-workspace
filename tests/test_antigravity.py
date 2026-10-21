@@ -29,7 +29,7 @@ class AntigravityTests(Base):
         self.assertEqual((self.root / 'AGENTS.md').read_bytes(), agents)
         self.assertEqual((self.root / 'GEMINI.md').read_bytes(), gemini)
         self.assertFalse((Path.home() / '.gemini').exists())
-        self.assertNotIn('hooks', report)
+        self.assertIn('hooks', report)
         self.assertTrue(core.doctor(self.root)['configured_clients']['antigravity'])
 
     def test_connect_keeps_existing_config_and_stages_a_merged_proposal(self):
@@ -75,7 +75,7 @@ class AntigravityTests(Base):
                 self.assertTrue((repo / '.agents/hooks.json').exists())
                 hooks = json.loads((repo / '.agents/hooks.json').read_text())['hooks']
                 self.assertIn('SessionStart', hooks)
-                self.assertIn('brief --hook --client antigravity', hooks['SessionStart'][0]['hooks'][0]['command'])
+                self.assertIn('brief --hook --client antigravity', hooks['SessionStart'][0]['command'])
                 wiring.start(remove=True)
         finally:
             os.chdir(cwd)
@@ -168,7 +168,7 @@ class AntigravityTests(Base):
             code = cli.main(['guard', '--hook', '--client', 'antigravity'])
         self.assertEqual(code, 0)
         report = json.loads(out.getvalue())
-        self.assertEqual(report, {})
+        self.assertEqual(report, {'decision': 'allow'})
 
     def test_start_undo_cleans_empty_agents_directory_only_when_ws_created_it(self):
         repo = self.root.parent / 'app-with-agents'; repo.mkdir()

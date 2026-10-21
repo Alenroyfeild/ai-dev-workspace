@@ -594,7 +594,7 @@ def memory_hooks(root, client='claude'):
         suffix = ['brief' if event.lower() == 'sessionstart' else 'nudge', '--hook'] + ([] if client == 'claude' else ['--client', client])
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
                 'command': encoded_hook_command(arguments + suffix) if needs_encoded_launcher(arguments) else command + ' ' + ' '.join(suffix)}
-        result['hooks'][event] = [hook if client in ('cursor', 'vscode') else {'hooks': [hook]}]
+        result['hooks'][event] = [hook if client in ('cursor', 'vscode', 'antigravity') else {'hooks': [hook]}]
     if prompt_event:
         suffix = ['paste', '--hook', '--client', client]
         hook = {'type': 'command', 'timeout': 10000 if client == 'gemini' else 10,
@@ -921,12 +921,14 @@ def connect(root, client, write=False, skills=False, verify=False):
         # Gemini keeps MCP servers and hooks in one settings file: merge both, touching only our entries.
         return dict(_connect_gemini(root), **({'mcp': mcp_doctor(root, ('gemini',))[0]} if verify else {}))
     result = _connect_config(root, client, write)
-    if client in ('cursor', 'codex', 'vscode'):
+    if client in ('cursor', 'codex', 'vscode', 'antigravity'):
         from .upgrade import hooks
-        relative = {'cursor': '.cursor/hooks.json', 'codex': '.codex/hooks.json', 'vscode': '.github/hooks/ai-dev-workspace.json'}[client]
-        path = inside(root / relative, [root]); candidate = json.dumps(memory_hooks(root, client), indent=2) + '\n'
+        relative = {'cursor': '.cursor/hooks.json', 'codex': '.codex/hooks.json', 'vscode': '.github/hooks/ai-dev-workspace.json', 'antigravity': '.agents/hooks.json'}[client]
+        path = inside(root / relative, [root]); generated = memory_hooks(root, client)
+        if client == 'antigravity': generated['hooks'].update(pack_hooks(root, client))
+        candidate = json.dumps(generated, indent=2) + '\n'
         with lock(root):
-            merged = hooks(path.read_text(encoding='utf-8'), candidate) if path.exists() else candidate
+            merged = hooks(path.read_text(encoding='utf-8'), candidate, allow_new=('PreToolUse',) if client == 'antigravity' else ()) if path.exists() else candidate
             collisions = []
             if merged is not None: atomic_write(path, merged)
             else: write_preserving(path, candidate.encode(), collisions)
