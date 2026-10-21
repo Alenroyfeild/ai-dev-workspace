@@ -7,6 +7,15 @@
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- `ws feedback submit` localizes home paths in the issue title and body like recap and pr-notes do, and reports a clear error (with the `ws feedback link` command) when `gh issue create` succeeds but prints no URL.
+- Hand-edited or foreign lines in `vault/Runs/*.jsonl` are skipped with one warning naming the file instead of crashing `status`, `trace`, `brief`, `nudge` and `assist`; `ws trace` rounds seconds to two decimals.
+- `ws assist` and `ws notices` ignore Codeburn output of an unexpected shape instead of crashing.
+- `ws paste` and `ws digest` on extremely deeply nested JSON fall back to the text summary instead of crashing after saving the paste.
+- `ws sync --dry-run` (or declining the preview) says how many files are pending instead of "nothing to publish."
+- `ws recap` no longer shows `&#x27;` for apostrophes in the team section.
+- `ws team link|init --folder PATH` now works (`PATH --folder` still does).
+- A damaged `.ws/shares.json`, `.ws/folder-base.json` or `.ws/assist.json` names the file and the recovery instead of a bare JSON decoder message.
+- `ws pr-notes` parses captured blocks in one pass, so many unterminated capture markers no longer take seconds.
 - Shared notes and summaries no longer turn closing tags such as `</form>` or `</div>` into `<[local path]>`; real local paths are still replaced, including ones in angle brackets such as `</opt/x/file.txt>`.
 - One hand-edited private Knowledge note (wrong category, for example) no longer blocks every `ws know add` and team share: it is skipped with a warning that names the file. Categories are accepted in any letter case, and a UTF-8 byte-order mark at the start of a note is tolerated.
 - `ws search --category` now looks at every note, not the first 100 by random ID; `ws know list` caps at the newest 100 per layer and says "newest N of M" when it does.

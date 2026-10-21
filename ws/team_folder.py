@@ -122,7 +122,7 @@ def source(root):
 
 def pull(root):
     link=core.config(root)['team_workspace'];data=source(root)
-    base=sharing._safe(root,root/'.ws/folder-base.json');saved=json.loads(sharing._text(base));local=root/'.ws/team'
+    base=sharing._safe(root,root/'.ws/folder-base.json');saved=core.load_json(sharing._text(base),'.ws/folder-base.json');local=root/'.ws/team'
     if isinstance(saved,dict):saved.pop('INDEX.md',None)
     # Local snapshots use the same strict inventory; never discard pending edits.
     current=snapshot(root,local,local=True)['files']

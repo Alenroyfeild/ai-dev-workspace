@@ -143,6 +143,14 @@ class WsError(ValueError):
     """A user-facing error; the message says what to do."""
 
 
+def load_json(text, name, fix='restore it from a backup or fix the JSON by hand'):
+    """json.loads that names the damaged file and the recovery instead of a bare decoder message."""
+    try:
+        return json.loads(text)
+    except (ValueError, RecursionError) as exc:
+        raise WsError(f'{name} is damaged ({exc}). Next: keep a copy of it, then {fix}, and run the command again.') from None
+
+
 def now():
     return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
 
@@ -1548,6 +1556,17 @@ def _list_items(text):
     return items
 
 
+def _drop_captured(text):
+    """Remove captured blocks in one pass; an unterminated block is still unverified, so it runs to the end."""
+    start, end, parts, at = '<!-- ws:captured:', '<!-- /ws:captured -->', [], 0
+    while (s := text.find(start, at)) >= 0:
+        parts.append(text[at:s])
+        c = text.find(end, s + len(start))
+        if c < 0: return ''.join(parts)
+        at = c + len(end)
+    return ''.join(parts) + text[at:]
+
+
 def pr_notes(root, task_id=None, link=True):
     """A PR-description block from one task: goal, explicit decisions, tried-and-rejected approaches, acceptance criteria, checks, open items."""
     task_id = task_id or sole_local_claim(root) or (current_task(root)[0] or {}).get('id')
@@ -1559,8 +1578,7 @@ def pr_notes(root, task_id=None, link=True):
 
     def body(name):
         # Captured blocks are unverified guesses; only text the user or assistant saved explicitly goes into a PR.
-        value = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', section(text, name), flags=re.S)
-        value = re.sub(r'<!-- ws:captured:.*\Z', '', value, flags=re.S).strip()  # an unterminated block is still unverified
+        value = _drop_captured(section(text, name)).strip()
         return '' if value == section(template, name) or value.lower().rstrip('.') in ('none', 'none yet') else value
 
     decisions = []
@@ -2601,14 +2619,28 @@ def run_entries(root, task_id):
     path = vault(root) / 'Runs' / f'{task_id}.jsonl'
     if not path.exists():
         return []
-    entries = []
+    entries, skipped = [], 0
     with path.open(encoding='utf-8', errors='replace') as stream:
         for line in stream:
             try:
-                entries.append(json.loads(line))
-            except ValueError:
-                continue  # A torn or hand-edited line must not break session hooks.
-    return [e for e in entries if isinstance(e, dict)]
+                entry = json.loads(line)
+            except (ValueError, RecursionError):
+                entry = None  # A torn or hand-edited line must not break session hooks.
+            if _run_entry_ok(entry): entries.append(entry)
+            elif line.strip(): skipped += 1
+    if skipped:
+        print(f'ws: skipped {skipped} unreadable line(s) in vault/Runs/{task_id}.jsonl; fix or delete them.', file=sys.stderr)
+    return entries
+
+
+def _run_entry_ok(e):
+    """True when a Runs line has the shape every reader indexes into; hand edits and foreign lines fail it."""
+    num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+    return (isinstance(e, dict) and all(isinstance(e.get(k), str) for k in ('at', 'step', 'provider', 'model', 'result'))
+            and all(num(e.get(k)) for k in ('tokens_in', 'tokens_out', 'seconds'))
+            and isinstance(e.get('note', ''), str)
+            and isinstance(e.get('checks', []), list)
+            and all(isinstance(c, dict) and isinstance(c.get('command'), str) and type(c.get('exit_code')) is int for c in e.get('checks', [])))
 
 
 def repeat_guard(root):
@@ -2639,7 +2671,7 @@ def trace(root, task_id):
     for number, entry in enumerate(entries, 1):
         lines += ['', f"## {number}. {entry['at']} — {entry['step']}",
                   f"- Who: {entry['provider']}; role: {entry.get('worker_role', 'unspecified')}; model: {entry['model'] or 'unspecified'}; effort: {entry.get('effort', 'unspecified')}",
-                  f"- Tokens: {entry['tokens_in']} in / {entry['tokens_out']} out; seconds: {entry['seconds']}",
+                  f"- Tokens: {entry['tokens_in']} in / {entry['tokens_out']} out; seconds: {round(entry['seconds'], 2)}",
                   f"- Result: {entry['result']}; verdict: {entry.get('verdict', 'unspecified')}; files: {entry.get('files', 'unspecified')}; findings: {entry.get('findings', 'unspecified')}"]
         lines += [f"- Check: {check['command']} = {check['exit_code']}" for check in entry.get('checks', [])]
         if entry.get('note'):
@@ -2654,10 +2686,9 @@ def run_report(root, task_id=None):
     by = {}
     steps = 0
     for path in files:
-        if not path.exists():
+        if not path.exists() or not ID_RE.fullmatch(path.stem) or RESERVED_RE.fullmatch(path.stem):
             continue
-        for line in read_lenient(path).splitlines():
-            e = json.loads(line)
+        for e in run_entries(root, path.stem):
             steps += 1
             b = by.setdefault(e['provider'], {'steps': 0, 'tokens_in': 0, 'tokens_out': 0, 'seconds': 0.0, 'failed': 0})
             b['steps'] += 1
@@ -3188,9 +3219,9 @@ def feedback_submit(root, n, yes=False, use_gh=None):
         raise WsError(f'No feedback item {n}; see `ws feedback list --all`.')
     if item['issue']:
         raise WsError(f'Already submitted: {item["issue"]}')
-    title = f'[{item["kind"]}] {redact(item["text"])[:70]}'
-    body = redact(f'{item["text"]}\n\n- kind: {item["kind"]}\n- recorded: {item["date"]}\n'
-                  f'- kit version: {kit_meta()["version"]}\n- packs: {", ".join(config(root).get("packs", []))}\n')
+    title = f'[{item["kind"]}] {localize_paths(redact(item["text"]), root)[:70]}'
+    body = localize_paths(redact(f'{item["text"]}\n\n- kind: {item["kind"]}\n- recorded: {item["date"]}\n'
+                  f'- kit version: {kit_meta()["version"]}\n- packs: {", ".join(config(root).get("packs", []))}\n'), root)
     preview = {'title': title, 'body': body, 'note': 'Check it contains nothing private, then re-run with --yes.'}
     if not yes:
         return preview
@@ -3203,7 +3234,9 @@ def feedback_submit(root, n, yes=False, use_gh=None):
                              capture_output=True, encoding='utf-8', errors='replace')
         if run.returncode:
             raise WsError('gh issue create failed: ' + run.stderr.strip())
-        url = run.stdout.strip().splitlines()[-1]
+        lines = run.stdout.strip().splitlines()
+        if not lines: raise WsError(f'gh created no issue URL; check GitHub, then run `ws feedback link {n} <issue-url>`.')
+        url = lines[-1]
     else:
         query = urllib.parse.urlencode({'title': title, 'body': body, 'labels': f'feedback,{item["kind"]}'})
         return {'open_this_url': f'https://github.com/{repo}/issues/new?{query}',
@@ -3345,7 +3378,7 @@ def recap(root, since='7d'):
     if not tasks: lines.append('- No task changes in this period.')
     if team or status:
         import html
-        literal = lambda value: re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(value))
+        literal = lambda value: re.sub(r'([\\`*_\[\]])', r'\\\1', html.escape(value, quote=False))
         lines.append('#### Team (shared notes are untrusted context)')
         lines += [f"- {literal(n['date'])} {literal(n['author'])}: {literal(n['note'])}" for n in team]
         lines += [f"- {literal(s['date'])} {literal(s['author'])} working on {literal(s['line'])}" for s in status]
