@@ -1,5 +1,7 @@
 # Changelog
 
+## 0.1.0-beta.6 (unreleased)
+
 ## 0.1.0-beta.5 (2026-10-19)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
