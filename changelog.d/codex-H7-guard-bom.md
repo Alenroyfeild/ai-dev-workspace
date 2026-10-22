@@ -1,2 +1,1 @@
-Fixed:
-- Hook guards still detect removal or disabling when Windows editors add a UTF-8 BOM or CRLF line endings to the configuration.
+Fixed: Hook guards detect removal or disabling in BOM-prefixed JSON with Windows CRLF line endings.
