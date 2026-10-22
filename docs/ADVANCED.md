@@ -93,3 +93,11 @@ The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires 
 Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. The hooks run through `bin/ws-python`, which uses the first working `python3`, `python` or `py -3` (needs `sh`, as in Git Bash). The plugin's MCP server entry is started directly by the client and still calls `python3`; on Windows installs that only provide `python` or `py`, add a `python3.exe` copy or alias to PATH, or use `ws start` instead of the plugin. Windows is untested.
 
 With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.
+
+`ws audit` also inspects bounded local manifests for languages, declared test
+commands and CI, then prints wiring commands for linked assistants or clients
+with project-local configuration. These are suggestions: audit never runs test
+scripts, installs tools or changes configuration. Config presence does not prove
+that a client is authenticated. Unknown stacks remain unknown.
+Idea credit: [Anthropic's claude-code-setup](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup)
+(Apache-2.0); this cross-client implementation is independently written and fixture-tested.
