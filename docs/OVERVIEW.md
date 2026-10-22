@@ -132,6 +132,7 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 
 | Pack | Adds | Needs |
 |---|---|---|
+| `behavior` | Opt-in engineering guidelines: think first, minimal changes, surgical edits, and verify work (under 70 words) | nothing |
 | `obsidian` | Open the memory as a linked Obsidian vault | [Obsidian](https://obsidian.md) |
 | `local-llm` | Free on-device log triage | [Ollama](https://ollama.com) and a small model |
 | `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |

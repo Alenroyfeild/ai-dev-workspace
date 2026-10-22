@@ -29,7 +29,7 @@ packs/android/
 }
 ```
 
-- `kind`: `domain` (knowledge for a platform), `worker` (a cheaper executor), `editor` (a way to read the vault), or `guard` (the built-in `guards` and `discipline` packs: hooks that `ws start` adds to Claude Code and Codex while the pack is on).
+- `kind`: `domain` (knowledge for a platform), `worker` (a cheaper executor), `editor` (a way to read the vault), `rules` (opt-in guidelines like `behavior`), or `guard` (the built-in `guards` and `discipline` packs: hooks that `ws start` adds to Claude Code and Codex while the pack is on).
 - `next`: optional lines `ws pack add` prints after installing, such as "run ws start again".
 - `requires`: each entry has `cmd` (checked on PATH) or `app` (checked in /Applications), plus `why` and `install`. `ws doctor` shows unmet ones with the install line.
 
