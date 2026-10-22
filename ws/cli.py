@@ -308,6 +308,7 @@ def main(argv=None):
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary (default in a terminal)'); s.add_argument('--json', action='store_true', help='print JSON even in a terminal')
     s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('guard', help='guards pack: PreToolUse check that denies destructive commands, secrets and muted tests'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
+    s = sub.add_parser('digest-hint', help='digest pack: advisory hint for large tool output'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('discipline', help='discipline pack: advisory nudge after the same command fails 3 times'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
@@ -550,6 +551,13 @@ def main(argv=None):
             try: payload = core.stdin_json()
             except ValueError: payload = {}
             print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}))); return 0
+        if a.cmd == 'digest-hint':
+            from . import digest_hint
+            try:
+                payload = core.json_loads(_read_limited_stdin())
+                result = digest_hint.hook(core.find_root(a.workspace_root), payload)
+            except (ValueError, OSError, core.WsError, RecursionError): result = {}
+            print(json.dumps(result)); return 0
         if a.cmd == 'discipline':  # advisory only: any error prints {} so the tool result reaches the model unchanged
             from . import discipline
             try:
@@ -910,7 +918,7 @@ def main(argv=None):
             else: out(core.run_report(root, a.task))
         return 0
     except Exception as exc:
-        if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
+        if a.cmd in ('guard', 'discipline', 'digest-hint') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
             print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
             print('{}'); return 0
         if isinstance(exc, OSError) and exc.filename is None:  # e.g. a failed launchd call: its own words say more than a file hint

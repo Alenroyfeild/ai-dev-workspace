@@ -1,0 +1,3 @@
+{"name":"digest","version":"0.1.0","kind":"guard",
+ "description":"Opt-in size-only advice for large tool outputs and the existing digest_file MCP tool in the core profile.",
+ "requires":[],"next":["run ws start again in each connected repo to refresh hooks; restart the client to refresh MCP tools"]}

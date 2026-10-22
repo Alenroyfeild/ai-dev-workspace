@@ -215,7 +215,7 @@ def _strings(node):
     elif isinstance(node, list): yield from (s for v in node for s in _strings(v))
 
 
-HOOK_COMMANDS = {'brief', 'nudge', 'paste', 'guard', 'discipline'}
+HOOK_COMMANDS = {'brief', 'nudge', 'paste', 'guard', 'discipline', 'digest-hint'}
 
 
 def _ws_hook_parts(command):
