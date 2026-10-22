@@ -104,7 +104,7 @@ def route(root, role='lead', provider=None):
         # Allowlist: only the documented modes are understood; anything else fails closed (preparation only).
         mode = cfg.get('delegation_mode', 'read-only')
         mode_ok = type(mode) is str and mode in ('read-only', 'prepare-only')
-        return dict(chosen, available=available, preference=preference, skipped=skipped,
+        return dict(chosen, available=available, preference=preference, skipped=skipped, delegation_mode=mode,
                     can_run=bool(chosen['headless']) and mode == 'read-only',
                     mode_error='' if mode_ok else f'Unknown delegation_mode {json.dumps(mode)[:60]} in routing.json (use read-only or prepare-only); treated as prepare-only.',
                     timeout_seconds=timeout_ok(cfg.get('timeout_seconds', 600)),
@@ -151,6 +151,22 @@ def _worker_output(provider, stdout):
     return '\n'.join(messages) or stdout, tokens_in, tokens_out, known
 
 
+def _provider_error(provider, stdout):
+    """Recognize structured CLI errors even when a provider exits with status zero."""
+    if provider == 'codex':
+        for line in stdout.splitlines():
+            try: event = json.loads(line)
+            except ValueError: continue
+            if isinstance(event, dict) and event.get('type') in ('error', 'turn.failed'):
+                return True
+    elif provider == 'claude':
+        try: payload = json.loads(stdout)
+        except ValueError: payload = {}
+        if isinstance(payload, dict) and (payload.get('type') == 'error' or payload.get('is_error') is True or isinstance(payload.get('error'), dict)):
+            return True
+    return False
+
+
 def worker_command(binding, repo, body=''):
     exe, model, effort = binding['executable'], binding['model'], binding['effort']
     template = binding['headless'] or binding['prepare']
@@ -191,10 +207,11 @@ def worker_run(binding, repo, body, receipt=None):
             except (OSError, subprocess.SubprocessError): pass
             raise
         if receipt is not None: receipt(stdout)
+        if code == 0 and _provider_error(binding['provider'], stdout): code = 1
         rendered, tokens_in, tokens_out, known = _worker_output(binding['provider'], stdout)
         return code, core.redact(rendered + ('\n' + stderr[-1000:] if code else ''))[:24000], tokens_in, tokens_out, known
     except OSError:
-        return code, 'Selected provider could not launch; no fallback.', 0, 0, False
+        return code, 'Provider could not launch.', 0, 0, False
 
 
 def review_diff(repo, revision):
@@ -219,7 +236,11 @@ def delegate(root, task_id, role, run=False, diff=None):
         raise core.WsError('Only explorer/reviewer may run; write roles are preparation-only.')
     binding = route(root, role)
     if not binding['available']: raise core.WsError(binding['reason'] + ' Provider: ' + binding['provider'])
-    if run and not binding['can_run']: raise core.WsError(binding['mode_error'] or 'Selected provider is preparation-only; this preset or provider has no automatic worker execution.')
+    if run and binding['mode_error']: raise core.WsError(binding['mode_error'])
+    if run and binding['delegation_mode'] != 'read-only':
+        raise core.WsError('Selected providers are preparation-only; worker execution requires delegation_mode read-only.')
+    if run and not binding['can_run'] and binding['preference'] == [binding['provider']]:
+        raise core.WsError('Selected provider is preparation-only; this preset or provider has no automatic worker execution.')
     task = core.task_read(root, task_id, ['Objective', 'Next action', 'Blockers', 'Evidence'])
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if run and meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
@@ -255,7 +276,37 @@ def delegate(root, task_id, role, run=False, diff=None):
     result = dict(binding=binding, brief=str(brief), output=str(output), command=shlex.join(command) + suffix)
     if not binding['headless']: result['note'] = 'Preparation only; review the brief and command before launching manually. Interactive clients need the brief pasted.'
     if not run: return result
-    started = time.monotonic(); code, rendered, tokens_in, tokens_out, usage_known = worker_run(binding, paths[0], body)
+    attempts = []; run_records = []; selected = None
+    for provider in binding['preference']:
+        candidate = route(root, role, provider)
+        if not candidate['available']:
+            reason = 'CLI not on PATH' if not candidate['executable'] else 'no model configured'
+            attempts.append({'provider': provider, 'status': 'skipped', 'reason': reason})
+            run_records.append((candidate, 'skipped', 0, 0, False, 0.0, reason))
+            continue
+        if not candidate['can_run']:
+            attempts.append({'provider': provider, 'status': 'skipped', 'reason': 'provider has no headless command'})
+            reason = 'Delegation mode is preparation-only.' if candidate['delegation_mode'] != 'read-only' else 'Provider has no headless command.'
+            run_records.append((candidate, 'skipped', 0, 0, False, 0.0, reason))
+            continue
+        attempt_started = time.monotonic()
+        code, rendered, tokens_in, tokens_out, usage_known = worker_run(candidate, paths[0], body)
+        elapsed = time.monotonic() - attempt_started
+        status = 'ok' if code == 0 else 'failed'
+        attempts.append({'provider': provider, 'status': status, 'exit_code': code})
+        note = 'Worker output unverified; lead must review.' + ('' if usage_known else ' usage unavailable.')
+        if code != 0:
+            detail = ' '.join(core.plain_text(rendered).split()[:12])[:100]
+            note = f'Provider exited {code}; {detail or "no error detail"}. ' + note
+        run_records.append((candidate, status, tokens_in, tokens_out, usage_known, elapsed,
+                            note))
+        selected = candidate
+        if code == 0: break
+    if selected is None:
+        raise core.WsError('All available providers are preparation-only; no headless worker was started.')
+    binding = selected
+    model, effort = binding['model'], binding['effort']
+    suffix = ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)) if binding['headless'] else ''
     findings = len(set(line.strip() for line in rendered.splitlines() if re.match(r'^(?:UNVERIFIED\s+)?[^:\n]+:\d+:\s+\S', line))) if role == 'reviewer' else None
     with core.lock(root):
         core.atomic_write(output, 'UNVERIFIED worker output\n' + rendered)
@@ -264,12 +315,19 @@ def delegate(root, task_id, role, run=False, diff=None):
             raise core.WsError('Claim changed during delegation; output saved, task evidence not changed.')
         match = re.search(r'^## Evidence[^\n]*\n.*?(?=^## |\Z)', text, re.M | re.S)
         if not match: raise core.WsError('Task has no Evidence section; output saved.')
-        summary = f'\nDelegated {role} ({model}, {effort}), exit {code}, unverified: ' + ' '.join(core.plain_text(rendered).split()[:45]) + '\n'
+        providers = ', '.join(item['provider'] + ' ' + item['status'] for item in attempts)
+        summary = f'\nDelegated {role} via {binding["provider"]} ({model}, {effort}) after {len(attempts)} provider attempts [{providers}], exit {code}, unverified: ' + ' '.join(core.plain_text(rendered).split()[:45]) + '\n'
         core.atomic_write(path, text[:match.end()] + summary + text[match.end():])
-    core.run_log(root, task_id, 'delegate ' + role, binding['provider'], model, seconds=time.monotonic()-started,
-                 tokens_in=tokens_in, tokens_out=tokens_out, result='ok' if code == 0 else 'failed', worker_role=role,
-                 effort=effort, findings=findings, note='Worker output unverified; lead must review.' + ('' if usage_known else ' usage unavailable.'))
-    return dict(result, exit_code=code, findings=findings)
+    for index, (candidate, status, incoming, outgoing, known, seconds, note) in enumerate(run_records, 1):
+        core.run_log(root, task_id, f'delegate {role} attempt {index}', candidate['provider'], candidate['model'] or '',
+                     seconds=seconds, tokens_in=incoming, tokens_out=outgoing, result=status,
+                     worker_role=role, effort=candidate['effort'],
+                     findings=findings if candidate is binding else None,
+                     note=note if status == 'skipped' else f'Provider attempt {index}/{len(run_records)}. {note}')
+    result['binding'] = binding
+    result['command'] = shlex.join(worker_command(binding, paths[0], body)) + suffix
+    result.pop('note', None)
+    return dict(result, exit_code=code, findings=findings, provider_attempts=attempts)
 
 
 def selftest(root, provider=None, run=True):
