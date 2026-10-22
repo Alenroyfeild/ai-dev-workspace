@@ -10,6 +10,8 @@ Measured with a reproducible benchmark (bench/): when product decisions were giv
 - [Overview](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/OVERVIEW.md): how it works, and the comparison with built-in memory, claude-mem and Beads
 - [Setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/SETUP.md): install, connect each assistant, hooks, privacy
 - [Tutorial](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TUTORIAL.md): first handoff in 5 minutes with a throwaway repo
+- [Guide: Keep decisions without a background AI](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/keep-decisions-without-background-ai.md): explicit Markdown memory compared with claude-mem, when to choose which, and importing claude-mem observations
+- [Guide: Stop retrying failed approaches](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/stop-retrying-failed-approaches.md): record dead ends so every session's brief shows them; opt-in discipline and guards packs
 - [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md): every `ws` command, and the MCP tools (7 core tools listed by default)
 - [Concepts](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/CONCEPTS.md): tasks, claims, checkpoints, brief, lessons, delegation
 - [Team workspace](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TEAM-WORKSPACE.md): private team sharing with previews and consent-based pulls
