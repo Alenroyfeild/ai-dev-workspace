@@ -1,15 +1,12 @@
 # Changelog
 
-## 0.1.0-beta.6 (unreleased)
-
-### Fixed
-- `ws doctor` still checks your workspace when its optional update cache is damaged.
-
 ## 0.1.0-beta.5 (2026-10-19)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.
 
 ### New
+- Antigravity users can connect with `ws connect antigravity`; `ws start` detects the app/`agy` and previews local rules plus MCP wiring. Fixture-tested only; automatic hooks/capture are not wired, and global Gemini/Antigravity settings are untouched.
+- Per-PR changelog fragments have a documented format, a format check and a release folding step.
 - Start with team context: a new teammate's brief shows recent product, domain and repo knowledge cards before task-specific memory exists, within the usual brief budget and labelled untrusted. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#team-sharing).
 - Try remembered decisions with `ws demo`: an offline, disposable walkthrough that saves a decision and reads it back in a fresh process, without starting an assistant. [Command guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/COMMANDS.md#daily-use).
 - Team previews at a terminal are a short summary (`+ category text`, destination, `[y/N]`) instead of raw JSON; `ws sync` prints a one-line pulled/published count; `ws know add` keeps a private note's `#private` text and paths as written (sharing it later still strips them) and says clearly when a `--team` note is entirely private; the team docs show the real quick-start order, the `#private`/`<private>` markers and a "rotate pushed secrets" warning.
@@ -49,6 +46,9 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- `ws doctor` still checks your workspace when its optional update cache is damaged.
+- File digests hide multiline private-key bodies in focused matches, problem lines and tails, while keeping source line numbers.
+- `ws start` refresh keeps edits to multiple assistant settings files made during its confirmation prompt.
 - Repo-local `workspace.json` cannot override an existing memory link; invalid links stop with a repair hint. [Repo start](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/REPO-START.md).
 - Native Claude memory with a UTF-8 BOM now imports its description correctly; BOM-only files are skipped as empty.
 - Team sync no longer stops when two teammates publish at once: the derived `INDEX.md` is rebuilt after the pull, so both entries are listed, and any remaining pull conflict names the file and the recovery command. A corrupt `team.json` now reports its path, shows in `ws doctor`, and no longer blocks `ws sync --pull-only` from pulling a teammate's fix.
