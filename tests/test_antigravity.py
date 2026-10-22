@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -118,7 +119,7 @@ class AntigravityTests(Base):
         core.pack_add(self.root, 'guards')
         hooks = core.pack_hooks(self.root, 'antigravity')
         self.assertIn('PreToolUse', hooks)
-        self.assertIn('guard --hook --client antigravity', hooks['PreToolUse'][0]['hooks'][0]['command'])
+        self.assertEqual(shlex.split(hooks['PreToolUse'][0]['hooks'][0]['command'])[-4:], ['guard', '--hook', '--client', 'antigravity'])
 
     def test_brief_hook_stdin_camelcase_and_stdout_steps(self):
         transcript = self.root / 'transcript.jsonl'

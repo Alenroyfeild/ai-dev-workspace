@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import shlex
 import subprocess
 from unittest import mock
 
@@ -25,7 +26,8 @@ class AntigravityHookTests(Base):
         core.pack_add(self.root, 'guards')
         result = core.connect(self.root, 'antigravity')
         self.assertIn('hooks', result)
-        self.assertIn('guard --hook --client antigravity', target.read_text())
+        command = json.loads(target.read_text())['hooks']['PreToolUse'][0]['hooks'][0]['command']
+        self.assertEqual(shlex.split(command)[-4:], ['guard', '--hook', '--client', 'antigravity'])
         before = target.read_bytes()
         core.connect(self.root, 'antigravity')
         self.assertEqual(target.read_bytes(), before)
@@ -135,7 +137,8 @@ class AntigravityHookTests(Base):
                         repo.start(yes=True, workspace=memory)
                         core.pack_add(memory, 'guards')
                         repo.start(yes=True)
-                        self.assertIn('guard --hook --client antigravity', (directory / 'hooks.json').read_text())
+                        command = json.loads((directory / 'hooks.json').read_text())['hooks']['PreToolUse'][0]['hooks'][0]['command']
+                        self.assertEqual(shlex.split(command)[-4:], ['guard', '--hook', '--client', 'antigravity'])
                         if not had_directory:
                             path = directory / 'hooks.json'; data = json.loads(path.read_text())
                             data['user-hook'] = {'Stop': [{'command': 'echo keep'}]}
