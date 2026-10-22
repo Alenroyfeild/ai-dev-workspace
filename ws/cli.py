@@ -406,7 +406,11 @@ def main(argv=None):
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search', help='search transcripts of earlier assistant sessions'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
-    s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
+    imports = sub.add_parser('import', help='preview read-only memory sources; save copies only on request').add_subparsers(dest='action', required=True)
+    s = imports.add_parser('claude-mem', help='preview a checkpointed SQLite copy; source is never written')
+    s.add_argument('--db', required=True); s.add_argument('--project', required=True)
+    s.add_argument('--apply', action='store_true', help='show the preview and ask before saving private records')
+    s = imports.add_parser('native')
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons', formatter_class=argparse.RawDescriptionHelpFormatter,
                        epilog='Examples:\n  ws lesson add "Mocked DB hid a bad migration; run migrations in tests" --tag testing\n  ws lesson search migration').add_subparsers(dest='action', required=True)
@@ -430,7 +434,7 @@ def main(argv=None):
     for command in ('brief', 'nudge'):
         s = sub.add_parser(command, help='local task memory for assistant sessions')
         s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
-        s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode'), default='claude')
+        s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode', 'antigravity'), default='claude')
         if command == 'brief': s.add_argument('--refresh', action='store_true', help='also update the current-task block in client instruction files')
     s = sub.add_parser('digest', help='summarise a big log/JSON file deterministically'); s.add_argument('file')
     s.add_argument('--focus', help='show regex-matching line prefixes before the summary (bounded regex; 4096 chars/line)')
@@ -549,7 +553,7 @@ def main(argv=None):
             from . import guards
             try: payload = core.stdin_json()
             except ValueError: payload = {}
-            print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}))); return 0
+            print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}, client=getattr(a, 'client', 'claude')))); return 0
         if a.cmd == 'discipline':  # advisory only: any error prints {} so the tool result reaches the model unchanged
             from . import discipline
             try:
@@ -724,6 +728,17 @@ def main(argv=None):
             branch_task = None
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
+            if a.client == 'antigravity':
+                if 'transcriptPath' in payload and 'transcript_path' not in payload:
+                    payload['transcript_path'] = payload.get('transcriptPath')
+                if 'conversationId' in payload and 'session_id' not in payload:
+                    payload['session_id'] = payload.get('conversationId')
+                if 'workspacePaths' in payload and 'cwd' not in payload and isinstance(payload['workspacePaths'], list) and payload['workspacePaths']:
+                    payload['cwd'] = payload['workspacePaths'][0]
+                if 'hook_event_name' not in payload and 'hookEventName' in payload:
+                    payload['hook_event_name'] = payload.get('hookEventName')
+                if 'hook_event_name' not in payload and a.cmd == 'brief':
+                    payload['hook_event_name'] = 'SessionStart'
             if a.hook and a.cmd == 'brief' and payload.get('hook_event_name') in ('SessionStart', 'sessionStart'):
                 from . import team_auto
                 update = team_auto.maybe_pull(root)
@@ -738,6 +753,9 @@ def main(argv=None):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client,
                                            assist.session_task(root, payload.get('session_id')))
                 message, summary = core.brief_and_summary(root, branch_task) if a.cmd == 'brief' else ('', '')
+                if a.client == 'antigravity':
+                    out({'injectSteps': [{'systemMessage': {'systemMessage': message}}]} if message else {})
+                    return 0
                 summary = summary if message and a.client == 'codex' else ''
                 out({'additional_context': message} if a.client == 'cursor' and message else
                     {'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if summary else
@@ -842,7 +860,11 @@ def main(argv=None):
                     with saved_locally(): share_gate(item)
             elif a.action == 'list': out(knowledge.list_entries(root, a.category, a.layer))
             else: out(knowledge.show(root, a.id))
-        elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
+        elif a.cmd == 'import':
+            if a.action == 'claude-mem':
+                from . import claude_mem
+                out(claude_mem.import_store(root, a.db, a.project, a.apply))
+            else: out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query, category=a.category))
         elif a.cmd == 'lesson':
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')

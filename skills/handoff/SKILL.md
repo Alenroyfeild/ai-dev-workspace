@@ -1,6 +1,7 @@
 ---
 name: handoff
 description: Save verified task progress and an exact next action.
+compatibility: Requires ws on PATH and a Git repository initialized with ws start.
 ---
 
 Use the user's task ID, or `ws brief`; ask if the task is still ambiguous. Read `ws task show <ID> --section "Next action" --section Evidence --section Blockers`.
