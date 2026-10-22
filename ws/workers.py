@@ -10,13 +10,13 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from . import core, orchestration
 
 
-def git(repo, *args, env_extra=None, binary=False):
+def git(repo, *args, env_extra=None, binary=False, stdin=None):
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT='0', GIT_LFS_SKIP_SMUDGE='1')
     if env_extra: env.update(env_extra)
     try:
-        result = subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-c', 'core.fsmonitor=false', '-c', 'core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol', '-C', str(repo), *args],
-                                env=env, capture_output=True, timeout=120)
+        result = subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-c', 'core.fsmonitor=false', '-c', 'core.longpaths=true', '-c', 'core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol', '-C', str(repo), *args],
+                                env=env, capture_output=True, timeout=120, input=stdin)
     except (OSError, subprocess.TimeoutExpired): raise core.WsError('Worker Git operation could not complete; no provider was launched.')
     if result.returncode: raise core.WsError('Worker Git operation failed: ' + core.redact(result.stderr[-1000:].decode('utf-8', errors='replace')))
     return result.stdout if binary else result.stdout.decode('utf-8').strip()
@@ -28,7 +28,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if task.get('conflicted') or meta.get('status') == 'done' or not token or meta.get('claimed_by') != worker or meta.get('claim_token') != token:
         raise core.WsError('Worker preparation needs a current local task claim; claim the task first.')
-    source = Path(meta.get('repo') or '').expanduser().resolve()
+    source = (core.repo_path(root, meta['repo']) if meta.get('repo') else Path.cwd().resolve())  # no repo: the checkout the user is in
     if source not in [p.resolve() for p in core.read_roots(root)[1:]]:
         raise core.WsError('Worker repository must be one declared workspace repo.')
     if Path(git(source, 'rev-parse', '--show-toplevel')).resolve() != source:
@@ -40,7 +40,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     if not scope: raise core.WsError('Worker needs at least one relative --scope path.')
     for name in scope:
         parts = PurePosixPath(name.replace('\\', '/')).parts
-        if not parts or not name.isprintable() or PureWindowsPath(name).anchor or name.startswith('/') or '..' in parts or any(p in ('.git', '.ws', '.codex', '.claude') for p in parts):
+        if not parts or not name.isprintable() or PureWindowsPath(name).anchor or name.startswith('/') or '..' in parts or any(p.lower() in ('.git', '.ws', '.codex', '.claude') for p in parts):
             raise core.WsError('Worker scope must stay inside checkout files, away from metadata and client config.')
     scope = [str(PurePosixPath(n.replace('\\', '/'))) for n in scope]
     tree = git(source, 'ls-tree', '-r', commit)
@@ -92,15 +92,15 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
 
 
 def launch(root, run_id):
-    raise core.WsError('Write workers remain preparation-only until the O2d real-client hostile probe passes.')
+    raise core.WsError('Write workers are preparation-only for now; launching one is not available yet.')
 
 
 def _record(root, run_id, require_checkout=True):
     if not isinstance(run_id, str) or not re.fullmatch(r'[0-9a-f]{16}', run_id): raise core.WsError('Invalid worker run ID.')
     directory = Path(root).resolve() / '.ws/workers' / run_id
     for p in (directory.parent.parent, directory.parent, directory, directory / 'checkout', directory / 'source.git', directory / 'run.json', directory / 'diff.patch'):
-        if p.is_symlink(): raise core.WsError('Worker run paths must not be symlinked.')
-    state = json.loads((directory / 'run.json').read_text())
+        if core.is_link(p): raise core.WsError('Worker run paths must not be symlinked.')
+    state = json.loads((directory / 'run.json').read_text(encoding='utf-8'))
     if (state.get('id') != run_id or state.get('directory') != str(directory) or state.get('checkout') != str(directory / 'checkout')
             or require_checkout and not state.get('complete') or state.get('provider') != 'codex'):
         raise core.WsError('Worker preparation is incomplete or its recorded paths changed.')
@@ -162,7 +162,7 @@ def _approved(root, run_id):
             or approval.get('reviewer') != state['claimed_by']):
         raise core.WsError('Worker needs a current lead review before acceptance.')
     task = _claim(root, state); source = Path(state['source']).resolve()
-    if (source != Path(task['meta'].get('repo') or '').expanduser().resolve() or source not in [p.resolve() for p in core.read_roots(root)[1:]]
+    if (source != (core.repo_path(root, task['meta']['repo']) if task['meta'].get('repo') else Path.cwd().resolve()) or source not in [p.resolve() for p in core.read_roots(root)[1:]]
             or Path(git(source, 'rev-parse', '--show-toplevel')).resolve() != source):
         raise core.WsError('Worker source repository changed.')
     return directory, state, source
@@ -175,9 +175,13 @@ def _later_edits(directory, state):
             metadata, name = entry.split('\t', 1); mode, _, blob = metadata.split(); expected[name] = (mode, blob)
     names = set(filter(None, git(checkout, 'ls-files', '--cached', '--others', '-z').split('\0')))
     if names != set(expected): return True
+    # Hash with line-ending conversion on (a CRLF checkout via .gitattributes eol=crlf or autocrlf); skip it only for files whose filter attribute names a configured driver, since that could run code.
+    drivers = {key[7:].rsplit('.', 1)[0] for key in git(checkout, 'config', '--includes', '--name-only', '--list').splitlines() if key.lower().startswith('filter.')}
+    attrs = git(checkout, 'check-attr', '-z', '--stdin', 'filter', stdin=''.join(n + '\0' for n in expected).encode()).split('\0') if drivers and expected else []
+    filtered = {attrs[i] for i in range(0, len(attrs) - 2, 3) if attrs[i + 2] in drivers}
     for name, (mode, blob) in expected.items():
         path = checkout / name
-        if (path.is_symlink() or not path.is_file() or git(checkout, 'hash-object', '--no-filters', '--', name) != blob
+        if (path.is_symlink() or not path.is_file() or git(checkout, 'hash-object', *(['--no-filters'] if name in filtered else []), '--', name) != blob
                 or os.name != 'nt' and bool(path.stat().st_mode & 0o111) != (mode == '100755')): return True
     return False
 
@@ -246,7 +250,7 @@ def discard(root, run_id, apply=False, confirm=None):
     return dict(_public(state), applied=True)
 
 
-def _profile(directory):
+def _profile(directory, executable=None):
     checkout = directory / 'checkout'; scratch = directory / 'scratch'
     runtime = Path(core.sys.base_prefix).resolve()
     if runtime == Path(runtime.anchor) or runtime == Path.home().resolve() or runtime in Path.home().resolve().parents:
@@ -254,6 +258,17 @@ def _profile(directory):
     rules = {':minimal': 'read', str(runtime): 'read',
              str(directory / 'source.git'): 'read', str(scratch): 'write',
              ':workspace_roots': {'.': 'write', '.git': 'read', '.codex': 'read', '.claude': 'read'}}
+    if executable:
+        executable = Path(executable).resolve(); rules[str(executable)] = 'read'
+        package = executable.parent.parent; home = Path.home().resolve()
+        try: metadata = json.loads((package / 'codex-package.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError): metadata = {}
+        protected = (home, home / '.codex', home / '.local', home / '.local/bin', *home.parents)
+        install = home / '.codex/packages/standalone/releases'
+        if (install == install.resolve() and package.parent == install and package not in protected
+                and isinstance(metadata, dict) and metadata.get('layoutVersion') == 1 and metadata.get('variant') == 'codex'
+                and metadata.get('entrypoint') == 'bin/codex' and (package / 'bin/codex').resolve() == executable):
+            rules[str(package)] = 'read'
     def value(v):
         if isinstance(v, dict): return '{' + ', '.join(json.dumps(k, ensure_ascii=False) + ' = ' + value(x) for k, x in v.items()) + '}'
         return 'false' if v is False else json.dumps(v, ensure_ascii=False)
@@ -286,7 +301,7 @@ def collect(root, run_id):
             if entry:
                 spec, name = entry.split('\t', 1); base_blobs[name] = spec.split()[2]
         for p in checkout.rglob('*'):
-            if p.is_symlink(): raise core.WsError('Worker introduced a symlink; collection blocked.')
+            if core.is_link(p): raise core.WsError('Worker introduced a symlink; collection blocked.')
             info = p.stat()
             if not (stat.S_ISREG(info.st_mode) or p.is_dir()): raise core.WsError('Worker introduced a special file; collection blocked before staging.')
             if stat.S_ISREG(info.st_mode) and info.st_size > 1024 * 1024:
@@ -342,7 +357,7 @@ def collect(root, run_id):
 
 
 def _launch(root, run_id):
-    """Internal probe path only; public launch stays gated until O2d."""
+    """Internal probe path only; public launch stays closed."""
     directory, state = _record(root, run_id); checkout = directory / 'checkout'
     with core.lock(root):
         _claim(root, state)
@@ -351,9 +366,11 @@ def _launch(root, run_id):
             raise core.WsError('Prepared checkout changed; prepare a new run.')
         binding = orchestration.route(root, 'worker', provider='codex')
         if not binding['available'] or binding['model'] != state['model']: raise core.WsError('Prepared Codex model is unavailable or changed; no fallback.')
+        executable = shutil.which(binding['executable'])
+        if executable: binding = dict(binding, executable=str(Path(executable).resolve()))
         (directory / 'scratch').mkdir(mode=0o700)
         args = ['exec', '--ignore-user-config', '--ignore-rules', '--ephemeral', '--json', '-m', state['model'],
-                '-c', 'model_reasoning_effort=' + json.dumps(state['effort']), *_profile(directory),
+                '-c', 'model_reasoning_effort=' + json.dumps(state['effort']), *_profile(directory, executable),
                 '--disable', 'hooks', '--disable', 'apps', '--disable', 'plugins', '-C', str(checkout), '-']
         binding = dict(binding, headless=args)
         state.update(state='running', checks=[], started_at=core.now())
@@ -367,14 +384,14 @@ def _launch(root, run_id):
             if event.get('type') == 'item.completed' and isinstance(item, dict) and item.get('type') == 'command_execution':
                 state['checks'].append(dict(command=core.redact(str(item.get('command', '')))[:1000], exit_code=item.get('exit_code')))
     try:
-        code, output, tokens_in, tokens_out, known = orchestration.worker_run(binding, checkout, (directory / 'brief.md').read_text(), receipt=receipt)
+        code, output, tokens_in, tokens_out, known = orchestration.worker_run(binding, checkout, (directory / 'brief.md').read_text(encoding='utf-8'), receipt=receipt)
         state.update(worker_exit=code, output=core.redact(output), usage=dict(input=tokens_in, output=tokens_out, known=known))
     except (OSError, ValueError) as error: state.update(worker_exit=1, output=core.redact(str(error)))
     state['finished_at'] = core.now()
     core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
     result = collect(root, run_id)
     if state['worker_exit'] or not state['checks'] or any(c['exit_code'] != 0 for c in state['checks']):
-        state = json.loads((directory / 'run.json').read_text()); state.update(blocked=True, reason=state['reason'] + '; worker failed, checks failed, or command evidence missing.')
+        state = json.loads((directory / 'run.json').read_text(encoding='utf-8')); state.update(blocked=True, reason=state['reason'] + '; worker failed, checks failed, or command evidence missing.')
         core.atomic_write(directory / 'run.json', json.dumps(state, indent=2) + '\n')
         result = {k: v for k, v in state.items() if k not in ('claim_token', 'claimed_by')}
     return result

@@ -13,6 +13,7 @@ KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT))
 from ws import cli, core, upgrade  # noqa: E402
 from mcp import server  # noqa: E402
+from testutil import run_ws
 
 
 class PasteGuardTests(unittest.TestCase):
@@ -110,8 +111,7 @@ class PasteGuardTests(unittest.TestCase):
         many.write_text('\n'.join(f'hit {n}' for n in range(100)))
         focused = core.digest_file(many, max_lines=2, focus='hit', root=self.root)['focus_matches']
         self.assertEqual(focused, ['L1: hit 0', 'L2: hit 1'])
-        proc = subprocess.run([sys.executable, str(KIT / 'bin/ws'), '--workspace-root', str(self.root),
-                               'digest', str(path), '--focus', 'keep'], cwd=self.root, capture_output=True, text=True)
+        proc = run_ws('--workspace-root', self.root, 'digest', path, '--focus', 'keep', cwd=self.root)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(json.loads(proc.stdout)['focus_matches'], ['L2: keep this'])
         with self.assertRaises(core.WsError): core.digest_file(path, focus='[', root=self.root)
@@ -160,17 +160,12 @@ class PasteGuardTests(unittest.TestCase):
                 self.assertTrue(saved)
                 self.assertEqual(len(saved[-1].read_text().splitlines()), 151)
 
-    def test_invalid_hook_payloads_are_blocked_for_each_client(self):
+    def test_invalid_hook_payloads_are_allowed_for_each_client(self):  # a hook that cannot read its input must not block every prompt
         for client in ('claude', 'codex', 'cursor', 'gemini'):
             for payload in ('{', {}, {'prompt': 7}):
                 with self.subTest(client=client, payload=payload):
                     code, stdout, stderr = self.invoke_hook(client, payload)
-                    response = stderr if client == 'claude' else json.loads(stdout)
-                    self.assertIn('prompt', str(response).lower())
-                    self.assertEqual(code, 2 if client == 'claude' else 0)
-                    if client == 'codex': self.assertEqual(response['decision'], 'block')
-                    if client == 'cursor': self.assertFalse(response['continue'])
-                    if client == 'gemini': self.assertEqual(response['decision'], 'deny')
+                    self.assertEqual((code, json.loads(stdout)), (0, {}))
 
     def test_size_limit_raw_bypass_and_short_prompt(self):
         event = 'UserPromptSubmit'

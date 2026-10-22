@@ -2,11 +2,12 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
-from . import core, assist, orchestration, native, workers
+from . import core, assist, native
 
 
 def _read_limited_stdin():
@@ -35,7 +36,7 @@ def _block_prompt(client, reason):
     return 0
 
 
-DAILY_COMMANDS = ('start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
+DAILY_COMMANDS = ('demo', 'start', 'status', 'task', 'claim', 'checkpoint', 'remember', 'search', 'lesson', 'doctor')
 
 
 class GroupedHelpFormatter(argparse.HelpFormatter):
@@ -77,6 +78,11 @@ def out(value):
     print(value if isinstance(value, str) else readable(value) if human() else json.dumps(value, indent=2, ensure_ascii=False))
 
 
+def show(plan, summary):
+    """A terminal gets a few readable lines to approve; scripts and pipes keep the full JSON plan."""
+    out(summary(plan) if human() else plan)
+
+
 def text_status(report):
     lines = [f"Workspace: {report['workspace']}"]
     tasks = ', '.join(f'{name} {count}' for name, count in sorted(report['tasks'].items())) or 'none'
@@ -97,6 +103,8 @@ def text_route(report):
              'Available: ' + ('yes' if report['available'] else 'no')]
     if report.get('reason'):
         lines.append('Reason: ' + report['reason'])
+    if report.get('mode_error'):
+        lines.append('Warning: ' + report['mode_error'])
     if report.get('model_source'):
         lines.append('Model source: ' + report['model_source'])
     if report.get('model_warning'):
@@ -106,19 +114,42 @@ def text_route(report):
     return '\n'.join(lines)
 
 
+def doctor_verdict(report):
+    """One line first: OK, or what needs attention and the next step."""
+    if report.get('workspace_error'): return 'Needs attention: ' + report['workspace_error']
+    core = report.get('core', {})
+    names = {'claude': 'Claude', 'codex': 'Codex', 'cursor': 'Cursor', 'vscode': 'VS Code', 'gemini': 'Gemini', 'antigravity': 'Antigravity'}
+    connected = [names.get(n, n) for n, ok in report.get('configured_clients', {}).items() if ok]
+    for key, label in (('python3', 'Python 3'), ('git', 'Git')):
+        if key in core and not core[key]: return f'Needs attention: {label} is missing. Next: install it, then run ws doctor again.'
+    if not report.get('workspace'): return 'Needs attention: no workspace found. Next: in a git repo run ws start; otherwise ws init <dir>.'
+    if not report.get('valid'): return 'Needs attention: workspace invalid. Next: run ws validate.'
+    if report.get('upgrade_due'): return 'Needs attention: workspace was written by an older kit. Next: ws upgrade --dry-run to preview, then ws upgrade.'
+    if report.get('codex_manual_pending'): return 'Needs attention: Codex needs a manual step. Next: paste the printed Codex config block (see below).'
+    if report.get('stale_hooks'): return 'Needs attention: repo hooks point to something missing. Next: run ws start again in that repo.'
+    if not connected: return 'Needs attention: no assistant connected. Next: run ws start in your repo, or ws connect claude.'
+    return 'OK: workspace valid; ' + '; '.join(n + ' connected' for n in connected)
+
+
 def text_doctor(report):
     core = report.get('core', {})
-    lines = [f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
+    lines = [doctor_verdict(report), f"Core: Python 3 {'available' if core.get('python3') else 'missing'}, Git {'available' if core.get('git') else 'missing'}"]
     if report.get('workspace'):
         lines.append(f"Workspace: {report['workspace']} ({'valid' if report.get('valid') else 'invalid'})")
     if report.get('team_workspace'):
-        lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls not active yet')
+        pulls = 'enabled (read-only)' if report['team_workspace'].get('auto_pull') is True else 'off (consent required)'
+        lines.append('Team privacy: ' + report['team_workspace']['privacy'] + '; automatic pulls ' + pulls)
+        if report['team_workspace'].get('problem'): lines.append('Team problem: ' + report['team_workspace']['problem'])
     if report.get('setup'):
-        lines.append('Setup preset: ' + report['setup']['preset'] + ' (' + ', '.join(report['setup']['assistants']) + ')')
+        assistants = ', '.join(report['setup']['assistants'])
+        lines.append('Setup preset: ' + report['setup']['preset'] + (f' ({assistants})' if assistants else ''))
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
+    for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
+    for path in report.get('claude_plugin_duplicates', []): lines.append('Claude: plugin and ws start hooks both active (two briefs per session) — ' + path + '; disable one')
+    for path in report.get('claude_plugin_missing', []): lines.append('Claude: the plugin was enabled when ws start ran but is not now, so Claude has no memory hooks — ' + path + '; run ws start to restore Claude hooks')
     clients = report.get('configured_clients', {})
     if clients:
-        lines.append('Configured clients: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
+        lines.append('Workspace-level connections: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
     goals = report.get('codex_goals')
     if goals:
         lines.append(f"Codex goals: {goals['active']} active, {goals['complete']} complete" if 'active' in goals
@@ -127,8 +158,9 @@ def text_doctor(report):
     lines.extend(f'Team: {warning}' for warning in report.get('team', {}).get('warnings', []))
     health = report.get('capture_health')
     if health:
-        lines.append(f"Last capture outcome: {health.get('outcome', 'unknown')} "
-                     f"({health.get('client', 'unknown')}, {health.get('date', 'unknown')}; {health.get('reason', 'unknown')})")
+        outcome = health.get('outcome', 'unknown')
+        detail = [health[k] for k in ('client', 'date') if health.get(k)] + ([health['reason']] if health.get('reason') not in (None, outcome) else [])
+        lines.append('Last capture: not run yet' if outcome == 'not_run' else f'Last capture outcome: {outcome}' + (f" ({', '.join(detail)})" if detail else ''))
     checks = report.get('protocol_checks', {})
     if checks:
         rendered = [f"{name}={value['status']}" + (f" ({value['step']})" if value.get('step') else '')
@@ -140,6 +172,9 @@ def text_doctor(report):
         rendered = [f"{name}={value['provider']} ({'available' if value.get('available') else 'unavailable'})"
                     for name, value in routes.items() if isinstance(value, dict) and 'provider' in value]
         lines.append('Routes: ' + (', '.join(rendered) or routes.get('error', 'unavailable')))
+    if report.get('mcp_tools'):
+        tools = report['mcp_tools']
+        lines.append(f"MCP tools listed: {tools['listed']} ({tools['profile']}; set \"mcp_tools\": \"all\" in workspace.json to list every tool)")
     missing = [item['name'] for item in report.get('toolbox', [])]
     lines.append('Missing recommended tools: ' + (', '.join(missing) or 'none'))
     if 'mcp' in report:
@@ -166,7 +201,7 @@ def claude_tool_uses(transcript_path):
     try:
         if path.stat().st_size > 50 * 1024 * 1024:
             return None
-        transcript = path.open(encoding='utf-8')
+        transcript = path.open(encoding='utf-8', errors='replace')
     except OSError:
         return None
     recognized = False
@@ -177,7 +212,7 @@ def claude_tool_uses(transcript_path):
                 try:
                     entry = json.loads(line)
                     content = entry['message']['content'] if entry.get('type') == 'assistant' else None
-                except (KeyError, TypeError, json.JSONDecodeError):
+                except (KeyError, TypeError, AttributeError, json.JSONDecodeError):
                     continue
                 if not isinstance(content, list):
                     continue
@@ -202,11 +237,51 @@ def unrecorded_work(root, uses):
             f'(done if the task is finished). Skip only if these edits were unrelated to {task}.') if task else ''
 
 
+def mcp_main():
+    """Console script `ai-dev-workspace`: the stdio MCP server, for uvx and MCP registry launchers."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('ws_mcp_server', core.KIT / 'mcp' / 'server.py')
+    server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(server)  # by path: a top-level 'mcp' import could pick up the unrelated MCP SDK
+    server.main()
+
+
+def ask(prompt=''):
+    """y/N answer; a closed stdin is "no confirmation", not a traceback."""
+    try: return input(prompt).strip().lower() in ('y', 'yes')
+    except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
+
+
+UNDO_GUESSES = ('undo', 'uninstall', 'remove')  # not commands; `ws start --undo` is the way back
+
+
+class WsParser(argparse.ArgumentParser):
+    """Subparsers inherit this class: a mistyped command gets a short hint, not argparse's list of every name."""
+    def error(self, message):
+        bad = re.search(r"invalid choice: '(.*?)' \(choose from (.*)\)$", message)
+        if not bad: return super().error(message)
+        if self.prog == 'ws' and bad[1] in UNDO_GUESSES:
+            self.print_usage(sys.stderr)
+            self.exit(2, f"ws: unknown command '{bad[1]}'. To remove ws from a repo run `ws start --undo`. Run ws --help\n")
+        choices = [c.strip("'") for c in bad[2].split(', ')]
+        import difflib  # lazy: only for mistyped commands
+        near = difflib.get_close_matches(bad[1], choices, n=3)
+        top = self.prog == 'ws'
+        hint = f'; did you mean: {", ".join(near)}?' if near else ('. Run ws --help' if top else f'. Choose from: {", ".join(choices)}')
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{self.prog}: unknown {'command' if top else 'choice'} '{bad[1]}'{hint}" + (' Run ws --help' if top and near else '') + '\n')
+
+
 def main(argv=None):
-    p = argparse.ArgumentParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
-                                formatter_class=GroupedHelpFormatter)
+    if core.WINDOWS:  # the pip/pipx `ws` script skips bin/ws, whose cp1252 pipes cannot carry non-ASCII text
+        for stream in (sys.stdin, sys.stdout, sys.stderr): getattr(stream, 'reconfigure', lambda **_: None)(encoding='utf-8')
+    p = WsParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
+                 formatter_class=GroupedHelpFormatter,
+                 epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
+    p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
+    sub.add_parser('demo', help='try remembered decisions offline in a disposable workspace')
 
     s = sub.add_parser('init', help='create a workspace')
     s.add_argument('dir'); s.add_argument('--name')
@@ -224,36 +299,48 @@ def main(argv=None):
     w = sub.add_parser('worker', help='prepare an isolated implementation checkout; no worker launch').add_subparsers(dest='action', required=True)
     s = w.add_parser('prepare'); s.add_argument('task'); s.add_argument('--scope', action='append', required=True)
     s.add_argument('--base', default='HEAD'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
-    s = w.add_parser('launch', help='gated until the real-client hostile probe passes'); s.add_argument('id')
+    s = w.add_parser('launch', help='not available yet (write workers are preparation-only)'); s.add_argument('id')
     s = w.add_parser('review', help='show diff/checks or record the current lead review'); s.add_argument('id')
     s.add_argument('--approve', action='store_true'); s.add_argument('--yes', action='store_true')
     for action in ('accept', 'discard'):
         s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
-    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary (default in a terminal)'); s.add_argument('--json', action='store_true', help='print JSON even in a terminal')
+    s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s = sub.add_parser('guard', help='guards pack: PreToolUse check that denies destructive commands, secrets and muted tests'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
+    s = sub.add_parser('discipline', help='discipline pack: advisory nudge after the same command fails 3 times'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
-    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini'))
+    s.add_argument('client', choices=('claude', 'codex', 'cursor', 'copilot', 'vscode', 'gemini', 'antigravity'))
     s.add_argument('--write', action='store_true', help='append Codex global config with a backup')
     s.add_argument('--skills', action='store_true', help='also link the kit skills into your global ~/.claude/skills or ~/.agents/skills')
-    s = sub.add_parser('start', help='connect this repo to private memory outside the checkout')
+    s = sub.add_parser('start', help='connect this repo to private memory outside the checkout', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       description='Connect this repo to private task memory kept outside the checkout.\nShows a preview first; nothing is written until you confirm.',
+                       epilog='Examples:\n  ws start --dry-run   preview only\n  ws start             preview, then confirm\n  ws start --undo      remove the repo wiring again')
     s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
     s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep private memory')
+    s.add_argument('--memory-dir', help='Claude auto-memory directory to preview for import')
+    s.add_argument('--no-import', action='store_true', help='skip existing memory import')
     s = sub.add_parser('scope', help='read or change local record sharing eligibility; never publishes')
     s.add_argument('item'); s.add_argument('value', nargs='?', choices=('private', 'team'))
     s.add_argument('--expected-sha', help='refuse if the record changed since inspection')
     for command in ('share', 'unshare'):
         s = sub.add_parser(command, help='preview a local team copy or its removal')
-        s.add_argument('item'); s.add_argument('--author', default='local')
+        s.add_argument('item'); s.add_argument('--author')
         s.add_argument('--as', dest='as_format', choices=('runbook',), default='')
         s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s = sub.add_parser('sync', help='pull team updates and preview an approved-only push')
     s.add_argument('--dry-run', action='store_true', help='pull and preview; never commit or push')
-    s.add_argument('--yes', action='store_true', help='approve the exact printed push preview')
+    s.add_argument('--yes', action='store_true', help='approve the exact printed preview')
+    mode = s.add_mutually_exclusive_group()
+    mode.add_argument('--pull-only', action='store_true', help='read-only Git pull; never publish')
+    mode.add_argument('--daily', metavar='HH:MM', help='preview a daily read-only scheduler')
+    s.add_argument('--automatic', action='store_true', help=argparse.SUPPRESS)
     s = sub.add_parser('team', help='preview or link a private team Git repository')
     s.add_argument('action', choices=('init', 'link', 'unlink', 'status')); s.add_argument('remote', nargs='?', default='')
+    s.add_argument('--folder', nargs='?', const=True, default=False, metavar='PATH', help='link an attested existing synced folder (read-only); PATH may also come first')
     s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     s.add_argument('--attest-private', action='store_true', help='I confirm this exact remote is private to my team')
     s.add_argument('--verify-with', choices=('gh', 'glab'), default='')
@@ -272,57 +359,70 @@ def main(argv=None):
     choice.add_argument('--dry-run', action='store_true', help='preview only (default)')
     choice.add_argument('--apply', action='store_true', help='apply the previewed preset and project connections')
 
-    t = sub.add_parser('task', help='task records').add_subparsers(dest='action', required=True)
-    s = t.add_parser('new'); s.add_argument('id'); s.add_argument('title')
-    s.add_argument('--objective', default=''); s.add_argument('--branch', default=''); s.add_argument('--repo', default='')
-    t.add_parser('list')
-    s = t.add_parser('find'); s.add_argument('ref')
-    s = t.add_parser('show'); s.add_argument('id'); s.add_argument('--section', action='append')
+    t = sub.add_parser('task', help='task records', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws task new fix-login "Fix login redirect"\n  ws task list\n  ws task show fix-login').add_subparsers(dest='action', required=True)
+    s = t.add_parser('new', help='create a task record'); s.add_argument('id', help='short ID such as JIRA-123 or fix-login'); s.add_argument('title')
+    s.add_argument('--objective', default='', help='one-line goal'); s.add_argument('--branch', default='', help='Git branch the task belongs to'); s.add_argument('--repo', default='', help='repo path the task belongs to')
+    t.add_parser('list', help='list tasks with status, claim and next action')
+    s = t.add_parser('find', help='find tasks by ID, branch or title'); s.add_argument('ref', help='ID, branch or title text')
+    s = t.add_parser('show', help='print one task record'); s.add_argument('id'); s.add_argument('--section', action='append', help='print only this section; repeat for several')
     s = t.add_parser('depend', help='make a task wait for another'); s.add_argument('id'); s.add_argument('--on', required=True, metavar='OTHER')
     s = t.add_parser('import', help='create tasks from Task Master tasks.json or a Spec Kit tasks.md (preview unless --yes)')
     s.add_argument('file'); s.add_argument('--prefix', default='SPEC'); s.add_argument('--yes', action='store_true', help='write the tasks')
     s = sub.add_parser('next', help='open tasks whose dependencies are done'); s.add_argument('--json', action='store_true')
 
-    s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker')
-    s = sub.add_parser('release', help='release a task claim'); s.add_argument('id'); s.add_argument('--worker'); s.add_argument('--token')
+    s = sub.add_parser('claim', help='claim a task'); s.add_argument('id'); s.add_argument('--worker', help='label for this session (default: $USER)')
+    s = sub.add_parser('release', help='release a task claim'); s.add_argument('id')
+    s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
     valid_notes = ', '.join(core.NOTE_SECTIONS)
     s = sub.add_parser('checkpoint', help='save task status and next action',
-                       description='Save task status, next action, and optional notes.',
-                       epilog='Valid note sections: ' + valid_notes)
-    s.add_argument('id'); s.add_argument('--status', required=True, choices=core.STATUSES)
-    s.add_argument('--next', required=True); s.add_argument('--expected-sha'); s.add_argument('--worker'); s.add_argument('--token')
-    s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT')
+                       description='Save task status, next action, and optional notes.', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws checkpoint --status in_progress --next "Write the migration"\n'
+                              '  ws checkpoint fix-login --status done --next "Open the PR" --note "Do not redo=Session cookies break mobile"\n\n'
+                              'Valid note sections: ' + valid_notes)
+    s.add_argument('id', nargs='?', help='task ID (default: your only claimed task; see ws task list)'); s.add_argument('--status', required=True, choices=core.STATUSES)
+    s.add_argument('--next', required=True, help='exactly what the next person or AI should do')
+    s.add_argument('--expected-sha', help='refuse if the task changed since you read it'); s.add_argument('--worker', help='default: the worker that claimed it here'); s.add_argument('--token', help='default: the token saved by ws claim')
+    s.add_argument('--note', action='append', default=[], metavar='SECTION=TEXT', help='save text into a section, e.g. "Handoff=Decision: use Postgres"; repeatable')
 
     s = sub.add_parser('remember', help='save one decision in the current task for the next session')
-    s.add_argument('text'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
-    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    s.add_argument('text', help='the decision, e.g. "use Postgres, not SQLite"'); s.add_argument('--task', metavar='ID', help='task to save into (default: your only claimed task)')
+    s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
+    s = sub.add_parser('pr-notes', help="print the task's decisions and checks as a PR-description block")
+    s.add_argument('id', nargs='?', help='task (default: your only claimed task or the current branch task)')
+    s.add_argument('--no-link', action='store_true', help='omit the one-line ai-dev-workspace credit')
+    s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
+    s = sub.add_parser('recap', help='tasks, decisions and team notes since a date (for standups and handoffs)')
+    s.add_argument('--since', default='7d', help='7d (days back) or YYYY-MM-DD; default 7d')
+    s.add_argument('--json', action='store_true', help='print JSON instead of Markdown')
     k = sub.add_parser('know', help='save or read categorized knowledge').add_subparsers(dest='action', required=True)
-    s = k.add_parser('add')
-    s.add_argument('text'); s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
-    s.add_argument('--category', default='other')
-    s = k.add_parser('list'); s.add_argument('--category', default=''); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
-    s = k.add_parser('show'); s.add_argument('id')
+    s = k.add_parser('add', help='save one knowledge entry')
+    s.add_argument('text'); s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
+    s.add_argument('--category', default='other', help='product, feature, domain, repo, runbook or other (default other)')
+    s = k.add_parser('list', help='list knowledge entries'); s.add_argument('--category', default='', help='only this category'); s.add_argument('--layer', choices=('all', 'private', 'team'), default='all')
+    s = k.add_parser('show', help='print one knowledge entry'); s.add_argument('id', help='ID from ws know list')
 
-    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query'); s.add_argument('--category', default='')
+    s = sub.add_parser('search', help='ranked vault search (snippets, not whole files)'); s.add_argument('query', help='words to look for (3+ letters)'); s.add_argument('--category', default='', help='only knowledge in this category')
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
-    s = sessions.add_parser('search'); s.add_argument('query')
+    s = sessions.add_parser('search', help='search transcripts of earlier assistant sessions'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
     s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
-    l = sub.add_parser('lesson', help='add or search reusable lessons').add_subparsers(dest='action', required=True)
-    s = l.add_parser('add'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[])
-    s.add_argument('--team', action='store_true'); s.add_argument('--yes', action='store_true')
+    l = sub.add_parser('lesson', help='add or search reusable lessons', formatter_class=argparse.RawDescriptionHelpFormatter,
+                       epilog='Examples:\n  ws lesson add "Mocked DB hid a bad migration; run migrations in tests" --tag testing\n  ws lesson search migration').add_subparsers(dest='action', required=True)
+    s = l.add_parser('add', help='save a lesson: what happened -> rule'); s.add_argument('text'); s.add_argument('--tag', action='append', default=[], help='topic tag; repeatable')
+    s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
-    s = l.add_parser('search'); s.add_argument('query', nargs='?', default='')
+    s = l.add_parser('search', help='find saved lessons'); s.add_argument('query', nargs='?', default='', help='words to look for (default: all)')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
-    s = f.add_parser('add'); s.add_argument('text'); s.add_argument('--kind', default='idea'); s.add_argument('--source', default='user')
-    s = f.add_parser('list'); s.add_argument('--all', action='store_true')
+    s = f.add_parser('add', help='record feedback locally'); s.add_argument('text'); s.add_argument('--kind', default='idea', help='idea, bug, praise or friction (default idea)'); s.add_argument('--source', default='user')
+    s = f.add_parser('list', help='list feedback items'); s.add_argument('--all', action='store_true', help='include items already done')
     s = f.add_parser('submit', help='turn item N into a GitHub issue (preview first)'); s.add_argument('n', type=int); s.add_argument('--yes', action='store_true')
     s = f.add_parser('link', help='record the issue URL for item N'); s.add_argument('n', type=int); s.add_argument('url')
     f.add_parser('sync', help='tick items whose issue is closed')
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
-    sub.add_parser('version')
-    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true')
+    sub.add_parser('version', help='print the installed kit version')
+    s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true', help='print the changes without writing them'); s.add_argument('--diff', action='store_true', help='show the full diff of every file, not the summary'); s.add_argument('--yes', action='store_true', help='apply without asking (needed in scripts: closed input is no answer and refuses)')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
     s = sub.add_parser('assist', help='suggest improvements; apply only after explicit permission')
     s.add_argument('action', nargs='?', choices=('apply', 'decide')); s.add_argument('id', nargs='?')
@@ -350,18 +450,36 @@ def main(argv=None):
     s = sub.add_parser('trace', help='read-only Markdown timeline of reported orchestration steps'); s.add_argument('task')
 
     args = sys.argv[1:] if argv is None else argv
+    if len(args) > 1 and args[0] == 'help' and args != ['help', 'all']:  # `ws help X` is `ws X --help`
+        args = argv = [*args[1:], '--help']
     if args == ['help', 'all']:
         p.formatter_class = argparse.HelpFormatter
         p.print_help()
         return 0
-    if args in (['--help'], ['-h']):
+    if args in (['--help'], ['-h'], ['help']):
         p.usage = '%(prog)s [options] {' + ','.join(DAILY_COMMANDS) + '}'
+    if args == ['help']:
+        p.print_help()
+        return 0
     a = p.parse_args(argv)
+    if a.cmd == 'team' and isinstance(a.folder, str):  # `--folder PATH` supplies the remote
+        if a.remote and a.remote != a.folder: p.error('give the folder path once: ws team link --folder PATH')
+        a.remote, a.folder = a.folder, True
     try:
+        for value in vars(a).values():  # a lone surrogate or invalid byte would crash every write path
+            for text in (value if isinstance(value, list) else [value]):
+                if isinstance(text, str):
+                    try: text.encode('utf-8')
+                    except UnicodeEncodeError: raise core.WsError('Text must be valid UTF-8.')
+        if a.cmd == 'demo':
+            from . import demo
+            if a.workspace_root: raise core.WsError('ws demo uses its own disposable workspace; omit --workspace-root.')
+            out(demo.run()); return 0
         if a.cmd == 'start':
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
-            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo)
+            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import)
+            except core.WsError: raise  # already says what to do; the prefix below is for unexpected file errors
             except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
             if result and result.get('undone'):
                 print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
@@ -370,6 +488,9 @@ def main(argv=None):
                 print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected') + ('; Codex: ' + result.get('codex_status', 'connected')))
                 print('Open this repo in Claude or Codex as usual; trust local hooks/MCP when asked.')
                 print('Next: ' + ('task ' + result['task'] if result['task'] else 'no saved task') + ' (' + result['branch'] + '); work normally and save a checkpoint before stopping.')
+                if result.get('starter'): print(f"Looks like {repo.STARTERS[result['starter']]}: ws pack add {result['starter']} adds a few starter rules (optional).")
+                if repo.plugin_duplicates(Path(result['root']), only=result.get('repo')):
+                    print('Note: the ai-dev-workspace Claude Code plugin is also enabled, so Claude gets two briefs per session. Disable the plugin, or run ws start --undo here.', file=sys.stderr)
             return 2 if result and result.get('partial') else 0
         if a.cmd == 'setup' and a.detect:
             from . import setup
@@ -405,12 +526,37 @@ def main(argv=None):
                 out(res); return 0
             out(core.update_kit()); return 0
         if a.cmd == 'doctor':
+            problem = ''
             try:
                 root = core.find_root(a.workspace_root)
-            except core.WsError:
+            except core.WsError as exc:
                 root = None
-            report = core.doctor(root, a.mcp)
-            out(text_doctor(report) if a.text or human() else report); return 0
+                if not str(exc).startswith('No workspace.json found'): problem = str(exc)  # a broken repo link, not just "no workspace here"
+            try:
+                report = core.doctor(root, a.mcp)
+            except (OSError, ValueError, TypeError, AttributeError, KeyError) as exc:
+                problem = f'workspace.json is unreadable ({exc}); fix or restore it, or run ws start --undo in a started repo.'
+                report = core.doctor(None, a.mcp)
+            if problem: report['workspace_error'] = problem
+            if a.json and not a.text: print(json.dumps(report, indent=2, ensure_ascii=False))
+            else: out(text_doctor(report) if a.text or human() else report)
+            return 0
+        if a.cmd == 'audit':
+            from . import audit
+            report = audit.audit(a.repo)
+            out(audit.text(report) if a.text or human() else report); return 0
+        if a.cmd == 'guard':  # no workspace lookup: runs before every tool call, and any error must allow the call
+            from . import guards
+            try: payload = core.stdin_json()
+            except ValueError: payload = {}
+            print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}))); return 0
+        if a.cmd == 'discipline':  # advisory only: any error prints {} so the tool result reaches the model unchanged
+            from . import discipline
+            try:
+                payload = core.stdin_json()
+                result = discipline.hook(core.find_root(a.workspace_root), payload) if isinstance(payload, dict) and payload.get('hook_event_name') in ('PostToolUse', 'PostToolUseFailure') else {}
+            except (ValueError, OSError, core.WsError): result = {}
+            print(json.dumps(result)); return 0
         if a.cmd == 'sessions':
             roots = None
             if a.root:
@@ -421,14 +567,25 @@ def main(argv=None):
                         raise core.WsError('Use ws sessions search <query> --root cursor=<dir> (or claude, codex, gemini).')
                     roots[client] = Path(directory).expanduser()
             out(core.session_search(a.query, roots)); return 0
-        root = core.find_root(a.workspace_root)
+        try: root = core.find_root(a.workspace_root)
+        except core.WsError as exc:
+            if a.cmd != 'pack' or not str(exc).startswith('No workspace.json found'): raise
+            name = a.name or '<name>'  # a pack needs a workspace, which `ws start` creates
+            raise core.WsError(f'No workspace.json found here or above. In a git repo run `ws start` first, then `ws pack {a.action} {name}` and `ws start` again to wire it; otherwise `ws init <dir>`, or set WS_ROOT.')
+        @core.contextlib.contextmanager
+        def saved_locally():  # the record is already saved; say so when sharing it cannot go ahead
+            try: yield
+            except (core.WsError, ValueError, OSError) as exc: raise core.WsError(f'Saved locally, not shared: {exc}') from None
         def share_gate(item, remove=False):
             from . import sharing
-            plan = sharing.preview(root, item, remove, getattr(a, 'author', 'local'), as_format=getattr(a, 'as_format', '')); out(plan)
+            author = getattr(a, 'author', None)
+            if author is None: author = sharing.default_author(root)
+            from . import team_ui
+            plan = sharing.preview(root, item, remove, author, as_format=getattr(a, 'as_format', '')); show(plan, team_ui.share)
             if getattr(a, 'dry_run', False) or plan['unchanged']: return
             if not a.yes:
                 print('Apply this exact local team preview? [y/N]')
-                if input().strip().lower() not in ('y', 'yes'): return
+                if not ask(): return
             out(sharing.apply(root, plan))
         if a.cmd in ('share', 'unshare'):
             share_gate(a.item, a.cmd == 'unshare'); return 0
@@ -436,38 +593,70 @@ def main(argv=None):
             from . import scope
             out(scope.record(root, a.item, a.value, a.expected_sha)); return 0
         if a.cmd == 'sync':
-            from . import team_sync
-            plan = team_sync.preview(root); out(plan)
-            if a.dry_run or not plan['files']: return 0
-            if a.yes or input('Publish this exact team sync preview? [y/N] ').strip().lower() in ('y', 'yes'):
-                out(team_sync.apply(root, plan))
+            from . import team_sync, team_auto
+            if a.automatic and not a.pull_only: raise core.WsError('--automatic requires --pull-only.')
+            if a.pull_only:
+                if a.dry_run: raise core.WsError('--pull-only cannot combine with --dry-run; omit --dry-run for a read-only pull.')
+                out(team_auto.pull(root, a.automatic)); return 0
+            if a.daily:
+                plan = team_auto.schedule(root, a.daily); out(plan)
+                if not a.dry_run and plan['supported'] and (a.yes or ask('Activate this exact daily read-only job? [y/N] ')):
+                    out(team_auto.schedule(root, a.daily, True, plan))
+                return 0
+            from . import team_ui
+            before = team_ui.entries(root)
+            plan = team_sync.preview(root); show(plan, team_ui.sync); published = None
+            if not (a.dry_run or not plan['files']) and (a.yes or ask('Publish this exact team sync preview? [y/N] ')):
+                out(team_sync.apply(root, plan)); published = list(plan['files'])
+            print(team_ui.sync_line(before, team_ui.entries(root), published, len(plan['files'])), file=sys.stderr)  # stderr: stdout stays JSON for scripts
             return 0
         if a.cmd == 'team':
             if a.action == 'status':
                 from . import team_status
                 if not a.remote and not a.disable_status:
-                    out(team_status.list_entries(root)); return 0
+                    rows = team_status.list_entries(root); out(rows)
+                    if not rows['entries'] and not rows['warnings']:
+                        print('No team status shared. Status sharing is off until someone opts in with ws team status --publish-status (previewed first).', file=sys.stderr)
+                    return 0
                 plan = team_status.preview(root, a.remote, a.author, a.publish_status, a.disable_status); out(plan)
-                if not a.dry_run and (a.yes or input('Save this exact local status preview? [y/N] ').strip().lower() in ('y', 'yes')):
+                if not a.dry_run and (a.yes or ask('Save this exact local status preview? [y/N] ')):
                     out(team_status.apply(root, plan))
                 return 0
-            from . import team
+            if a.action in ('init', 'link') and not a.remote:
+                raise core.WsError(f'The remote is missing: run `ws team {a.action} <private-repo>`' + (' (or a folder path with --folder).' if a.folder else '.'))
+            if a.folder:
+                from . import team_folder
+                if a.action not in ('init','link'): raise core.WsError('--folder supports init/link; unlink uses ws team unlink.')
+                handler = team_folder.initialize if a.action=='init' else team_folder.link
+                from . import team_ui
+                plan = handler(root, a.remote, attest=a.attest_private, auto_pull=bool(a.auto_pull))
+                if a.dry_run or plan.get('already') or not a.yes: show(plan, team_ui.team)  # with --yes only the result prints
+                if not a.dry_run and not plan.get('already') and (a.yes or ask('Link this exact private folder snapshot? [y/N] ')):
+                    pulls = a.auto_pull
+                    if pulls is None and not a.yes:
+                        pulls = ask('Keep team knowledge updated automatically (read-only pulls)? [y/N] ')
+                        plan['auto_pull'] = bool(pulls)
+                    show(handler(root, a.remote, True, a.attest_private, bool(pulls), plan), team_ui.team_done)
+                return 0
+            from . import team, team_ui
             plan = team.manage(root, a.action, a.remote, attest=a.attest_private,
-                               auto_pull=bool(a.auto_pull), verifier=a.verify_with); out(plan)
+                               auto_pull=bool(a.auto_pull), verifier=a.verify_with)
+            if a.dry_run or plan.get('already') or not a.yes: show(plan, team_ui.team)  # with --yes only the result prints
             if a.dry_run or plan.get('already'): return 0
             if not a.yes:
                 print('Apply this team preview? [y/N]')
-                if input().strip().lower() not in ('y', 'yes'): return 0
+                if not ask(): return 0
             pulls = a.auto_pull
             if pulls is None and not a.yes and a.action != 'unlink':
                 print('Keep team knowledge updated automatically (pull at session start and daily)? [y/N]')
-                pulls = input().strip().lower() in ('y', 'yes')
-            out(team.manage(root, a.action, a.remote, True, a.attest_private, bool(pulls), a.verify_with, plan['sha']))
+                pulls = ask()
+            show(team.manage(root, a.action, a.remote, True, a.attest_private, bool(pulls), a.verify_with, plan['sha']), team_ui.team_done)
             return 0
         if a.cmd == 'setup':
             from . import setup
             if a.assistants is not None: selected = [name.strip().lower() for name in a.assistants.split(',')]
             elif a.preset:
+                from . import orchestration
                 selected = json.loads(orchestration.routing_template(a.preset))['assistants']
             elif sys.stdin.isatty():
                 detected = [item['assistant'] for item in setup.detect() if item['cli_available'] or item['apps']]
@@ -477,21 +666,23 @@ def main(argv=None):
             result = setup.configure(root, selected, a.preset, dry_run=not a.apply)
             out(result); return 2 if result.get('partial') else 0
         if a.cmd == 'route':
+            from . import orchestration
             result = orchestration.route(root, a.role)
             out(text_route(result) if a.text or human() else result); return 0 if result['available'] else 2
         if a.cmd == 'worker':
+            from . import workers
             if a.action == 'launch': out(workers.launch(root, a.id)); return 0
             def confirm(plan):
                 print(json.dumps(plan, indent=2), file=sys.stderr)
                 print('Apply this worker ' + a.action + ' action? [y/N] ', end='', file=sys.stderr)
-                try: return input().strip().lower() in ('y', 'yes')
-                except EOFError: raise core.WsError('No confirmation; use --yes or --dry-run.')
+                return ask()
             approval = None if a.yes else confirm
             if a.action == 'review': out(workers.review(root, a.id, a.approve, approval))
             elif a.action in ('accept', 'discard'): out(getattr(workers, a.action)(root, a.id, apply=not a.dry_run, confirm=approval))
             else: out(workers.prepare(root, a.task, a.scope, a.base, apply=not a.dry_run, confirm=approval))
             return 0
         if a.cmd == 'delegate':
+            from . import orchestration
             if a.selftest:
                 if a.task or a.role or a.diff: raise core.WsError('Selftest takes no task, role or diff; run ws delegate --help.')
                 binding = orchestration.route(root, 'explorer', a.provider)
@@ -500,8 +691,17 @@ def main(argv=None):
             if not a.task or not a.role or a.provider: raise core.WsError('Delegate requires task and --role; --provider is selftest-only.')
             result = orchestration.delegate(root, a.task, a.role, a.run, a.diff); out(result); return 0 if result.get('exit_code', 0) == 0 else 2
         if a.cmd == 'upgrade':
-            result = core.upgrade_workspace(root, a.dry_run)
-            out('\n'.join(c['diff'] for c in result['changes']) or 'No changes.')
+            from . import upgrade
+            def show_upgrade(result): out(('\n'.join(c['diff'] for c in result['changes']) if a.diff else upgrade.summary(result['changes'])) if result['changes'] else 'No changes.')
+            result = core.upgrade_workspace(root, True)  # preview first; applying re-plans under the lock
+            show_upgrade(result)
+            if not a.dry_run:
+                if result['changes'] and not a.yes:
+                    print('Apply this upgrade? [y/N] ', end='', file=sys.stderr)
+                    try: go = input().strip().lower() in ('y', 'yes')
+                    except EOFError: print(file=sys.stderr); raise core.WsError('No confirmation; use ws upgrade --yes or --dry-run.')
+                    if not go: out('Not applied.'); return 0
+                result = core.upgrade_workspace(root, False, result['changes'])  # refuses if the plan changed since the preview
             out({'pending_review': result['pending'], 'backups': result['backups']}); return 0
         if a.cmd == 'assist':
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
@@ -518,12 +718,18 @@ def main(argv=None):
             collision_notices(result)
             out(result)
         elif a.cmd in ('brief', 'nudge'):
-            payload = json.load(sys.stdin) if a.hook else {}
+            if a.hook: core.memo_git(True)  # session_task, observe and the brief share one git state
+            try: payload = core.stdin_json() if a.hook else {}
+            except ValueError: raise core.WsError('Hook input must be a JSON object; stdin was empty or not JSON.')
             branch_task = None
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
             if a.hook and a.cmd == 'brief' and payload.get('hook_event_name') in ('SessionStart', 'sessionStart'):
-                branch_task = core.session_task(root, payload.get('cwd'))
+                from . import team_auto
+                update = team_auto.maybe_pull(root)
+                if update and update.get('warning'): print(update['warning'], file=sys.stderr)
+                try: branch_task = core.session_task(root, payload.get('cwd'))
+                except core.WsError: branch_task = None  # a bad cwd must not hide the brief
             if a.hook:
                 try: assist.observe(root, payload)
                 except OSError: pass  # Optional usage metadata must not block read-only memory.
@@ -531,8 +737,8 @@ def main(argv=None):
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client,
                                            assist.session_task(root, payload.get('session_id')))
-                message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else ''
-                summary = core.memory_summary(root) if message and a.client == 'codex' else ''
+                message, summary = core.brief_and_summary(root, branch_task) if a.cmd == 'brief' else ('', '')
+                summary = summary if message and a.client == 'codex' else ''
                 out({'additional_context': message} if a.client == 'cursor' and message else
                     {'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if summary else
                     {'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if message else {})
@@ -541,7 +747,7 @@ def main(argv=None):
                 core.capture_decisions(root, payload.get('transcript_path'), 'claude',
                                        assist.session_task(root, payload.get('session_id')))
             if a.cmd == 'brief' and a.refresh: core.refresh_native(root)
-            message = (core.brief(root, branch_task) if branch_task else core.brief(root)) if a.cmd == 'brief' else core.nudge(root)
+            message, summary = core.brief_and_summary(root, branch_task) if a.cmd == 'brief' else (core.nudge(root), '')
             if a.hook and a.cmd == 'nudge':
                 if payload.get('hook_event_name') == 'Stop':
                     uses = claude_tool_uses(payload.get('transcript_path'))
@@ -551,7 +757,7 @@ def main(argv=None):
                 elif message:
                     out({'systemMessage': message})
             elif message:
-                summary = core.memory_summary(root) if a.hook and a.cmd == 'brief' and a.client == 'claude' else ''
+                summary = summary if a.hook and a.cmd == 'brief' and a.client == 'claude' else ''
                 out({'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if a.client == 'claude' and summary else message)
         elif a.cmd == 'connect':
             result = core.connect(root, a.client, a.write, skills=a.skills, verify=True)
@@ -561,7 +767,10 @@ def main(argv=None):
                     linked = ', '.join(result['skills']['linked']) or 'none'
                     kept = ', '.join(result['skills']['kept']) or 'none'
                     skipped = ', '.join(result['skills']['skipped']) or 'none'
-                    print(f"Skills for {a.client}: linked {linked}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
+                    copied = f"; copied because links are not allowed here: {', '.join(result['skills']['copied'])} (rerun after a kit upgrade to refresh unedited copies)" if result['skills'].get('copied') else ''
+                    copied += f"; refreshed unedited copies: {', '.join(result['skills']['refreshed'])}" if result['skills'].get('refreshed') else ''
+                    copied += f"; kept your edited copies (delete them to refresh): {', '.join(result['skills']['edited'])}" if result['skills'].get('edited') else ''
+                    print(f"Skills for {a.client}: linked {linked}{copied}; kept existing names {kept}; already available in workspace: {skipped}.", file=sys.stderr)
                 else:
                     count = core.skills_to_link(a.client, root)
                     if count:
@@ -589,6 +798,8 @@ def main(argv=None):
                 res = core.task_import(root, a.file, a.prefix, a.yes); out(res)
                 if res['errors']: return 1
             else:
+                for name in a.section or ():
+                    if name not in core.NOTE_SECTIONS: raise core.WsError(f'Unknown section {name}. Valid sections: {", ".join(core.NOTE_SECTIONS)}.')
                 res = core.task_read(root, a.id, a.section)
                 out(res['text'] if 'text' in res else res)
         elif a.cmd == 'next':
@@ -600,12 +811,14 @@ def main(argv=None):
                 if res['waiting']: lines.append(f"{res['waiting']} waiting on dependencies")
                 out('\n'.join(lines))
         elif a.cmd == 'claim':
-            worker = a.worker or os.environ.get('USER')
+            worker = a.worker or os.environ.get('USER') or os.environ.get('USERNAME')
             if not worker:
-                raise core.WsError('Set USER or pass --worker.')
+                raise core.WsError('Set USER (USERNAME on Windows) or pass --worker.')
             out(core.claim(root, a.id, worker))
         elif a.cmd == 'release': out(core.release(root, a.id, a.worker, a.token))
         elif a.cmd == 'checkpoint':
+            if (bad := [n for n in a.note if '=' not in n]):
+                raise core.WsError(f'--note needs SECTION=TEXT, e.g. --note "Handoff=Decision: use Postgres"; got "{bad[0]}".')
             notes = dict(n.split('=', 1) for n in a.note)
             out(core.checkpoint(root, a.id, a.status, a.next, a.expected_sha, a.worker, a.token, notes))
             if a.status == 'done' and (hint := native.goal_hint(root, a.id)): print(hint, file=sys.stderr)  # stderr keeps stdout JSON clean
@@ -614,12 +827,19 @@ def main(argv=None):
             out(f"Remembered in {result['task']}: {result['remembered']}" if human() else result)
             if a.team:
                 from . import sharing
-                share_gate(sharing.standalone(root, 'decision', a.text))
+                with saved_locally(): share_gate(sharing.standalone(root, 'decision', a.text))
+        elif a.cmd == 'pr-notes':
+            result = core.pr_notes(root, a.id, link=not a.no_link)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
+        elif a.cmd == 'recap':
+            result = core.recap(root, a.since)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if a.json else result['markdown'], end='' if not a.json else '\n')
         elif a.cmd == 'know':
             from . import knowledge
             if a.action == 'add':
                 item = knowledge.add(root, a.text, a.category, a.team); out({'saved': item})
-                if a.team: share_gate(item)
+                if a.team:
+                    with saved_locally(): share_gate(item)
             elif a.action == 'list': out(knowledge.list_entries(root, a.category, a.layer))
             else: out(knowledge.show(root, a.id))
         elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
@@ -628,7 +848,7 @@ def main(argv=None):
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
             if a.action == 'add' and a.team:
                 from . import sharing
-                share_gate(sharing.standalone(root, 'lesson', a.text))
+                with saved_locally(): share_gate(sharing.standalone(root, 'lesson', a.text))
         elif a.cmd == 'feedback':
             if a.action == 'add': out(core.feedback_add(root, a.text, a.kind, a.source))
             elif a.action == 'submit': out(core.feedback_submit(root, a.n, a.yes))
@@ -642,8 +862,8 @@ def main(argv=None):
             digest = core.digest_file(a.file, focus=a.focus)
             if a.local_summary:
                 try:
-                    result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file],
-                                            capture_output=True, text=True, timeout=180)
+                    result = subprocess.run([sys.executable, str(core.KIT / 'packs/local-llm/summarize.py'), a.file], env={**os.environ, 'PYTHONUTF8': '1'},  # the child prints UTF-8 too
+                                            capture_output=True, encoding='utf-8', errors='replace', timeout=180)
                 except (OSError, subprocess.TimeoutExpired) as exc: raise core.WsError(core.redact(f'Local summary failed: {exc}'))
                 if result.returncode: raise core.WsError(core.redact(result.stderr.strip()) or 'Local summary failed.')
                 digest['local_summary'] = core.redact(result.stdout)
@@ -660,15 +880,14 @@ def main(argv=None):
                     raise core.WsError('Paste exceeds 50 MB; save it to a file and run `ws digest` instead.')
                 out(core.paste_save(root, text)['digest'])
             else:
-                try: payload = json.loads(_read_limited_stdin())
+                try: payload = core.json_loads(_read_limited_stdin())
                 except core.WsError as exc:
-                    if '50 MB' not in str(exc):
-                        return _block_prompt(a.client, 'This client prompt-hook input is not valid UTF-8. Retry with a short question plus the relevant excerpt.')
+                    if '50 MB' not in str(exc): out({}); return 0  # unreadable input: allow the prompt rather than block every one
                     return _block_prompt(a.client, 'Prompt hook input exceeds 50 MB. Save the source as a file and run `ws digest <file> --focus "<pattern>"` instead.')
                 except json.JSONDecodeError:
-                    return _block_prompt(a.client, 'This client sent malformed prompt-hook data. Retry with a short question plus the relevant excerpt.')
+                    out({}); return 0
                 if not isinstance(payload, dict) or not isinstance(payload.get('prompt'), str):
-                    return _block_prompt(a.client, 'This client did not provide a valid prompt. Retry with a short question plus the relevant excerpt.')
+                    out({}); return 0
                 prompt = payload.get('prompt', '')
                 lines = prompt.splitlines() if isinstance(prompt, str) else []
                 if not core.prompt_is_large(prompt) or lines and lines[0].strip() == '!raw':
@@ -690,14 +909,26 @@ def main(argv=None):
                                  a.worker_role, a.effort, a.check, a.files, a.verdict, a.findings))
             else: out(core.run_report(root, a.task))
         return 0
-    except (core.WsError, FileNotFoundError, json.JSONDecodeError) as exc:
+    except Exception as exc:
+        if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
+            print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
+            print('{}'); return 0
+        if isinstance(exc, OSError) and exc.filename is None:  # e.g. a failed launchd call: its own words say more than a file hint
+            exc = core.WsError(str(exc))
+        elif isinstance(exc, OSError):  # a file that cannot be read or written is a user-fixable state, not a ws bug
+            exc = core.WsError(f'Cannot read or write {exc.filename or "a file"}: {exc.strerror or exc}. Next: check that path (permissions, or a directory where a file should be), then retry.')
+        elif isinstance(exc, UnicodeDecodeError):
+            exc = core.WsError(f'A file is not valid UTF-8 ({exc.reason}). Next: fix or remove the bad bytes in the file named by the command, then retry.')
+        if not isinstance(exc, (core.WsError, json.JSONDecodeError)): raise
         message = str(exc)
         if isinstance(exc, core.WsError) and not any(hint in message.lower() for hint in ('`ws ', 'run ws ', 'see ws ', 'next:')):
-            message += ' Next: run `ws --help` for the relevant command.'
+            message += ('' if message.endswith(('.', '!', '?', ':')) else '.') + f' Next: run `ws {a.cmd} --help`.'
         print(f'ws: {message}', file=sys.stderr)
         if not isinstance(exc, core.WsError):
             print('If this looks like a bug in ws, record it: ws feedback add "<what you ran and saw>" --kind bug', file=sys.stderr)
         return 2
+    finally:
+        core.memo_git(False)
 
 
 if __name__ == '__main__':

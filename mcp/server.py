@@ -26,6 +26,7 @@ PROMPTS = {'handoff': 'Save verified progress and the next action.',
 
 
 def resources(root):
+    if root is None: return []
     result = [{'uri': 'workspace://brief', 'name': 'brief', 'mimeType': 'text/plain'}]
     result += [{'uri': 'workspace://tasks/' + task['id'], 'name': task['id'], 'mimeType': 'text/markdown'}
                for task in core.task_list(root) if task['claimed_by']
@@ -36,6 +37,20 @@ def resources(root):
 def S(**props):
     required = [k for k, v in props.items() if not v.pop('optional', False)]
     return {'type': 'object', 'properties': props, 'required': required, 'additionalProperties': False}
+
+
+# Listed by default: what a session needs to read and save memory. Every other tool stays callable by name.
+CORE_TOOLS = ('brief', 'find_task', 'read_task', 'checkpoint', 'remember', 'search_vault', 'add_lesson')
+PLUGIN_INACTIVE = False
+NO_WORKSPACE = 'No ai-dev-workspace here: run `ws start` in your repo (or pass --workspace-root).'
+
+
+def listed_tools(root):
+    """workspace.json `mcp_tools`: "core" (default), "all", or a list of tool names."""
+    if root is None and PLUGIN_INACTIVE: return ['brief']
+    choice = core.config(root).get('mcp_tools', 'core') if root else 'all'
+    names = TOOLS if choice == 'all' else choice if isinstance(choice, list) else CORE_TOOLS
+    return [name for name in TOOLS if name in names]
 
 
 def string(desc, optional=False):
@@ -54,7 +69,7 @@ TOOLS = {
     'import_usage': ('Import Codeburn usage; skip ambiguous matches and duplicates.',
                      S(since=string('YYYY-MM-DD', True), task=string('', True)), lambda r, a: core.import_codeburn(r, a.get('since'), a.get('task'))),
     'search_sessions': ('Search Claude/Codex/Cursor/Gemini transcripts; snippets are redacted.',
-                        S(query=string('')), lambda r, a: core.session_search(a['query'])),
+                        S(query=string('')), lambda r, a: core.session_search(a['query'], hide_private=True)),
     'codebase_map': ('Map configured or supplied repo.',
                      S(repo=string('', True)), lambda r, a: core.codebase_map(r, a.get('repo'))),
     'brief': ('Show local task memory.', S(), lambda r, a: core.brief(r)),
@@ -125,6 +140,9 @@ def rpc_error(mid, code, message):
     return {'jsonrpc': '2.0', 'id': mid, 'error': {'code': code, 'message': message}}
 
 
+MAX_TEXT, MAX_ITEMS, MAX_TOTAL = 100_000, 1000, 200_000  # per string / per array / whole call: one call must not bloat the task record or stall later reads
+
+
 def validate_input(value, schema, field='arguments'):
     kind = schema.get('type')
     valid = {'object': isinstance(value, dict), 'array': isinstance(value, list),
@@ -132,8 +150,14 @@ def validate_input(value, schema, field='arguments'):
              'number': type(value) is int or (type(value) is float and math.isfinite(value))}
     if kind and not valid.get(kind, False):
         raise ValueError(f'{field} must be {kind}')
+    if field == 'arguments' and len(json.dumps(value, ensure_ascii=False)) > MAX_TOTAL:  # arrays multiply the per-string limit
+        raise ValueError(f'{field} are larger than {MAX_TOTAL} characters in total')
     if 'enum' in schema and value not in schema['enum']:
         raise ValueError(f'{field} is not an allowed value')
+    if kind == 'string' and len(value) > MAX_TEXT:
+        raise ValueError(f'{field} is longer than {MAX_TEXT} characters')
+    if kind == 'array' and len(value) > MAX_ITEMS:
+        raise ValueError(f'{field} has more than {MAX_ITEMS} items')
     if kind == 'object':
         props = schema.get('properties', {})
         if any(key not in value for key in schema.get('required', [])):
@@ -196,7 +220,7 @@ def _dispatch(root, msg):
         except (core.WsError, OSError) as exc:
             return rpc_error(mid, -32603, str(exc))
     elif method == 'tools/list':
-        result = {'tools': [{'name': n, 'description': d, 'inputSchema': s} for n, (d, s, _) in TOOLS.items()]}
+        result = {'tools': [{'name': n, 'description': TOOLS[n][0], 'inputSchema': TOOLS[n][1]} for n in listed_tools(root)]}
     elif method == 'tools/call':
         name = params.get('name')
         args = params.get('arguments', {})
@@ -209,9 +233,11 @@ def _dispatch(root, msg):
         except ValueError as exc:
             return rpc_error(mid, -32602, str(exc))
         try:
+            if root is None:
+                return {'jsonrpc': '2.0', 'id': mid, 'result': {'content': [{'type': 'text', 'text': NO_WORKSPACE}], 'isError': True}}
             value = TOOLS[name][2](root, args)
             result = {'content': [{'type': 'text', 'text': json.dumps(value, ensure_ascii=False, indent=1)}], 'isError': False}
-        except (core.WsError, KeyError, OSError, ValueError, TypeError) as exc:
+        except Exception as exc:  # a tool bug or odd argument must end this call, never the server
             result = {'content': [{'type': 'text', 'text': f'{type(exc).__name__}: {exc}'}], 'isError': True}
     elif method == 'ping':
         result = {}
@@ -270,20 +296,43 @@ def handle(root, msg, legacy=None):
     return reply
 
 
+def serve(root, raw, legacy):
+    """Reply to one stdio line (bytes); nothing a client sends may end the loop."""
+    try:
+        line = raw.decode('utf-8')
+        if not line.strip():
+            return None
+        msg = json.loads(line)
+    except (ValueError, RecursionError):  # bad UTF-8, bad JSON, absurd nesting or number size
+        return rpc_error(None, -32700, 'Parse error')
+    try:
+        return handle(root, msg, legacy)
+    except Exception as exc:
+        mid = msg.get('id') if isinstance(msg, dict) else None
+        if not isinstance(msg, dict) or 'id' not in msg:
+            return None
+        return rpc_error(mid if type(mid) in (str, int) else None, -32603, f'Internal error: {type(exc).__name__}')
+
+
 def main():
+    global PLUGIN_INACTIVE
     if os.name == 'nt':
         for stream in (sys.stdin, sys.stdout, sys.stderr): stream.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser()
-    p.add_argument('--root', help='workspace directory (default: WS_ROOT or current directory)')
-    root = core.find_root(p.parse_args().root)
+    p.add_argument('--root', '--workspace-root', help='workspace directory (default: WS_ROOT or current directory)')
+    p.add_argument('--plugin', action='store_true', help='optional plugin mode: inactive outside ws-started repos')
+    args = p.parse_args()
+    if args.plugin:
+        from ws import plugin_runtime
+        try: root = plugin_runtime.workspace(args.root)
+        except (core.WsError, OSError, ValueError, TypeError, KeyError): root = None
+    else:
+        try: root = core.find_root(args.root)
+        except core.WsError: root = None  # still answer initialize/tools/list; tools/call reports NO_WORKSPACE
+    PLUGIN_INACTIVE = args.plugin and root is None
     legacy = {}
-    for line in sys.stdin:
-        if not line.strip():
-            continue
-        try:
-            reply = handle(root, json.loads(line), legacy)
-        except json.JSONDecodeError:
-            reply = {'jsonrpc': '2.0', 'id': None, 'error': {'code': -32700, 'message': 'Parse error'}}
+    for raw in sys.stdin.buffer:
+        reply = serve(root, raw, legacy)
         if reply is not None:
             sys.stdout.write(json.dumps(reply) + '\n')
             sys.stdout.flush()

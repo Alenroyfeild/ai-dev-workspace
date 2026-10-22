@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from testutil import needs_symlinks
 from unittest import mock
 import test_sharing
 from ws import core, knowledge, sharing
@@ -50,7 +51,7 @@ class CardTests(unittest.TestCase):
         with self.assertRaises(core.WsError):knowledge.add(self.root,'Another bounded queue rule.','repo')
         self.assertEqual(index.read_text(),'User-owned index.\n');self.assertEqual(before,sorted(path.parent.iterdir()))
 
-    @unittest.skipIf(os.name=='nt','symlink fixture requires Windows developer mode')
+    @needs_symlinks
     def test_symlinked_card_and_stale_artifact_preview_refuse(self):
         item=knowledge.add(self.root,'Bounded queue rule.','repo',True);plan=sharing.preview(self.root,item);sharing.apply(self.root,plan)
         index=self.clone/'INDEX.md';index.write_text(index.read_text()+'\nUser note.\n')

@@ -11,6 +11,17 @@ from urllib.parse import quote, urlsplit
 from . import core
 
 
+class ManifestError(core.WsError):
+    """The linked team.json cannot be read; `ws sync --pull-only` may still pull a fix."""
+
+
+def parse_manifest(path, read):
+    try: return json.loads(read())
+    except (ValueError, OSError) as exc:
+        raise ManifestError(f'Team manifest {path} is missing or not valid JSON ({exc}). If you did not edit it, run '
+                            f'`git -C {Path(path).parent} checkout -- team.json`, or `ws sync --pull-only` once a teammate has fixed it.') from None
+
+
 def remote_parts(remote):
     if not isinstance(remote, str) or not remote or not remote.isprintable() or remote.startswith('-'):
         raise core.WsError('Use a local absolute repository path or an SSH/HTTPS remote without credentials.')
@@ -41,7 +52,7 @@ def privacy(remote, attest=False, verifier=''):
         command = ['gh', 'repo', 'view', f'https://{host}/{slug}', '--json', 'visibility'] if tool == 'gh' else [
             'glab', 'api', 'projects/' + quote(slug, safe=''), '--hostname', host, '--method', 'GET']
         try:
-            result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+            result = subprocess.run(command, capture_output=True, encoding='utf-8', errors='replace', timeout=15)
             if result.returncode == 0: visibility = json.loads(result.stdout).get('visibility', '').lower()
         except (OSError, ValueError, AttributeError, subprocess.TimeoutExpired): pass
         if visibility and visibility != 'private': raise core.WsError('Team remote is not private; linking is blocked.')
@@ -55,7 +66,7 @@ def privacy(remote, attest=False, verifier=''):
 def _git(path, *args):
     try:
         return subprocess.run(['git', '-c', 'core.hooksPath=' + os.devnull, '-C', str(path), *args],
-                              check=True, capture_output=True, text=True, timeout=30).stdout
+                              check=True, capture_output=True, encoding='utf-8', errors='replace', timeout=30).stdout
     except (OSError, subprocess.SubprocessError):
         raise core.WsError('Git team operation failed; review the remote and retained local files before retrying.')
 
@@ -98,7 +109,7 @@ def manage(root, action, remote='', apply=False, attest=False, auto_pull=False, 
                     core.atomic_write(manifest, json.dumps(record, indent=2) + '\n')
                 else:
                     try: record = json.loads(core.read_text(manifest, [clone]))
-                    except (OSError, ValueError): raise core.WsError('Remote has no valid team.json; ask the host to initialize it.')
+                    except (OSError, ValueError): raise core.WsError('Remote has no valid team.json. The host must run `ws team init <repo>` and then `ws sync` once to publish it.')
                     if (not isinstance(record, dict) or record.get('kind') != 'ai-dev-workspace-team' or
                             record.get('schema_version') != 1 or not re.fullmatch(r'[a-f0-9]{32}', str(record.get('id', '')))):
                         raise core.WsError('Remote has no valid team manifest.')
@@ -109,7 +120,7 @@ def manage(root, action, remote='', apply=False, attest=False, auto_pull=False, 
                                          'privacy': verified, 'auto_pull': bool(auto_pull)}
                 updated = json.dumps(cfg, indent=2) + '\n'
                 try:
-                    core.atomic_write(metadata, updated); os.replace(clone, target)
+                    core.atomic_write(metadata, updated); core.replace_file(clone, target)
                 except OSError:
                     if metadata.read_text(encoding='utf-8') == updated: core.atomic_write(metadata, original)
                     raise core.WsError('Team link write failed; configuration preserved. Preview before retrying.')
@@ -117,4 +128,4 @@ def manage(root, action, remote='', apply=False, attest=False, auto_pull=False, 
             try: core.atomic_write(metadata, json.dumps(cfg, indent=2) + '\n')
             except OSError: raise core.WsError('Unlink write failed; team clone retained. Preview before retrying.')
     return {**plan, 'applied': True, 'privacy': cfg.get('team_workspace', {}).get('privacy', {}).get('method', ''),
-            'bootstrap_pending': action == 'init', 'pulls_active': False}
+            'bootstrap_pending': action == 'init', 'pulls_active': cfg.get('team_workspace',{}).get('auto_pull') is True}

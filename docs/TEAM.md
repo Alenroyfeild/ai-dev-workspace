@@ -1,6 +1,10 @@
-# Sharing a workspace in a team
+# Sharing one workspace through Git
 
-A workspace is plain Markdown, so a small team (2-5 people, one assistant each) can share it through a private git repo.
+**This page is the whole-workspace-in-Git mode: one shared vault of tasks and notes for a small team. For personal workspaces that share only approved notes (the usual choice), see [Team workspace](TEAM-WORKSPACE.md).**
+
+A small team can keep one shared Markdown workspace in a private Git repository.
+This suits teams that need the same tasks and notes. For personal workspaces with
+selected team sharing, see [Team workspace](TEAM-WORKSPACE.md).
 
 ## Set up
 
@@ -12,7 +16,7 @@ git init -b main && git add . && git commit -m "Add workspace"
 git remote add origin "$WORKSPACE_REMOTE" && git push -u origin main
 ```
 
-Teammates clone it and run `ws connect claude` (or their client). Keep the repo private: it holds your decisions and task notes.
+Teammates clone it and run `ws connect claude` (or their client). Keep the repository private: it holds shared decisions and task notes.
 
 ## Committed vs local
 

@@ -17,17 +17,18 @@ def import_usage(root, since=None, task_id=None):
         if since: datetime.date.fromisoformat(since)
     except (ValueError, TypeError):
         raise core.WsError('Since must be YYYY-MM-DD.')
-    if not core.shutil.which('codeburn'):
+    executable = core.shutil.which('codeburn')
+    if not executable:
         raise core.WsError('Codeburn missing. Install it yourself: npm install -g codeburn')
     try:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'usage.json'
-            command = ['codeburn', 'export', '-f', 'json', '-o', str(path)]
+            command = [executable, 'export', '-f', 'json', '-o', str(path)]
             if since: command += ['--from', since]
-            result = core.subprocess.run(command, capture_output=True, text=True, timeout=60)
+            result = core.subprocess.run(command, capture_output=True, encoding='utf-8', errors='replace', timeout=60)
             if result.returncode:
                 raise core.WsError('Codeburn export failed; diagnose locally with codeburn export -f json -o <temporary path>.')
-            data = json.loads(path.read_text())
+            data = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError, core.subprocess.TimeoutExpired) as exc:
         raise core.WsError('Codeburn export unavailable or invalid; no usage imported.') from exc
     if not isinstance(data, dict) or data.get('schema') != 'codeburn.export.v2' or not isinstance(data.get('records'), list):
@@ -41,7 +42,7 @@ def import_usage(root, since=None, task_id=None):
         end = timestamp(meta.get('checkpoint_at') or meta.get('updated') or core.now()) if meta.get('status') == 'done' else timestamp(core.now())
         if meta.get('status') == 'done' and len(meta.get('updated', '')) == 10 and not meta.get('checkpoint_at'):
             end += datetime.timedelta(days=1)
-        windows.append((identifier, {str(Path(p).expanduser().resolve()) for p in projects}, start, end))
+        windows.append((identifier, {str(core.repo_path(root, p)) for p in projects}, start, end))
     pending, ambiguous = [], 0
     for row in data['records']:
         try:

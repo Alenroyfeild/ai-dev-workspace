@@ -24,8 +24,12 @@ def preview(root, line='', author='local', enable=False, disable=False, date=Non
     path=sharing._safe(root,root/'.ws/team/status'/(author+'.json'))
     if path.exists() and path.stat().st_size>4096: raise core.WsError('Status snapshot is oversized; retain it for recovery.')
     old=sharing._text(path);receipt=sharing._safe(root,root/'.ws/shares.json');raw=sharing._text(receipt)
-    state=json.loads(raw or '{}')
+    state=core.load_json(raw or '{}','.ws/shares.json')
     if not isinstance(state,dict): raise core.WsError('Invalid share receipts.')
+    owners=state.get('_owners:'+link['id'],{})
+    if not isinstance(owners,dict): raise core.WsError('Invalid ownership receipts; retain them for recovery.')
+    if link.get('host')=='folder' and old and not owners.get('status/'+author+'.json'):
+        raise core.WsError('Status belongs to another publisher; use another alias.')
     approved=state.get('_artifacts:'+link['id'],{})
     if not isinstance(approved,dict) or (path.exists() and approved.get('status/'+author+'.json')!=core.digest_text(old)):
         raise core.WsError('Status changed or belongs to another publisher; use another alias, retain the file.')
@@ -41,7 +45,9 @@ def apply(root, plan):
         if preview(root,plan['line'],plan['author'],plan['enable'],plan['disable'],plan['date'])!=plan:
             raise core.WsError('Task, status or consent changed; preview again.')
         cfg=core.config(root);cfg['publish_status']=plan['publish_status']
-        receipt=sharing._safe(root,root/'.ws/shares.json');state=json.loads(sharing._text(receipt) or '{}')
+        receipt=sharing._safe(root,root/'.ws/shares.json');state=core.load_json(sharing._text(receipt) or '{}','.ws/shares.json')
+        if cfg['team_workspace'].get('host')=='folder':
+            sharing.own_projection(root,state,cfg['team_workspace']['id'],[plan['destination']],plan['author'])
         state.setdefault('_artifacts:'+cfg['team_workspace']['id'],{})[plan['destination']]=core.digest_text(plan['content']) if plan['content'] is not None else ''
         cards.write(root,{root/'.ws/team'/plan['destination']:plan['content'],root/'workspace.json':json.dumps(cfg,indent=2)+'\n',receipt:json.dumps(state,indent=2)+'\n'})
     return {'applied':True,'publish_status':plan['publish_status'],'remote_published':False}

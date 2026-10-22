@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 from unittest import mock
 from test_ws import Base
+from testutil import seeded_repo
 from ws import cli, core, workers
 
 
@@ -13,16 +14,24 @@ class WorkerPrepareTests(Base):
     def setUp(self):
         super().setUp()
         self.repo = self.root / 'source'; self.repo.mkdir()
-        self.git('init', '-q', '-b', 'feature/fixture')
-        (self.repo / 'calc.py').write_text('answer = 1\n')
-        (self.repo / '.gitignore').write_text('ignored.txt\n')
-        self.git('add', '.'); self.git('-c', 'user.name=Fixture', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'fixture')
+        seeded_repo(self.repo, 'feature/fixture', {'calc.py': 'answer = 1\n', '.gitignore': 'ignored.txt\n'})
         cfg = core.config(self.root); cfg['repos'] = [str(self.repo)]; (self.root / 'workspace.json').write_text(json.dumps(cfg))
         core.task_new(self.root, 'W-1', 'Fix fixture', objective='Update calc.py', repo=str(self.repo))
         core.claim(self.root, 'W-1', 'lead')
 
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.repo), *args], text=True).strip()
+
+    def test_seeded_repo_copy_skips_git_lock_files_but_keeps_tracked_ones(self):
+        import testutil
+        files = {'calc.py': 'answer = 1\n', 'Cargo.lock': '# tracked\n'}  # a seed of its own: no other cached template can stand in
+        first = self.root / 'first'; first.mkdir(); seeded_repo(first, 'feature/lock', files)
+        template = testutil._REPO_TEMPLATES[('feature/lock', 'fixture', tuple(sorted(files.items())))]
+        lock = template / '.git/objects/maintenance.lock'; lock.write_text('')  # a racing maintenance run
+        self.assertTrue(lock.exists())
+        copy = self.root / 'copy'; copy.mkdir(); seeded_repo(copy, 'feature/lock', files)
+        self.assertFalse((copy / '.git/objects/maintenance.lock').exists())
+        self.assertEqual((copy / 'Cargo.lock').read_text(), '# tracked\n')
 
     def prepare(self, **kw):
         with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
@@ -33,6 +42,16 @@ class WorkerPrepareTests(Base):
         state.update(started_at='fixture', finished_at='fixture', worker_exit=0,
                      checks=[dict(command='python3 -m unittest', exit_code=0)])
         record.write_text(json.dumps(state))
+
+    def test_task_without_repo_prepares_against_the_repo_the_user_is_in(self):
+        core.task_new(self.root, 'W-2', 'No repo', objective='Update calc.py')  # a single configured repo is filled in; blank it
+        path = core.task_path(self.root, 'W-2'); path.write_text(core.set_meta(path.read_text(), {'repo': ''})); core.claim(self.root, 'W-2', 'lead')
+        cwd = os.getcwd(); os.chdir(self.repo)
+        try:
+            with mock.patch('ws.orchestration.route', return_value=dict(provider='codex', model='fixture', effort='low', available=False)):
+                result = workers.prepare(self.root, 'W-2', ['calc.py'])
+        finally: os.chdir(cwd)
+        self.assertEqual(result['base'], self.git('rev-parse', 'HEAD'))
 
     def test_preview_writes_nothing_and_warns_about_dirty_source(self):
         (self.repo / 'calc.py').write_text('uncommitted\n'); (self.repo / 'ignored.txt').write_text('private fixture\n')
@@ -59,7 +78,7 @@ class WorkerPrepareTests(Base):
         self.assertEqual(state['task_sha'], core.task_read(self.root, 'W-1')['sha'])
 
     def test_invalid_scope_base_repository_and_claim_refused_without_clone(self):
-        for scope in ([], ['../outside'], ['/tmp/outside'], ['.git/config'], ['.codex/config.toml'], ['C:\\outside'], ['\\outside'], ['calc.py\noutside'], ['calc.py\ttests'], ['calc.py\x7f']):
+        for scope in ([], ['../outside'], ['/tmp/outside'], ['.git/config'], ['.codex/config.toml'], ['.Claude/x'], ['.GIT/config'], ['sub/.Codex/x'], ['C:\\outside'], ['\\outside'], ['calc.py\noutside'], ['calc.py\ttests'], ['calc.py\x7f']):
             with self.subTest(scope=scope), self.assertRaises(core.WsError): workers.prepare(self.root, 'W-1', scope)
         for base in ('--help', 'missing-commit'):
             with self.subTest(base=base), self.assertRaises(core.WsError): self.prepare(base=base, apply=True)
@@ -159,10 +178,11 @@ class WorkerPrepareTests(Base):
     def test_write_launch_gate_is_closed_without_writes(self):
         plan = self.prepare(apply=True); before = Path(plan['record']).read_bytes()
         with mock.patch('ws.workers.orchestration.worker_run', side_effect=AssertionError('launch')):
-            with self.assertRaisesRegex(core.WsError, 'O2d'): workers.launch(self.root, plan['id'])
+            with self.assertRaisesRegex(core.WsError, 'not available yet'): workers.launch(self.root, plan['id'])
         with contextlib.redirect_stderr(io.StringIO()) as errors:
             self.assertEqual(cli.main(['--workspace-root', str(self.root), 'worker', 'launch', plan['id']]), 2)
-        self.assertIn('O2d', errors.getvalue())
+        self.assertIn('not available yet', errors.getvalue())
+        self.assertNotIn('O2d', errors.getvalue())
         self.assertEqual(Path(plan['record']).read_bytes(), before)
 
     def test_internal_probe_launch_collects_snapshot_and_protects_source(self):
@@ -183,7 +203,56 @@ class WorkerPrepareTests(Base):
         self.assertEqual((self.repo / 'calc.py').read_text(), 'answer = 1\n'); self.assertEqual(self.git('status', '--porcelain'), source)
         profile = (Path(plan['directory']) / 'worker.config.toml').read_text()
         self.assertIn('":minimal" = "read"', profile); self.assertIn('"enabled" = false', profile)
-        self.assertNotIn(str(Path.home() / '.codex'), next(line for line in profile.splitlines() if line.startswith('permissions.')))
+        self.assertNotIn(json.dumps(str(Path.home() / '.codex')) + ' = ', next(line for line in profile.splitlines() if line.startswith('permissions.')))
+
+    def test_profile_reads_only_resolved_codex_install(self):
+        plan = self.prepare(apply=True); directory = Path(plan['directory'])
+        home = self.root / 'synthetic-home'
+        package = home / '.codex/packages/standalone/releases/fixture'
+        executable = package / 'bin/codex'; executable.parent.mkdir(parents=True)
+        executable.write_text('fixture executable')
+        manifest = package / 'codex-package.json'
+        manifest.write_text(json.dumps(dict(layoutVersion=1, variant='codex', entrypoint='bin/codex')))
+        alias = home / '.local/bin/codex'; alias.parent.mkdir(parents=True)
+        alias.symlink_to(executable)
+        with mock.patch('ws.workers.Path.home', return_value=home): workers._profile(directory, alias)
+        profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+        self.assertIn(json.dumps(str(executable.resolve())) + ' = "read"', profile)
+        self.assertIn(json.dumps(str(package.resolve())) + ' = "read"', profile)
+        for path in (home, home / '.codex', alias.parent, home / '.codex/config.toml', home / '.codex/auth.json'):
+            self.assertNotIn(json.dumps(str(path)) + ' = ', profile)
+        for metadata in ([], dict(layoutVersion=1, variant='codex', entrypoint='../other')):
+            manifest.write_text(json.dumps(metadata))
+            with mock.patch('ws.workers.Path.home', return_value=home): workers._profile(directory, alias)
+            profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+            self.assertNotIn(json.dumps(str(package.resolve())) + ' = ', profile)
+        manifest.write_text(json.dumps(dict(layoutVersion=1, variant='codex', entrypoint='bin/codex')))
+        with mock.patch('ws.workers.Path.home', return_value=package): workers._profile(directory, alias)
+        profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+        self.assertNotIn(json.dumps(str(package.resolve())) + ' = ', profile)
+        unrelated = self.root / 'unrelated'; other = unrelated / 'bin/codex'
+        other.parent.mkdir(parents=True); other.write_text('lookalike executable')
+        (unrelated / 'secret.txt').write_text('synthetic private file')
+        (unrelated / 'codex-package.json').write_text(manifest.read_text())
+        with mock.patch('ws.workers.Path.home', return_value=home): workers._profile(directory, other)
+        profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+        self.assertNotIn(json.dumps(str(unrelated.resolve())) + ' = ', profile)
+
+    def test_profile_refuses_redirected_codex_install(self):
+        plan = self.prepare(apply=True); directory = Path(plan['directory'])
+        home = self.root / 'synthetic-home'; releases = home / '.codex/packages/standalone/releases'
+        releases.parent.mkdir(parents=True)
+        outside = self.root / 'unrelated'; package = outside / 'fixture'
+        executable = package / 'bin/codex'; executable.parent.mkdir(parents=True)
+        executable.write_text('synthetic executable')
+        (package / 'secret.txt').write_text('synthetic secret')
+        (package / 'codex-package.json').write_text(json.dumps(dict(layoutVersion=1, variant='codex', entrypoint='bin/codex')))
+        releases.symlink_to(outside, target_is_directory=True)
+        with mock.patch('ws.workers.Path.home', return_value=home):
+            workers._profile(directory, releases / 'fixture/bin/codex')
+        profile = (directory / 'worker.config.toml').read_text().splitlines()[3]
+        self.assertIn(json.dumps(str(executable.resolve())) + ' = "read"', profile)
+        self.assertNotIn(json.dumps(str(package.resolve())) + ' = ', profile)
 
     def test_collection_blocks_ignored_out_of_scope_secrets_binary_and_symlinks(self):
         for name, data in (('ignored.txt', b'ignored change'), ('calc.py', b'api_key=' + b'x'*20), ('calc.py', b'\xffbinary')):

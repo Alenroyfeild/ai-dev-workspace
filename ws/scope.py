@@ -16,9 +16,11 @@ def _read(root, identifier):
     if not separator or kind not in DIRECTORIES or not core.ID_RE.fullmatch(item) or item.lower().endswith('.local'):
         raise core.WsError('Use task|decision|lesson|knowledge:<ID>; personal notes cannot be shared.')
     path = core.inside(core.vault(root) / DIRECTORIES[kind] / (item + '.md'), [root])
+    if not path.exists(): raise core.WsError(f'No {kind} record {item}; kinds are ' + ', '.join(DIRECTORIES) + '. List records with ws know list or ws task list.')
     if path.resolve() != path.absolute(): raise core.WsError('Scope records and their directories must not be symlinks.')
     try: text = core.read_text(path, [root], errors='strict', preserve_newlines=True)
     except UnicodeError: raise core.WsError('Scope records must be UTF-8.')
+    text = text.removeprefix('\ufeff')  # an editor's BOM must not hide valid frontmatter
     match = re.match(r'\A---\r?\n.*?\r?\n---(?=\r?\n|\Z)', text, re.S)
     if not match or core.conflicted(text): raise core.WsError('Record needs valid, unconflicted frontmatter.')
     header = match.group().replace('\r\n', '\n')

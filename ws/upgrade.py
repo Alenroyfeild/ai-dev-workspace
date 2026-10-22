@@ -3,7 +3,7 @@ import difflib
 import json
 import re
 import shlex
-from pathlib import Path
+from pathlib import Path, PurePath, PureWindowsPath
 from . import core
 
 
@@ -44,14 +44,16 @@ def managed_command(command):
     """Our hook command, in the old `env WS_ROOT=<dir> python bin/ws ...` form or the portable
     `python bin/ws --workspace-root <dir> ...` form (Windows-safe)."""
     try:
-        parts = shlex.split(command)
+        parts = shlex.split(command, posix=not core.WINDOWS)  # posix splitting eats the backslashes of Windows paths
+        if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
         if parts[:1] == ['powershell.exe']: parts = core.encoded_hook_args(parts)
     except ValueError: return False
+    path = PureWindowsPath if core.WINDOWS else PurePath  # Path() on a posix host would not split Windows separators
     if len(parts) >= 2 and parts[0] == 'env' and parts[1].startswith('WS_ROOT='):
         parts = parts[2:]
-    if len(parts) < 4 or re.fullmatch(r'python(?:\d+(?:\.\d+)?)?(?:\.exe)?', Path(parts[0]).name) is None:
+    if len(parts) < 4 or re.fullmatch(r'python(?:\d+(?:\.\d+)?)?(?:\.exe)?', path(parts[0]).name) is None:
         return False
-    if Path(parts[1]).name != 'ws' or Path(parts[1]).parent.name != 'bin':
+    if path(parts[1]).name != 'ws' or path(parts[1]).parent.name != 'bin':
         return False
     rest = parts[2:]
     if rest[:1] == ['--workspace-root']:
@@ -63,7 +65,7 @@ def managed_command(command):
 def hooks(old, new):
     """Replace only our hook commands (recognized by `ws brief|nudge --hook`); keep every other setting."""
     try:
-        data, desired = json.loads(old), json.loads(new)['hooks']
+        data, desired = json.loads(old.lstrip('\ufeff')), json.loads(new)['hooks']
         found, changed = {}, False
         for event, groups in data.get('hooks', {}).items():
             for index, group in enumerate(groups):
@@ -105,10 +107,45 @@ def routing(old, new):
     except (ValueError, KeyError, TypeError): return None
 
 
-def upgrade(root, dry_run=False):
+REASONS = {'routing.json': 'managed routing defaults', '.claude/settings.json': 'hooks for Claude Code', '.codex/hooks.json': 'hooks for Codex', '.cursor/hooks.json': 'hooks for Cursor',
+           '.gemini/settings.json': 'hooks for Gemini', '.github/hooks/ai-dev-workspace.json': 'hooks for VS Code',
+           '.github/copilot-instructions.md': 'pointer to AGENTS.md for Copilot', 'GEMINI.md': 'pointer to AGENTS.md for Gemini'}
+
+
+def flat(value, prefix=''):
+    if isinstance(value, dict):
+        return {k: v for key, item in value.items() for k, v in flat(item, f'{prefix}{key}.').items()} or {prefix.rstrip('.'): {}}
+    return {prefix.rstrip('.'): value}
+
+
+def json_keys(old, new):
+    """'+N -N ~N' key counts for a changed JSON object file, or '' when either side is not one."""
+    try:
+        a, b = flat(json.loads(old)), flat(json.loads(new))
+    except ValueError: return ''
+    counts = (len(b.keys() - a.keys()), len(a.keys() - b.keys()), sum(1 for k in a.keys() & b.keys() if a[k] != b[k]))
+    return ' '.join(f'{sign}{n}' for sign, n in zip('+-~', counts) if n)
+
+
+def summary(changes):
+    """One line per file plus totals; the full diff stays behind --diff."""
+    lines, added, edited = [], 0, 0
+    for c in changes:
+        path = c['path']
+        if c['new']:
+            added += 1; reason = REASONS.get(path) or ('skill for ' + ('Claude Code' if path.startswith('.claude') else 'Codex') if '/skills/' in path else 'proposal to review; your ' + path[:path.index('.ws-new')] + ' is kept' if '.ws-new' in path else '')
+            lines.append(f'+ {path} (new{": " + reason if reason else ""})')
+        else:
+            n = sum(1 for l in c['diff'].splitlines() if l.startswith(('+', '-')) and not l.startswith(('+++', '---')))
+            edited += 1; lines.append(f'~ {path} (changed, {n} lines{"; keys " + c["keys"] if c.get("keys") else ""})')
+    lines.append(f'{added} new, {edited} changed. `ws upgrade --dry-run --diff` shows the full diff.')
+    return '\n'.join(lines)
+
+
+def upgrade(root, dry_run=False, expected=None):
     root = Path(root).resolve()
     def safe(path):
-        if any(p.is_symlink() for p in (path, *path.parents) if p != root and root in p.parents):
+        if any(core.is_link(p) for p in (path, *path.parents) if p != root and root in p.parents):
             raise core.WsError('Upgrade refuses symlinks: ' + str(path.relative_to(root)))
         if any(p.exists() and not p.is_dir() for p in path.parents if p != root and root in p.parents):
             raise core.WsError('Upgrade destination has a non-directory parent: ' + str(path.relative_to(root)))
@@ -161,17 +198,18 @@ def upgrade(root, dry_run=False):
         before = path.read_bytes(); after = (json.dumps(cfg, indent=2) + '\n').encode()
         if before != after: operations.append((path, before, after))
         claims = root / '.ws/claims'; safe(claims)
-        changes = [dict(path=p.relative_to(root).as_posix(), action='write', diff=''.join(difflib.unified_diff(
+        changes = [dict(path=p.relative_to(root).as_posix(), action='write', new=not old, keys=json_keys(old, new), diff=''.join(difflib.unified_diff(
             old.decode(errors='replace').splitlines(True), new.decode(errors='replace').splitlines(True),
             fromfile=p.relative_to(root).as_posix(), tofile=p.relative_to(root).as_posix()))) for p, old, new in operations]
         backups = []
+        if expected is not None and changes != expected: raise core.WsError('Workspace changed during confirmation; run ws upgrade again.')  # before any write
         if not dry_run and changes:
             stamp = core.now().replace(':', '').replace('+', '-') + '-' + core.uuid.uuid4().hex[:8]
             for path, old, new in operations:
                 if path.exists() and path.read_bytes() != old: raise core.WsError('File changed during upgrade; run dry-run again.')
                 if old:
                     backup = root / '.ws/backups' / stamp / path.relative_to(root); safe(backup)
-                    core.atomic_write(backup, old); backups.append(backup.relative_to(root).as_posix())
+                    core.atomic_write(core.long_path(backup), old); backups.append(backup.relative_to(root).as_posix())
                 core.atomic_write(path, new)
         if not dry_run:
             claims.mkdir(parents=True, exist_ok=True)  # local, gitignored state: created silently, not reported as an upgrade

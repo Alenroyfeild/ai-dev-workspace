@@ -15,7 +15,7 @@ KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(KIT))
 from ws import core, assist  # noqa: E402
 from mcp import server  # noqa: E402
-from testutil import isolate_home, rmtree_owned  # noqa: E402
+from testutil import isolate_home, rmtree_owned, run_ws  # noqa: E402
 
 
 def slow_subprocess(test):
@@ -149,9 +149,9 @@ class SkillDuplicateTests(Base):
         self.assertEqual(report['protocol_checks']['claude']['status'], 'not_run')
         self.assertEqual(report['capture_health']['outcome'], 'not_run')
         rendered = cli.text_doctor(report)
-        self.assertIn('Configured clients:', rendered)
+        self.assertIn('Workspace-level connections:', rendered)
         self.assertIn('Last protocol check: claude=not_run', rendered)
-        self.assertIn('Last capture outcome: not_run', rendered)
+        self.assertIn('Last capture: not run yet', rendered)
         self.assertNotIn('Connected clients:', rendered)
 
     def test_doctor_protocol_check_is_separate_from_configured_state(self):
@@ -239,7 +239,7 @@ class ToolCostTests(Base):
     def test_assist_never_suggests_pinned_or_builtin_tools(self):
         cfg_path = self.root / 'workspace.json'
         cfg = json.loads(cfg_path.read_text())
-        cfg['tool_overrides'] = {'headroom': 'on'}
+        cfg['tool_overrides'] = {'headroom': 'on', 'graphify': 'on'}
         cfg_path.write_text(json.dumps(cfg))
         findings = {'findings': [
             {'id': 'remove-headroom', 'title': 'Remove headroom MCP', 'explanation': 'unused', 'class': 'review'},
@@ -547,9 +547,8 @@ class TaskTests(Base):
     def test_setup_daily_loop_runs_in_a_fresh_workspace(self):
         root = Path(self.tmp.name) / 'daily-loop'
 
-        def ws(*args):
-            return subprocess.run([sys.executable, str(KIT / 'bin/ws'), *args], cwd=root,
-                                  text=True, capture_output=True, check=True)
+        def ws(*args):  # in-process after the real `init` below; the quick-start test next keeps every call a process
+            return run_ws(*args, cwd=root, check=True)
 
         subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'init', str(root), '--name', 'daily'],
                        text=True, capture_output=True, check=True)
@@ -831,7 +830,7 @@ class KnowledgeTests(Base):
             self.assertTrue(tools['codeburn']['installed'])
             self.assertTrue(tools['graphify']['installed'])
             self.assertEqual(core.doctor(self.root)['toolbox'], [])
-        with mock.patch.dict(os.environ, {'PATH': str(Path(self.tmp.name) / 'empty')}, clear=False):
+        with mock.patch.dict(os.environ, {'PATH': str(Path(self.tmp.name) / 'empty'), 'WS_OFFLINE': '1'}, clear=False):  # no update check over the network
             first = [notice for notice in core.notices(self.root) if notice['kind'] == 'toolbox']
             second = [notice for notice in core.notices(self.root) if notice['kind'] == 'toolbox']
         self.assertEqual(first, [])  # the catalog is opt-in via ws tools, not a session-start install pitch
@@ -1026,9 +1025,8 @@ class InterfaceTests(Base):
             json.dumps({'type': 'assistant', 'message': {'content': [{'type': 'tool_use', 'name': 'Read'},
                 {'type': 'text', 'text': 'Next step: inspect empty input.'}]}}))
         for event in ('PreCompact', 'Stop'):
-            run = subprocess.run([sys.executable, str(KIT / 'bin/ws'), 'nudge', '--hook'], cwd=self.root,
-                input=json.dumps({'hook_event_name': event, 'transcript_path': str(transcript)}),
-                capture_output=True, text=True)
+            run = run_ws('nudge', '--hook', cwd=self.root,
+                input=json.dumps({'hook_event_name': event, 'transcript_path': str(transcript)}))
             self.assertEqual(run.returncode, 0, run.stderr)
             handoff = core.task_read(self.root, 'T-1', ['Handoff'])['sections']['Handoff']
             self.assertIn('Only synthetic violet', handoff)
@@ -1084,7 +1082,7 @@ class InterfaceTests(Base):
         self.assertEqual(replies[1]['result']['serverInfo']['name'], 'ai-dev-workspace')
         self.assertEqual(replies[1]['result']['serverInfo']['version'], core.kit_meta()['version'])
         names = {t['name'] for t in replies[2]['result']['tools']}
-        self.assertTrue({'find_task', 'checkpoint', 'search_vault', 'log_step'} <= names)
+        self.assertTrue({'find_task', 'checkpoint', 'search_vault', 'remember'} <= names)  # core profile; log_step stays callable
         for tool in replies[2]['result']['tools']:
             self.assertNotIn('optional', json.dumps(tool['inputSchema']))
         self.assertIn('T-1', replies[3]['result']['content'][0]['text'])

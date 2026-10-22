@@ -1,0 +1,243 @@
+import json
+import os
+import tempfile
+import unittest
+from testutil import needs_symlinks
+from pathlib import Path
+from unittest import mock
+from ws import cards, core, knowledge
+
+
+class TeamFolderTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.base=Path(self.tmp.name).resolve()
+        self.home=self.base/'home-a';self.home.mkdir();self.other=self.base/'home-b';self.other.mkdir()
+        patch=mock.patch.dict(os.environ,HOME=str(self.home),USERPROFILE=str(self.home),WS_OFFLINE='1');patch.start();self.addCleanup(patch.stop)
+        self.root=self.base/'a';core.init(self.root,'synthetic',clients=[])
+        self.folder=self.base/'shared';self.folder.mkdir();self.team='a'*32;self.entry='b'*32
+        (self.folder/'team.json').write_text(json.dumps({'kind':'ai-dev-workspace-team','schema_version':1,'id':self.team}))
+        self.record('Receipt checksum is CEDAR41.')
+
+    def record(self, body, entry=None, category='repo', date='2026-10-14T00:00:00Z'):
+        entry=entry or self.entry;directory=self.folder/'entries';directory.mkdir(exist_ok=True)
+        text='---\nid: '+entry+'\nteam: '+self.team+'\nsource: knowledge:K1\ncategory: '+category+'\nauthor: tester\nsource_sha: '+'c'*64+'\ndate: '+date+'\n---\n'+body+'\n'
+        path=self.root/'.ws/team/entries'/(entry+'.md');row,_=knowledge._read(self.root,path,'team',self.team,raw=text)
+        (directory/path.name).write_text(text)
+        (directory/(entry+'.index.md')).write_text(cards.HEAD+'\n'+json.dumps({'schema':1,'source_bytes':len(text.encode()),'row':row,'counts':{'receipt':1}})+'\n'+cards.TAIL+'\n')
+
+    def link(self, root=None):
+        from ws import team_folder
+        root=root or self.root;plan=team_folder.link(root,str(self.folder),attest=True)
+        return team_folder.link(root,str(self.folder),True,True,False,plan)
+
+    def test_preview_attestation_two_homes_reads_and_unlink_preserve_source(self):
+        from ws import team,team_folder
+        before={str(p.relative_to(self.folder)):p.read_bytes() for p in self.folder.rglob('*') if p.is_file()}
+        plan=team_folder.link(self.root,str(self.folder),attest=True)
+        self.assertFalse((self.root/'.ws/team').exists());self.assertFalse(plan['publishes'])
+        with self.assertRaises(core.WsError):team_folder.link(self.root,str(self.folder),True)
+        self.link();peer=self.base/'b'
+        with mock.patch.dict(os.environ,HOME=str(self.other),USERPROFILE=str(self.other)):
+            core.init(peer,'peer',clients=[]);self.link(peer)
+            self.assertIn('CEDAR41',knowledge.show(peer,'team:'+self.entry)['content'])
+        self.assertTrue(knowledge.show(self.root,'team:'+self.entry)['untrusted'])
+        team.manage(self.root,'unlink',apply=True)
+        self.assertTrue((self.root/'.ws/team/team.json').is_file())
+        self.assertEqual(before,{str(p.relative_to(self.folder)):p.read_bytes() for p in self.folder.rglob('*') if p.is_file()})
+
+    def test_changed_folder_after_preview_refuses_without_link(self):
+        from ws import team_folder
+        plan=team_folder.link(self.root,str(self.folder),attest=True);self.record('Changed receipt.')
+        with self.assertRaises(core.WsError):team_folder.link(self.root,str(self.folder),True,True,False,plan)
+        self.assertNotIn('team_workspace',core.config(self.root));self.assertFalse((self.root/'.ws/team').exists())
+
+    def test_pull_updates_and_local_edits_are_never_overwritten(self):
+        from ws import team_auto
+        self.link();self.record('Receipt checksum is CYPRESS27.')
+        self.assertTrue(team_auto.pull(self.root)['updated']);self.assertIn('CYPRESS27',knowledge.show(self.root,'team:'+self.entry)['content'])
+        path=self.root/'.ws/team/entries'/(self.entry+'.md');path.write_text(path.read_text()+'Local edit.')
+        self.record('Receipt checksum is CEDAR99.')
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+        self.assertIn('Local edit.',path.read_text());self.assertIn('CYPRESS27',path.read_text())
+
+    def test_conflict_copy_partial_card_and_identity_change_retain_old_snapshot(self):
+        from ws import team_auto
+        self.link();before=knowledge.show(self.root,'team:'+self.entry)['content']
+        conflict=self.folder/'entries'/(self.entry+' (conflicted copy).md');conflict.write_text('Conflict copy.')
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+        conflict.unlink();card=self.folder/'entries'/(self.entry+'.index.md');card.write_text('Partial JSON {')
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+        self.assertEqual(knowledge.show(self.root,'team:'+self.entry)['content'],before)
+        self.record('Complete again.');self.assertTrue(team_auto.pull(self.root)['updated'])
+        (self.folder/'team.json').write_text(json.dumps({'kind':'ai-dev-workspace-team','schema_version':1,'id':'d'*32}))
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+
+    def test_folder_cannot_overlap_private_workspace(self):
+        from ws import team_folder
+        with self.assertRaises(core.WsError):team_folder.link(self.root,str(self.root),attest=True)
+
+    @needs_symlinks
+    def test_user_folder_alias_is_canonicalized_but_internal_links_refuse(self):
+        from ws import team_auto,team_folder
+        alias=self.base/'alias';alias.symlink_to(self.folder,target_is_directory=True)
+        plan=team_folder.link(self.root,str(alias),attest=True)
+        team_folder.link(self.root,str(alias),True,True,False,plan)
+        self.assertEqual(core.config(self.root)['team_workspace']['remote'],str(self.folder))
+        alias.unlink();self.assertFalse(team_auto.pull(self.root)['updated'])
+        icon='.dropbox' if os.name=='nt' else 'Icon\r'  # a CR in a name is invalid on Windows
+        (self.folder/icon).symlink_to(self.home,target_is_directory=True)
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+        (self.folder/icon).unlink();(self.folder/'.ws-symlink').symlink_to(self.home,target_is_directory=True)
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+
+    def test_sync_client_metadata_is_skipped_without_copying_it(self):
+        from ws import team_auto
+        self.link()
+        names=('.DS_Store','.dropbox','.dropbox.attr')+ (('Icon\r',) if os.name!='nt' else ())
+        for folder in (self.folder,self.folder/'entries'):
+            for name in names:
+                if name=='.dropbox':(folder/name).mkdir()
+                else:(folder/name).write_text('Sync metadata.')
+        self.assertFalse(team_auto.pull(self.root)['updated'])
+        self.assertFalse((self.root/'.ws/team/.dropbox').exists())
+
+    def test_pending_writer_temporaries_are_ignored_without_copying_or_deleting(self):
+        from ws import team_auto
+        self.link();(self.folder/'status').mkdir()
+        for directory in (self.folder,self.folder/'entries',self.folder/'status'):
+            (directory/'.ws-0123456789abcdef').write_text('Incomplete write {')
+        before={p:p.read_bytes() for p in self.folder.rglob('*') if p.is_file()}
+        self.assertFalse(team_auto.pull(self.root)['updated'])
+        self.assertEqual(before,{p:p.read_bytes() for p in self.folder.rglob('*') if p.is_file()})
+        self.assertEqual(list((self.root/'.ws/team').rglob('.ws-*')),[])
+
+    def test_icloud_placeholder_has_download_hint_and_retains_snapshot(self):
+        from ws import team_auto
+        self.link();local=self.root/'.ws/team/entries'/(self.entry+'.md');before=local.read_bytes()
+        placeholder=self.folder/'entries'/('.'+self.entry+'.md.icloud');placeholder.write_text('Placeholder metadata.')
+        with self.assertRaisesRegex(core.WsError,'not downloaded yet;.*Keep Downloaded'):team_auto.pull(self.root)
+        self.assertEqual(local.read_bytes(),before);self.assertTrue(placeholder.exists())
+        placeholder.unlink();self.assertFalse(team_auto.pull(self.root)['updated'])
+
+    def test_snapshot_write_failure_rolls_back_and_normal_sync_only_pulls(self):
+        from ws import team_auto,team_sync
+        self.link();path=self.root/'.ws/team/entries'/(self.entry+'.md');before=path.read_bytes();self.record('Changed receipt.')
+        source_path=self.folder/'entries'/(self.entry+'.md')
+        source=source_path.read_bytes().replace(b'\r\n',b'\n').replace(b'\n',b'\r\n');source_path.write_bytes(source)
+        writer=core.atomic_write
+        def fail(target,text):
+            if target.name=='folder-base.json':raise OSError('synthetic baseline failure')
+            return writer(target,text)
+        with mock.patch('ws.core.atomic_write',side_effect=fail):
+            with self.assertRaises(core.WsError):team_auto.pull(self.root)
+        self.assertEqual(path.read_bytes(),before)
+        self.assertEqual(source_path.read_bytes(),source)
+        self.assertFalse(team_sync.preview(self.root)['files'])
+        self.assertEqual(path.read_bytes(),source.replace(b'\r\n',b'\n'))
+        self.assertEqual((self.folder/'entries'/(self.entry+'.md')).read_bytes(),source)
+
+    def test_consent_question_cannot_refresh_an_unshown_folder_preview(self):
+        import contextlib,io
+        from ws import cli
+        answers=iter(('y','n'))
+        def answer(prompt):
+            if 'automatically' in prompt:self.record('Changed while deciding.')
+            return next(answers)
+        with mock.patch('builtins.input',side_effect=answer),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cli.main(['--workspace-root',str(self.root),'team','link',str(self.folder),'--folder','--attest-private']),2)
+        self.assertNotIn('team_workspace',core.config(self.root))
+
+    def test_card_metadata_must_match_the_entry_not_only_its_revision(self):
+        from ws import team_auto
+        self.link();local=self.root/'.ws/team/entries'/(self.entry+'.index.md');before=local.read_bytes()
+        path=self.folder/'entries'/(self.entry+'.index.md');data=json.loads(path.read_text().split(cards.HEAD)[1].split(cards.TAIL)[0])
+        data['row']['summary']='Forged summary with the original body revision.'
+        path.write_text(cards.HEAD+'\n'+json.dumps(data)+'\n'+cards.TAIL+'\n')
+        with self.assertRaises(core.WsError):team_auto.pull(self.root)
+        self.assertEqual(local.read_bytes(),before)
+
+    def test_partial_json_returns_recovery_hint_and_preserves_snapshot(self):
+        import contextlib,io
+        from ws import cli,team_auto
+        self.link();local=self.root/'.ws/team/team.json';before=local.read_bytes()
+        status=self.folder/'status/tester.json';status.parent.mkdir()
+        for path,broken in ((self.folder/'team.json','{'),(self.folder/'entries'/(self.entry+'.index.md'),cards.HEAD+'\n{\n'+cards.TAIL),(status,'{')):
+            with self.subTest(path=path.name):
+                old=path.read_bytes() if path.exists() else None
+                try:
+                    path.write_text(broken);err=io.StringIO()
+                    with contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(err):
+                        self.assertEqual(cli.main(['--workspace-root',str(self.root),'sync','--pull-only']),2)
+                    self.assertIn('Folder pull stopped',err.getvalue());self.assertNotIn('Traceback',err.getvalue())
+                    with self.assertRaises(core.WsError):team_auto.pull(self.root)
+                    self.assertEqual(local.read_bytes(),before)
+                finally:
+                    if old is None:path.unlink()
+                    else:path.write_bytes(old)
+
+    def test_invalid_utf8_names_the_file_and_keeps_the_mirror(self):
+        from ws import team_auto,team_folder
+        bad=self.folder/'entries'/(self.entry+'.md');bad.write_bytes(bad.read_bytes()+b'\xff\xfe')
+        with self.assertRaises(core.WsError) as caught:team_folder.link(self.root,str(self.folder),attest=True)
+        self.assertIn('entries/'+self.entry+'.md',str(caught.exception));self.assertIn('UTF-8',str(caught.exception))
+        bad.write_bytes(bad.read_bytes()[:-2]);self.link()
+        mirror=lambda:{str(p):p.read_bytes() for p in (self.root/'.ws/team').rglob('*') if p.is_file()}
+        before=mirror();bad.write_bytes(bad.read_bytes()+b'\xff\xfe')
+        with self.assertRaises(core.WsError) as caught:team_auto.pull(self.root)
+        self.assertIn(self.entry,str(caught.exception));self.assertEqual(before,mirror())
+
+    def test_onboarding_picks_newest_of_over_100_entries_without_false_warning(self):
+        self.record('Old product note.','0'*31+'1','product','2026-02-01T00:00:00Z')
+        for i in range(2,122):self.record('Filler repo note %d.'%i,format(i,'032x'),'repo','2026-10-01T00:00:00Z')
+        self.record('Newest product note.','f'*32,'product','2026-10-16T00:00:00Z')
+        self.link();core.task_new(self.root,'T1','Unrelated work');core.claim(self.root,'T1','synthetic')
+        text=core.brief(self.root)
+        self.assertIn('Newest product note.',text);self.assertNotIn('Old product note.',text);self.assertNotIn('Unreadable',text)
+
+    def brief_with_team(self):
+        self.link();core.task_new(self.root,'T1','Unrelated work');core.claim(self.root,'T1','synthetic')
+        return core.brief(self.root)
+
+    def test_brief_has_no_more_notes_hint_when_every_team_note_is_shown(self):
+        self.assertNotIn('more team notes',self.brief_with_team())
+
+    def test_brief_hints_at_hidden_team_notes(self):
+        self.record('Older repo note.','1'*32,'repo','2026-09-01T00:00:00Z');self.record('Other repo note.','2'*32,'repo','2026-09-02T00:00:00Z')
+        text=self.brief_with_team()
+        self.assertTrue(text.endswith('+2 more team notes: ws know list --layer team'),text)
+        self.assertLessEqual(len(text.split()),200)
+
+    def test_relevant_team_notes_show_two_and_point_at_the_rest(self):
+        for i, body in enumerate(('Receipt checksum rule A.', 'Receipt checksum rule B.', 'Receipt checksum rule C.'), 2):
+            self.record(body, str(i) * 32)
+        self.link(); core.task_new(self.root, 'T1', 'Receipt checksum'); core.claim(self.root, 'T1', 'synthetic')
+        core.remember(self.root, 'Store totals as integer units.')  # leaves onboarding, so brief_fields runs
+        text = core.brief(self.root)
+        self.assertEqual(text.count('Team (untrusted'), 2, text)
+        self.assertTrue(text.endswith('+2 more team notes: ws know list --layer team'), text)
+
+    def test_capped_scan_says_or_more_and_exact_count_below_the_cap(self):
+        for i in range(101): self.record('Receipt checksum rule %d.' % i, '%032x' % (i + 1))
+        self.link(); core.task_new(self.root, 'T1', 'Receipt checksum'); core.claim(self.root, 'T1', 'synthetic')
+        core.remember(self.root, 'Store totals as integer units.')
+        text = core.brief(self.root)
+        self.assertEqual(text.count('Team (untrusted'), 2, text)
+        self.assertTrue(text.endswith('+98 or more team notes: ws know list --layer team'), text)
+
+    def test_capped_scan_with_zero_counted_hidden_still_points_at_the_rest(self):
+        row = lambda source, summary: dict(source=source, category='other', summary=summary, tags='', author='test', date='2026-10-18')
+        rows = [row('knowledge:K%d' % i, 'Receipt approval policy %d.' % i) for i in range(2)] + [row('decision:D%d' % i, 'Receipt decision.') for i in range(98)]
+        with mock.patch.object(core, 'config', return_value={'team_workspace': True}), \
+                mock.patch.object(knowledge, 'list_entries', return_value={'entries': rows, 'warnings': [knowledge.CAP_WARNING]}):
+            fields = knowledge.brief_fields(None, 'Receipt approval policy', '')
+        self.assertIn(('More team notes:', 'ws know list --layer team', 12), fields)
+
+    def test_shown_decisions_and_lessons_do_not_hide_the_more_notes_pointer(self):
+        row = lambda source, summary: dict(source=source, category='other', summary=summary, tags='', author='test', date='2026-10-18')
+        rows = [row('decision:D1', 'Receipt approval policy uses stable keys.'), row('lesson:L1', 'Receipt approval policy needs a replay check.'),
+                row('knowledge:K1', 'Budget application for households.')]
+        with mock.patch.object(core, 'config', return_value={'team_workspace': True}), \
+                mock.patch.object(knowledge, 'list_entries', return_value={'entries': rows, 'warnings': []}):
+            fields = knowledge.brief_fields(None, 'Receipt approval policy', '')
+        self.assertEqual(len([f for f in fields if f[0].startswith('Team (untrusted')]), 2, fields)
+        self.assertIn('+1 more team notes:', [f[0] for f in fields])

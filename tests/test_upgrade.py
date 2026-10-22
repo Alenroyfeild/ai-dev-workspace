@@ -1,16 +1,16 @@
 import json
-import subprocess
 from unittest import mock
 from pathlib import Path
 from test_ws import Base, KIT
 from ws import core
+from testutil import run_ws
 
 
 class UpgradeTests(Base):
     def snapshot(self):
         return {p.relative_to(self.root).as_posix(): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
 
-    def test_old_fixture_preview_sidecars_and_second_run(self):
+    def old_workspace(self):
         self.root = Path(self.tmp.name) / 'old-workspace'
         # The first release's template (commit 9853713), stored as a fixture: CI checkouts are shallow.
         fixture = KIT / 'tests/fixtures/template-0.1.0-beta.1'
@@ -24,6 +24,10 @@ class UpgradeTests(Base):
         hooks.write_bytes(b'{ "user": "keep spacing", "hooks": {} }\n')
         cfg = dict(schema_version=1, name='old fixture', packs=[], repos=[], vault='custom-vault', custom=True)
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
+
+    def test_old_fixture_preview_sidecars_and_second_run(self):
+        self.old_workspace()
+        rules, hooks = self.root / 'AGENTS.md', self.root / '.claude/settings.json'
         before = self.snapshot()
         preview = core.upgrade_workspace(self.root, dry_run=True)
         self.assertEqual(before, self.snapshot())
@@ -38,6 +42,62 @@ class UpgradeTests(Base):
         self.assertTrue(list((self.root / '.ws/backups').rglob('workspace.json')))
         self.assertEqual(core.upgrade_workspace(self.root)['changes'], [])
         self.assertTrue((self.root / '.agents/skills/pickup/SKILL.md').exists())
+
+    def test_dry_run_prints_a_short_summary_and_diff_flag_the_full_diff(self):
+        self.old_workspace()
+        (self.root / '.claude/settings.json').unlink()  # a beta.4 kit never had one, so upgrade adds it
+        run = lambda *a: run_ws(*a, cwd=self.root)
+        before = self.snapshot()
+        short, full = run('upgrade', '--dry-run'), run('upgrade', '--dry-run', '--diff')
+        self.assertEqual((short.returncode, full.returncode, before), (0, 0, self.snapshot()))
+        self.assertLess(len(short.stdout.splitlines()), 30)
+        self.assertGreater(len(full.stdout.splitlines()), 400)
+        self.assertIn('--dry-run --diff', short.stdout)
+        self.assertNotIn('--- routing.json', short.stdout)
+        self.assertIn('--- routing.json', full.stdout)
+        self.assertIn('+ .claude/settings.json (new: hooks for Claude Code)', short.stdout)
+        self.assertIn('+ .codex/hooks.json (new: hooks for Codex)', short.stdout)
+        self.assertRegex(short.stdout, r'~ workspace\.json \(changed, \d+ lines; keys ')
+
+    def confirm_run(self, *args, stdin):
+        return run_ws('upgrade', *args, cwd=self.root, input=stdin)
+
+    def test_upgrade_previews_then_asks_before_applying(self):
+        self.old_workspace(); before = self.snapshot()
+        no = self.confirm_run(stdin='n\n')
+        self.assertEqual((no.returncode, before), (0, self.snapshot()))  # declined: nothing written
+        self.assertIn('Apply this upgrade? [y/N]', no.stderr)
+        self.assertIn('+ routing.json (new: managed routing defaults)', no.stdout)  # summary shown before the prompt
+        result = self.confirm_run(stdin='')  # no answer at all, like a script or an assistant shell
+        self.assertEqual(result.returncode, 2); self.assertIn('ws upgrade --yes or --dry-run', result.stderr)
+        self.assertEqual(before, self.snapshot())
+        yes = self.confirm_run('--yes', stdin='')
+        self.assertEqual(yes.returncode, 0); self.assertNotIn('[y/N]', yes.stderr)
+        self.assertTrue((self.root / 'routing.json').exists())
+        self.assertEqual(self.confirm_run(stdin='').stdout.splitlines()[0], 'No changes.')  # nothing to apply, nothing to ask
+
+    def test_piped_answer_applies_like_ws_start_and_closed_input_refuses(self):
+        self.old_workspace()
+        self.assertEqual(self.confirm_run(stdin='y\n').returncode, 0)  # same EOF semantics as ws start: an answer is an answer
+        self.assertTrue((self.root / 'routing.json').exists())
+
+    def test_files_changing_during_the_prompt_refuse_with_no_writes(self):
+        from io import StringIO
+        from contextlib import redirect_stderr, redirect_stdout
+        from ws import cli
+        self.old_workspace(); settings = self.root / '.claude/settings.json'
+        def answer(*args): settings.unlink(); return 'y'  # a previewed .ws-new sidecar would become active hooks
+        before = self.snapshot(); before.pop('.claude/settings.json'); err = StringIO()
+        with redirect_stdout(StringIO()), redirect_stderr(err), mock.patch('builtins.input', side_effect=answer):
+            result = cli.main(['--workspace-root', str(self.root), 'upgrade'])
+        self.assertEqual(result, 2); self.assertIn('Workspace changed during confirmation; run ws upgrade again', err.getvalue())
+        after = self.snapshot(); after.pop('.ws/lock', None)  # the empty lock file is not a managed write
+        self.assertEqual(before, after)  # settings stays deleted, nothing else written
+
+    def test_json_key_summary(self):
+        from ws.upgrade import json_keys
+        self.assertEqual(json_keys(b'{"a": {"x": 1, "y": 2}, "b": 1}', b'{"a": {"x": 1, "y": 3, "z": 4}}'), '+1 -1 ~1')
+        self.assertEqual(json_keys(b'', b'{}'), '')
 
     def test_managed_markdown_and_hook_objects_preserve_outside_bytes(self):
         rules = self.root / 'AGENTS.md'

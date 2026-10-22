@@ -32,8 +32,7 @@ class ClientDocShapeTests(unittest.TestCase):
         for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
             output = io.StringIO()
             with mock.patch.object(core, 'find_root', return_value=ROOT), \
-                    mock.patch.object(core, 'brief', return_value='Saved next action.'), \
-                    mock.patch.object(core, 'memory_summary', return_value='Remembered: 1 decision'), \
+                    mock.patch.object(core, 'brief_and_summary', return_value=('Saved next action.', 'Remembered: 1 decision')), \
                     mock.patch.object(cli.assist, 'observe'), \
                     mock.patch('sys.stdin', io.StringIO('{"hook_event_name":"SessionStart"}')), \
                     mock.patch('sys.stdout', output):
@@ -54,6 +53,7 @@ class ClientDocShapeTests(unittest.TestCase):
         self.assertEqual(core.MCP_LOCATIONS['vscode'], ('.vscode/mcp.json', 'servers'))
         self.assertEqual(core.MCP_LOCATIONS['gemini'], ('.gemini/settings.json', 'mcpServers'))
         self.assertEqual(core.MCP_LOCATIONS['cursor'], ('.cursor/mcp.json', 'mcpServers'))
+        self.assertEqual(core.MCP_LOCATIONS['antigravity'], ('.agents/mcp_config.json', 'mcpServers'))
         self.assertEqual(core.NATIVE_FILES, ('.github/copilot-instructions.md', '.cursor/rules/ws-current-task.mdc'))
         self.assertTrue(core.CURSOR_RULE_HEAD.startswith('---\ndescription:'))
         self.assertIn('alwaysApply: true', core.CURSOR_RULE_HEAD)

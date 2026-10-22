@@ -15,11 +15,7 @@ def detect():
 
 
 def branch(repo):
-    try:
-        result = subprocess.run(['git', '-C', str(repo), 'symbolic-ref', '--quiet', '--short', 'HEAD'],
-                                capture_output=True, text=True, timeout=2)
-        return result.stdout.strip() if result.returncode == 0 else ''
-    except (OSError, subprocess.SubprocessError): return ''
+    return core.current_branch(repo)
 
 
 def selection_json(text, values):
@@ -50,13 +46,16 @@ def configure(root, assistants, preset=None, dry_run=False):
     if not isinstance(assistants, list) or not assistants or any(not isinstance(name, str) for name in assistants):
         raise core.WsError('Choose assistants with --assistants a,b.')
     assistants = list(dict.fromkeys('copilot' if name == 'vscode' else name for name in assistants))
+    known = json.loads((core.KIT / 'template/routing.json').read_text(encoding='utf-8'))['_ws_managed']['providers']
+    if (bad := [name for name in assistants if name not in known and name != 'vscode']):
+        raise core.WsError(f'Unknown assistant {bad[0]}. Choose from: {", ".join(known)}.')
     preset = preset or (assistants[0] + '-only' if len(assistants) == 1 and assistants[0] != 'ollama' else
                         'claude+codex' if set(assistants) == {'claude', 'codex'} else 'mixed')
     if preset == 'claude+codex': assistants = ['claude', 'codex']
     candidate = orchestration.routing_template(preset, assistants)
     path = root / 'routing.json'
     for target in (path, root / 'workspace.json', root / '.ws', root / '.ws/backups'):
-        if target.is_symlink(): raise core.WsError('Setup refuses symlinked configuration/backups.')
+        if core.is_link(target): raise core.WsError('Setup refuses symlinked configuration/backups.')
     clients = ['vscode' if name == 'copilot' else name for name in assistants]
     config_paths = ['routing.json', 'workspace.json']
     hook_paths = {'codex': '.codex/hooks.json', 'cursor': '.cursor/hooks.json', 'vscode': '.github/hooks/ai-dev-workspace.json'}
@@ -65,7 +64,7 @@ def configure(root, assistants, preset=None, dry_run=False):
         if client in hook_paths: config_paths.append(hook_paths[client])
     for relative in config_paths:
         target = root / relative
-        if any(p.is_symlink() for p in (target, *target.parents) if p == root or root in p.parents):
+        if any(core.is_link(p) for p in (target, *target.parents) if p == root or root in p.parents):
             raise core.WsError('Setup refuses symlinked client configuration: ' + relative)
     note = ('Restart each selected client; trust this project and approve its MCP server/hooks. '
             'Codex project hooks require trust; global MCP stays preview-only. Detection does not verify login/model access.')
@@ -96,7 +95,7 @@ def configure(root, assistants, preset=None, dry_run=False):
                         changes=changes, clients=clients, note=note + ' Preview only; repeat with --apply to configure these paths.')
         backup = root / '.ws/backups' / (core.now().replace(':', '').replace('+', '-') + '-' + core.uuid.uuid4().hex[:6])
         for source, text in ((path, original), (root / 'workspace.json', metadata)):
-            if text is not None: core.atomic_write(backup / source.name, text)
+            if text is not None: core.atomic_write(core.long_path(backup / source.name), text)
         core.atomic_write(path, candidate)
         core.atomic_write(root / 'workspace.json', json.dumps(updated, indent=2) + '\n')
     connections = []

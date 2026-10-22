@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import os
 import subprocess
@@ -5,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,7 +23,7 @@ class CliPolishTests(unittest.TestCase):
         short = self.run_ws('--help')
         self.assertEqual(short.returncode, 0, short.stderr)
         usage = short.stdout.splitlines()[0]
-        self.assertIn('{start,status,task,claim,checkpoint,remember,search,lesson,doctor}', usage)
+        self.assertIn('{demo,start,status,task,claim,checkpoint,remember,search,lesson,doctor}', usage)
         self.assertNotIn('init', usage)
         for command in ('start', 'status', 'task', 'claim', 'checkpoint', 'search', 'lesson', 'doctor'):
             self.assertIn('    ' + command, short.stdout)
@@ -28,7 +31,7 @@ class CliPolishTests(unittest.TestCase):
             self.assertNotIn('    ' + command, short.stdout)
         invalid = self.run_ws('not-a-command')
         self.assertIn('COMMAND ...', invalid.stderr)
-        self.assertNotIn('{start,status,task,claim,checkpoint,remember,search,lesson,doctor}', invalid.stderr)
+        self.assertNotIn('{demo,start,status,task,claim,checkpoint,remember,search,lesson,doctor}', invalid.stderr)
 
         full = self.run_ws('help', 'all')
         self.assertEqual(full.returncode, 0, full.stderr)
@@ -39,6 +42,8 @@ class CliPolishTests(unittest.TestCase):
     def test_readme_is_short_and_points_to_extended_docs(self):
         readme = (ROOT / 'README.md').read_text()
         self.assertLessEqual(len(readme.splitlines()), 40)
+        self.assertIn('Your assistant remembers work between sessions in Markdown you own.', readme)
+        self.assertIn('<!-- Demo GIF -->', readme)
         sections = ('## Quick start', '## Example', '## Results', '## Compatibility')
         self.assertEqual(sorted(readme.index(section) for section in sections),
                          [readme.index(section) for section in sections])
@@ -75,6 +80,70 @@ class CliPolishTests(unittest.TestCase):
             route_text = self.run_ws('route', '--text', env=env)
             self.assertIn('Role:', route_text.stdout)
 
+    def test_connection_probe_keeps_the_bom_tolerant_json_reader(self):
+        from ws import core
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary)
+            (workspace / 'workspace.json').write_text('{}', encoding='utf-8')
+            data = {'mcpServers': {'ai-dev-workspace': core.mcp_command(workspace)}}
+            (workspace / '.mcp.json').write_text('\ufeff' + json.dumps(data), encoding='utf-8')
+            self.assertTrue(core.client_connected(workspace, 'claude'))
+
+    def test_doctor_verdict_json_flag_and_empty_preset_parentheses(self):
+        from ws import cli
+        good = {'core': {'python3': True, 'git': True}, 'workspace': '/w', 'valid': True,
+                'setup': {'preset': 'not selected', 'assistants': []}, 'configured_clients': {'claude': True, 'codex': True, 'cursor': False}}
+        lines = cli.text_doctor(good).splitlines()
+        self.assertEqual(lines[0], 'OK: workspace valid; Claude connected; Codex connected')
+        self.assertIn('Setup preset: not selected', lines); self.assertNotIn('()', '\n'.join(lines))
+        bad = cli.text_doctor(dict(good, configured_clients={'claude': False})).splitlines()[0]
+        self.assertTrue(bad.startswith('Needs attention: no assistant connected'), bad); self.assertIn('ws start', bad)
+        self.assertTrue(cli.text_doctor(dict(good, valid=False)).startswith('Needs attention: workspace invalid'))
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / 'home'; home.mkdir(); workspace = Path(temporary) / 'workspace'
+            env = dict(os.environ, HOME=str(home), USER='demo', WS_ROOT=str(workspace))
+            self.assertEqual(self.run_ws('init', str(workspace), '--name', 'v', env=env).returncode, 0)
+            with mock.patch.object(cli, 'human', return_value=True), contextlib.redirect_stdout(io.StringIO()) as stream:
+                self.assertEqual(cli.main(['--workspace-root', str(workspace), 'doctor', '--json']), 0)
+            self.assertIsInstance(json.loads(stream.getvalue()), dict)  # --json beats a terminal
+            with mock.patch.object(cli, 'human', return_value=True), contextlib.redirect_stdout(io.StringIO()) as stream:
+                cli.main(['--workspace-root', str(workspace), 'doctor'])
+            self.assertTrue(stream.getvalue().startswith(('OK:', 'Needs attention:')), stream.getvalue()[:80])  # terminal default is text
+
+    def test_unreadable_workspace_keeps_json_and_actionable_doctor_verdict(self):
+        from ws import cli
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary) / 'home'; home.mkdir()
+            workspace = Path(temporary) / 'workspace'; workspace.mkdir()
+            (workspace / 'workspace.json').write_text('{ invalid', encoding='utf-8')
+            env = dict(HOME=str(home), USERPROFILE=str(home), WS_OFFLINE='1')
+            with mock.patch.dict(os.environ, env), mock.patch.object(cli, 'human', return_value=True):
+                for mode in ('--json', '--text'):
+                    with self.subTest(mode=mode), contextlib.redirect_stdout(io.StringIO()) as stream:
+                        self.assertEqual(cli.main(['--workspace-root', str(workspace), 'doctor', mode]), 0)
+                        output = stream.getvalue()
+                        if mode == '--json':
+                            report = json.loads(output)
+                            self.assertIn('workspace.json is unreadable', report['workspace_error'])
+                            verdict = cli.doctor_verdict(report)
+                        else:
+                            verdict = output.splitlines()[0]
+                        self.assertTrue(verdict.startswith('Needs attention: workspace.json is unreadable'), verdict)
+                        self.assertIn('fix or restore', verdict)
+
+    def test_doctor_verdict_asks_for_ws_upgrade_when_workspace_is_older(self):
+        from ws import cli, core
+        with tempfile.TemporaryDirectory() as temporary:
+            workspace = Path(temporary) / 'workspace'
+            env = dict(os.environ, HOME=temporary)
+            self.assertEqual(self.run_ws('init', str(workspace), '--name', 'u', env=env).returncode, 0)
+            self.assertFalse(core.doctor(workspace)['upgrade_due'])
+            cfg = core.config(workspace); cfg['kit_version'] = '0.0.1'
+            (workspace / 'workspace.json').write_text(json.dumps(cfg))
+            report = core.doctor(workspace)
+            self.assertTrue(report['upgrade_due'])
+            self.assertTrue(cli.text_doctor(report).startswith('Needs attention: workspace was written by an older kit. Next: ws upgrade --dry-run'))
+
     def test_ws_error_includes_next_command(self):
         with tempfile.TemporaryDirectory() as temporary:
             workspace = Path(temporary) / 'workspace'
@@ -84,7 +153,7 @@ class CliPolishTests(unittest.TestCase):
             env['WS_ROOT'] = str(workspace)
             result = self.run_ws('search', 'x', env=env)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn('Next: run `ws --help`', result.stderr)
+            self.assertIn('Next: run `ws search --help`', result.stderr)  # names the failing command
 
     def test_connect_codex_explains_preview_and_project_skills(self):
         with tempfile.TemporaryDirectory() as temporary:

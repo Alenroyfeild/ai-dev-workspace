@@ -19,12 +19,13 @@ copy: setup explains this and never commits or silently shares instructions.
 `ws start --undo` removes unchanged repo wiring, restores preexisting local
 files and removes only its Git exclude block. Edited local files are kept and
 reported; private memory outside the repo is retained. Nothing is committed.
-Codex MCP is applied to `.codex/config.toml` during start. Existing config is
-backed up first to `.codex/config.toml.ws-backup`; both paths stay Git-excluded.
-Existing repo setups offer the connection in one confirmation without replacing
-hooks or saved memory. Existing backups and conflicting workspace entries are
-refused. Undo restores the original config and removes the added backup.
-Existing `ws connect codex` preview/`--write` behavior remains available.
+Codex MCP: if global Codex config already connects this workspace, start reports
+"connected". Otherwise start creates `.codex/config.toml` only when it is absent
+(Git-excluded, removed by `--undo`). An existing project config is never parsed,
+edited or backed up: start prints the MCP block and its destination, and start and
+doctor show "manual step pending" until you paste it yourself. Existing repo setups
+offer the connection in one confirmation without replacing hooks or saved memory.
+`ws connect codex` preview/`--write` remains available; it edits global config, with a backup.
 
 Sources: [Claude local memory](https://code.claude.com/docs/en/memory),
 [local settings](https://code.claude.com/docs/en/settings),

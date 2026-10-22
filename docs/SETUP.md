@@ -1,10 +1,12 @@
 # Setup guide
 
-Every step after 2 is optional. `ws doctor` tells you what is missing and how to install it.
+Quick path: `ws start` ([README](../README.md), [tutorial](TUTORIAL.md)). This page is the advanced, manual path: `ws init` then `ws connect`.
+
+Every step after 2 is optional. `ws doctor` tells you what is missing and how to install it: a short text summary in a terminal, JSON when piped or with `--json`.
 
 ## 1. Install the kit
 
-For an isolated CLI, use `pipx install git+https://github.com/Alenroyfeild/ai-dev-workspace`. This includes templates, packs, skills and the MCP server; generated client configs and hooks use the install's Python environment. `ws update` prints `pipx upgrade ai-dev-workspace` for this installation. It does not run pipx for you; `ws update --check` still checks release notes. A plain venv installation uses that venv's pip with the original source to update. The git-clone alternative follows:
+For an isolated CLI, install the beta from PyPI with `pipx install ai-dev-workspace --pip-args='--pre'` (omit `--pip-args='--pre'` after a stable release). This includes templates, packs, skills and the MCP server; generated client configs and hooks use the install's Python environment. `ws update` prints `pipx upgrade ai-dev-workspace` for this installation. It does not run pipx for you; `ws update --check` still checks release notes. A plain venv installation uses that venv's pip with the original source to update. The git-clone alternative follows:
 
 ```bash
 git clone https://github.com/Alenroyfeild/ai-dev-workspace.git ~/ai-dev-workspace
@@ -29,7 +31,7 @@ Existing files are kept. Proposed kit content goes beside them as `.ws-new`; rev
 
 ## 3. Connect your assistant
 
-Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, or `ws connect gemini`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints a global-config preview; it is not applied unless you run `ws connect codex --write`, which appends it with a backup and refuses conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
+Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, `ws connect gemini`, or `ws connect antigravity`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints a global-config preview; it is not applied unless you run `ws connect codex --write`, which appends it with a backup and refuses conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
 
 On `ws checkpoint` and `ws brief --refresh`, the current brief is also written into a managed `current-task` block in the existing `.github/copilot-instructions.md` and (when `.cursor/` exists) `.cursor/rules/ws-current-task.mdc`, so Copilot and Cursor see the task's decisions at session start; text outside the block is never touched. `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` are left alone because those clients get the brief from their session-start hooks. Set `"native_writeback": false` in `workspace.json` to turn this off.
 
@@ -37,17 +39,19 @@ On Windows, generated hooks containing `%` in a workspace, kit or interpreter pa
 
 ### Client compatibility
 
-| Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI |
-|---|---|---|---|---|---|
-| Rules | proven | proven | documented, untested | documented, untested | documented, untested |
-| MCP tools | proven | proven | documented, untested | documented, untested | documented, untested |
-| Hooks | proven | proven | documented, untested | fixture-tested, Local only | documented, untested |
-| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) |
-| Automatic capture | proven | proven | documented, untested | fixture-tested, v1 transcript only | documented, untested |
+| Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI | Antigravity |
+|---|---|---|---|---|---|---|
+| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
+| MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
+| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | not wired |
+| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
+| Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested | not wired |
+
+**Antigravity (agy):** `ws connect antigravity` writes project `.agents/mcp_config.json`; rules use the existing `AGENTS.md`/`GEMINI.md`. `ws start` detects `agy` or the Antigravity app, previews repo-local MCP and `GEMINI.md` wiring, and restores previous files on undo. Existing project config is preserved or staged as `.ws-new`; no global Gemini/Antigravity state is changed. Restart/trust the project, approve MCP access, then request `brief` and save decisions with `remember`/`checkpoint`. This is rules+MCP **fixture-tested** support (MCP not verified live); a signed-in native session is not yet proved. Automatic hooks/capture and plugin import are not wired. Antigravity has a different hook dialect from Gemini CLI. References: [rules](https://antigravity.google/docs/rules/), [MCP config](https://antigravity.google/docs/mcp?tab=cli), [hooks](https://antigravity.google/docs/hooks/), [plugins](https://antigravity.google/docs/plugins?tab=cli).
 
 **VS Code Local hooks:** `ws connect vscode` installs `.github/hooks/ai-dev-workspace.json` with SessionStart brief context and non-blocking Stop/PreCompact capture. `ws upgrade` updates managed commands and keeps other settings/hooks. Approve hooks in the client and select the Local harness; no user configuration is modified. The [Local reference](https://code.visualstudio.com/docs/agents/reference/hooks-reference) documents optional `transcript_path`, but not a stable transcript format. Capture accepts only the observed `copilot-agent` version-1 JSONL [Microsoft implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/chat/vscode-node/sessionTranscriptService.ts): conversational content and tool-use presence, excluding attachments, reasoning and tool arguments/results. Missing/unknown transcripts do nothing. This is fixture-tested, not editor-session proof. Agent Host Copilot uses the [different Copilot SDK protocol](https://code.visualstudio.com/docs/agent-customization/hooks) and is **rules plus MCP only** here.
 
-“Proven” means exercised with that client; “documented, untested” means configuration is provided but has not been tested in a live client. “Not wired yet” means the client supports the feature but the workspace does not install it for that client yet. Captured text is always unverified and should be reviewed.
+“Proven” means exercised with that client. “Fixture-tested” means the generated config and hook input/output are checked by automated tests against saved fixtures and the client's docs, but not run in a live client session. “Not wired yet” means the client supports the feature but the workspace does not install it for that client yet. Captured text is always unverified and should be reviewed.
 
 **Claude Code** – open the workspace folder. `CLAUDE.md` loads `AGENTS.md`; `.mcp.json` registers the MCP server. Claude Code asks once to approve the project MCP server; approve it (or check with `claude mcp list`). To work on code in another folder, add that folder as an additional working directory.
 
@@ -99,6 +103,13 @@ The model only sees the deterministic digest, and its answer is checked against 
 
 The assistant can check `ws notices` at session start. `ws tools` lists optional tools; nothing installs automatically. `ws assist` offers local workspace suggestions and asks before applying. Optional routing, tool profiles and cost controls are in [Advanced settings](ADVANCED.md).
 
+## Upgrading
+
+1. `pipx upgrade ai-dev-workspace` (or `pip install -U ai-dev-workspace` in a venv install).
+2. `ws upgrade` in the workspace; `ws upgrade --dry-run` previews it.
+3. `ws start` in each repo to refresh its hooks.
+4. `ws doctor` to confirm; it says `Next: ws upgrade` while the workspace is older than the kit.
+
 ## Daily loop
 
 `ws connect claude` or `ws connect codex` never writes to your global folders by default; the project skills `/handoff`, `/pickup` and `/lesson` are already in the workspace. To also link the extra kit skills (such as `/thinkbeforeact`) globally, run it once with `--skills`: `~/.claude/skills` for Claude, `~/.agents/skills` for Codex. Existing names are kept; check the command's notice. Restart the client after connecting. With `ws` on PATH, Claude's `/handoff` saves the current task's next action, evidence and blockers, `/pickup` reads that task memory in a new session, and `/lesson` records a requested rule. In Codex, use `$handoff`, `$pickup`, and `$lesson` (or select them with `/skills`). These skills use the CLI without MCP. Init and MCP connection calls do not install global skill links.
@@ -109,7 +120,7 @@ Claude Code, Codex, Cursor and Gemini CLI have documented blocking prompt hooks:
 
 `ws connect cursor` writes its project MCP and hook settings; sessionStart supplies context, while stop, preCompact and sessionEnd can capture the provided transcript. `ws connect gemini` writes MCP settings and lifecycle hooks in `.gemini/settings.json`; SessionStart supplies context and AfterAgent captures each turn, with PreCompress/SessionEnd as additional opportunities. Gemini supports conversation JSON and append-only JSONL with content patches/rewinds; tool results and thoughts are excluded. Cursor and Gemini are fixture-tested, but their real clients remain untested. Cursor transcripts must be enabled; its sessionStart is fire-and-forget. Gemini SessionEnd/PreCompress are best-effort, so AfterAgent also saves. Copilot gets project rules, MCP configuration and VS Code Local hooks (see above), but no kit skills. See [Cursor hooks](https://cursor.com/docs/hooks), [Gemini hooks](https://geminicli.com/docs/hooks/reference/), and [Gemini configuration](https://geminicli.com/docs/reference/configuration/).
 
-`ws upgrade` updates recognized workspace hook commands for connected clients, adds the prompt guard while preserving unrelated handlers, and stages `.ws-new` proposals for ambiguous/unmarked hook files. Review proposed files and approve changed hooks again; disabled/untrusted hooks cannot capture or block prompts. No global config is needed for lifecycle hooks.
+`ws upgrade --dry-run` lists each file it would add or change in one line (`--diff` for the full diff); new hook files say which client they serve. `ws upgrade` shows that summary and asks before applying (`--yes` skips the question; no answer, meaning closed input, refuses, so scripts must pass `--yes`; if files change while the question is open it refuses and you run `ws upgrade` again). It updates recognized workspace hook commands for connected clients, adds the prompt guard while preserving unrelated handlers, and stages `.ws-new` proposals for ambiguous/unmarked hook files. Review proposed files and approve changed hooks again; disabled/untrusted hooks cannot capture or block prompts. No global config is needed for lifecycle hooks.
 
 For Codex, trust the workspace when prompted, then use `/hooks` to review and trust the generated `.codex/hooks.json`. Changed hook definitions need review again. A fresh session receives the saved next action and asks before starting it. See the current [Codex hooks docs](https://learn.chatgpt.com/docs/hooks#review-and-trust-hooks) and [skills docs](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
 

@@ -6,7 +6,7 @@ Most workspaces need only `ws tools`, `ws assist` and the defaults. These settin
 
 `ws route [role]` resolves a binding from `routing.json` (default role: lead). Availability means the CLI is on `PATH` and a model is configured; it does not verify login or account access. Ordered preferences choose an available provider and report every skipped provider; an explicit provider override pins one provider and stops if it is unavailable. There is no silent fallback. Root `role_overrides` can set provider/preference, tier, family, model or effort. Managed defaults may change on upgrade; root overrides are preserved. Claude family aliases and explicit Codex model IDs are supported. Ollama requires an already-installed local model; the kit never pulls models.
 
-`ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#measure-and-maintain).
+`ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#delegate).
 
 ### Prepare a private implementation checkout
 
@@ -54,8 +54,8 @@ The generated `routing.json` records `preset`, `assistants` and `delegation_mode
 
 Existing ADK or LangGraph users can opt into the [stub-model-tested MCP examples](examples/frameworks/README.md). They use four native-adapter tools and disposable memory, add no core dependencies, and distinguish saved task memory from framework execution state. Hosted models are untested.
 
-O2b adds internal Codex launch/collection for the O2d probe. Public `workers.launch` and `ws worker launch <run-id>`
-refuse execution with the O2d gate reason; no passing real-client gate is claimed.
+Internal Codex launch and collection exist only for the isolation probe. Public `workers.launch` and `ws worker launch <run-id>`
+refuse to run and say why; no live client has passed the isolation check yet.
 The run owns `worker.config.toml` and scratch, selects `worker-private` via CLI
 config overrides, ignores user/project configuration and rules, disables hooks,
 apps/plugins and approvals, and uses no legacy sandbox flag. Native tool access is
@@ -66,4 +66,30 @@ controls are passed. The real-client gate must verify this policy too.
 Collection includes ignored/untracked files and deletions in a private Git index,
 records an immutable tree/diff digest and completed command evidence, and blocks
 scope, metadata, symlink, secret, binary-scan, diff-check or claim failures. Output
-remains unverified; review/accept/discard arrive in O2c. [Official permission profiles](https://learn.chatgpt.com/docs/permissions).
+remains unverified; review it with `ws worker review`, `accept` or `discard` ([details](COMMANDS.md#workers)). [Official permission profiles](https://learn.chatgpt.com/docs/permissions).
+
+## Plugin runtime (packaging preview)
+
+The optional `python3 mcp/server.py --plugin` entrypoint discovers memory only through
+`.ws-start.json` in the current repo or its parents. Outside a started repo it still
+speaks MCP, but tools return “Run ws start in this repo”; it does not use `WS_ROOT`.
+`python3 bin/ws-plugin --client claude|codex` accepts a hook payload and delegates to
+the existing memory hooks only for a validated repo link. Unknown events or invalid
+links return `{}`. Existing CLI and server invocations are unchanged.
+
+No Codex plugin package is published yet: keep existing repo-local connections for Codex
+until packaging, duplicate-connection detection and live client checks are complete. Installing or enabling a Codex plugin does not trust
+its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
+
+### Claude Code plugin (preview)
+
+The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires the same four hooks as `ws start` (SessionStart, PreCompact, Stop, UserPromptSubmit) through `bin/ws-plugin`, the MCP server in `--plugin` mode, and the handoff, pickup and lesson skills. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+
+```text
+/plugin marketplace add Alenroyfeild/ai-dev-workspace
+/plugin install ai-dev-workspace@ai-dev-workspace
+```
+
+Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. The hooks run through `bin/ws-python`, which uses the first working `python3`, `python` or `py -3` (needs `sh`, as in Git Bash). The plugin's MCP server entry is started directly by the client and still calls `python3`; on Windows installs that only provide `python` or `py`, add a `python3.exe` copy or alias to PATH, or use `ws start` instead of the plugin. Windows is untested.
+
+With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.

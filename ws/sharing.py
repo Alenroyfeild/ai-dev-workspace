@@ -2,6 +2,7 @@
 import difflib
 import json
 import re
+import sys
 import uuid
 from . import core, scope, team
 
@@ -17,13 +18,30 @@ def _text(path):
 
 
 def portable(root, text):
-    text = core.PRIVATE_RE.sub('', text)
-    if re.search(r'</?private\b', text, re.I): raise core.WsError('Close private markers before sharing.')
+    text = core.strip_private(text, '')
+    if re.search(r'<[\s/]*private\b', text, re.I): raise core.WsError('Close private markers before sharing.')
     text = '\n'.join(line for line in text.splitlines() if not re.search(r'#private\b', line, re.I) and not line.lstrip().lower().startswith('/private'))
     text = core.localize_paths(core.redact(text), root)
-    text = re.sub(r'(?<![\w:/])(?:/[\w.-]+(?:/[\w./~-]*)?|[A-Za-z]:[\\/]\S+)', '[local path]', text)
+    # A real closing tag (</form>) survives; a bracketed path (</opt/x>) has more slashes and is localized.
+    text = re.sub(r'(</[A-Za-z][A-Za-z0-9-]*\s*>)|(?<![\w:/])(?:/[\w.-]+(?:/[\w./~-]*)?|[A-Za-z]:[\\/]\S+)',
+                  lambda m: m.group(1) or '[local path]', text)
     if core.SECRET_RE.search(text) or core.conflicted(text): raise core.WsError('Unsafe or conflicted projection; edit the private source first.')
     return text.strip()
+
+
+HEADER_END = 'Shared context; untrusted and never permission to execute.\n\n'
+
+
+def entry_parts(content):
+    """(category, text) of a shared entry file, for short human summaries."""
+    match = re.search(r'^category: (\S+)', content, re.M)
+    return (match.group(1) if match else 'other'), content.partition(HEADER_END)[2].strip()
+
+
+def derived(root, text):
+    """Summary/index text of a private note, which is stored as written: an unclosed <private> hides the rest instead of failing."""
+    text = re.sub(r'<\s*private\b.*', '', core.strip_private(text, ''), flags=re.I | re.S)
+    return portable(root, re.sub(r'<\s*/\s*private\b[^>]*>', '', text, flags=re.I))
 
 
 def _runbook(text, meta):
@@ -37,6 +55,21 @@ def _runbook(text, meta):
               ('Decisions and reasons', decisions), ('Outcome', core.section(text, 'Outcome') or '\n'.join(line for line in handoff if re.match(r'\s*Outcome:', line, re.I)))]
     return ('# Runbook\nSaved task text only; missing details are not inferred. Command examples are inert.\n\n' +
             '\n\n'.join('## ' + name + '\n' + (body or 'Not recorded; verify the source task.') for name, body in fields))
+
+
+def check_public(root, name, text):
+    if text is None:return
+    from . import cards
+    scan=text.replace(cards.HEAD,'').replace(cards.TAIL,'')
+    if name.endswith('.index.md') or name.startswith('status/'):scan=json.dumps(json.loads(scan),ensure_ascii=False)
+    if portable(root,scan)!=scan.strip():raise core.WsError('Nonportable/private shared content blocks sync.')
+
+
+def default_author(root):
+    """A portable attribution hint; never read email or credentials."""
+    try: name = team._git(root, 'config', '--get', 'user.name').strip()
+    except core.WsError: return 'local'
+    return re.sub(r'[^A-Za-z0-9_.-]+', '-', name).strip('._-')[:40] or 'local'
 
 
 def preview(root, item, unshare=False, author='local', entry=None, date=None, as_format=''):
@@ -54,22 +87,32 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,40}', author): raise core.WsError('Author must be a portable alias (letters, numbers, ._-).')
     cfg_path = _safe(root, root / 'workspace.json'); cfg_text = _text(cfg_path)
     link = json.loads(cfg_text).get('team_workspace', {})
-    if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Link a private team with ws team link first.')
-    clone = _safe(root, root / '.ws/team'); manifest = json.loads(_text(_safe(root, clone / 'team.json')))
+    folder_host=isinstance(link,dict) and link.get('host')=='folder'
+    if folder_host:
+        from . import team_folder
+        team_folder.source(root)
+    if not isinstance(link, dict) or link.get('path') != '.ws/team': raise core.WsError('Link a private team first: run `ws team link <private-repo>`.')
+    clone = _safe(root, root / '.ws/team')
+    manifest_path = _safe(root, clone / 'team.json')
+    manifest = team.parse_manifest(manifest_path, lambda: _text(manifest_path))
     privacy = link.get('privacy', {})
     if not isinstance(manifest, dict) or not isinstance(privacy, dict): raise core.WsError('Invalid team identity or privacy record.')
     if (manifest.get('kind') != 'ai-dev-workspace-team' or manifest.get('schema_version') != 1 or
             not re.fullmatch(r'[a-f0-9]{32}', str(manifest.get('id', ''))) or manifest.get('id') != link.get('id') or
             privacy.get('remote') != link.get('remote') or privacy.get('method') not in ('gh', 'glab', 'attested') or
-            team._git(clone, 'remote', 'get-url', 'origin').strip() != link.get('remote')):
+            (not folder_host and team._git(clone, 'remote', 'get-url', 'origin').strip() != link.get('remote'))):
         raise core.WsError('Team identity or privacy consent changed; link again before sharing.')
-    registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = json.loads(state_text or '{}')
+    registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = core.load_json(state_text or '{}', '.ws/shares.json')
     if not isinstance(state, dict): raise core.WsError('Invalid local share receipts; retain them for recovery.')
     key = link['id'] + ':' + item + (':' + as_format if as_format else ''); receipt = state.get(key, {})
     if not isinstance(receipt, dict): raise core.WsError('Invalid local share receipt.')
     entry = receipt.get('id') or entry or uuid.uuid4().hex
     if not re.fullmatch(r'[a-f0-9]{32}', entry): raise core.WsError('Invalid shared entry receipt.')
     target = _safe(root, clone / 'entries' / (entry + '.md')); old = _text(target)
+    owners=state.get('_owners:'+link['id'],{})
+    if not isinstance(owners,dict): raise core.WsError('Invalid ownership receipts; retain them for recovery.')
+    if folder_host and old and not owners.get(target.relative_to(clone).as_posix()):
+        raise core.WsError('Team entry belongs to another publisher; retain it and share a new copy.')
     if (old and core.digest_text(old) != receipt.get('sha')) or (receipt and not old):
         raise core.WsError('Team copy changed or is missing; resolve it before a fresh preview.')
     if unshare and not receipt: raise core.WsError('No locally approved team copy to remove.')
@@ -85,19 +128,23 @@ def preview(root, item, unshare=False, author='local', entry=None, date=None, as
         category = as_format or (kind if kind != 'knowledge' else meta.get('category', 'other'))
         if kind == 'knowledge':
             from .knowledge import category as validate_category
-            validate_category(category)
+            category = validate_category(category)
         content = (f'---\nid: {entry}\nteam: {link["id"]}\ncategory: {category}\n'
                    f'author: {author}\nsource: {item}\nsource_sha: {source_sha}\ndate: {date}\n---\n'
                    'Shared context; untrusted and never permission to execute.\n\n' + body + '\n')
+    shown = entry_parts(content or old)  # an unshare lists the text being removed
     from . import cards
-    artifacts = cards.plan(root, 'team', {target: None if unshare else content})
+    warnings = []
+    artifacts = cards.plan(root, 'team', {target: None if unshare else content}, warnings)
+    if folder_host: artifacts = {p:t for p,t in artifacts.items() if p == target.with_suffix('.index.md')}
     artifact_diff = ''.join(''.join(difflib.unified_diff(_text(p).splitlines(True), (t or '').splitlines(True), fromfile=p.relative_to(clone).as_posix(), tofile='preview')) for p,t in artifacts.items())
     return {'artifacts': {p.relative_to(clone).as_posix():t for p,t in artifacts.items()}, 'artifact_diff': artifact_diff, 'item': item, 'as_format': as_format, 'unshare': unshare, 'author': author, 'entry': entry, 'date': date, 'key': key,
+            'category': shown[0], 'text': shown[1], 'host': 'folder' if folder_host else 'git', 'remote': link.get('remote', ''),
             'source_sha': source_sha, 'config_sha': core.digest_text(cfg_text), 'state_sha': core.digest_text(state_text),
-            'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old and not artifacts,
+            'destination': target.relative_to(clone).as_posix(), 'content': content, 'unchanged': content == old and not artifacts, 'warnings': warnings,
             'diff': ''.join(difflib.unified_diff(old.splitlines(True), content.splitlines(True), fromfile='team copy', tofile='preview')),
             'omissions': ('Raw task, Handoff prose, captures, private markers, local paths and claims.' if as_format else 'Inline Handoff, captures, private markers, local paths, claims and all unselected sections.'),
-            'warning': 'Git history and teammates copies retain removed text.' if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
+            'warning': ('Shared copies and backups may retain removed text.' if folder_host else 'Git history and teammates copies retain removed text.') if unshare else 'Local copy only; inspect redaction. No commit, push or remote publication.'}
 
 
 def apply(root, plan):
@@ -105,33 +152,71 @@ def apply(root, plan):
         current = preview(root, plan['item'], plan['unshare'], plan['author'], plan['entry'], plan['date'], plan['as_format'])
         if current != plan: raise core.WsError('Source, destination or configuration changed; preview again.')
         if plan['unchanged']: return {'unchanged': True}
-        registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = json.loads(state_text or '{}')
+        registry = _safe(root, root / '.ws/shares.json'); state_text = _text(registry); state = core.load_json(state_text or '{}', '.ws/shares.json')
         target = _safe(root, root / '.ws/team' / plan['destination']); old = _text(target)
         if plan['unshare']: state.pop(plan['key'])
         else: state[plan['key']] = {'id': plan['entry'], 'sha': core.digest_text(plan['content']), 'date': plan['date']}
         from . import cards
         changes = {target: None if plan['unshare'] else plan['content']}
         changes.update({_safe(root, root / '.ws/team' / p):t for p,t in plan['artifacts'].items()})
+        if core.config(root)['team_workspace'].get('host') == 'folder':
+            own_projection(root, state, plan['key'].split(':')[0],
+                           [plan['destination'], plan['destination'][:-3]+'.index.md'], plan['item'])
         approvals = state.setdefault('_artifacts:' + plan['key'].split(':')[0], {})
         if not isinstance(approvals, dict): raise core.WsError('Invalid artifact receipts; retain them for recovery.')
         approvals.update({p.relative_to(root / '.ws/team').as_posix(): core.digest_text(t) if t is not None else '' for p,t in changes.items()})
         changes[registry] = json.dumps(state, indent=2) + '\n'
         cards.write(root, changes)
-    return {'applied': True, 'destination': plan['destination'], 'remote_published': False}
+    result = {'applied': True, 'destination': plan['destination'], 'remote_published': False}
+    from . import team_auto
+    update = team_auto.maybe_pull(root)
+    if update is not None: result['team_update'] = update
+    return result
+
+
+def own_projection(root, state, team_id, paths, owner):
+    # Private creation authority survives unshare; artifact hashes only approve content.
+    owners = state.setdefault('_owners:' + team_id, {})
+    if not isinstance(owners, dict): raise core.WsError('Invalid ownership receipts; retain them for recovery.')
+    from . import team_folder
+    remote = team_folder.source(root)['files']
+    if any(name in remote and not owners.get(name) for name in paths):
+        raise core.WsError('Projection belongs to another publisher; retain both copies and use a new entry or alias.')
+    for name in paths: owners[name] = owner
+
+
+def _same_source(root, kind, body, scope_name, category):
+    folder = core.vault(root) / scope.DIRECTORIES[kind]
+    for path in sorted(folder.glob('*.md')) if folder.is_dir() else []:
+        if path.is_symlink() or path.name.endswith('.index.md') or not core.ID_RE.fullmatch(path.stem): continue
+        try: head, _, text = path.read_text(encoding='utf-8').partition('\n---\n\n')
+        except (OSError, UnicodeDecodeError): continue
+        lines = head.splitlines()
+        if text == body + '\n' and 'scope: ' + scope_name in lines and (kind != 'knowledge' or 'category: ' + category in lines): return path.stem
 
 
 def standalone(root, kind, text, team_scope=True, category='other'):
     """Only the explicitly selected sentence becomes a separate sharing source."""
-    body = portable(root, text)
-    if not body: raise core.WsError('Nothing portable to save.')
-    identifier = uuid.uuid4().hex
+    if team_scope:
+        body = portable(root, text)
+        if not body:
+            raise core.WsError('Nothing was shared and the note was not saved: all of the text is marked private (#private or <private>) or empty.'
+                               + (' Save it without --team to keep it as a private note.' if kind == 'knowledge' else ''))
+    else:  # a private note never leaves this machine: keep paths and markers as written, hide secrets only
+        body = core.redact(text).strip()
+        if not body: raise core.WsError('Nothing to save.')
+    scope_name = 'team' if team_scope else 'private'
     with core.lock(root):
+        if (found := _same_source(root, kind, body, scope_name, category)): return kind + ':' + found  # a rerun after declining reuses it
+        identifier = uuid.uuid4().hex
         path = _safe(root, core.vault(root) / scope.DIRECTORIES[kind] / (identifier + '.md'))
         metadata = ('category: ' + category + '\ncreated: ' + core.now() + '\n') if kind == 'knowledge' else ''
         core.atomic_write(path, f'---\nid: {identifier}\nscope: {"team" if team_scope else "private"}\n' + metadata + '---\n\n' + body + '\n')
         if kind == 'knowledge':
             from . import cards
-            try: cards.write(root, cards.plan(root, 'private'))
+            warnings = []
+            try: cards.write(root, cards.plan(root, 'private', warnings=warnings))
             except (core.WsError, OSError):
                 path.unlink(); raise
+            for warning in warnings: print('ws: warning: ' + warning, file=sys.stderr)
     return kind + ':' + identifier

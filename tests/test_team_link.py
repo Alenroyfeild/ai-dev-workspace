@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import unittest
+from testutil import needs_symlinks
 from pathlib import Path
 from unittest import mock
 from ws import cli, core
@@ -120,7 +121,7 @@ class TeamLinkTests(unittest.TestCase):
         self.assertEqual(before, (self.a / 'workspace.json').read_bytes())
         self.assertFalse((self.a / '.ws/team').exists())
 
-    @unittest.skipIf(os.name == 'nt', 'symlink creation may require Windows developer mode')
+    @needs_symlinks
     def test_symlinked_state_is_rejected_before_writes(self):
         from ws import team
         state = self.a / '.ws'
