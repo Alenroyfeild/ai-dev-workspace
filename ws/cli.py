@@ -406,7 +406,11 @@ def main(argv=None):
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search', help='search transcripts of earlier assistant sessions'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
-    s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
+    imports = sub.add_parser('import', help='preview read-only memory sources; save copies only on request').add_subparsers(dest='action', required=True)
+    s = imports.add_parser('claude-mem', help='preview a checkpointed SQLite copy; source is never written')
+    s.add_argument('--db', required=True); s.add_argument('--project', required=True)
+    s.add_argument('--apply', action='store_true', help='show the preview and ask before saving private records')
+    s = imports.add_parser('native')
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons', formatter_class=argparse.RawDescriptionHelpFormatter,
                        epilog='Examples:\n  ws lesson add "Mocked DB hid a bad migration; run migrations in tests" --tag testing\n  ws lesson search migration').add_subparsers(dest='action', required=True)
@@ -856,7 +860,11 @@ def main(argv=None):
                     with saved_locally(): share_gate(item)
             elif a.action == 'list': out(knowledge.list_entries(root, a.category, a.layer))
             else: out(knowledge.show(root, a.id))
-        elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
+        elif a.cmd == 'import':
+            if a.action == 'claude-mem':
+                from . import claude_mem
+                out(claude_mem.import_store(root, a.db, a.project, a.apply))
+            else: out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query, category=a.category))
         elif a.cmd == 'lesson':
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
