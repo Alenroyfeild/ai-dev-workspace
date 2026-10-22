@@ -97,3 +97,7 @@ With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws 
 ### Import a claude-mem copy
 
 `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields and private-marked observations are excluded. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
+
+### Draft a rule from repeated lessons
+
+Three local lesson/dead-end occurrences with at least 60% word-set overlap can add a `ws lesson promote L-<id>` hint to the brief. It scans at most 200 entries and 256 KiB; this is a signal to review, not proof a rule is right. The explicit command writes `.ws/rule-drafts/<id>.md` in the workspace; it never installs rules/skills or overwrites an edited draft. Inspired by [Task Observer](https://github.com/rebelytics/one-skill-to-rule-them-all), independently implemented without an observer or model calls. Review and copy useful wording into your code repo only when appropriate.
