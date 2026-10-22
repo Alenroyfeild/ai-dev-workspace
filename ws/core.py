@@ -763,7 +763,8 @@ def toml_top_level_text(text):
 
 # Project MCP config per client: (file, key holding the server map).
 MCP_LOCATIONS = {'claude': ('.mcp.json', 'mcpServers'), 'cursor': ('.cursor/mcp.json', 'mcpServers'),
-                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers')}
+                 'vscode': ('.vscode/mcp.json', 'servers'), 'gemini': ('.gemini/settings.json', 'mcpServers'),
+                 'antigravity': ('.agents/mcp_config.json', 'mcpServers')}
 
 
 def _toml_has_workspace_entry(text):
@@ -930,9 +931,12 @@ def connect(root, client, write=False, skills=False, verify=False):
             if merged is not None: atomic_write(path, merged)
             else: write_preserving(path, candidate.encode(), collisions)
         result['hooks'] = {'path': str(path), 'collisions': collisions}
+    if client == 'antigravity':
+        result['support'] = 'rules+MCP; fixture-tested'
+        result['note'] = result.get('note', '') + ' Reads AGENTS.md/GEMINI.md; hooks and automatic capture are not wired.'
     if skills and client in ('claude', 'codex'):
         result['skills'] = link_skills(client, root)
-    if verify and client in ('claude', 'cursor', 'vscode', 'gemini'):
+    if verify and client in ('claude', 'cursor', 'vscode', 'gemini', 'antigravity'):
         result['mcp'] = mcp_doctor(root, (client,))[0]
     return result
 
@@ -962,8 +966,8 @@ def _connect_gemini(root):
 
 
 def _connect_config(root, client, write=False):
-    if client not in ('claude', 'codex', 'cursor', 'vscode', 'gemini'):
-        raise WsError('Client must be claude, codex, cursor, vscode or gemini.')
+    if client not in ('claude', 'codex', 'cursor', 'vscode', 'gemini', 'antigravity'):
+        raise WsError('Client must be claude, codex, cursor, vscode, gemini or antigravity.')
     if write and client != 'codex':
         raise WsError('--write applies only to the Codex global configuration.')
     server = mcp_command(root)
@@ -2894,7 +2898,7 @@ def _mcp_config(root, client):
         return path, str(exc)
 
 
-def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini')):
+def mcp_doctor(root, clients=('claude', 'cursor', 'vscode', 'gemini', 'antigravity')):
     checks = []
     messages = [
         {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 'ws-doctor', 'version': '1'}}},
@@ -3082,7 +3086,7 @@ def doctor(root=None, mcp=False):
         if report['codex_manual_pending']: report['codex_status'] = 'manual step pending'
         report['stale_hooks'] = repo.stale_hooks(root)
         report['configured_clients'] = {client: client_connected(root, client)
-                                        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini')}
+                                        for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini', 'antigravity')}
         report['protocol_checks'], report['protocol_check_date'] = _protocol_health(
             root, report['configured_clients'])
         report['client_instructions'] = {

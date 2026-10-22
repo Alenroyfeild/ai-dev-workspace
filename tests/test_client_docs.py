@@ -53,6 +53,7 @@ class ClientDocShapeTests(unittest.TestCase):
         self.assertEqual(core.MCP_LOCATIONS['vscode'], ('.vscode/mcp.json', 'servers'))
         self.assertEqual(core.MCP_LOCATIONS['gemini'], ('.gemini/settings.json', 'mcpServers'))
         self.assertEqual(core.MCP_LOCATIONS['cursor'], ('.cursor/mcp.json', 'mcpServers'))
+        self.assertEqual(core.MCP_LOCATIONS['antigravity'], ('.agents/mcp_config.json', 'mcpServers'))
         self.assertEqual(core.NATIVE_FILES, ('.github/copilot-instructions.md', '.cursor/rules/ws-current-task.mdc'))
         self.assertTrue(core.CURSOR_RULE_HEAD.startswith('---\ndescription:'))
         self.assertIn('alwaysApply: true', core.CURSOR_RULE_HEAD)
