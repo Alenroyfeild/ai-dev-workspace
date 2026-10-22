@@ -8,7 +8,7 @@ Switch between Claude Code and Codex without re-explaining your decisions. Your 
 pipx install ai-dev-workspace --pip-args='--pre'  # beta; omit --pip-args after a stable release
 cd ~/code/myapp && ws start
 ```
-Without pipx: `python3 -m venv ~/.local/share/ai-dev-workspace && ~/.local/share/ai-dev-workspace/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`. Prefer a Claude Code plugin? See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview).
+No pipx? `brew install pipx`, or `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`. Prefer a Claude Code plugin? See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview).
 ## Example
 ```text
 Session 1 — You: “Empty email returns missing_email; leave signup unchanged.”
