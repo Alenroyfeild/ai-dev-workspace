@@ -2036,6 +2036,7 @@ def _dead_ends(root, task_id, template):
     sections = task_read(root, task_id, ['Do not redo', 'Failures'])['sections']
     lines = []
     for name, body in sections.items():
+        body = strip_private(body)
         body = re.sub(r'<!-- ws:captured:.*?<!-- /ws:captured -->', '', body, flags=re.S).strip()
         if body and body != section(template, name).strip():
             lines += [l.strip().lstrip('-* ').strip() for l in body.splitlines() if l.strip()]

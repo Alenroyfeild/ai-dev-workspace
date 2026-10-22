@@ -1,2 +1,1 @@
-Fixed:
-- Briefs and session-start context hide private spans added by hand to task records before ranking decisions or shortening the text.
+Fixed: Briefs hide hand-edited private spans before ranking decisions and shortening dead ends or session-start context.

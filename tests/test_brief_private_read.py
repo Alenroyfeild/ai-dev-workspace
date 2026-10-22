@@ -32,3 +32,15 @@ class BriefPrivateReadTests(Base):
             self.assertNotIn(canary, brief + summary)
         self.assertIn('public behavior', brief)
         self.assertEqual(target.read_bytes(), before)
+
+    def test_private_dead_end_is_removed_before_line_budget_drops_its_opener(self):
+        target = core.task_path(self.root, 'T-1')
+        for name in ('Do not redo', 'Failures'):
+            with self.subTest(section=name):
+                body = ('Public ' * 30 + '<private>\nHIDDEN_DEADEND_745\n</private>\nPublic retry rule.')
+                target.write_text(core.set_section(target.read_text(), name, body))
+                before = target.read_bytes()
+                brief, summary = core.brief_and_summary(self.root)
+                self.assertNotIn('HIDDEN_DEADEND_745', brief + summary)
+                self.assertIn('Public retry rule', brief)
+                self.assertEqual(target.read_bytes(), before)
