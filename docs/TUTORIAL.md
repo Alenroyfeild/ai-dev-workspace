@@ -12,6 +12,8 @@ git add . && git commit -m "Initial commit"
 git switch -c fix-login
 ```
 
+*No pipx?* `brew install pipx` or `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace` (and add `~/.ws/bin` to your `PATH`).
+
 The branch name becomes the task name.
 
 ## 2. Connect the repo
@@ -20,7 +22,7 @@ The branch name becomes the task name.
 ws start
 ```
 
-It prints a preview and asks once (`Apply this setup? [y/N]`). Add `--yes` to skip the question. Use `--dry-run` to see every file without writing.
+It prints a preview and asks once (`Apply this setup? [y/N]`). Add `--yes` to skip the question. Use `--dry-run` to see every file without writing. The preview lists only the detected clients' files (for example, it can include `GEMINI.md` and `.agents/mcp_config.json` when Gemini CLI or Antigravity are detected).
 
 ```text
 Preview: local repo files (Git-excluded) and private workspace ~/.ai-dev-workspace/demo-app
