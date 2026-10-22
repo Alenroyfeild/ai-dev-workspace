@@ -1,1 +1,0 @@
-- Read-only `ws delegate --run` now retries the declared provider order after provider failures and records every attempt; the selected provider is shown in the result.
