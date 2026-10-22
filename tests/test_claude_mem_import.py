@@ -12,7 +12,7 @@ class ClaudeMemImportTests(Base):
         super().setUp()
         self.root = self.root.resolve()
         self.db = (self.root.parent / 'source.db').resolve()
-        with sqlite3.connect(str(self.db)) as db:
+        with contextlib.closing(sqlite3.connect(str(self.db))) as db, db:
             db.execute('CREATE TABLE observations(id INTEGER PRIMARY KEY, project TEXT, type TEXT, created_at TEXT, title TEXT, narrative TEXT, facts TEXT)')
             for row in [(1, 'sample', 'decision', '2026-10-22', 'Use receipts', 'Keep checksum receipts.', '[]'),
                         (2, 'other', 'lesson', '2026-10-22', 'Other project', 'Do not import this.', '[]'),
@@ -38,7 +38,7 @@ class ClaudeMemImportTests(Base):
 
     def test_source_changed_after_preview_and_wal_refuse(self):
         def change(_):
-            with sqlite3.connect(str(self.db)) as db: db.execute("UPDATE observations SET narrative='Changed' WHERE id=1")
+            with contextlib.closing(sqlite3.connect(str(self.db))) as db, db: db.execute("UPDATE observations SET narrative='Changed' WHERE id=1")
             return 'y'
         with mock.patch('builtins.input', side_effect=change), contextlib.redirect_stdout(io.StringIO()), self.assertRaises(core.WsError):
             claude_mem.import_store(self.root, self.db, 'sample', True)
@@ -46,12 +46,12 @@ class ClaudeMemImportTests(Base):
         with self.assertRaises(core.WsError): claude_mem.import_store(self.root, self.db, 'sample')
 
     def test_unknown_schema_and_privacy(self):
-        with sqlite3.connect(str(self.db)) as db:
+        with contextlib.closing(sqlite3.connect(str(self.db))) as db, db:
             db.execute('UPDATE observations SET narrative=? WHERE id=1',
                        ('Public <private>HIDDEN_123</private> ' + 'ghp_' + 'A1b2' * 10,))
         plan = claude_mem.import_store(self.root, self.db, 'sample')
         self.assertNotIn('HIDDEN_123', str(plan)); self.assertNotIn('ghp_', str(plan))
-        with sqlite3.connect(str(self.db)) as db: db.execute('DROP TABLE observations')
+        with contextlib.closing(sqlite3.connect(str(self.db))) as db, db: db.execute('DROP TABLE observations')
         with self.assertRaises(core.WsError): claude_mem.import_store(self.root, self.db, 'sample')
 
     def test_cli_preview_then_confirm(self):
