@@ -581,7 +581,7 @@ def _is_guard_command(command):
 
 def _guard_entries(text):
     """{command: tools its matcher covers} of the ws guard PreToolUse hooks in a hook-config text; None when the text is not a JSON object."""
-    try: data = json.loads(text)
+    try: data = core.json_loads(text)
     except ValueError: return None
     if not isinstance(data, dict): return None
     groups = data['hooks'].get('PreToolUse') if isinstance(data.get('hooks'), dict) and data['hooks'].get('enabled') is not False else None
@@ -607,7 +607,7 @@ def _config_reason(before, after):
     if 'WS_GUARDS' in after and 'WS_GUARDS' not in before: return off
     if new is None: return off if old else ''  # not valid JSON any more: the client ignores the whole file
     if any(command not in new or not covered <= new[command] for command, covered in old.items()): return off
-    try: disabled = lambda text: bool(json.loads(text).get('disableAllHooks'))
+    try: disabled = lambda text: bool(core.json_loads(text).get('disableAllHooks'))
     except (ValueError, AttributeError): return ''
     return off if disabled(after) and not disabled(before) else ''
 
