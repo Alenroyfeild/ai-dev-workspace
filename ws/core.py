@@ -603,11 +603,11 @@ def memory_hooks(root, client='claude'):
     return result
 
 
-HOOK_PACKS = ('guards', 'discipline')  # packs that add repo hooks; ws start refreshes when this set changes
+HOOK_PACKS = ('guards', 'discipline', 'digest')  # packs that add repo hooks; ws start refreshes when this set changes
 
 
 def pack_hooks(root, client):
-    """Hooks for the opt-in guards and discipline packs (repo setup only, so the kit fingerprint stays config-free)."""
+    """Hooks for the opt-in guards, discipline and digest packs (repo setup only, so the kit fingerprint stays config-free)."""
     if client not in ('claude', 'codex', 'antigravity') or not (Path(root) / 'workspace.json').is_file(): return {}
     packs = config(root).get('packs', [])
     def hook(*suffix):
@@ -618,6 +618,8 @@ def pack_hooks(root, client):
         result['PreToolUse'] = [{'matcher': 'Bash|PowerShell|Write|Edit|MultiEdit|Monitor|NotebookEdit', 'hooks': [hook('guard')]} if client == 'claude' else {'hooks': [hook('guard')]}]
     if 'discipline' in packs and client in ('claude', 'codex'):  # Claude reports failed commands separately; Codex reports every Bash call
         result['PostToolUseFailure' if client == 'claude' else 'PostToolUse'] = [{'matcher': 'Bash', 'hooks': [hook('discipline')]}]
+    if isinstance(packs, list) and 'digest' in packs and client in ('claude', 'codex'):
+        result.setdefault('PostToolUse', []).append({'hooks': [hook('digest-hint')]})
     return result
 def install_memory_hooks(root, collisions, clients=None):
     for client, relative in (('claude', '.claude/settings.json'), ('codex', '.codex/hooks.json')):
