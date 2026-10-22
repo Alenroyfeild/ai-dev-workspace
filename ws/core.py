@@ -2188,8 +2188,10 @@ def _brief_once(root, task_id=None):
                 return re.sub(r'^to\s+', '', ' '.join(value.strip(' \t\n*_`.:').split()).casefold())
             if action and normalized(action[1]) != normalized(record['sections']['Next action']):
                 plan_warning = 'Captured plan differs from saved checkpoint; verify before replacing.'
+    from . import lesson_rules
     fields += [('Explicit Handoff (saved task record):', _constraint_budget(reversed(decisions), 25), 25),
                ('Next action:', next_action if saved_next else 'Not saved yet. Choose the next step before continuing.', 25),
+               ('Repeated lesson:', lesson_rules.hint(root), 8),
                ('Blockers:', record['sections']['Blockers'], 8),
                ('Do not redo:', _dead_ends(root, task['id'], template), 32),
                ('', plan_warning, 11),
