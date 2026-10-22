@@ -10,20 +10,23 @@ from pathlib import Path
 from . import core, assist, native
 
 
+class InputTooLarge(core.WsError): pass
+
+
 def _read_limited_stdin():
     limit = core.MAX_READ_BYTES
     stream = getattr(sys.stdin, 'buffer', None)
     if stream is not None:
         raw = stream.read(limit + 1)
         if len(raw) > limit:
-            raise core.WsError('Input exceeds 50 MB.')
+            raise InputTooLarge('Input exceeds 50 MB.')
         try: return raw.decode('utf-8')
         except UnicodeDecodeError: raise core.WsError('Paste input must be UTF-8 text.')
     text = sys.stdin.read(limit + 1)
     try: size = len(text.encode('utf-8'))
     except UnicodeEncodeError: raise core.WsError('Paste contains text that cannot be saved as UTF-8.')
     if len(text) > limit or size > limit:
-        raise core.WsError('Input exceeds 50 MB.')
+        raise InputTooLarge('Input exceeds 50 MB.')
     return text
 
 
@@ -308,6 +311,7 @@ def main(argv=None):
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary (default in a terminal)'); s.add_argument('--json', action='store_true', help='print JSON even in a terminal')
     s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('guard', help='guards pack: PreToolUse check that denies destructive commands, secrets and muted tests'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
+    s = sub.add_parser('digest-hint', help='digest pack: advisory hint for large tool output'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('discipline', help='discipline pack: advisory nudge after the same command fails 3 times'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
@@ -418,6 +422,7 @@ def main(argv=None):
     s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
     s = l.add_parser('search', help='find saved lessons'); s.add_argument('query', nargs='?', default='', help='words to look for (default: all)')
+    s = l.add_parser('promote', help='write an inactive draft from a repeated-lesson ID'); s.add_argument('id')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
     s = f.add_parser('add', help='record feedback locally'); s.add_argument('text'); s.add_argument('--kind', default='idea', help='idea, bug, praise or friction (default idea)'); s.add_argument('--source', default='user')
     s = f.add_parser('list', help='list feedback items'); s.add_argument('--all', action='store_true', help='include items already done')
@@ -554,6 +559,16 @@ def main(argv=None):
             try: payload = core.stdin_json()
             except ValueError: payload = {}
             print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}, client=getattr(a, 'client', 'claude')))); return 0
+        if a.cmd == 'digest-hint':
+            from . import digest_hint
+            try:
+                payload = core.json_loads(_read_limited_stdin())
+                result = digest_hint.hook(core.find_root(a.workspace_root), payload)
+            except InputTooLarge:  # the case the hint matters most: advise on size alone
+                try: result = digest_hint.oversize(core.find_root(a.workspace_root), core.MAX_READ_BYTES)
+                except (ValueError, OSError, core.WsError): result = {}
+            except (ValueError, OSError, core.WsError, RecursionError): result = {}
+            print(json.dumps(result)); return 0
         if a.cmd == 'discipline':  # advisory only: any error prints {} so the tool result reaches the model unchanged
             from . import discipline
             try:
@@ -867,6 +882,9 @@ def main(argv=None):
             else: out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query, category=a.category))
         elif a.cmd == 'lesson':
+            if a.action == 'promote':
+                from . import lesson_rules
+                out(lesson_rules.promote(root, a.id)); return 0
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
             if a.action == 'add' and a.team:
                 from . import sharing
@@ -932,7 +950,7 @@ def main(argv=None):
             else: out(core.run_report(root, a.task))
         return 0
     except Exception as exc:
-        if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
+        if a.cmd in ('guard', 'discipline', 'digest-hint') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
             print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
             print('{}'); return 0
         if isinstance(exc, OSError) and exc.filename is None:  # e.g. a failed launchd call: its own words say more than a file hint

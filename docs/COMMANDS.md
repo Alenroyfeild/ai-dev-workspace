@@ -224,6 +224,7 @@ Claude's [memory documentation](https://code.claude.com/docs/en/memory#storage-l
 Details:
 
 - `ws pack remove <name>` deletes only unchanged files that the pack created. Pre-existing or edited files are kept.
+- `ws digest-hint --hook [--client C]` is the opt-in `digest` pack hook: size-only advice above 40 KB (40,000 bytes); see [Packs](PACKS.md#optional-digest-advice).
 - `ws guard --hook` and `ws discipline --hook [--client C]` are the hook entry points the opt-in `guards` and `discipline` packs install. They read hook JSON on stdin and are not meant to be run by hand.
 - Bundled packs with vault files (`ios`, `obsidian`) are not removed by this command: it reports "No private pack".
 

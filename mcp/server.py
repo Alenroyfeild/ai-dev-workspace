@@ -48,8 +48,11 @@ NO_WORKSPACE = 'No ai-dev-workspace here: run `ws start` in your repo (or pass -
 def listed_tools(root):
     """workspace.json `mcp_tools`: "core" (default), "all", or a list of tool names."""
     if root is None and PLUGIN_INACTIVE: return ['brief']
-    choice = core.config(root).get('mcp_tools', 'core') if root else 'all'
+    cfg = core.config(root) if root else {}
+    choice = cfg.get('mcp_tools', 'core') if root else 'all'
     names = TOOLS if choice == 'all' else choice if isinstance(choice, list) else CORE_TOOLS
+    if choice == 'core' and isinstance(cfg.get('packs'), list) and 'digest' in cfg['packs']:
+        names = (*CORE_TOOLS, 'digest_file')
     return [name for name in TOOLS if name in names]
 
 

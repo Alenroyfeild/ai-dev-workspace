@@ -34,8 +34,9 @@ class Fail(Exception):
 
 
 class Smoke:
-    def __init__(self, tmp, mode, wheel):
+    def __init__(self, tmp, mode, wheel, use_setup_py=False):
         self.tmp, self.mode, self.wheel = tmp, mode, wheel
+        self.use_setup_py = use_setup_py
         self.home = tmp / 'home'
         self.repo = tmp / 'repo'
         self.before = tmp / 'repo-before'
@@ -96,12 +97,21 @@ class Smoke:
         src = self.tmp / 'src'
         shutil.copytree(ROOT, src, ignore=shutil.ignore_patterns('.git', 'build', 'dist', '*.egg-info', '__pycache__', '.DS_Store'))
         dist = self.tmp / 'dist'
-        try:
-            self.run([sys.executable, 'setup.py', 'sdist', '--dist-dir', dist, 'bdist_wheel', '--dist-dir', dist], cwd=src)
-        except Fail as exc:
-            raise Fail('build failed (needs setuptools and wheel): ' + str(exc))
+        built_with_m_build = False
+        if not self.use_setup_py:
+            try:
+                self.run([sys.executable, '-m', 'build', '--outdir', str(dist)], cwd=src)
+                built_with_m_build = True
+            except Fail:
+                pass
+        if not built_with_m_build:
+            try:
+                self.run([sys.executable, 'setup.py', 'sdist', '--dist-dir', str(dist), 'bdist_wheel', '--dist-dir', str(dist)], cwd=src)
+            except Fail as exc:
+                raise Fail('build failed (needs python -m build or setuptools/wheel): ' + str(exc))
         self.wheel, self.sdist = next(dist.glob('*.whl')), next(dist.glob('*.tar.gz'))
-        return '%s, %s' % (self.sdist.name, self.wheel.name)
+        builder = 'python -m build' if built_with_m_build else 'setup.py'
+        return '%s, %s (via %s)' % (self.sdist.name, self.wheel.name, builder)
 
     def install(self):
         venv = self.tmp / 'venv'
@@ -295,6 +305,7 @@ def run_steps(smoke, mode):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description='Release smoke: one command for the CLI half of a release check.')
+    p.add_argument('--setup-py', action='store_true', help='build with setup.py instead of python -m build')
     p.add_argument('--wheel', metavar='PATH', help='install this wheel instead of building')
     p.add_argument('--source', action='store_true', help='run bin/ws from the checkout; no build or install')
     p.add_argument('--json', action='store_true', help='print machine-readable results')
@@ -304,7 +315,7 @@ def main(argv=None):
     mode = 'source' if a.source else 'wheel' if a.wheel else 'build'
     started = time.time()
     holder = tempfile.TemporaryDirectory(prefix='ws-release-smoke-')
-    smoke = Smoke(Path(holder.name).resolve(), mode, Path(a.wheel).resolve() if a.wheel else None)
+    smoke = Smoke(Path(holder.name).resolve(), mode, Path(a.wheel).resolve() if a.wheel else None, use_setup_py=a.setup_py)
     try:
         run_steps(smoke, mode)
     except Exception as exc:
