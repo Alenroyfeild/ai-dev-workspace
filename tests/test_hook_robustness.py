@@ -39,8 +39,8 @@ class HookRobustnessTests(Base):
         return out
 
     def test_malformed_stdin_fails_open_for_every_hook_and_client(self):
-        for cmd, clients in (('brief', ('claude', 'codex', 'cursor', 'gemini', 'vscode')), ('nudge', ('claude', 'codex', 'cursor', 'gemini', 'vscode')),
-                             ('paste', ('claude', 'codex', 'cursor', 'gemini')), ('guard', ('claude', 'codex')), ('discipline', ('claude', 'codex'))):
+        for cmd, clients in (('brief', ('claude', 'codex', 'cursor', 'gemini', 'vscode', 'antigravity')), ('nudge', ('claude', 'codex', 'cursor', 'gemini', 'vscode')),
+                             ('paste', ('claude', 'codex', 'cursor', 'gemini')), ('guard', ('claude', 'codex', 'antigravity')), ('discipline', ('claude', 'codex'))):
             for client in clients:
                 for label, data in BAD_STDIN.items(): self.assert_open(cmd, data, client, label)
 
