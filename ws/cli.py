@@ -406,7 +406,7 @@ def main(argv=None):
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search', help='search transcripts of earlier assistant sessions'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
-    imports = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True)
+    imports = sub.add_parser('import', help='preview read-only memory sources; save copies only on request').add_subparsers(dest='action', required=True)
     s = imports.add_parser('claude-mem', help='preview a checkpointed SQLite copy; source is never written')
     s.add_argument('--db', required=True); s.add_argument('--project', required=True)
     s.add_argument('--apply', action='store_true', help='show the preview and ask before saving private records')
