@@ -212,6 +212,58 @@ class OrchestrationTests(Base):
         ])
         self.assertEqual([entry['result'] for entry in core.run_entries(self.root, 'T-1')], ['failed', 'ok'])
 
+    def test_timeout_is_a_failed_attempt_and_falls_back(self):
+        self.set_routing(timeout_seconds=1)
+        directory = self.root / 'timeout-bin'; directory.mkdir(exist_ok=True)
+        self.executable(directory, 'codex', 'import time; time.sleep(30)')
+        self.executable(directory, 'claude', 'import json; print(json.dumps({"result":"fallback result","usage":{"input_tokens":1,"output_tokens":1}}))')
+        with mock.patch.dict(os.environ, {'PATH': str(directory)}):
+            result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertEqual(result['exit_code'], 0)
+        self.assertEqual([(a['provider'], a['status']) for a in result['provider_attempts']], [('codex', 'timeout'), ('claude', 'ok')])
+        entries = core.run_entries(self.root, 'T-1')
+        self.assertEqual([(e['provider'], e['result']) for e in entries], [('codex', 'failed'), ('claude', 'ok')])
+        self.assertIn('timed out', entries[0]['note'])
+
+    def test_timeout_on_every_provider_reports_all_attempts_and_fails(self):
+        self.set_routing(timeout_seconds=1)
+        directory = self.root / 'timeout-bin'; directory.mkdir(exist_ok=True)
+        for name in ('codex', 'claude'): self.executable(directory, name, 'import time; time.sleep(30)')
+        with mock.patch.dict(os.environ, {'PATH': str(directory)}):
+            result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertNotEqual(result['exit_code'], 0)
+        self.assertEqual([(a['provider'], a['status']) for a in result['provider_attempts'] if a['status'] != 'skipped'], [('codex', 'timeout'), ('claude', 'timeout')])
+        self.assertEqual([e['result'] for e in core.run_entries(self.root, 'T-1') if e['result'] != 'skipped'], ['failed', 'failed'])
+
+    def test_all_providers_skipped_keeps_skipped_rows_and_names_attempts(self):
+        self.set_routing(role_overrides={'explorer': {'preference': ['cursor', 'gemini', 'copilot']}})
+        directory = self.root / 'prep-bin'; directory.mkdir(exist_ok=True)
+        self.executable(directory, 'cursor-agent', 'print("unused")')  # present, but preparation-only (no headless command)
+        self.executable(directory, 'copilot', 'print("unused")')
+        with mock.patch.dict(os.environ, {'PATH': str(directory)}):
+            with self.assertRaisesRegex(core.WsError, 'preparation-only') as caught:
+                orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertIn('cursor skipped', str(caught.exception))
+        entries = core.run_entries(self.root, 'T-1')
+        self.assertEqual([(e['provider'], e['result']) for e in entries], [('cursor', 'skipped'), ('gemini', 'skipped'), ('copilot', 'skipped')])
+
+    def test_claim_change_mid_loop_stops_at_once_and_keeps_earlier_rows(self):
+        core.claim(self.root, 'T-1', 'w1')
+        directory = self.root / 'claim-bin'; directory.mkdir(exist_ok=True)
+        self.executable(directory, 'codex', 'print("x")')
+        self.executable(directory, 'claude', 'print("x")')
+        calls = []
+        def steal(binding, repo, body, receipt=None):
+            calls.append(binding['provider'])
+            path = core.task_path(self.root, 'T-1')
+            path.write_text(core.set_meta(path.read_text(), {'claimed_by': 'someone-else', 'claim_token': 'theirs'}))
+            return 3, 'synthetic quota failure', 0, 0, False
+        with mock.patch.dict(os.environ, {'PATH': str(directory)}), mock.patch.object(orchestration, 'worker_run', steal):
+            with self.assertRaisesRegex(core.WsError, 'Claim changed'): orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertEqual(calls, ['codex'])  # the next provider was never started
+        entries = core.run_entries(self.root, 'T-1')
+        self.assertEqual([(e['provider'], e['result']) for e in entries], [('codex', 'failed')])
+
     def test_selftest_positive_control_disk_verdicts_and_doctor(self):
         git = shutil.which('git')
         cases = [('print("expired login")', 'INCONCLUSIVE', 2),
