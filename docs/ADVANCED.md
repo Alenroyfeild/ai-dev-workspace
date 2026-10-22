@@ -94,6 +94,14 @@ Use the plugin or the repo connection from `ws start`, not both: with both, ever
 
 With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.
 
+`ws audit` also inspects bounded local manifests for languages, declared test
+commands and CI, then prints wiring commands for linked assistants or clients
+with project-local configuration. These are suggestions: audit never runs test
+scripts, installs tools or changes configuration. Config presence does not prove
+that a client is authenticated. Unknown stacks remain unknown.
+Idea credit: [Anthropic's claude-code-setup](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup)
+(Apache-2.0); this cross-client implementation is independently written and fixture-tested.
+
 ### Import a claude-mem copy
 
 `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields and private-marked observations are excluded. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
