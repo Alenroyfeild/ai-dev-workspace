@@ -10,6 +10,12 @@ from ws import core, packs, repo
 
 
 class DigestHintTests(Base):
+    old_cwd = None
+
+    def tearDown(self):
+        if self.old_cwd: os.chdir(self.old_cwd)  # Windows cannot delete a directory that is the cwd; addCleanup runs only after tearDown
+        super().tearDown()
+
     def configure(self, **values):
         cfg = core.config(self.root); cfg.update(values)
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
@@ -65,7 +71,7 @@ class DigestHintTests(Base):
     def test_hook_lifecycle_coexists_with_discipline_and_undo_is_clean(self):
         directory = Path(self.tmp.name) / 'repo'; directory.mkdir(); seeded_repo(directory, 'feature/test', {'README.md': 'Fixture.\n'})
         self.configure(repos=[str(directory.resolve())])
-        old = Path.cwd(); os.chdir(directory); self.addCleanup(os.chdir, old)
+        self.old_cwd = Path.cwd(); os.chdir(directory)
         with mock.patch('ws.setup.detect', return_value=[]):
             repo.start(yes=True, workspace=str(self.root))
             core.pack_add(self.root, 'discipline'); core.pack_add(self.root, 'digest'); repo.start(yes=True)
@@ -87,6 +93,19 @@ class DigestHintTests(Base):
         for payload in ('', 'not json', '[]', '{}', '{"hook_event_name":"SessionStart","tool_response":"x"}'):
             result = run_ws('--workspace-root', self.root, 'digest-hint', '--hook', input=payload)
             self.assertEqual(result.returncode, 0, result.stderr); self.assertEqual(json.loads(result.stdout), {})
+
+    def test_cli_over_limit_input_emits_size_only_hint_only_when_opted_in(self):
         with mock.patch.object(core, 'MAX_READ_BYTES', 16):
-            result = run_ws('--workspace-root', self.root, 'digest-hint', '--hook', input='x' * 17)
-            self.assertEqual(result.returncode, 0); self.assertEqual(json.loads(result.stdout), {})
+            payload = 'PRIVATE-' + 'x' * 17
+            for packs in ([], ['digest']):
+                self.configure(packs=packs)
+                before = {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+                result = run_ws('--workspace-root', self.root, 'digest-hint', '--hook', input=payload)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                out = json.loads(result.stdout)
+                if not packs: self.assertEqual(out, {}); continue
+                self.assertEqual(set(out), {'hookSpecificOutput'})
+                message = out['hookSpecificOutput']['additionalContext']
+                self.assertIn('Tool output is over 16 bytes', message); self.assertIn('ws digest <file>', message)
+                self.assertNotIn('PRIVATE', result.stdout)
+                self.assertEqual(before, {p: p.read_bytes() for p in self.root.rglob('*') if p.is_file()})

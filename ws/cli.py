@@ -10,20 +10,23 @@ from pathlib import Path
 from . import core, assist, native
 
 
+class InputTooLarge(core.WsError): pass
+
+
 def _read_limited_stdin():
     limit = core.MAX_READ_BYTES
     stream = getattr(sys.stdin, 'buffer', None)
     if stream is not None:
         raw = stream.read(limit + 1)
         if len(raw) > limit:
-            raise core.WsError('Input exceeds 50 MB.')
+            raise InputTooLarge('Input exceeds 50 MB.')
         try: return raw.decode('utf-8')
         except UnicodeDecodeError: raise core.WsError('Paste input must be UTF-8 text.')
     text = sys.stdin.read(limit + 1)
     try: size = len(text.encode('utf-8'))
     except UnicodeEncodeError: raise core.WsError('Paste contains text that cannot be saved as UTF-8.')
     if len(text) > limit or size > limit:
-        raise core.WsError('Input exceeds 50 MB.')
+        raise InputTooLarge('Input exceeds 50 MB.')
     return text
 
 
@@ -560,6 +563,9 @@ def main(argv=None):
             try:
                 payload = core.json_loads(_read_limited_stdin())
                 result = digest_hint.hook(core.find_root(a.workspace_root), payload)
+            except InputTooLarge:  # the case the hint matters most: advise on size alone
+                try: result = digest_hint.oversize(core.find_root(a.workspace_root), core.MAX_READ_BYTES)
+                except (ValueError, OSError, core.WsError): result = {}
             except (ValueError, OSError, core.WsError, RecursionError): result = {}
             print(json.dumps(result)); return 0
         if a.cmd == 'discipline':  # advisory only: any error prints {} so the tool result reaches the model unchanged
