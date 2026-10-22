@@ -67,6 +67,25 @@ class AntigravityHookTests(Base):
                              client='antigravity')
         self.assertEqual(result, {'decision': 'allow'})
 
+    def test_path_content_tools_deny_secret_and_hook_disable(self):
+        target = self.root / '.agents/hooks.json'; target.parent.mkdir(exist_ok=True)
+        original = {'hooks': {'PreToolUse': [{'hooks': [
+            {'command': 'ws guard --hook --client antigravity'}]}]}}
+        target.write_text(json.dumps(original))
+        disabled = {'hooks': {**original['hooks'], 'enabled': False}}
+        secret = 'sk-' + 'synthetic1234567890' * 3
+        for tool in ('write_file', 'edit_file'):
+            for args in ({'Path': 'app.py', 'Content': secret},
+                         {'Path': str(target), 'Content': '{}'},
+                         {'Path': str(target), 'Content': json.dumps(disabled)},
+                         {'Path': 'app.py', 'Target': 'old', 'Replacement': secret}):
+                with self.subTest(tool=tool, args=tuple(args)):
+                    result = guards.hook({'toolCall': {'name': tool, 'args': args},
+                                          'workspacePaths': [str(self.root)]}, client='antigravity')
+                    self.assertEqual(result.get('decision'), 'deny', result)
+        self.assertEqual(guards.hook({'toolCall': {'name': 'write_file', 'args': {
+            'Path': 'app.py', 'Content': 'public text'}}}, client='antigravity'), {'decision': 'allow'})
+
     def test_connected_hook_upgrades_and_keeps_user_definition(self):
         core.connect(self.root, 'antigravity')
         target = self.root / '.agents/hooks.json'; data = json.loads(target.read_text())

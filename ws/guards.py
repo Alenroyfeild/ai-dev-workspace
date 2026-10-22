@@ -719,7 +719,9 @@ def hook(payload, client='claude'):
         args = call.get('args'); args = args if isinstance(args, dict) else {}
         paths = payload.get('workspacePaths')
         mapped = dict(args)
-        for native, common in (('CommandLine', 'command'), ('TargetFile', 'file_path'),
+        for native, common in (('CommandLine', 'command'), ('Path', 'file_path'),
+                               ('Content', 'content'), ('Target', 'old_string'), ('Replacement', 'new_string'),
+                               ('TargetFile', 'file_path'),
                                ('CodeContent', 'content'), ('TargetContent', 'old_string'),
                                ('ReplacementContent', 'new_string')):
             if native in args: mapped[common] = args[native]
