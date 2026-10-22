@@ -48,6 +48,7 @@ Team workspaces can now receive approved shared updates automatically or be read
 - Hooks start faster: the per-prompt hook drops from about 87 ms to 70 ms and SessionStart from about 310 ms to 240 ms (20,000-file repo), because rarely used modules load only when their command runs and the session brief asks git each question once.
 
 ### Fixed
+- The source archive no longer ships the test suite.
 - `ws doctor` still checks your workspace when its optional update cache is damaged.
 - File digests hide multiline private-key bodies in focused matches, problem lines and tails, while keeping source line numbers.
 - `ws start` refresh keeps edits to multiple assistant settings files made during its confirmation prompt.
