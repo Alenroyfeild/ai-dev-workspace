@@ -1,0 +1,3 @@
+{"name": "behavior", "version": "0.1.0", "kind": "rules",
+ "description": "Opt-in engineering guidelines for AI coding assistants: think first, minimal changes, surgical edits, and verify work.",
+ "requires": []}

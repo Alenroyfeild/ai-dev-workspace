@@ -110,7 +110,7 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 |---|---|---|---|---|---|---|
 | Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
 | MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
-| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | not wired |
+| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | fixture-tested |
 | Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
 | Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested | not wired |
 
@@ -132,6 +132,7 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 
 | Pack | Adds | Needs |
 |---|---|---|
+| `behavior` | Opt-in engineering guidelines: think first, minimal changes, surgical edits, and verify work (under 70 words) | nothing |
 | `obsidian` | Open the memory as a linked Obsidian vault | [Obsidian](https://obsidian.md) |
 | `local-llm` | Free on-device log triage | [Ollama](https://ollama.com) and a small model |
 | `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |

@@ -12,7 +12,7 @@ from pathlib import Path
 from . import core, setup, upgrade, memory_import
 
 LINK = '.ws-start.json'
-FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.codex/config.toml.ws-backup', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md', '.agents/mcp_config.json')
+FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.codex/config.toml.ws-backup', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md', '.agents/mcp_config.json', '.agents/hooks.json')
 
 
 def path(repo, name):
@@ -206,7 +206,7 @@ def codex_pending(root, check_global=True):
             if (p / LINK).is_file() and status(p) in (('manual step pending', 'connected via global config') if global_connected else ('manual step pending',))]
 
 
-HOOK_FILES = ('.claude/settings.local.json', '.codex/hooks.json', '.cursor/hooks.json', '.github/hooks/ws.json', '.gemini/settings.json')
+HOOK_FILES = ('.claude/settings.local.json', '.codex/hooks.json', '.cursor/hooks.json', '.github/hooks/ws.json', '.gemini/settings.json', '.agents/hooks.json')
 
 
 def _strings(node):
@@ -415,7 +415,7 @@ def render(repo, root, clients, prior, plugin=False):
         prefix = '---\nalwaysApply: true\n---\n' if client == 'cursor' else ''
         previous = prior(name) or b''
         desired[name] = previous + (('\n' if previous else prefix) + instructions).encode()
-    for client, name in (('claude', '.claude/settings.local.json'), ('codex', '.codex/hooks.json'), ('cursor', '.cursor/hooks.json'), ('copilot', '.github/hooks/ws.json'), ('gemini', '.gemini/settings.json')):
+    for client, name in (('claude', '.claude/settings.local.json'), ('codex', '.codex/hooks.json'), ('cursor', '.cursor/hooks.json'), ('copilot', '.github/hooks/ws.json'), ('gemini', '.gemini/settings.json'), ('antigravity', '.agents/hooks.json')):
         if client not in clients: continue
         data = _json(prior(name) or b'{}', name)
         if not isinstance(data, dict) or not isinstance(data.get('hooks', {}), dict): raise core.WsError('Invalid local hook settings: ' + name)
