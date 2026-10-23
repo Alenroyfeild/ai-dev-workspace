@@ -94,7 +94,7 @@ speaks MCP, but tools return “Run ws start in this repo”; it does not use `W
 the existing memory hooks only for a validated repo link. Unknown events or invalid
 links return `{}`. Existing CLI and server invocations are unchanged.
 
-No Codex plugin package is published yet: keep existing repo-local connections for Codex
+No Codex plugin package is published yet (coming in beta.6 preview): keep existing repo-local connections for Codex
 until packaging, duplicate-connection detection and live client checks are complete. Installing or enabling a Codex plugin does not trust
 its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
 
@@ -111,7 +111,7 @@ Use the plugin or the repo connection from `ws start`, not both: with both, ever
 
 With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. `ws start` saves the Claude config dir (`CLAUDE_CONFIG_DIR`) it checked and uses it when a later shell leaves the variable unset, so plugin mode is not dropped by accident. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.
 
-`ws audit` also inspects bounded local manifests for languages, declared test
+Coming in beta.6: `ws audit` also inspects bounded local manifests for languages, declared test
 commands and CI, then prints wiring commands for linked assistants or clients
 with project-local configuration. These are suggestions: audit never runs test
 scripts, installs tools or changes configuration. Config presence does not prove
@@ -121,12 +121,12 @@ Idea credit: [Anthropic's claude-code-setup](https://github.com/anthropics/claud
 
 ### Import a claude-mem copy
 
-`ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields and private-marked observations are excluded. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
+Preview (coming in beta.6): `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields and private-marked observations are excluded. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
 
 ### Draft a rule from repeated lessons
 
-Three local lesson/dead-end occurrences with at least 60% word-set overlap can add a `ws lesson promote L-<id>` hint to the brief. It scans at most 200 entries and 256 KiB; this is a signal to review, not proof a rule is right. The explicit command writes `.ws/rule-drafts/<id>.md` in the workspace; it never installs rules/skills or overwrites an edited draft. Inspired by [Task Observer](https://github.com/rebelytics/one-skill-to-rule-them-all), independently implemented without an observer or model calls. Review and copy useful wording into your code repo only when appropriate.
+Coming in beta.6: Three local lesson/dead-end occurrences with at least 60% word-set overlap can add a `ws lesson promote L-<id>` hint to the brief. It scans at most 200 entries and 256 KiB; this is a signal to review, not proof a rule is right. The explicit command writes `.ws/rule-drafts/<id>.md` in the workspace; it never installs rules/skills or overwrites an edited draft. Inspired by [Task Observer](https://github.com/rebelytics/one-skill-to-rule-them-all), independently implemented without an observer or model calls. Review and copy useful wording into your code repo only when appropriate.
 
 ### Compact MCP recall
 
-MCP `search_vault` first returns bounded ID/title/date cards instead of snippets. Call it again with `detail: "<id>"` for up to 20,000 characters of sanitized content, labelled untrusted. Dates use saved metadata when available and file modification dates otherwise. Vault notes, validated team entries and configured codebase reports stay read-only; hidden/local-only files, run logs, traversal and escaping symlinks are refused. The core catalog remains seven tools; CLI `ws search` keeps its existing snippets. This applies the progressive-disclosure idea described by [claude-mem](https://github.com/thedotmack/claude-mem), using our own implementation and existing readers.
+Coming in beta.6: MCP `search_vault` first returns bounded ID/title/date cards instead of snippets. Call it again with `detail: "<id>"` for up to 20,000 characters of sanitized content, labelled untrusted. Dates use saved metadata when available and file modification dates otherwise. Vault notes, validated team entries and configured codebase reports stay read-only; hidden/local-only files, run logs, traversal and escaping symlinks are refused. The core catalog remains seven tools; CLI `ws search` keeps its existing snippets. This applies the progressive-disclosure idea described by [claude-mem](https://github.com/thedotmack/claude-mem), using our own implementation and existing readers.
