@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from unittest import mock
 from test_ws import Base
-from ws import core, orchestration
+from ws import cli, core, orchestration
 from mcp import server
 
 
@@ -170,11 +170,47 @@ class OrchestrationTests(Base):
             reply = server.handle(self.root, {'jsonrpc':'2.0','id':1,'method':'tools/call','params':{'name':'delegate','arguments':{'task':'T-1','role':'explorer','run':True}}})
             self.assertIn('error', reply)
 
-    def test_provider_failure_is_logged_without_fallback(self):
-        with self.fake('import sys; print("synthetic failure"); sys.exit(3)'):
+    def test_provider_failure_falls_back_in_declared_order_and_logs_attempts(self):
+        directory = self.root / 'fallback-bin'; directory.mkdir(exist_ok=True)
+        self.executable(directory, 'codex', 'import sys; print("synthetic quota failure"); sys.exit(3)')
+        self.executable(directory, 'claude', 'import json; print(json.dumps({"result":"fallback result","usage":{"input_tokens":4,"output_tokens":2}}))')
+        with mock.patch.dict(os.environ, {'PATH': str(directory)}):
             result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
-            self.assertEqual(result['exit_code'], 3)
-            self.assertEqual(core.run_entries(self.root, 'T-1')[-1]['result'], 'failed')
+        self.assertEqual(result['exit_code'], 0)
+        self.assertEqual(result['provider_attempts'], [
+            {'provider': 'codex', 'status': 'failed', 'exit_code': 3},
+            {'provider': 'claude', 'status': 'ok', 'exit_code': 0},
+        ])
+        entries = core.run_entries(self.root, 'T-1')
+        self.assertEqual([(entry['provider'], entry['result']) for entry in entries], [
+            ('codex', 'failed'), ('claude', 'ok')])
+        self.assertIn('provider_attempts', cli.readable(result))
+
+    def test_explicit_provider_override_stays_pinned_after_failure(self):
+        cfg = json.loads((self.root / 'routing.json').read_text())
+        cfg['role_overrides']['explorer'] = {'provider': 'codex'}
+        (self.root / 'routing.json').write_text(json.dumps(cfg))
+        directory = self.root / 'pinned-bin'; directory.mkdir(exist_ok=True)
+        self.executable(directory, 'codex', 'import sys; print("synthetic failure"); sys.exit(3)')
+        self.executable(directory, 'claude', 'raise AssertionError("pinned fallback must not run")')
+        with mock.patch.dict(os.environ, {'PATH': str(directory)}):
+            result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertEqual(result['exit_code'], 3)
+        self.assertEqual(result['provider_attempts'], [
+            {'provider': 'codex', 'status': 'failed', 'exit_code': 3}])
+
+    def test_structured_quota_error_falls_back_even_when_cli_exits_zero(self):
+        directory = self.root / 'quota-bin'; directory.mkdir(exist_ok=True)
+        self.executable(directory, 'codex', 'import json; print(json.dumps({"type":"turn.failed","error":{"message":"quota exceeded"}}))')
+        self.executable(directory, 'claude', 'import json; print(json.dumps({"result":"fallback result","usage":{"input_tokens":1,"output_tokens":1}}))')
+        with mock.patch.dict(os.environ, {'PATH': str(directory)}):
+            result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertEqual(result['exit_code'], 0)
+        self.assertEqual(result['provider_attempts'], [
+            {'provider': 'codex', 'status': 'failed', 'exit_code': 1},
+            {'provider': 'claude', 'status': 'ok', 'exit_code': 0},
+        ])
+        self.assertEqual([entry['result'] for entry in core.run_entries(self.root, 'T-1')], ['failed', 'ok'])
 
     def test_selftest_positive_control_disk_verdicts_and_doctor(self):
         git = shutil.which('git')
