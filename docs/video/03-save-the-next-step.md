@@ -16,6 +16,6 @@ ws start --undo
 ```
 ## Guidance
 Stable: ws start creates and claims a task from the current branch (memory-demo here).
-The brief should show the saved decision and next action.
+The brief shows the saved decision and next action.
 Automatic capture is best-effort; explicitly save important decisions.
 These CLI commands do not prove an assistant read the brief or followed it.
