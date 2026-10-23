@@ -239,7 +239,7 @@ class OrchestrationTests(Base):
         self.set_routing(role_overrides={'explorer': {'preference': ['cursor', 'gemini', 'copilot']}})
         directory = self.root / 'prep-bin'; directory.mkdir(exist_ok=True)
         self.executable(directory, 'cursor-agent', 'print("unused")')  # present, but preparation-only (no headless command)
-        self.executable(directory, 'copilot', 'print("unused")')
+        # gemini and copilot stay off PATH: a Windows .cmd copilot shim would refuse the prompt before skipping.
         with mock.patch.dict(os.environ, {'PATH': str(directory)}):
             with self.assertRaisesRegex(core.WsError, 'preparation-only') as caught:
                 orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
