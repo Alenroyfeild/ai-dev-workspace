@@ -2,7 +2,7 @@
 
 > Shared Markdown task memory for developers who switch between Claude Code and Codex. Save decisions, next actions and dead ends in files you own; configured local hooks provide a task brief at session start. Install `pipx install ai-dev-workspace --pip-args='--pre'`, then run `ws start` in a Git repo to preview setup. Python 3.9+ CLI (`ws`) and local stdio MCP server; MIT licensed.
 
-## Stable — published 0.1.0b5
+## Stable — published 0.1.0b6
 
 - Local Markdown task records, explicit `ws remember`, `ws checkpoint` and `ws brief`.
 - Seven core MCP tools by default; other tools remain callable by name.
@@ -18,18 +18,33 @@
   Anthropic's official plugin directory. Install from our GitHub marketplace;
   the CLI and `ws start` in the target repo are still required.
 
-## Coming next (beta.6)
+## Released in beta.6
 
-The linked dev guides and unreleased changes are source previews, not additional
-features of the published 0.1.0b5 package. Antigravity hooks are fixture-tested,
-without live Antigravity proof. New packaging search terms ship with the next release.
+- Stable: bounded compact MCP recall, read-only stack audit and the advisory behavior pack.
+- Preview: opt-in digest advice is size-only; tool output is not compressed automatically.
+- Preview: worker fallback runs only declared providers and read-only roles;
+  gateway delegation is checked only with a local fake server and sends a redacted brief.
+- Stable: lesson promotion drafts advice only; skills packaging is format-checked,
+  without a verified third-party installer run.
+- Preview: claude-mem import is fixture-tested against a checkpointed SQLite schema;
+  newer schemas may not import.
+- Preview: Antigravity rules, MCP and SessionStart/PreToolUse hooks are fixture-tested;
+  there is no signed-in live proof or automatic capture.
+- Preview: Claude Code plugin needs the CLI and `ws start`; not in Anthropic's
+  directory, Windows untested. Codex plugin hooks need a trusted manual desktop install;
+  no MCP in the plugin, no live hook proof. Cursor plugin is fixture-tested only,
+  not submitted, with no verified install command. [Plugin limits](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/ADVANCED.md#plugin-runtime-packaging-preview).
 
-- [Share memory between Claude Code and Codex](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/share-memory-claude-code-codex.md)
-- [Keep decisions without a background AI](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/keep-decisions-without-background-ai.md)
-- [Stop retrying failed approaches](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/stop-retrying-failed-approaches.md)
-- [Unreleased fragments](https://github.com/Alenroyfeild/ai-dev-workspace/tree/dev/changelog.d)
+## Coming next
+
+Common Agent Plugins root manifest (PLG3) and repo discovery through MCP roots (PLG5)
+are parked and not released. The Codex plugin still uses `ws start` for MCP.
 
 ## Released documentation
+
+- [Share memory between Claude Code and Codex](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/share-memory-claude-code-codex.md)
+- [Keep decisions without a background AI](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/keep-decisions-without-background-ai.md)
+- [Stop retrying failed approaches](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/stop-retrying-failed-approaches.md)
 
 - [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): install, supported clients and results with limits
 - [Setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/SETUP.md) and [Tutorial](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TUTORIAL.md)

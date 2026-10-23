@@ -33,8 +33,20 @@ Status: **matches** (code agrees with docs), **fixed**, **unclear** (docs silent
 | Codex hook output | SessionStart `additionalContext`; prompt guard `{"decision": "block", "reason": ...}` | SessionStart `hookSpecificOutput.additionalContext` (plain stdout also context); UserPromptSubmit `decision: "block"` or exit 2 (same page) | matches |
 | Codex memories / goals (report only) | Reads `memories_1.sqlite` `stage1_outputs` | Memories are off by default, enabled with `[features] memories = true`; files under `~/.codex/memories/`, "generated state" (https://developers.openai.com/codex/memories). Goals: `/goal`, `features.goals` (https://developers.openai.com/codex/use-cases/follow-goals/). Upstream feature table: `memories` stable and off by default, `goals` stable and on by default (openai/codex `codex-rs/features/src/lib.rs`). The docs do not describe the `memories_1.sqlite` schema we read | unclear for the sqlite reader; not changed |
 
+## beta.6 release coverage
+
+These labels describe the released integrations, not new live-session evidence.
+All plugin paths require the CLI and `ws start` in the target repo.
+
+| Integration | Release label and verification limit |
+|---|---|
+| Claude Code plugin | Preview; beta.5 live check, not in Anthropic's official directory; Windows untested. See [plugin setup](ADVANCED.md#claude-code-plugin-preview). |
+| Codex plugin | Preview; hooks need a trusted manual desktop install; hook output not live-tested; no MCP server in the plugin (use `ws start`). See [limits](ADVANCED.md#codex-plugin-preview). |
+| Cursor plugin | Preview; fixture-tested only, not submitted, no verified install command. Hook cwd and MCP startup assumptions need native proof. See [limits](ADVANCED.md#cursor-plugin-preview). |
+| Antigravity hooks | Preview; SessionStart brief and PreToolUse guard output fixture-tested; no signed-in live session, automatic capture or plugin import. See [setup](SETUP.md). |
+
 ## Changes made
 
 - `docs/COMMANDS.md`: Gemini memory import wording now says the heading comes from older versions.
 - `tests/test_client_docs.py`: pins event names, nesting, every event's timeout units, Cursor `version`, MCP key names, the Cursor rule front matter, and non-Claude SessionStart context output. Prompt blocking (including Claude exit 2) is exercised by `tests/test_paste_guard.py`; Claude Stop output by `tests/test_finish_nudge.py`.
-- No code changes were needed. README and SETUP compatibility tables are unchanged.
+- The 2026-10-09 documentation audit required no code changes. The beta.6 compatibility tables now include the fixture-tested Antigravity hooks and plugin previews above.

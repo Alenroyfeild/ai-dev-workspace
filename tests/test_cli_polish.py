@@ -58,7 +58,7 @@ class CliPolishTests(unittest.TestCase):
                        'Cursor | supported, fixture-tested; live reports welcome | CI-tested',
                        'Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested',
                        'Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested',
-                       'Antigravity | supported, fixture-tested; rules, MCP (hooks coming in beta.6) | CI-tested'):
+                       'Antigravity | Preview, fixture-tested; rules, MCP, SessionStart/PreToolUse hooks; no automatic capture | CI-tested'):
             self.assertIn(status, readme)
         self.assertIn('[Something broke]', readme)
         self.assertIn('https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml', readme)

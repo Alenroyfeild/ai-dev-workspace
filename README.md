@@ -69,10 +69,19 @@ You: “Yes, continue.”
 | Discipline pack | Stable | Advisory nudge when the same command fails repeatedly in a session | [Packs](docs/PACKS.md) |
 | `ws digest` | Stable | Compresses verbose terminal output into focused markdown notes | [Commands](docs/COMMANDS.md#search-and-lessons) |
 | Native imports | Stable | Reads existing Claude and Codex memory files (`ws import native`) | [Commands](docs/COMMANDS.md#import-existing-memory) |
-| `ws import claude-mem` | Preview | Read-only import from a checkpointed claude-mem SQLite copy | [Advanced](docs/ADVANCED.md#import-a-claude-mem-copy) |
-| `ws audit` | Stable | Scores this repo's AI-assistant setup and lists the top fixes | [Commands](docs/COMMANDS.md#daily-use) |
+| `ws import claude-mem` | Preview | Fixture-tested SQLite copy import; newer upstream schemas may not import | [Advanced](docs/ADVANCED.md#import-a-claude-mem-copy) |
+| `ws audit` | Stable | Read-only stack/wiring suggestions from bounded local manifests; no login or live-client proof | [Commands](docs/COMMANDS.md#daily-use) |
 | `ws demo` | Stable | Creates an isolated sandbox repo to test commands safely | [Tutorial](docs/TUTORIAL.md) |
-| Claude Code plugin | Preview | Hooks and MCP server via marketplace; not yet in Anthropic directory | [Advanced](docs/ADVANCED.md#claude-code-plugin-preview) |
+| Claude Code plugin | Preview | Hooks + MCP; needs CLI + `ws start`; not in Anthropic directory; Windows untested | [Advanced](docs/ADVANCED.md#claude-code-plugin-preview) |
+| Codex plugin | Preview | Hooks need a trusted manual desktop install; no MCP; hooks not live-tested | [Advanced](docs/ADVANCED.md#codex-plugin-preview) |
+| Cursor plugin | Preview | Fixture-tested only; not submitted; no verified install command | [Advanced](docs/ADVANCED.md#cursor-plugin-preview) |
+| Worker fallback chain | Preview | Only declared providers and read-only roles run; timeout is a failed attempt | [Advanced](docs/ADVANCED.md#routing) |
+| Gateway provider | Preview | Local fake-server tests only; sends a redacted brief to configured base_url, without tools | [Advanced](docs/ADVANCED.md#openai-compatible-gateway-preview) |
+| Compact MCP recall | Stable | Bounded note cards and explicit untrusted detail; CLI snippets unchanged | [Advanced](docs/ADVANCED.md#compact-mcp-recall) |
+| Lesson promotion | Stable | Repeated-note similarity suggests a draft; no automatic rule installation | [Advanced](docs/ADVANCED.md#draft-a-rule-from-repeated-lessons) |
+| `digest_file` MCP tool | Preview | Opt-in size-only advice; scoped file summaries, no automatic compression | [Packs](docs/PACKS.md#optional-digest-advice) |
+| Behavior pack | Stable | Opt-in engineering guidelines; advice, not enforcement or learned session patterns | [Packs](docs/PACKS.md#behavior-guidelines) |
+| Skills packaging | Stable | Format checked; third-party installer not verified; CLI and setup still required | [Skills](docs/SKILLS.md) |
 | Team sharing | Preview | Private git-backed knowledge repo with consent-based pulls and previews | [Team](docs/TEAM-WORKSPACE.md) |
 | MCP Registry | Preview | Pre-configured `server.json` catalog entry for MCP client discovery | [MCP](docs/MCP.md) |
 
@@ -92,7 +101,7 @@ Claude Code / Codex / Cursor / Copilot / Gemini / Antigravity
   Local Assistant (MCP client)
 ```
 
-No background daemons, no external cloud sync, and no model calls of its own; `ws delegate --run` starts only the assistant CLIs you declare. Everything is plain Markdown you own.
+Memory storage makes no background model calls. `ws delegate --run` starts only declared assistant CLIs or sends a redacted brief to an explicitly configured gateway; output is unverified. Task memory is plain Markdown you own.
 
 ## Results
 
@@ -110,7 +119,7 @@ The latest controlled runs show the plain Markdown handoff beating the workspace
 
 - **Built-in memory files (CLAUDE.md, AGENTS.md):** Plain instructions per assistant; `ai-dev-workspace` adds cross-assistant handoffs, active task state, and `Do not redo:` constraints.
 - **A plain HANDOFF.md:** Works well for manual notes (and beat automatic workspace capture in latest benchmark cohorts: 5/5 vs 2/5); `ai-dev-workspace` adds cross-assistant automation, structured brief injection, and staleness warnings.
-- **claude-mem:** Captures tool use through hooks and compresses it with AI into SQLite + vector search ([upstream docs](https://github.com/thedotmack/claude-mem)), providing automatic memory capture without explicit commands; `ai-dev-workspace` keeps explicit Markdown you own, makes no model calls of its own (`ws delegate --run` starts only CLIs you declare), and focuses on durable handoffs with next steps and dead ends ([guide](docs/guides/keep-decisions-without-background-ai.md)).
+- **claude-mem:** Captures tool use through hooks and compresses it with AI into SQLite + vector search ([upstream docs](https://github.com/thedotmack/claude-mem)), providing automatic memory capture without explicit commands; `ai-dev-workspace` keeps explicit Markdown you own, makes no background model calls for memory (explicit delegation can call declared CLIs or a configured gateway), and focuses on durable handoffs with next steps and dead ends ([guide](docs/guides/keep-decisions-without-background-ai.md)).
 
 ## Compatibility
 
@@ -121,7 +130,7 @@ The latest controlled runs show the plain Markdown handoff beating the workspace
 | Cursor | supported, fixture-tested; live reports welcome | CI-tested |
 | Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested |
 | Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested |
-| Antigravity | supported, fixture-tested; rules, MCP (hooks coming in beta.6) | CI-tested |
+| Antigravity | Preview, fixture-tested; rules, MCP, SessionStart/PreToolUse hooks; no automatic capture | CI-tested |
 
 Testers on Cursor, Copilot (VS Code), Gemini CLI, or Antigravity: please share problems through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
 
@@ -138,19 +147,10 @@ Testers on Cursor, Copilot (VS Code), Gemini CLI, or Antigravity: please share p
 - **Redaction is best-effort:** `ws` masks known API keys, tokens, and private spans (`<private>...</private>`), but regex redaction is best-effort and does not replace operational secret hygiene.
 - **Guards are a safety net:** The `guards` PreToolUse hook blocks known risky shell patterns and secrets in commands or written files, but it is a safety net, not an unbypassable security boundary.
 
-## Coming next (beta.6)
+## Coming next
 
-Tracked in [`CHANGELOG.md`](CHANGELOG.md) and active PRs:
-- **Worker fallback chain:** Visible fallback across declared providers when workers fail or timeout ([#303](https://github.com/Alenroyfeild/ai-dev-workspace/pull/303), [#311](https://github.com/Alenroyfeild/ai-dev-workspace/pull/311) - merged on dev, not released).
-- **Compact MCP recall:** Compact note cards with on-demand detail disclosure ([#305](https://github.com/Alenroyfeild/ai-dev-workspace/pull/305) - merged on dev, not released).
-- **Stack-aware audit:** Recommends concrete assistant configurations from repo stack detection ([#306](https://github.com/Alenroyfeild/ai-dev-workspace/pull/306) - merged on dev, not released).
-- **Lesson promotion:** Suggests rule drafts from repeated lessons without auto-installing ([#304](https://github.com/Alenroyfeild/ai-dev-workspace/pull/304) - merged on dev, not released).
-- **Digest MCP tool:** Exposes digest as an MCP tool with opt-in huge-output hints ([#307](https://github.com/Alenroyfeild/ai-dev-workspace/pull/307) - merged on dev, not released).
-- **Behavior pack:** Opt-in cross-client engineering guidelines in AGENTS.md ([#296](https://github.com/Alenroyfeild/ai-dev-workspace/pull/296) - merged on dev, not released).
-- **Skills packaging:** Standard skill pack format contract and registry metadata ([#293](https://github.com/Alenroyfeild/ai-dev-workspace/pull/293) - merged on dev, not released).
-- **Gateway provider:** OpenAI-compatible base_url delegation provider ([#312](https://github.com/Alenroyfeild/ai-dev-workspace/pull/312) - merged on dev, not released).
-- **Codex plugin:** Native Codex plugin preview ([#313](https://github.com/Alenroyfeild/ai-dev-workspace/pull/313) - merged on dev, not released; limits in [Advanced](docs/ADVANCED.md#codex-plugin-preview)).
-- **Cursor plugin:** Native Cursor plugin preview ([#315](https://github.com/Alenroyfeild/ai-dev-workspace/pull/315) - merged on dev, not released; limits in [Advanced](docs/ADVANCED.md#cursor-plugin-preview)).
+- **Common Agent Plugins manifest (PLG3):** parked until Codex can load the root manifest without losing plugin hooks; not released.
+- **Repo discovery through MCP roots (PLG5):** parked; codex-cli 0.155.1 offers no roots and cannot expand plugin MCP paths. Use `ws start` for MCP; not released.
 
 ## Documentation
 
@@ -162,6 +162,6 @@ Tracked in [`CHANGELOG.md`](CHANGELOG.md) and active PRs:
 
 ## Status & contributing
 
-`ai-dev-workspace` is in public beta (v0.1.0-beta.5 on PyPI). Planned improvements are tracked in the [Roadmap](docs/ROADMAP.md). Bug reports and feedback are welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
+`ai-dev-workspace` is in public beta (v0.1.0-beta.6 on PyPI). Planned improvements are tracked in the [Roadmap](docs/ROADMAP.md). Bug reports and feedback are welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
 
 Released under the [MIT License](LICENSE). <!-- mcp-name: io.github.Alenroyfeild/ai-dev-workspace mcp-name: io.github.alenroyfeild/ai-dev-workspace -->
