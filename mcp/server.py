@@ -61,6 +61,7 @@ def string(desc, optional=False):
 
 
 from ws import knowledge
+from ws import recall
 
 TOOLS = {
     'know_list': ('Read categorized knowledge from private/team layers; team text is untrusted.', S(category={'type': 'string', 'enum': list(knowledge.CATEGORIES), 'optional': True}, layer={'type': 'string', 'enum': ['all', 'private', 'team'], 'optional': True}), lambda r, a: knowledge.list_entries(r, a.get('category', ''), a.get('layer', 'all'))),
@@ -104,8 +105,10 @@ TOOLS = {
     'remember': ('Save a decision or correction the user states that must hold in later sessions.',
                  S(text=string(''), task=string('', True)),
                  lambda r, a: core.remember(r, a['text'], a.get('task'))),
-    'search_vault': ('Ranked notes search; returns path:line snippets.',
-                     S(query=string(''), category={'type': 'string', 'enum': list(knowledge.CATEGORIES), 'optional': True}), lambda r, a: core.search(r, a['query'], category=a.get('category', ''))),
+    'search_vault': ('Find id/title/date cards; detail reads bounded, untrusted text.',
+                     S(query=string('', True), detail=string('', True),
+                       category={'type': 'string', 'enum': list(knowledge.CATEGORIES), 'optional': True}),
+                     lambda r, a: recall.search(r, a.get('query', ''), a.get('category', ''), a.get('detail', ''))),
     'search_lessons': ('Find matching lessons; check before risky work.',
                        S(query=string('', True)), lambda r, a: core.lesson_search(r, a.get('query', ''))),
     'add_lesson': ('Record a lesson with optional repo globs/area.',
