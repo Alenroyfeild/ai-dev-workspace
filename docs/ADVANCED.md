@@ -94,7 +94,7 @@ speaks MCP, but tools return “Run ws start in this repo”; it does not use `W
 the existing memory hooks only for a validated repo link. Unknown events or invalid
 links return `{}`. Existing CLI and server invocations are unchanged.
 
-The Codex plugin is described [below](#codex-plugin-preview). Installing or enabling a Codex plugin does not trust its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
+The Codex plugin (preview, coming in beta.6) is described [below](#codex-plugin-preview). Installing or enabling a Codex plugin does not trust its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
 
 ### Claude Code plugin (preview)
 
@@ -111,7 +111,7 @@ With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws 
 
 ### Codex plugin (preview)
 
-**Preview, not released yet (coming in the release after beta.5).** The same marketplace also installs a Codex plugin (`.codex-plugin/`): the handoff, pickup, lesson and thinkbeforeact skills, plus hooks for SessionStart, PreCompact, Stop and UserPromptSubmit (the same four as `ws start`) and PreToolUse, all through `bin/ws-plugin`. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+**Preview, not released yet (coming in beta.6).** The same marketplace also installs a Codex plugin (`.codex-plugin/`): the handoff, pickup, lesson and thinkbeforeact skills, plus hooks for SessionStart, PreCompact, Stop and UserPromptSubmit (the same four as `ws start`) and PreToolUse, all through `bin/ws-plugin`. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
 
 ```text
 codex plugin marketplace add Alenroyfeild/ai-dev-workspace
@@ -129,14 +129,14 @@ What is and is not verified:
 
 ### Cursor plugin (preview)
 
-**Preview, not released yet, and not tested in Cursor.** The repo carries a Cursor plugin (`.cursor-plugin/plugin.json` and `marketplace.json`): the handoff, pickup, lesson and thinkbeforeact skills, one always-on rule (`rules/ai-dev-workspace.mdc`, generated from the same text `ws start` writes into `.cursor/rules`, and told to do nothing in a repo without `.ws-start.json`), hooks for sessionStart, preCompact, stop, sessionEnd, beforeSubmitPrompt and preToolUse through `bin/ws-plugin`, and the MCP server in `--plugin` mode. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+**Preview, not released yet (coming in beta.6), and not tested in Cursor.** The repo carries a Cursor plugin (`.cursor-plugin/plugin.json` and `marketplace.json`): the handoff, pickup, lesson and thinkbeforeact skills, one always-on rule (`rules/ai-dev-workspace.mdc`, generated from the same text `ws start` writes into `.cursor/rules`, and told to do nothing in a repo without `.ws-start.json`), hooks for sessionStart, preCompact, stop, sessionEnd, beforeSubmitPrompt and preToolUse through `bin/ws-plugin`, and the MCP server in `--plugin` mode. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
 
 - Fixture-tested only: manifests, hook mapping, the rule file, duplicate avoidance and the guard output are unit tests written from [Cursor's plugin](https://cursor.com/docs/plugins/building) and [hooks](https://cursor.com/docs/hooks) docs. No Cursor install has loaded this plugin yet. Where the docs were silent we assumed: hook commands run from the plugin folder (`./bin/...`), and the MCP server is started in the opened repo. If Cursor starts it elsewhere, its tools answer "run ws start"; use the `ws start` MCP entry instead.
 - Not published: public listing needs Cursor's review (cursor.com/marketplace/publish) and nothing has been submitted. Cursor's docs describe importing a GitHub repo as a team marketplace; we have not run that, so there is no install command to show yet.
 - The preToolUse hook is the guard and acts only in a started repo whose workspace has the `guards` pack on; otherwise it answers allow, because Cursor blocks a permission hook that prints nothing readable. Other hook errors let the action proceed.
 - Both can be on: for each event that the `.cursor/hooks.json` from `ws start` already handles, the plugin hook does nothing.
 
-`ws audit` also inspects bounded local manifests for languages, declared test
+Coming in beta.6: `ws audit` also inspects bounded local manifests for languages, declared test
 commands and CI, then prints wiring commands for linked assistants or clients
 with project-local configuration. These are suggestions: audit never runs test
 scripts, installs tools or changes configuration. Config presence does not prove
@@ -146,12 +146,12 @@ Idea credit: [Anthropic's claude-code-setup](https://github.com/anthropics/claud
 
 ### Import a claude-mem copy
 
-`ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields and private-marked observations are excluded. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
+Preview (coming in beta.6): `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields and private-marked observations are excluded. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
 
 ### Draft a rule from repeated lessons
 
-Three local lesson/dead-end occurrences with at least 60% word-set overlap can add a `ws lesson promote L-<id>` hint to the brief. It scans at most 200 entries and 256 KiB; this is a signal to review, not proof a rule is right. The explicit command writes `.ws/rule-drafts/<id>.md` in the workspace; it never installs rules/skills or overwrites an edited draft. Inspired by [Task Observer](https://github.com/rebelytics/one-skill-to-rule-them-all), independently implemented without an observer or model calls. Review and copy useful wording into your code repo only when appropriate.
+Coming in beta.6: Three local lesson/dead-end occurrences with at least 60% word-set overlap can add a `ws lesson promote L-<id>` hint to the brief. It scans at most 200 entries and 256 KiB; this is a signal to review, not proof a rule is right. The explicit command writes `.ws/rule-drafts/<id>.md` in the workspace; it never installs rules/skills or overwrites an edited draft. Inspired by [Task Observer](https://github.com/rebelytics/one-skill-to-rule-them-all), independently implemented without an observer or model calls. Review and copy useful wording into your code repo only when appropriate.
 
 ### Compact MCP recall
 
-MCP `search_vault` first returns bounded ID/title/date cards instead of snippets. Call it again with `detail: "<id>"` for up to 20,000 characters of sanitized content, labelled untrusted. Dates use saved metadata when available and file modification dates otherwise. Vault notes, validated team entries and configured codebase reports stay read-only; hidden/local-only files, run logs, traversal and escaping symlinks are refused. The core catalog remains seven tools; CLI `ws search` keeps its existing snippets. This applies the progressive-disclosure idea described by [claude-mem](https://github.com/thedotmack/claude-mem), using our own implementation and existing readers.
+Coming in beta.6: MCP `search_vault` first returns bounded ID/title/date cards instead of snippets. Call it again with `detail: "<id>"` for up to 20,000 characters of sanitized content, labelled untrusted. Dates use saved metadata when available and file modification dates otherwise. Vault notes, validated team entries and configured codebase reports stay read-only; hidden/local-only files, run logs, traversal and escaping symlinks are refused. The core catalog remains seven tools; CLI `ws search` keeps its existing snippets. This applies the progressive-disclosure idea described by [claude-mem](https://github.com/thedotmack/claude-mem), using our own implementation and existing readers.
