@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-beta.6 (unreleased)
+## 0.1.0-beta.6 (2026-10-23)
 
 ### Highlights
 
@@ -21,6 +21,10 @@ Beta.6 expands cross-client memory support with preview plugins for Claude Code,
 - **BOM and CRLF Guard Robustness**: Hook guards detect removal or disabling even when configuration files contain UTF-8 BOM prefixes and Windows CRLF line endings.
 - **Release and Video Tooling**: `bin/release-smoke` builds with `python -m build` when available and retains a `setup.py` fallback; `bin/make-video --links` keeps README and tutorial video links synchronized with release metadata.
 - **Documentation and Discovery**: The README and guides organize workflows and client setup; tutorial install guidance includes the pipx-less path, and repository metadata plus `llms.txt` improve project discovery. Client status labels identify beta.5 support and beta.6 previews.
+
+### Changed
+
+- Align release documentation with beta.6 Stable features and Preview limits for plugins, gateways, imports and Antigravity hooks.
 
 ### Previews
 
