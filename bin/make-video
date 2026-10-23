@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Validate lessons without tools; render with an already installed released ws.
+
+VHS syntax: https://github.com/charmbracelet/vhs#vhs-command-reference
+Card fallback: https://ffmpeg.org/ffmpeg-filters.html#drawtext
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def parse(path):
+    if not re.fullmatch(r'\d\d-[a-z0-9-]+\.md', path.name):
+        raise ValueError('lesson filename must be NN-slug.md')
+    text = path.read_text(encoding='utf-8')
+    front = re.fullmatch(r'---\n(.*?)\n---\n(.*)', text, re.S)
+    if not front:
+        raise ValueError(f'{path.name}: frontmatter required')
+    data = dict(line.split(': ', 1) for line in front[1].splitlines() if ': ' in line)
+    for key in ('title', 'duration_hint', 'status', 'ws_version'):
+        if not data.get(key):
+            raise ValueError(f'{path.name}: missing {key}')
+    if data['status'] not in ('Stable', 'Preview') or not re.fullmatch(r'\d+s', data['duration_hint']):
+        raise ValueError(f'{path.name}: invalid status/duration_hint')
+    sections = dict(re.findall(r'^## (\w+)\n(.*?)(?=^## |\Z)', front[2], re.M | re.S))
+    if any(not sections.get(key, '').strip() for key in ('Problem', 'Steps', 'Guidance')):
+        raise ValueError(f'{path.name}: Problem, Steps and Guidance required')
+    block = re.fullmatch(r'```(?:sh|bash)\n(.*?)\n```\s*', sections['Steps'], re.S)
+    if not block:
+        raise ValueError(f'{path.name}: Steps must be one shell block')
+    commands = [line for line in block[1].splitlines() if line.strip() and not line.startswith('#')]
+    for line in commands:
+        words = shlex.split(line)
+        setup = re.fullmatch(r'(mkdir -p|cd) [a-zA-Z0-9_-]+|git init -q|git switch -c [\w-]+', line)
+        if not words or not (line.startswith('ws ') or setup) or '`' in line or '$' in line:
+            raise ValueError(f'{path.name}: only ws commands or plain local setup allowed')
+        unquoted = re.sub(r'"[^"]*"|\x27[^\x27]*\x27', '', line)
+        if re.search(r'[;|&<>]', unquoted):
+            raise ValueError(f'{path.name}: shell operators forbidden')
+    if not commands:
+        raise ValueError(f'{path.name}: no commands')
+    return dict(data, commands=commands, problem=sections['Problem'].strip())
+
+
+def fingerprint(path, recipe):
+    return {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+            'recipe': hashlib.sha256(recipe.encode()).hexdigest()}
+
+
+def cached(path, record, clip, recipe):
+    return record == fingerprint(path, recipe) and clip.is_file() and clip.stat().st_size > 0
+
+
+def tape(data, session, raw):
+    style = '\n'.join(s for s in (ROOT / 'docs/demo.tape').read_text().splitlines() if s.startswith('Set '))
+    lines = [f'Output {json.dumps(str(raw))}', 'Require bash', style, 'Hide',
+             'Type ' + json.dumps('source ' + shlex.quote(str(session / 'setup.sh')) + '; clear'),
+             'Enter', 'Sleep 500 ms', 'Show']
+    for index, command in enumerate(data['commands']):
+        marker = f'VIDEO_STEP_{index}_OK'
+        lines += ['Type ' + json.dumps(command + f" && printf '\\nVIDEO_STEP_%s_OK\\n' {index}"), 'Enter',
+                  f'Wait+Screen /{marker}/', 'Sleep 2 s']
+    return '\n'.join(lines) + '\n'
+
+
+def run(args, **kwargs):
+    subprocess.run([str(a) for a in args], check=True, **kwargs)
+
+
+def render(path, data, clip, python):
+    # No package installation or network: the caller supplies a released-package venv.
+    with tempfile.TemporaryDirectory(prefix='demo-', dir='/tmp') as temp:
+        session = Path(temp)
+        home, repo = session / 'home', session / 'repo'
+        home.mkdir(); repo.mkdir()
+        env = {k: v for k, v in os.environ.items() if not k.startswith(('WS_', 'GIT_'))
+               and k not in ('BASH_ENV', 'ENV', 'PYTHONPATH')}
+        env.update(HOME=str(home), USERPROFILE=str(home), WS_OFFLINE='1',
+                   CODEX_HOME=str(home / '.codex'), CLAUDE_CONFIG_DIR=str(home / '.claude'),
+                   XDG_CONFIG_HOME=str(home / '.config'), GEMINI_CLI_HOME=str(home / '.gemini'),
+                   APPDATA=str(home / '.config'), LOCALAPPDATA=str(home / '.local'), PYTHONDONTWRITEBYTECODE='1')
+        version = subprocess.check_output([str(python), '-I', '-c',
+                    'from importlib.metadata import version; print(version("ai-dev-workspace"))'],
+                    cwd=repo, env=env, text=True).strip()
+        if version != data['ws_version']:
+            raise ValueError(f'{path.name}: requires released ws {data["ws_version"]}, got {version}')
+        run(['git', 'init', '-q', repo], env=env)
+        run(['git', '-C', repo, 'switch', '-c', 'memory-demo'], env=env)
+        wrapper = f'ws() {{ {shlex.quote(str(python))} -I -c "from ws.cli import main; main()" "$@"; }}\n'
+        (session / 'setup.sh').write_text(wrapper + f'cd {shlex.quote(str(repo))}\nPS1="$ "\n')
+        raw, card = session / 'raw.mp4', session / 'card.png'
+        source = session / 'lesson.tape'; source.write_text(tape(data, session, raw))
+        run(['vhs', source], cwd=session, env=env)
+        card_text = data['title'] + '\n\n' + data['problem']
+        (session / 'card.txt').write_text(card_text)
+        if shutil.which('marp'):
+            (session / 'card.md').write_text('# ' + data['title'] + '\n\n' + data['problem'])
+            run(['marp', session / 'card.md', '--image', 'png', '-o', card], cwd=session, env=env)
+            card_input = ['-loop', '1', '-i', card]
+        else:
+            card_input = ['-f', 'lavfi', '-i', 'color=c=black:s=1080x620:r=30', '-vf',
+                          'drawtext=textfile=card.txt:fontcolor=white:fontsize=30:x=40:y=80']
+        title = session / 'title.mp4'
+        run(['ffmpeg', '-y', *card_input, '-t', '3', '-an', '-pix_fmt', 'yuv420p', title], cwd=session, env=env)
+        scale = 'scale=1080:620:force_original_aspect_ratio=decrease,pad=1080:620:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p'
+        run(['ffmpeg', '-y', '-i', title, '-i', raw, '-filter_complex',
+             f'[0:v]{scale}[t];[1:v]{scale}[s];[t][s]concat=n=2:v=1:a=0[v]', '-map', '[v]', '-an', clip], env=env)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='validate only; never run lesson commands')
+    parser.add_argument('--ws-python', type=Path, default=Path(sys.executable), help='Python in the released ws venv')
+    args = parser.parse_args(argv)
+    try:
+        lessons = [(p, parse(p)) for p in sorted((ROOT / 'docs/video').glob('[0-9][0-9]-*.md'))]
+        if not lessons:
+            raise ValueError('no lessons')
+        if args.check:
+            print(f'{len(lessons)} lessons OK (not rendered)')
+            return 0
+        if any(not shutil.which(tool) for tool in ('ffmpeg', 'vhs')):
+            print('Missing rendering tools. brew install ffmpeg vhs marp-cli', file=sys.stderr)
+            return 2
+        output = ROOT / 'build/video'; output.mkdir(parents=True, exist_ok=True)
+        manifest = output / 'manifest.json'
+        records = json.loads(manifest.read_text()) if manifest.exists() else {}
+        python = args.ws_python.absolute()  # Resolving venv symlinks selects the system Python.
+        recipe = Path(__file__).read_text() + (ROOT / 'docs/demo.tape').read_text() + str(python)
+        for path, data in lessons:
+            clip = output / (path.stem + '.mp4')
+            if not cached(path, records.get(path.name), clip, recipe):
+                pending = clip.with_suffix('.pending.mp4')
+                render(path, data, pending, python)
+                pending.replace(clip)
+                records[path.name] = fingerprint(path, recipe)
+                temporary = manifest.with_suffix('.tmp'); temporary.write_text(json.dumps(records, indent=2))
+                temporary.replace(manifest)
+        listing = output / 'concat.txt'
+        listing.write_text(''.join("file '" + p.stem + ".mp4'\n" for p, _ in lessons))
+        run(['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', listing, '-c', 'copy', output / 'final.mp4'])
+        run(['ffmpeg', '-y', '-i', output / 'final.mp4', '-t', '19', '-vf',
+             'fps=8,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse', output / 'hero.gif'])
+        if (output / 'hero.gif').stat().st_size >= 5_000_000:
+            raise ValueError('hero.gif exceeds 5 MB; not ready to publish')
+        return 0
+    except (ValueError, OSError, subprocess.CalledProcessError) as error:
+        print(f'not rendered: {error}', file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())
