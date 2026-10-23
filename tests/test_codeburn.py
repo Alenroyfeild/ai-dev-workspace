@@ -62,3 +62,27 @@ class CodeburnTests(Base):
         entries = [entry for entry in core.run_entries(self.root, 'T-1') if entry.get('source') == 'codeburn']
         self.assertEqual(len(entries), 1)
         self.assertEqual((entries[0]['tokens_in'], entries[0]['tokens_out']), (100, 8))
+
+    def test_session_aggregation_does_not_report_matched_calls_as_unmatched(self):
+        data, export = self.fixture()
+        data['records'].append(dict(data['records'][0]))
+        with mock.patch.object(core.shutil, 'which', return_value='codeburn'), \
+                mock.patch.object(core.subprocess, 'run', side_effect=export):
+            self.assertEqual(core.import_codeburn(self.root), {'imported': 1, 'ambiguous': 0, 'unmatched': 0})
+            self.assertEqual(core.import_codeburn(self.root), {'imported': 0, 'ambiguous': 0, 'unmatched': 0})
+        entries = core.run_entries(self.root, 'T-1')
+        self.assertEqual(len(entries), 1)
+        self.assertEqual((entries[0]['tokens_in'], entries[0]['tokens_out']), (70, 6))
+
+    def test_unmatched_and_ambiguous_counts_are_per_source_record(self):
+        data, export = self.fixture()
+        row = data['records'][0]
+        data['records'] += [dict(row), dict(row, project=str(self.root.parent / 'other-repo')),
+                            dict(row, timestamp='1970-01-01T00:00:00Z')]
+        with mock.patch.object(core.shutil, 'which', return_value='codeburn'), \
+                mock.patch.object(core.subprocess, 'run', side_effect=export):
+            result = core.import_codeburn(self.root, since=core.now()[:10])
+            self.assertEqual(result, {'imported': 1, 'ambiguous': 0, 'unmatched': 2})
+            core.task_new(self.root, 'T-2', 'Overlapping task')
+            result = core.import_codeburn(self.root, since=core.now()[:10])
+            self.assertEqual(result, {'imported': 0, 'ambiguous': 2, 'unmatched': 2})

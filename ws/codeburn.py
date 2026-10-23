@@ -62,6 +62,7 @@ def import_usage(root, since=None, task_id=None):
         if not matches: continue
         pending.append((matches[0], provider, model, counts[0] + counts[2] + counts[3], counts[1], row['timestamp'],
                         (project, row['sessionId'])))
+    matched_records = len(pending)  # Unmatched counts source records, not the aggregated session rows below.
     # One run entry per task, session, provider and model: per-call rows would bury ws trace in thousands of lines.
     sessions = {}
     for identifier, provider, model, incoming, outgoing, at, session in pending:
@@ -76,4 +77,4 @@ def import_usage(root, since=None, task_id=None):
                              result='skipped', note='Measured telemetry; input includes cache read/write. Not a review verdict.',
                              source='codeburn', import_id=key, at=at)
         imported += entry is not None
-    return {'imported': imported, 'ambiguous': ambiguous, 'unmatched': len(data['records']) - len(pending) - ambiguous}
+    return {'imported': imported, 'ambiguous': ambiguous, 'unmatched': len(data['records']) - matched_records - ambiguous}
