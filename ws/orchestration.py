@@ -5,12 +5,13 @@ import re
 import shlex
 import signal
 import subprocess
+import sys
 import hashlib
 import secrets
 import tempfile
 import time
 from pathlib import Path
-from . import core
+from . import core, gateway
 
 
 def routing_template(preset='mixed', assistants=None):
@@ -63,6 +64,28 @@ def timeout_ok(value):
     return value
 
 
+def _gateway_candidate(role, provider, settings, override):
+    """A routing entry with "kind": "openai-compatible" (Preview). No network and no key read here."""
+    if settings['kind'] != gateway.KIND: raise core.WsError(f'Provider {provider}: unknown kind; the only supported kind is {gateway.KIND}.')
+    config, problem = gateway.parse(settings, os.environ)
+    if config is None: raise core.WsError(f'Provider {provider}: {problem}')
+    model = override['model'] if 'model' in override else settings.get('model')
+    if model is not None and (not isinstance(model, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,120}', model)): raise ValueError()
+    return dict(role=role, provider=provider, family='default', model=model, effort='not_applicable', executable=None,
+                model_source='gateway entry in routing.json', model_warning=config['warning'], headless=None, prepare=[],
+                ready_model=model is not None, model_flag=None, gateway=config, gateway_problem=problem)
+
+
+def _usable(candidate):
+    ok = candidate['executable'] or candidate.get('gateway') and not candidate['gateway_problem']
+    return bool(ok and candidate['ready_model'])
+
+
+def _why_unavailable(candidate):
+    if candidate.get('gateway'): return candidate['gateway_problem'] or 'no model configured'
+    return 'CLI not on PATH' if not candidate['executable'] else 'no model configured'
+
+
 def route(root, role='lead', provider=None):
     if role not in ('lead', 'planner', 'worker', 'explorer', 'reviewer', 'local'): raise core.WsError(f'Unknown role {role}. Choose from: lead, planner, worker, explorer, reviewer, local.')
     try:
@@ -75,6 +98,12 @@ def route(root, role='lead', provider=None):
         skipped, chosen = [], None
         for provider in preference:
             settings = defaults['providers'][provider]
+            if 'kind' in settings:
+                candidate = _gateway_candidate(role, provider, settings, override)
+                if _usable(candidate): chosen = candidate; break
+                skipped.append({'provider': provider, 'reason': _why_unavailable(candidate)})
+                chosen = chosen or candidate
+                continue
             # Old files have no CLI/command fields; fill those from the kit's data.
             legacy = json.loads(routing_template())['_ws_managed']['providers'].get(provider, {})
             cli = settings.get('cli', legacy.get('cli', provider))
@@ -96,16 +125,16 @@ def route(root, role='lead', provider=None):
                              model_source=source, model_warning=warning, headless=headless,
                              prepare=settings.get('prepare', legacy.get('prepare', [])), ready_model=ready_model,
                              model_flag=settings.get('model_flag'))
-            if executable and ready_model:
+            if _usable(candidate):
                 chosen = candidate; break
-            skipped.append({'provider': provider, 'reason': 'CLI not on PATH' if not executable else 'no model configured'})
+            skipped.append({'provider': provider, 'reason': _why_unavailable(candidate)})
             chosen = chosen or candidate
-        available = bool(chosen['executable'] and chosen['ready_model'])
+        available = _usable(chosen)
         # Allowlist: only the documented modes are understood; anything else fails closed (preparation only).
         mode = cfg.get('delegation_mode', 'read-only')
         mode_ok = type(mode) is str and mode in ('read-only', 'prepare-only')
         return dict(chosen, available=available, preference=preference, skipped=skipped, delegation_mode=mode,
-                    can_run=bool(chosen['headless']) and mode == 'read-only',
+                    can_run=bool(chosen['headless'] or chosen.get('gateway')) and mode == 'read-only',
                     mode_error='' if mode_ok else f'Unknown delegation_mode {json.dumps(mode)[:60]} in routing.json (use read-only or prepare-only); treated as prepare-only.',
                     timeout_seconds=timeout_ok(cfg.get('timeout_seconds', 600)),
                     reason='' if available else 'No provider in the preference order is available; configure routing.json.')
@@ -191,8 +220,19 @@ def worker_command(binding, repo, body=''):
 TIMEOUT_CODE = 124  # the exit status GNU timeout uses; worker_run reports it when it kills a worker
 
 
+def command_text(binding, repo, body, brief, output):
+    """What ws delegate prints as the command; a gateway has no process, so it describes the request instead."""
+    if binding.get('gateway'):
+        gate = binding['gateway']; key = gate['api_key_env']
+        return f"POST {gate['base_url']}/chat/completions model={binding['model']} body={brief} (key from ${key}, never stored)" if key else \
+               f"POST {gate['base_url']}/chat/completions model={binding['model']} body={brief} (no API key)"
+    suffix = ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)) if binding['headless'] else ''
+    return shlex.join(worker_command(binding, repo, body)) + suffix
+
+
 def worker_run(binding, repo, body, receipt=None):
     code = 1; timeout = timeout_ok(binding['timeout_seconds'])
+    if binding.get('gateway'): return gateway.run(binding['gateway'], binding['model'], body, timeout, os.environ)
     try:
         process = subprocess.Popen(worker_command(binding, repo, body), cwd=repo, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding='utf-8', errors='replace', start_new_session=True)
         def kill():
@@ -274,15 +314,15 @@ def delegate(root, task_id, role, run=False, diff=None):
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')
     brief = root / '.ws/briefs' / (identifier + '.md'); output = brief.with_suffix('.out.md')
     model, effort = binding['model'], binding['effort']
-    try: command = worker_command(binding, paths[0], body)
+    try: command = command_text(binding, paths[0], body, brief, output)
     except core.WsError:
         # A preparation-only first choice that cannot be shown (Windows .cmd shim) must not stop the fallback run below.
         if not run or binding['headless']: raise
-        command = []
+        command = ''
     with core.lock(root): core.atomic_write(brief, core.redact(body))
-    suffix = ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)) if binding['headless'] else ''
-    result = dict(binding=binding, brief=str(brief), output=str(output), command=shlex.join(command) + suffix)
-    if not binding['headless']: result['note'] = 'Preparation only; review the brief and command before launching manually. Interactive clients need the brief pasted.'
+    result = dict(binding=binding, brief=str(brief), output=str(output), command=command)
+    if binding.get('gateway') and binding['gateway']['warning']: result['warning'] = binding['gateway']['warning']
+    if not binding['headless'] and not binding.get('gateway'): result['note'] = 'Preparation only; review the brief and command before launching manually. Interactive clients need the brief pasted.'
     if not run: return result
     attempts = []; selected = None; index = 0
 
@@ -303,7 +343,7 @@ def delegate(root, task_id, role, run=False, diff=None):
     for provider in binding['preference']:
         candidate = route(root, role, provider)
         if not candidate['available']:
-            reason = 'CLI not on PATH' if not candidate['executable'] else 'no model configured'
+            reason = _why_unavailable(candidate)
             attempts.append({'provider': provider, 'status': 'skipped', 'reason': reason})
             log_attempt(candidate, 'skipped', 0, 0, False, 0.0, reason)
             continue
@@ -312,6 +352,7 @@ def delegate(root, task_id, role, run=False, diff=None):
             reason = 'Delegation mode is preparation-only.' if candidate['delegation_mode'] != 'read-only' else 'Provider has no headless command.'
             log_attempt(candidate, 'skipped', 0, 0, False, 0.0, reason)
             continue
+        if candidate.get('gateway') and candidate['gateway']['warning']: print(candidate['gateway']['warning'], file=sys.stderr)
         attempt_started = time.monotonic()
         code, rendered, tokens_in, tokens_out, usage_known = worker_run(candidate, paths[0], body)
         elapsed = time.monotonic() - attempt_started
@@ -335,7 +376,6 @@ def delegate(root, task_id, role, run=False, diff=None):
         raise core.WsError(f'All available providers are preparation-only; no headless worker was started. Attempts: {tried}.')
     binding = selected
     model, effort = binding['model'], binding['effort']
-    suffix = ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)) if binding['headless'] else ''
     with core.lock(root):
         core.atomic_write(output, 'UNVERIFIED worker output\n' + rendered)
         path = core.task_path(root, task_id); text = core.read_exact(path); current = core.parse_meta(text)
@@ -347,7 +387,7 @@ def delegate(root, task_id, role, run=False, diff=None):
         summary = f'\nDelegated {role} via {binding["provider"]} ({model}, {effort}) after {len(attempts)} provider attempts [{providers}], exit {code}, unverified: ' + ' '.join(core.plain_text(rendered).split()[:45]) + '\n'
         core.atomic_write(path, text[:match.end()] + summary + text[match.end():])
     result['binding'] = binding
-    result['command'] = shlex.join(worker_command(binding, paths[0], body)) + suffix
+    result['command'] = command_text(binding, paths[0], body, brief, output)
     result.pop('note', None)
     return dict(result, exit_code=code, findings=findings, provider_attempts=attempts)
 
