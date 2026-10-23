@@ -5,7 +5,10 @@ Your assistant remembers work between sessions in Markdown you own. Shared, dura
 [![PyPI version](https://img.shields.io/pypi/v/ai-dev-workspace)](https://pypi.org/project/ai-dev-workspace/) [![CI](https://github.com/Alenroyfeild/ai-dev-workspace/actions/workflows/test.yml/badge.svg)](https://github.com/Alenroyfeild/ai-dev-workspace/actions) [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <!-- Demo GIF -->
-![ai-dev-workspace in 20 seconds: save a decision once, and the next session starts with it](https://raw.githubusercontent.com/Alenroyfeild/ai-dev-workspace/main/docs/demo.gif)
+![Switch from Claude Code to Codex: the saved decision follows the task (animation)](https://raw.githubusercontent.com/Alenroyfeild/ai-dev-workspace/main/docs/demo.gif)
+
+<!-- videos:start -->
+<!-- videos:end -->
 ## Quick start
 
 Try offline before connecting a repo: `ws demo` · [5-minute tutorial](docs/TUTORIAL.md) · [Claude Code + Codex guide](docs/guides/share-memory-claude-code-codex.md) · [remove it](docs/TUTORIAL.md#remove-it)

@@ -1,0 +1,18 @@
+{
+  "latest": "0.1.0b5",
+  "releases": {
+    "0.1.0b5": {
+      "explainer": null,
+      "tour": null,
+      "shorts": {
+        "Switch assistants": null,
+        "Resume the next step": null,
+        "Dead ends": null,
+        "Skills": null,
+        "Team workspace (Preview)": null,
+        "Guards": null,
+        "Assistants": null
+      }
+    }
+  }
+}

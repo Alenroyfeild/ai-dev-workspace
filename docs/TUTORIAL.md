@@ -2,6 +2,9 @@
 
 You will save a decision in one session, then see the next session start with it. Use a throwaway repo. Nothing here touches your real projects.
 
+<!-- videos:start -->
+<!-- videos:end -->
+
 ## 1. Install and make a demo repo
 
 ```bash
