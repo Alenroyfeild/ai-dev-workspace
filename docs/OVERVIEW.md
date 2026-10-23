@@ -110,11 +110,17 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 |---|---|---|---|---|---|---|
 | Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
 | MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
-| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | not wired (coming in beta.6) |
-| Skills | proven | proven | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
+| Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | fixture-tested; SessionStart/PreToolUse |
+| Skills | proven | proven | Preview plugin only; fixture-tested | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
 | Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested | not wired |
 
 "Proven" means exercised in real sessions of that client. "Fixture-tested" means automated tests check the generated config and hook input/output against saved fixtures and the client's docs; no live session was run. Copilot hooks target the VS Code Local harness ([details](SETUP.md)).
+
+The table describes repo wiring from `ws start`. All three native plugins are
+**Preview**: Claude Code needs the CLI and `ws start`, is not in Anthropic's official
+directory, and is untested on Windows; Codex hooks need a trusted manual desktop
+install, have no live hook proof, and provide no MCP; Cursor is fixture-tested only,
+not submitted, with no verified install command. See [plugin limits](ADVANCED.md#plugin-runtime-packaging-preview).
 
 ## FAQ
 
@@ -122,7 +128,7 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 
 **Is it another CLAUDE.md?** No. Rules files say how to work; this records what is happening: the current task, its next action, decisions, blockers and lessons, updated as you work and kept short.
 
-**Does it send my code anywhere?** No. Everything is local files. Your assistant still sends prompts to its own provider; the kit only checks GitHub for a new release once a day (`WS_OFFLINE=1` turns that off).
+**Does it send my code anywhere?** Task memory stays in local files unless you explicitly share it. Your assistant sends prompts to its own provider. Preview gateway delegation sends a redacted brief (at most 400 words) to the `base_url` you configure; the gateway gets no tools or file access ([limits](ADVANCED.md#openai-compatible-gateway-preview)). The kit also checks GitHub for a new release once a day (`WS_OFFLINE=1` turns that check off).
 
 **Does it cost tokens?** The brief is under 200 words. In the benchmark a completion session cost about $0.05 to $0.06 more with the workspace ($0.047 and $0.058 in the two Claude runs in [MEASUREMENTS.md](MEASUREMENTS.md)); the gain is correctness across sessions, not lower spend.
 
@@ -132,7 +138,7 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 
 | Pack | Adds | Needs |
 |---|---|---|
-| `behavior` | Opt-in engineering guidelines: think first, minimal changes, surgical edits, and verify work (under 70 words; coming in beta.6) | nothing |
+| `behavior` | Opt-in engineering guidelines: think first, minimal changes, surgical edits, and verify work (Stable in beta.6; under 70 words; advisory only) | nothing |
 | `obsidian` | Open the memory as a linked Obsidian vault | [Obsidian](https://obsidian.md) |
 | `local-llm` | Free on-device log triage | [Ollama](https://ollama.com) and a small model |
 | `ios` | iOS build triage, Simulator debugging, App Store review runbooks | Xcode |

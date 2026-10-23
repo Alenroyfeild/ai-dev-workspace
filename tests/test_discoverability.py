@@ -25,16 +25,16 @@ class DiscoverabilityTests(unittest.TestCase):
         for name in ('llms.txt', 'llms-full.txt'):
             with self.subTest(file=name):
                 text = (ROOT / name).read_text(encoding='utf-8')
-                for value in ('0.1.0b5', '## Stable', '## Preview', '## Coming next (beta.6)',
+                for value in ('0.1.0b6', '## Stable', '## Preview', '## Coming next',
                               'pipx install ai-dev-workspace', 'ws start', 'fixture-tested',
                               'best-effort', 'not a security boundary'):
                     self.assertIn(value, text)
                 self.assertNotIn('5/5 runs', text)
 
-    def test_unreleased_guides_use_dev_links_instead_of_unpublished_main_paths(self):
+    def test_released_guides_use_main_links_instead_of_dev_paths(self):
         for name in ('llms.txt', 'llms-full.txt'):
             text = (ROOT / name).read_text(encoding='utf-8')
             for guide in GUIDES:
                 self.assertTrue((ROOT / 'docs/guides' / guide).is_file())
-                self.assertIn('/blob/dev/docs/guides/' + guide, text)
-                self.assertNotIn('/blob/main/docs/guides/' + guide, text)
+                self.assertIn('/blob/main/docs/guides/' + guide, text)
+                self.assertNotIn('/blob/dev/docs/guides/' + guide, text)
