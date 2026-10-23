@@ -8,6 +8,23 @@ Most workspaces need only `ws tools`, `ws assist` and the defaults. These settin
 
 `ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#delegate).
 
+### OpenAI-compatible gateway (Preview)
+
+Preview: a provider entry can point at any server that speaks the OpenAI chat-completions API, such as a local OmniRoute or LiteLLM proxy. The idea comes from users of those gateways; the implementation here is our own and shares no code with them. How far it is tested: only against a local fake server in our test suite, not against a live OmniRoute or LiteLLM, so try it with your own gateway first. Not part of a release yet: it ships with the next beta after this merges.
+
+Add the entry under `_ws_managed.providers` in `routing.json` (upgrades keep your providers), then route a role to it with `role_overrides`. Nothing uses the gateway unless you do both:
+
+```json
+"providers": {"gateway": {"kind": "openai-compatible", "base_url": "http://localhost:20128/v1", "model": "your-model-id", "api_key_env": "OPENAI_API_KEY"}}
+"role_overrides": {"explorer": {"preference": ["gateway", "codex"]}}
+```
+
+- `ws delegate TASK --role explorer --run` sends the redacted brief (at most 400 words) as one chat request to `base_url/chat/completions` and stores the reply as unverified output. The gateway has no tools and no file access; what its upstream models do with the brief is up to that gateway.
+- The key is read only from the environment variable named in `api_key_env` (omit it for a gateway that needs none). It is never stored, logged or printed, and is removed from replies. If the variable is unset the provider counts as unavailable and fallback moves on.
+- `base_url` must be `http://` or `https://` without credentials, query or fragment. Loopback (`localhost`, `127.0.0.1`, `::1`) is the expected setup. A non-loopback host is allowed, but `ws route` and `ws delegate` print a warning that the brief leaves this machine, and a key is refused over clear-text `http://` there.
+- Redirects are not followed, proxies from the environment are skipped for loopback, and there is no streaming, tool use or retry. A timeout or error counts as a failed attempt, so the fallback chain tries the next provider.
+- Limits: the `timeout_seconds` setting applies to each network wait rather than the whole reply, and availability only checks the entry and the variable, not that the gateway is up or the model exists.
+
 ### Prepare a private implementation checkout
 
 ```sh
@@ -90,7 +107,7 @@ The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires 
 
 Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. The hooks run through `bin/ws-python`, which uses the first working `python3`, `python` or `py -3` (needs `sh`, as in Git Bash). The plugin's MCP server entry is started directly by the client and still calls `python3`; on Windows installs that only provide `python` or `py`, add a `python3.exe` copy or alias to PATH, or use `ws start` instead of the plugin. Windows is untested.
 
-With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.
+With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. `ws start` saves the Claude config dir (`CLAUDE_CONFIG_DIR`) it checked and uses it when a later shell leaves the variable unset, so plugin mode is not dropped by accident. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.
 
 ### Codex plugin (preview)
 

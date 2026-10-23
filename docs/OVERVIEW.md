@@ -93,7 +93,7 @@ All commands: [docs/COMMANDS.md](COMMANDS.md). Plain-language guide: [docs/CONCE
 
 | | AI Dev Workspace | Manual HANDOFF.md | Built-in assistant memory | claude-mem | Beads |
 |---|---|---|---|---|---|
-| Works across different assistants | yes, measured Claude → Codex | yes, if each is told to read it | one assistant | Claude Code | yes, through its CLI/MCP |
+| Works across different assistants | yes, measured Claude → Codex | yes, if each is told to read it | one assistant | several (Claude Code, Codex, Gemini, and others) | yes, through its CLI/MCP |
 | Plain files you can commit and share | yes, Markdown | yes, one file | per-machine local store | local store | yes, git-backed |
 | Captures conversation decisions automatically | yes (Claude, Codex hooks) | no, written by hand at the end | when the model chooses to | yes | no, the agent files issues |
 | Task status, claims and dependencies | yes | yes, edited by hand | per tool (Claude Tasks, Codex goals) | no | yes |

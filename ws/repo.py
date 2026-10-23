@@ -162,10 +162,16 @@ def codex_files(repo, root):
 PLUGIN = 'ai-dev-workspace@ai-dev-workspace'
 
 
-def claude_plugin_enabled(repo):
-    """enabledPlugins for this kit's Claude Code plugin; local beats project beats user, like Claude Code."""
+def claude_dir():
+    """The Claude config dir named by CLAUDE_CONFIG_DIR now, or '' (the default ~/.claude)."""
+    return str(Path(os.environ['CLAUDE_CONFIG_DIR']).expanduser()) if os.environ.get('CLAUDE_CONFIG_DIR') else ''
+
+
+def claude_plugin_enabled(repo, recorded=''):
+    """enabledPlugins for this kit's Claude Code plugin; local beats project beats user, like Claude Code.
+    `recorded` is the config dir saved at ws start; it stands in when CLAUDE_CONFIG_DIR is unset in this shell."""
     value = None
-    user = Path(os.environ.get('CLAUDE_CONFIG_DIR') or Path.home() / '.claude')  # Claude Code honours CLAUDE_CONFIG_DIR
+    user = Path(os.environ.get('CLAUDE_CONFIG_DIR') or recorded or Path.home() / '.claude')  # Claude Code honours CLAUDE_CONFIG_DIR
     for settings in (user / 'settings.json', repo / '.claude/settings.json', repo / '.claude/settings.local.json'):
         try: plugins = json.loads(settings.read_text(encoding='utf-8-sig')).get('enabledPlugins')  # -sig: PowerShell 5 writes a BOM
         except (OSError, ValueError, AttributeError): continue
@@ -178,6 +184,13 @@ def plugin_state(p):
     except (OSError, ValueError, core.WsError): return False
 
 
+def plugin_on(p):
+    """claude_plugin_enabled for a started repo, using the config dir its record saved."""
+    try: recorded = load(p).get('claude_config_dir', '')
+    except (OSError, ValueError, core.WsError): recorded = ''
+    return claude_plugin_enabled(p, recorded)
+
+
 def _same(p, only):
     return only is None or Path(only).resolve() == p.resolve()
 
@@ -188,12 +201,12 @@ def plugin_duplicates(root, only=None):
         try: return load(p).get('files', {})
         except (OSError, ValueError, core.WsError): return {}
     return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file() and _same(p, only)
-            and '.claude/settings.local.json' in files(p) and not plugin_state(p) and claude_plugin_enabled(p)]
+            and '.claude/settings.local.json' in files(p) and not plugin_state(p) and plugin_on(p)]
 
 
 def plugin_missing(root):
     """Started repos whose record says the plugin brings Claude's hooks, but the plugin is no longer enabled."""
-    return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file() and plugin_state(p) and not claude_plugin_enabled(p)]
+    return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file() and plugin_state(p) and not plugin_on(p)]
 
 
 def codex_pending(root, check_global=True):
@@ -513,7 +526,7 @@ WITHOUT_PLUGIN = ('.claude/settings.local.json', '.mcp.json')  # Claude files th
 
 def refresh(repo, root, state, yes, dry_run, keep=()):
     """Bring ws-written files in line with this kit version, packs and Claude plugin: rewrite those still unchanged since ws wrote them, create ones now needed, restore ones no longer needed."""
-    plugin = claude_plugin_enabled(repo)
+    plugin = claude_plugin_enabled(repo, state.get('claude_config_dir', ''))
     basis = {}  # the exact bytes (None: no file) each merged JSON file was built from
     def before(name):
         if name in JSON_FILES: basis.setdefault(name, path(repo, name).read_bytes() if path(repo, name).is_file() else None)
@@ -562,6 +575,7 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
     # so they move as soon as none of those is kept; otherwise a stale value would hide a later flip back (the rest was already rewritten).
     if not keep: state['kit_version'] = core.kit_meta()['version']
     if not {*HOOK_FILES, '.mcp.json'} & set(keep): state['hook_packs'] = hook_packs(root); state['plugin'] = plugin
+    if claude_dir(): state['claude_config_dir'] = claude_dir()  # kept when a later shell lacks CLAUDE_CONFIG_DIR
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return sorted({*changes, *gone})
 
@@ -593,8 +607,10 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
+        if state.get('plugin') and state.get('claude_config_dir') and not claude_dir() and claude_plugin_enabled(repo, state['claude_config_dir']):
+            print('Plugin mode kept: checked the Claude config dir saved at the last ws start (' + state['claude_config_dir'] + ') because CLAUDE_CONFIG_DIR is unset here. To leave plugin mode, disable the plugin there.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo) or edited or _stale_here(root, repo)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo, state.get('claude_config_dir', '')) or (claude_dir() and state.get('claude_config_dir', '') != claude_dir()) or edited or _stale_here(root, repo)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
@@ -641,7 +657,7 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     owned = {n: dict(before=base64.b64encode(data).decode() if data is not None else None, sha=hashlib.sha256(data or b'').hexdigest()) for n, data in before.items()}
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
     if leftover != previous_exclude: core.atomic_write(exclude, leftover); previous_exclude = leftover
-    state = dict(kit_version=core.kit_meta()['version'], hook_packs=hook_packs(root), plugin=plugin, codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
+    state = dict(kit_version=core.kit_meta()['version'], hook_packs=hook_packs(root), plugin=plugin, claude_config_dir=claude_dir(), codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
     if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
