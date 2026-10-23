@@ -51,6 +51,57 @@ def _mcp_servers(repo):
     return sorted(names)
 
 
+def _stack(repo, connected):
+    """Inspect known local files only; never evaluate manifests or run their scripts."""
+    def local(name):
+        path = repo / name
+        try:
+            core.inside(path.resolve(), [repo])
+            return path if path.is_file() and path.stat().st_size <= 65536 else None
+        except (OSError, core.WsError):
+            return None
+    def read(name):
+        path = local(name)
+        return path.read_text(encoding='utf-8', errors='replace') if path else ''
+    languages, tests, ci = [], [], []
+    if any(local(n) for n in ('pyproject.toml', 'setup.py', 'requirements.txt')):
+        languages.append('Python')
+        if local('pytest.ini') or '[tool.pytest.' in read('pyproject.toml'):
+            tests.append('python3 -m pytest')
+        elif any(local(str(p.relative_to(repo))) for p in (repo / 'tests').glob('test_*.py')):
+            tests.append('python3 -m unittest discover -s tests')
+    if local('package.json'):
+        languages.append('JavaScript/TypeScript')
+        try:
+            package = json.loads(read('package.json'))
+            scripts = package.get('scripts', {}) if isinstance(package, dict) else {}
+            if isinstance(scripts, dict) and isinstance(scripts.get('test'), str): tests.append('npm test')
+        except ValueError:
+            pass
+    for manifest, language, command in (('go.mod', 'Go', 'go test ./...'), ('Cargo.toml', 'Rust', 'cargo test'), ('Package.swift', 'Swift', 'swift test')):
+        if local(manifest): languages.append(language); tests.append(command)
+    if any(local(str(p.relative_to(repo))) for p in (repo / '.github/workflows').glob('*') if p.suffix in ('.yml', '.yaml')):
+        ci.append('GitHub Actions')
+    if local('.gitlab-ci.yml'): ci.append('GitLab CI')
+    locations = {'claude': ('.claude/settings.json', '.claude/settings.local.json', 'CLAUDE.md', '.mcp.json'),
+        'codex': ('.codex/hooks.json', '.codex/config.toml'), 'cursor': ('.cursor/mcp.json', '.cursor/hooks.json'),
+        'vscode': ('.vscode/mcp.json', '.github/copilot-instructions.md'), 'gemini': ('.gemini/settings.json', 'GEMINI.md'),
+        'antigravity': ('.agents/hooks.json', '.agents/mcp_config.json')}
+    clients = set()
+    if connected:
+        try:
+            from . import repo as repo_setup
+            names = repo_setup.load(repo).get('assistants', [])
+            if isinstance(names, list): clients.update(n for n in names if isinstance(n, str) and n in locations)
+        except (OSError, ValueError, core.WsError):
+            pass
+    clients.update(client for client, paths in locations.items() if any(local(n) for n in paths))
+    recommendations = [{'client': client, 'command': 'ws connect ' + client if connected else 'ws start --dry-run',
+                        'reason': 'Review workspace wiring; project config presence does not verify authentication.'}
+                       for client in sorted(clients)]
+    return dict(languages=languages, tests=tests, ci=ci), recommendations
+
+
 def audit(path=None):
     repo = _repo(path)
     checks = []
@@ -91,11 +142,18 @@ def audit(path=None):
     fixes = []
     for fix in (c['fix'] for c in checks if c['fix']):
         if not (fix.startswith('Run ws start') and any(f.startswith('Run ws start') for f in fixes)): fixes.append(fix)  # one start fixes both
-    return {'repo': repo.name, 'score': f'{passed}/{len(checks)}', 'checks': checks, 'fixes': fixes[:3]}
+    stack, recommendations = _stack(repo, root)
+    return {'repo': repo.name, 'score': f'{passed}/{len(checks)}', 'checks': checks, 'fixes': fixes[:3],
+            'stack': stack, 'recommendations': recommendations}
 
 
 def text(report):
     lines = [f"AI setup audit for {report['repo']}: {report['score']}"]
     lines += [f"  {'ok  ' if c['ok'] else 'fix '} {c['check']}: {c['detail']}" for c in report['checks']]
     if report['fixes']: lines += ['Top fixes:'] + [f'{i}. {fix}' for i, fix in enumerate(report['fixes'], 1)]
+    stack = report.get('stack', {})
+    lines += ['Stack: ' + (', '.join(stack.get('languages', [])) or 'unknown'),
+              'CI: ' + (', '.join(stack.get('ci', [])) or 'not detected'), 'Review before running:']
+    lines += [f"  {r['client']}: {r['command']} ({r['reason']})" for r in report.get('recommendations', [])]
+    lines += ['  Test: ' + command for command in stack.get('tests', [])]
     return '\n'.join(lines)
