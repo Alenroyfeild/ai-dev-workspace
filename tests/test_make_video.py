@@ -58,7 +58,7 @@ class VideoTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(ROOT / 'bin/make-video'), '--check'],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('3 lessons OK', result.stdout)
+        self.assertIn('8 lessons OK', result.stdout)
 
     def test_missing_tools_exit_two_without_executing_lessons(self):
         with patch.object(self.video.shutil, 'which', return_value=None), \
