@@ -1,0 +1,66 @@
+# AI Dev Workspace — expanded context
+
+> Shared Markdown task memory for developers who switch between Claude Code and Codex. Save decisions, next actions and dead ends in files you own; configured local hooks provide a task brief at session start. Install `pipx install ai-dev-workspace --pip-args='--pre'`, then run `ws start` in a Git repo to preview setup. Python 3.9+ CLI (`ws`) and local stdio MCP server; MIT licensed.
+
+## Stable — published 0.1.0b5
+
+- Local Markdown task records, explicit `ws remember`, `ws checkpoint` and `ws brief`.
+- Seven core MCP tools by default; other tools remain callable by name.
+- Claude Code and Codex have live checks on macOS. Cursor, Copilot and Gemini
+  integrations are fixture-tested; Linux/Windows have CI, not live-client proof.
+- Only saved information is remembered; automatic transcript capture is best-effort.
+- The optional guards pack is a safety net, not a security boundary.
+
+## Stable workflow — published 0.1.0b5
+
+```sh
+pipx install ai-dev-workspace --pip-args='--pre'
+cd path/to/your/git-repo
+ws start
+ws remember "Prices are integer cents"
+ws checkpoint --status in_progress --next "Add the rate-limit check"
+ws brief
+```
+
+`ws start` lists its files and asks before applying repo-local setup. Private
+memory lives outside the code repo; generated local wiring is Git-excluded.
+Opening the repo in a configured client supplies the task brief. Rerun `ws start`
+for setup status; `ws start --undo` removes unchanged files that setup owns and
+keeps user edits for review. Do not commit private memory or local client config.
+
+Memory uses no background model calls. A plain handoff file can be sufficient;
+historical synthetic results are not a claim of general productivity gains.
+See the released Measurements page for later runs and the plain-HANDOFF caveat.
+
+## Preview installation — Claude Code plugin
+
+With the CLI installed and `ws start` completed in the repo, run in Claude Code:
+
+```text
+/plugin marketplace add Alenroyfeild/ai-dev-workspace
+/plugin install ai-dev-workspace@ai-dev-workspace
+```
+
+This is our GitHub marketplace, not Anthropic's official directory. The beta.5
+plugin has a live Claude check; setup and duplicate-wiring limits are described
+in the [plugin guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/ADVANCED.md#claude-code-plugin-preview).
+Team sharing is also preview: share only reviewed notes with a private team repo.
+
+## Coming next (beta.6)
+
+The linked dev guides and unreleased changes are source previews, not additional
+features of the published 0.1.0b5 package. Antigravity hooks are fixture-tested,
+without live Antigravity proof. New packaging search terms ship with the next release.
+
+- [Share memory between Claude Code and Codex](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/share-memory-claude-code-codex.md)
+- [Keep decisions without a background AI](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/keep-decisions-without-background-ai.md)
+- [Stop retrying failed approaches](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/stop-retrying-failed-approaches.md)
+- [Unreleased fragments](https://github.com/Alenroyfeild/ai-dev-workspace/tree/dev/changelog.d)
+
+## Released documentation
+
+- [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): install, supported clients and results with limits
+- [Setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/SETUP.md) and [Tutorial](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TUTORIAL.md)
+- [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md) and [MCP](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MCP.md)
+- [Client verification](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/CLIENT-VERIFICATION.md): fixture and live limits
+- [Overview](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/OVERVIEW.md), [Team](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TEAM-WORKSPACE.md) and [Measurements](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MEASUREMENTS.md)

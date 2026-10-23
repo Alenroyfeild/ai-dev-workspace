@@ -1,31 +1,38 @@
 # AI Dev Workspace
 
-> Shared, durable task memory for AI coding assistants (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI). Decisions, next actions, blockers and lessons live in plain Markdown files the developer owns; a short brief is injected at every session start so a new session, or a different assistant, continues the work and follows earlier decisions. Stdlib-only Python CLI (`ws`) plus an MCP server. MIT licensed.
+> Shared Markdown task memory for developers who switch between Claude Code and Codex. Save decisions, next actions and dead ends in files you own; configured local hooks provide a task brief at session start. Install `pipx install ai-dev-workspace --pip-args='--pre'`, then run `ws start` in a Git repo to preview setup. Python 3.9+ CLI (`ws`) and local stdio MCP server; MIT licensed.
 
-Measured with a reproducible benchmark (bench/): when product decisions were given only in conversation, the next session followed all of them in 5/5 runs with the workspace and 0/5 without, both Claude Code to Claude Code and Claude Code to Codex.
+## Stable — published 0.1.0b5
 
-## Docs
+- Local Markdown task records, explicit `ws remember`, `ws checkpoint` and `ws brief`.
+- Seven core MCP tools by default; other tools remain callable by name.
+- Claude Code and Codex have live checks on macOS. Cursor, Copilot and Gemini
+  integrations are fixture-tested; Linux/Windows have CI, not live-client proof.
+- Only saved information is remembered; automatic transcript capture is best-effort.
+- The optional guards pack is a safety net, not a security boundary.
 
-- [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): what it does, results, quick start, team sharing and client compatibility
-- [Overview](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/OVERVIEW.md): how it works, and the comparison with built-in memory, claude-mem and Beads
-- [Setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/SETUP.md): install, connect each assistant, hooks, privacy
-- [Tutorial](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TUTORIAL.md): first handoff in 5 minutes with a throwaway repo
-- [Guide: Share memory between Claude Code and Codex](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/share-memory-claude-code-codex.md): step-by-step cross-client setup, startup brief injection, and handoffs
-- [Guide: Keep decisions without a background AI](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/keep-decisions-without-background-ai.md): explicit Markdown memory compared with claude-mem, when to choose which, and importing claude-mem observations
-- [Guide: Stop retrying failed approaches](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/stop-retrying-failed-approaches.md): record dead ends so every session's brief shows them; opt-in discipline and guards packs
-- [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md): every `ws` command, and the MCP tools (7 core tools listed by default)
-- [Concepts](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/CONCEPTS.md): tasks, claims, checkpoints, brief, lessons, delegation
-- [Team workspace](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TEAM-WORKSPACE.md): private team sharing with previews and consent-based pulls
-- [MCP protocol](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MCP.md): supported MCP protocol versions and proof
-- [Measurements](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MEASUREMENTS.md): benchmark method, results and limits
-- [Benchmark](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/bench/README.md): reproduce the results
+## Preview
 
-## Quick start
+- Private team sharing needs preview/review before sharing; no hosted team check yet.
+- The Claude Code plugin is live-checked on beta.5 but not yet listed in
+  Anthropic's official plugin directory. Install from our GitHub marketplace;
+  the CLI and `ws start` in the target repo are still required.
 
-- Install: `pipx install ai-dev-workspace --pip-args='--pre'`
-- Connect a repo: `cd ~/code/myapp && ws start` (private memory outside the repo, nothing added to git status; `ws start --undo` removes it)
-- Keep a decision: `ws remember "Prices are integer cents"`; the next session's brief starts with it
-- Save progress: `ws checkpoint <task> --status in_progress --next "<next step>"`
-- Dead ends from earlier sessions appear in the brief as `Do not redo:`; opt-in `guards` and `discipline` packs: `ws pack add guards`
-- PR text and standups: `ws pr-notes`, `ws recap`
-- Team (preview): `ws team init <private-repo>`, teammates `ws team link <private-repo>`; sharing always shows a preview first
+## Coming next (beta.6)
+
+The linked dev guides and unreleased changes are source previews, not additional
+features of the published 0.1.0b5 package. Antigravity hooks are fixture-tested,
+without live Antigravity proof. New packaging search terms ship with the next release.
+
+- [Share memory between Claude Code and Codex](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/share-memory-claude-code-codex.md)
+- [Keep decisions without a background AI](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/keep-decisions-without-background-ai.md)
+- [Stop retrying failed approaches](https://github.com/Alenroyfeild/ai-dev-workspace/blob/dev/docs/guides/stop-retrying-failed-approaches.md)
+- [Unreleased fragments](https://github.com/Alenroyfeild/ai-dev-workspace/tree/dev/changelog.d)
+
+## Released documentation
+
+- [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): install, supported clients and results with limits
+- [Setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/SETUP.md) and [Tutorial](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TUTORIAL.md)
+- [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md) and [MCP](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MCP.md)
+- [Client verification](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/CLIENT-VERIFICATION.md): fixture and live limits
+- [Overview](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/OVERVIEW.md), [Team](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TEAM-WORKSPACE.md) and [Measurements](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MEASUREMENTS.md)
