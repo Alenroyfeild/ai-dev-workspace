@@ -38,7 +38,7 @@ class McpEntryTests(Base):
         self.assertIn('brief', [t['name'] for t in replies[1]['result']['tools']])
         self.assertTrue(replies[2]['result']['isError'])
         self.assertEqual(replies[2]['result']['content'][0]['text'],
-                         'No ai-dev-workspace here: run `ws start` in your repo (or pass --workspace-root).')
+                         "No ai-dev-workspace here: run `ws start` in your repo (first: `pipx install ai-dev-workspace --pip-args='--pre'`, or pass --workspace-root).")
 
     def test_package_declares_the_mcp_command_and_registry_marker(self):
         self.assertIn("'ai-dev-workspace=ws.cli:mcp_main'", (KIT / 'setup.py').read_text())
