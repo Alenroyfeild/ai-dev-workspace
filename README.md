@@ -139,8 +139,8 @@ Tracked in [`CHANGELOG.md`](CHANGELOG.md) and active PRs:
 - **Behavior pack:** Opt-in cross-client engineering guidelines in AGENTS.md ([#296](https://github.com/Alenroyfeild/ai-dev-workspace/pull/296) - merged on dev, not released).
 - **Skills packaging:** Standard skill pack format contract and registry metadata ([#293](https://github.com/Alenroyfeild/ai-dev-workspace/pull/293) - merged on dev, not released).
 - **Gateway provider:** OpenAI-compatible base_url delegation provider ([#312](https://github.com/Alenroyfeild/ai-dev-workspace/pull/312) - merged on dev, not released).
-- **Codex plugin:** Native Codex plugin preview ([#313](https://github.com/Alenroyfeild/ai-dev-workspace/pull/313) - open PR, not released).
-- **Cursor plugin:** Native Cursor plugin preview ([#315](https://github.com/Alenroyfeild/ai-dev-workspace/pull/315) - open PR, not released).
+- **Codex plugin:** Native Codex plugin preview ([#313](https://github.com/Alenroyfeild/ai-dev-workspace/pull/313) - merged on dev, not released; limits in [Advanced](docs/ADVANCED.md#codex-plugin-preview)).
+- **Cursor plugin:** Native Cursor plugin preview ([#315](https://github.com/Alenroyfeild/ai-dev-workspace/pull/315) - merged on dev, not released; limits in [Advanced](docs/ADVANCED.md#cursor-plugin-preview)).
 
 ## Documentation
 
