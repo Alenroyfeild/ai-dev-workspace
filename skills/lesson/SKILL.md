@@ -1,7 +1,7 @@
 ---
 name: lesson
 description: Record a requested mistake-to-rule lesson in workspace memory.
-compatibility: Requires ws on PATH and a Git repository initialized with ws start.
+compatibility: Requires ws on PATH (pipx install ai-dev-workspace --pip-args='--pre') and a Git repository initialized with ws start.
 ---
 
 Use the user's requested lesson and verified session context to form one line: what happened → rule. Ask if either part is missing; omit secrets and private identifiers.

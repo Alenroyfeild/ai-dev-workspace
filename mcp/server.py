@@ -42,7 +42,7 @@ def S(**props):
 # Listed by default: what a session needs to read and save memory. Every other tool stays callable by name.
 CORE_TOOLS = ('brief', 'find_task', 'read_task', 'checkpoint', 'remember', 'search_vault', 'add_lesson')
 PLUGIN_INACTIVE = False
-NO_WORKSPACE = 'No ai-dev-workspace here: run `ws start` in your repo (or pass --workspace-root).'
+NO_WORKSPACE = "No ai-dev-workspace here: run `ws start` in your repo (first: `pipx install ai-dev-workspace --pip-args='--pre'`, or pass --workspace-root)."
 
 
 def listed_tools(root):
