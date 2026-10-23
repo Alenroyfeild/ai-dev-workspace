@@ -9,6 +9,7 @@
       "name": "ai-dev-workspace",
       "source": "./",
       "description": "Private task memory that Claude Code and Codex share. Inactive until you run ws start in a repo.",
+      "version": "0.1.0-beta.5",
       "category": "productivity",
       "tags": [
         "memory",
