@@ -1,40 +1,157 @@
 # AI Dev Workspace
 
-Switch between Claude Code and Codex without re-explaining your decisions. Your assistant remembers work between sessions in Markdown you own. It keeps decisions, the next step and what not to retry, and warns when files it names changed or disappeared. Try it before connecting a repo: `ws demo` · [5-minute tutorial](docs/TUTORIAL.md) · [Claude Code + Codex guide](docs/guides/share-memory-claude-code-codex.md) · [remove it](docs/TUTORIAL.md#remove-it)
+Your assistant remembers work between sessions in Markdown you own. Shared, durable task memory for developers who switch between Claude Code, Codex, and other assistants.
+
+[![PyPI version](https://img.shields.io/pypi/v/ai-dev-workspace)](https://pypi.org/project/ai-dev-workspace/) [![CI](https://github.com/Alenroyfeild/ai-dev-workspace/actions/workflows/test.yml/badge.svg)](https://github.com/Alenroyfeild/ai-dev-workspace/actions) [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 <!-- Demo GIF -->
 ## Quick start
+
+Try offline before connecting a repo: `ws demo` · [5-minute tutorial](docs/TUTORIAL.md) · [Claude Code + Codex guide](docs/guides/share-memory-claude-code-codex.md) · [remove it](docs/TUTORIAL.md#remove-it)
 
 ```bash
 pipx install ai-dev-workspace --pip-args='--pre'  # beta; omit --pip-args after a stable release
 cd ~/code/myapp && ws start
 ```
-No pipx? `brew install pipx`, or `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`. Prefer a Claude Code plugin? See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview).
+
+No pipx? `brew install pipx`, or `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`.
+
+Prefer a Claude Code plugin? Preview. Not yet listed in Anthropic's official plugin directory; install from our GitHub marketplace:
+```text
+/plugin marketplace add Alenroyfeild/ai-dev-workspace
+/plugin install ai-dev-workspace@ai-dev-workspace
+```
+Live-checked on beta.5 (2026-10-22). See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview).
+
+`ws start` previews every file and writes nothing until you confirm. Generated assistant hooks and configs stay local (`.git/info/exclude`), task memory lives outside the repo in `~/.ai-dev-workspace/<repo-name>`, and `ws start --undo` cleanly removes repo wiring.
+
+## Use cases
+
+- **Switch Claude Code ↔ Codex mid-task:** Start in Claude Code, save a checkpoint, and continue in Codex with the exact same brief and task memory ([guide](docs/guides/share-memory-claude-code-codex.md)).
+- **Resume tomorrow without re-explaining:** Inject active tasks, recent decisions, and blockers directly into context at session start ([tutorial](docs/TUTORIAL.md)).
+- **Stop retrying failed approaches:** Dead ends appear under `Do not redo:` in every fresh session brief ([guide](docs/guides/stop-retrying-failed-approaches.md)).
+- **Keep verified corrections:** Record decisions or constraints with `ws remember` so fresh sessions follow earlier rulings ([commands](docs/COMMANDS.md#save-a-correction)).
+- **Block risky commands and leaks:** Opt-in `guards` pack denies dangerous shell operations and secrets in commands or written files ([packs](docs/PACKS.md)).
+- **Share domain notes with a team (preview):** Share approved knowledge via private git repository with consent-based previews ([team](docs/TEAM-WORKSPACE.md)).
+
 ## Example
+
 ```text
 Session 1 — You: “Empty email returns missing_email; leave signup unchanged.”
 Assistant: “I’ll trace login and keep the decision with this task.”
-You: “Stop here; I’ll resume tomorrow.”
+You: “Save a checkpoint and stop here.”
+
 Session 2 — You: “Continue the login fix.”
 Assistant: “The saved note says return missing_email and leave signup unchanged.”
 You: “Yes, continue.”
 ```
-## Results (small synthetic samples, not general productivity)
-| Session 1 → session 2 | Without workspace | With workspace |
-|---|---:|---:|
-| Claude Code → Claude Code | 0/5 | **5/5** |
-| Claude Code → Codex | 0/5 | **5/5** |
-| Codex → Codex | 0/3 | **3/3** |
 
-Later Codex → Codex runs (n=5 each) were less favourable: the workspace passed 1/5 and 2/5, while a plain `HANDOFF.md` control passed 4/5 and 5/5. See [bench/README.md](bench/README.md).
-## Team sharing
-Your notes stay private. Share only what you approve, and your teammates' assistants start with it: after `ws start`, `ws team init <private-repo> --attest-private` (`--yes` in scripts) · `ws know add "Payments API rejects floats" --category domain --team` · `ws sync`. A teammate runs `ws team link <private-repo>`; their next brief shows the note, labelled as shared team context, and their own decisions still win. [Team quick start](docs/TEAM-WORKSPACE.md#quick-start)
+## Features
+
+| Feature | Status | What it does | Docs link |
+|---|---|---|---|
+| Session brief | Stable | Injects bounded task memory, decisions, and blockers at session start | [Overview](docs/OVERVIEW.md) |
+| Decisions & handoffs | Stable | Saves status, next action, and explicit rulings (`ws checkpoint`, `ws remember`) | [Commands](docs/COMMANDS.md) |
+| Dead ends | Stable | Records failed approaches and displays them as `Do not redo:` | [Concepts](docs/CONCEPTS.md) |
+| Lessons | Stable | Captures reusable cross-task takeaways and guidance (`ws lesson`) | [Commands](docs/COMMANDS.md) |
+| MCP server | Stable | Exposes 7 core tools by default; others by name on request via stdio | [MCP](docs/MCP.md) |
+| Guards pack | Stable | PreToolUse hook denies risky commands and secrets before execution | [Packs](docs/PACKS.md) |
+| Discipline pack | Stable | Advisory nudge when the same command fails repeatedly in a session | [Packs](docs/PACKS.md) |
+| `ws digest` | Stable | Compresses verbose terminal output into focused markdown notes | [Commands](docs/COMMANDS.md#search-and-lessons) |
+| Native imports | Stable | Reads existing Claude and Codex memory files (`ws import native`) | [Commands](docs/COMMANDS.md#import-existing-memory) |
+| `ws import claude-mem` | Preview | Read-only import from a checkpointed claude-mem SQLite copy | [Advanced](docs/ADVANCED.md#import-a-claude-mem-copy) |
+| `ws audit` | Stable | Scores this repo's AI-assistant setup and lists the top fixes | [Commands](docs/COMMANDS.md#daily-use) |
+| `ws demo` | Stable | Creates an isolated sandbox repo to test commands safely | [Tutorial](docs/TUTORIAL.md) |
+| Claude Code plugin | Preview | Hooks and MCP server via marketplace; not yet in Anthropic directory | [Advanced](docs/ADVANCED.md#claude-code-plugin-preview) |
+| Team sharing | Preview | Private git-backed knowledge repo with consent-based pulls and previews | [Team](docs/TEAM-WORKSPACE.md) |
+| MCP Registry | Preview | Pre-configured `server.json` catalog entry for MCP client discovery | [MCP](docs/MCP.md) |
+
+## How it works
+
+```text
+Claude Code / Codex / Cursor / Copilot / Gemini / Antigravity
+        │ (session startup & capture hooks)
+        ▼
+~/.ai-dev-workspace/<repo-name>/           (private, outside repo)
+  ├── workspace.json                       (settings, active task, packs)
+  └── vault/
+      ├── Tasks/<id>.md                    (status, next action, decisions, blockers)
+      └── Learnings.md                     (reusable cross-task lessons & dead ends)
+        ▲
+        │ (MCP stdio connection: 7 core tools by default; others by name)
+  Local Assistant (MCP client)
+```
+
+No background daemons, no external cloud sync, and no model calls of its own; `ws delegate --run` starts only the assistant CLIs you declare. Everything is plain Markdown you own.
+
+## Results
+
+Measured in [`bench/README.md`](bench/README.md) across independent paired investigations (Codex `gpt-6-luna`, n=5 per cohort):
+
+| Arm | Pass (October 11) | Pass (October 10) |
+|---|---|---|
+| Fresh baseline (no memory) | 0/5 | 0/5 |
+| Workspace (automatic brief) | 2/5 | 1/5 |
+| Plain Markdown handoff | 5/5 | 4/5 |
+
+The latest controlled runs show the plain Markdown handoff beating the workspace (5/5 and 4/5 against 2/5 and 1/5), with the automatic-capture release gate still unmet. The win for the workspace is structure, cross-assistant handoff, and avoiding manual file management. Details and earlier runs: [bench/README.md](bench/README.md) and [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+
+## Compared with
+
+- **Built-in memory files (CLAUDE.md, AGENTS.md):** Plain instructions per assistant; `ai-dev-workspace` adds cross-assistant handoffs, active task state, and `Do not redo:` constraints.
+- **A plain HANDOFF.md:** Works well for manual notes (and beat automatic workspace capture in latest benchmark cohorts: 5/5 vs 2/5); `ai-dev-workspace` adds cross-assistant automation, structured brief injection, and staleness warnings.
+- **claude-mem:** Captures tool use through hooks and compresses it with AI into SQLite + vector search ([upstream docs](https://github.com/thedotmack/claude-mem)), providing automatic memory capture without explicit commands; `ai-dev-workspace` keeps explicit Markdown you own, makes no model calls of its own (`ws delegate --run` starts only CLIs you declare), and focuses on durable handoffs with next steps and dead ends ([guide](docs/guides/keep-decisions-without-background-ai.md)).
+
 ## Compatibility
-| Client | macOS | Linux/Windows |
+
+| Assistant | Status | Test proof |
 |---|---|---|
 | Claude Code | supported, tested live on macOS | CI-tested |
 | Codex | supported, tested live on macOS | CI-tested |
 | Cursor | supported, fixture-tested; live reports welcome | CI-tested |
 | Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested |
 | Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested |
+| Antigravity | supported, fixture-tested; rules, MCP (hooks coming in beta.6) | CI-tested |
 
-Testers on Cursor, Copilot (VS Code), or Gemini CLI: please share problems through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml). · [Overview](docs/OVERVIEW.md) · [Setup](docs/SETUP.md) · [Commands](docs/COMMANDS.md) · [Keeping corrections](docs/COMMANDS.md#save-a-correction) · [Measurements](docs/MEASUREMENTS.md) · [Client verification](docs/CLIENT-VERIFICATION.md) · [Skills](docs/SKILLS.md) · [Cross-client guide](docs/guides/share-memory-claude-code-codex.md) · [Packs](docs/PACKS.md) · [Team use](docs/TEAM.md) · [Windows](docs/WINDOWS.md) · [Roadmap](docs/ROADMAP.md) · [License](LICENSE) <!-- mcp-name: io.github.Alenroyfeild/ai-dev-workspace mcp-name: io.github.alenroyfeild/ai-dev-workspace -->
+Testers on Cursor, Copilot (VS Code), Gemini CLI, or Antigravity: please share problems through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
+
+## Known limits
+
+- **Client coverage:** Claude Code and Codex are live-tested on macOS; Linux and Windows are CI-tested only. Cursor, Copilot (VS Code), Gemini CLI, and Antigravity are fixture-tested.
+- **Capture is best-effort:** Explicit CLI commands (`ws remember`, `ws checkpoint`) are deterministic; automatic transcript cue-word capture is best-effort.
+- **Guards are a safety net:** Pattern matching blocks common risky commands and secrets in commands or written files, but is not an unbypassable security boundary.
+- **Team sharing:** Tested with local private repositories; hosted two-person remote check is pending ([Roadmap](docs/ROADMAP.md)).
+
+## Privacy & safety
+
+- **Private by default:** Memory is stored outside checkout paths in `~/.ai-dev-workspace/<repo-name>`. Team sharing requires an explicit private repo (`ws team init`) with manual confirmation.
+- **Redaction is best-effort:** `ws` masks known API keys, tokens, and private spans (`<private>...</private>`), but regex redaction is best-effort and does not replace operational secret hygiene.
+- **Guards are a safety net:** The `guards` PreToolUse hook blocks known risky shell patterns and secrets in commands or written files, but it is a safety net, not an unbypassable security boundary.
+
+## Coming next (beta.6)
+
+Tracked in [`CHANGELOG.md`](CHANGELOG.md) and active PRs:
+- **Worker fallback chain:** Visible fallback across declared providers when workers fail or timeout ([#303](https://github.com/Alenroyfeild/ai-dev-workspace/pull/303), [#311](https://github.com/Alenroyfeild/ai-dev-workspace/pull/311) - merged on dev, not released).
+- **Compact MCP recall:** Compact note cards with on-demand detail disclosure ([#305](https://github.com/Alenroyfeild/ai-dev-workspace/pull/305) - merged on dev, not released).
+- **Stack-aware audit:** Recommends concrete assistant configurations from repo stack detection ([#306](https://github.com/Alenroyfeild/ai-dev-workspace/pull/306) - merged on dev, not released).
+- **Lesson promotion:** Suggests rule drafts from repeated lessons without auto-installing ([#304](https://github.com/Alenroyfeild/ai-dev-workspace/pull/304) - merged on dev, not released).
+- **Digest MCP tool:** Exposes digest as an MCP tool with opt-in huge-output hints ([#307](https://github.com/Alenroyfeild/ai-dev-workspace/pull/307) - merged on dev, not released).
+- **Behavior pack:** Opt-in cross-client engineering guidelines in AGENTS.md ([#296](https://github.com/Alenroyfeild/ai-dev-workspace/pull/296) - merged on dev, not released).
+- **Skills packaging:** Standard skill pack format contract and registry metadata ([#293](https://github.com/Alenroyfeild/ai-dev-workspace/pull/293) - merged on dev, not released).
+- **Gateway provider:** OpenAI-compatible base_url delegation provider ([#312](https://github.com/Alenroyfeild/ai-dev-workspace/pull/312) - merged on dev, not released).
+- **Codex plugin:** Native Codex plugin preview ([#313](https://github.com/Alenroyfeild/ai-dev-workspace/pull/313) - open PR, not released).
+- **Cursor plugin:** Native Cursor plugin preview ([#315](https://github.com/Alenroyfeild/ai-dev-workspace/pull/315) - open PR, not released).
+
+## Documentation
+
+- **Start:** [5-minute tutorial](docs/TUTORIAL.md) · [Setup guide](docs/SETUP.md) · [Demo walkthrough](docs/DEMO.md) · [Cross-client guide](docs/guides/share-memory-claude-code-codex.md)
+- **Use:** [CLI commands](docs/COMMANDS.md) · [Packs catalog](docs/PACKS.md) · [Skills distribution](docs/SKILLS.md) · [MCP server](docs/MCP.md) · [Advanced usage](docs/ADVANCED.md)
+- **Guides:** [Keep decisions without background AI](docs/guides/keep-decisions-without-background-ai.md) · [Stop retrying dead ends](docs/guides/stop-retrying-failed-approaches.md)
+- **Team:** [Team use](docs/TEAM.md) · [Team workspace setup](docs/TEAM-WORKSPACE.md)
+- **Reference:** [Overview](docs/OVERVIEW.md) · [Architecture](docs/ARCHITECTURE.md) · [Benchmark measurements](docs/MEASUREMENTS.md) · [Client verification](docs/CLIENT-VERIFICATION.md) · [Windows support](docs/WINDOWS.md) · [Roadmap](docs/ROADMAP.md)
+
+## Status & contributing
+
+`ai-dev-workspace` is in public beta (v0.1.0-beta.5 on PyPI). Planned improvements are tracked in the [Roadmap](docs/ROADMAP.md). Bug reports and feedback are welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
+
+Released under the [MIT License](LICENSE). <!-- mcp-name: io.github.Alenroyfeild/ai-dev-workspace mcp-name: io.github.alenroyfeild/ai-dev-workspace -->
