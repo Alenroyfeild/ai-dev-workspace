@@ -19,7 +19,7 @@ def kit_files():
         source = ROOT / name
         for path in source.rglob('*') if source.is_dir() else (source,):
             if path.is_file() and not ({'runtime', '__pycache__', '.git'} & set(path.relative_to(ROOT).parts)):
-                if path.suffix != '.pyc' and path.name != '.DS_Store':
+                if path.suffix not in ('.pyc', '.gif', '.mp4') and path.name != '.DS_Store':  # demo media is GitHub-only
                     yield path.relative_to(ROOT)
 
 
