@@ -273,7 +273,12 @@ def delegate(root, task_id, role, run=False, diff=None):
     identifier = task_id + '-' + role + '-' + core.uuid.uuid4().hex[:8]
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')
     brief = root / '.ws/briefs' / (identifier + '.md'); output = brief.with_suffix('.out.md')
-    model, effort = binding['model'], binding['effort']; command = worker_command(binding, paths[0], body)
+    model, effort = binding['model'], binding['effort']
+    try: command = worker_command(binding, paths[0], body)
+    except core.WsError:
+        # A preparation-only first choice that cannot be shown (Windows .cmd shim) must not stop the fallback run below.
+        if not run or binding['headless']: raise
+        command = []
     with core.lock(root): core.atomic_write(brief, core.redact(body))
     suffix = ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)) if binding['headless'] else ''
     result = dict(binding=binding, brief=str(brief), output=str(output), command=shlex.join(command) + suffix)
