@@ -15,6 +15,16 @@ class Beta6DocsTests(unittest.TestCase):
                 self.assertNotRegex(text, r'(?i)coming (?:in |next \()beta\.6|merged on dev, not released|not released yet')
         self.assertIn('v0.1.0-beta.6 on PyPI', (ROOT / 'README.md').read_text())
 
+    def test_pypi_readme_passes_the_final_release_metadata_gate(self):
+        text = (ROOT / 'README.md').read_text().casefold()
+        self.assertNotIn('coming in beta.6', text)
+        self.assertNotIn('not released', text)
+        coming = text.split('## coming next', 1)[1].split('\n## ', 1)[0]
+        for line in coming.splitlines():
+            if line.startswith('- **'):
+                self.assertIn('parked', line)
+                self.assertIn('unavailable', line)
+
     def test_readme_plugins_keep_preview_and_their_distinct_limits(self):
         text = (ROOT / 'README.md').read_text()
         expected = {'Claude Code plugin': ('ws start', 'directory', 'Windows'),

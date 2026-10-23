@@ -66,7 +66,7 @@ Team sharing is also preview: share only reviewed notes with a private team repo
 ## Coming next
 
 Common Agent Plugins root manifest (PLG3) and repo discovery through MCP roots (PLG5)
-are parked and not released. The Codex plugin still uses `ws start` for MCP.
+are parked and unavailable. The Codex plugin still uses `ws start` for MCP.
 
 ## Released documentation
 

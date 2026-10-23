@@ -149,8 +149,8 @@ Testers on Cursor, Copilot (VS Code), Gemini CLI, or Antigravity: please share p
 
 ## Coming next
 
-- **Common Agent Plugins manifest (PLG3):** parked until Codex can load the root manifest without losing plugin hooks; not released.
-- **Repo discovery through MCP roots (PLG5):** parked; codex-cli 0.155.1 offers no roots and cannot expand plugin MCP paths. Use `ws start` for MCP; not released.
+- **Common Agent Plugins manifest (PLG3):** parked and unavailable until Codex can load the root manifest without losing plugin hooks.
+- **Repo discovery through MCP roots (PLG5):** parked and unavailable; codex-cli 0.155.1 offers no roots and cannot expand plugin MCP paths. Use `ws start` for MCP.
 
 ## Documentation
 
