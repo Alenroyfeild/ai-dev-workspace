@@ -2,6 +2,61 @@
 
 ## 0.1.0-beta.6 (unreleased)
 
+### Highlights
+
+Beta.6 expands cross-client memory support with preview plugins for Claude Code, Codex, and Cursor; adds eight video lesson scripts with a validator and renderer, plus three cross-client guides; and introduces opt-in behavior and digest packs alongside MCP search, hook-safety, and error-resilience improvements.
+
+### Stable
+
+- **Compact MCP Recall**: MCP `search_vault` returns compact IDs, titles, and dates first; pass a selected ID as `detail` for full bounded content without enlarging the seven-tool core catalog.
+- **Opt-in Behavior Pack**: `ws pack add behavior` installs concise cross-client engineering guidelines (think first, minimal changes, surgical edits, verify work) into `AGENTS.md`; cleanly removable with `ws pack remove behavior`.
+- **Lesson Promotion Drafts**: `ws lesson promote <id>` suggests explicit, inactive rule drafts from repeated lessons or dead ends without altering active project rules.
+- **Stack-Aware Audit Recommendations**: `ws audit` suggests concrete cross-client assistant wiring and test commands from local project configuration without executing external scripts.
+- **Video Lesson Tooling**: `bin/make-video --check` validates the eight lesson scripts without external tools; rendering uses VHS/FFmpeg and has not been verified in CI (#317, #322).
+- **Assist Checkpoint Resilience**: `ws assist` suggestions remain available when a hand-edited task contains an invalid checkpoint count; valid tasks still contribute their checkpoints (#318).
+- **Plugin Manifest Version Parity**: Release packaging tests verify that every plugin manifest (`.claude-plugin`, `.codex-plugin`, `.cursor-plugin`) and marketplace version strictly matches `kit.json` (#323).
+- **Inactive Plugin Guidance**: MCP `NO_WORKSPACE` responses and skill prerequisites clearly instruct users how to install and activate workspace memory via `pipx install ai-dev-workspace --pip-args='--pre'` and `ws start` (#320).
+- **Skills Distribution Discovery**: Workspace skills (`handoff`, `pickup`, `lesson`, `thinkbeforeact`) declare runtime prerequisites (`ws on PATH`, `ws start`) and conform to the Agent Skills format; documented for repository installation; not tested with third-party installers.
+- **Private Span Stripping**: Briefs strip hand-edited private spans (`<private>...</private>`) before ranking decisions, dead ends, or session-start context.
+- **BOM and CRLF Guard Robustness**: Hook guards detect removal or disabling even when configuration files contain UTF-8 BOM prefixes and Windows CRLF line endings.
+- **Release and Video Tooling**: `bin/release-smoke` builds with `python -m build` when available and retains a `setup.py` fallback; `bin/make-video --links` keeps README and tutorial video links synchronized with release metadata.
+- **Documentation and Discovery**: The README and guides organize workflows and client setup; tutorial install guidance includes the pipx-less path, and repository metadata plus `llms.txt` improve project discovery. Client status labels identify beta.5 support and beta.6 previews.
+
+### Previews
+
+- **Claude Code Plugin**: Preview; not yet in Anthropic's official directory; install from our GitHub marketplace:
+  ```bash
+  /plugin marketplace add Alenroyfeild/ai-dev-workspace
+  /plugin install ai-dev-workspace@ai-dev-workspace
+  ```
+  *Limit:* Verified in live check (2026-10-22): inactive until `ws start` is run in the repository; requires Python 3 on `PATH`. Custom `CLAUDE_CONFIG_DIR` is detected so non-default profiles maintain plugin mode.
+- **Codex Plugin**: Preview (`.codex-plugin/plugin.json`, `hooks/codex-hooks.json`) (#313).
+  *Limit:* Hooks need a trusted manual desktop install in the Codex desktop app; no MCP server in the plugin manifest (`codex-cli 0.155.1` does not expand `${PLUGIN_ROOT}` in MCP arguments); not yet fired in a live signed-in session; keep existing repo-local connections until packaging is complete.
+- **Cursor Plugin**: Preview (`.cursor-plugin/plugin.json`, `hooks/cursor-hooks.json`, generated rules `.mdc`) (#315).
+  *Limit:* Fixture-tested only; not yet loaded in Cursor; not submitted to Cursor's marketplace; preToolUse hook answers allow on skip or error.
+- **Worker Provider Fallback**: Preview. For `ws delegate --run`, retries the next declared headless provider if a CLI errors, times out, or returns a quota rejection. Prints each attempt and records outcomes per attempt in the task run log.
+  *Limit:* Retries only the providers you declare in routing preferences; a timeout counts as a failed attempt; only read-only roles run.
+- **OpenAI-Compatible Gateway Provider**: Preview. Configure a `providers` entry with `"kind": "openai-compatible"`, `base_url`, `model` and optional `api_key_env`, route a read-only role to it (such as `explorer`), then run `ws delegate TASK --role explorer --run`.
+  *Limit:* Sends one chat request with the redacted brief (at most 400 words); the gateway gets no tools or file access; the key is read only from the environment variable you name and never stored; a non-loopback URL prints a warning, and a key is refused over HTTP.
+- **claude-mem Import**: Preview. `ws import claude-mem --db <file> --project <name>` previews checkpointed claude-mem SQLite copies read-only with safety allowlists and caps; saving asks for confirmation and creates private, unverified records.
+  *Limit:* Tested on fixture copies of the claude-mem SQLite schema; a newer claude-mem schema may not import.
+- **Antigravity Session Hooks**: Preview. Configures `.agents/hooks.json` with `SessionStart` brief injection and `PreToolUse` safety guards.
+  *Limit:* Fixture-tested on macOS, Linux, and Windows CI; not yet verified with a live signed-in Antigravity account.
+- **Still in Preview (unchanged): Cursor, GitHub Copilot (VS Code), and Gemini CLI**. Configuration and hooks are generated by `ws start`.
+  *Limit:* Fixture-tested in CI; live user reports welcome.
+- **Opt-in Digest Pack**: Preview. Advertises `digest_file` over MCP and emits an advisory size hint for tool outputs exceeding 40 KB (40,000 bytes).
+  *Limit:* Emits an advisory hint only; tool output is never truncated, modified, or stored automatically.
+- **Still in Preview (unchanged): Team Sharing**. Share approved decisions and lessons via `ws team init <private-repo>` and `ws sync`.
+  *Limit:* Requires git repository syncing; no hosted server or live multi-user concurrency.
+
+### Known limits
+
+- **Benchmark**: In two controlled Codex cohorts (n=5 each), plain Markdown handoff beat the workspace (5/5 and 4/5 vs 2/5 and 1/5 pass rate); the automatic-capture release gate is still unmet. See `bench/README.md`.
+- **Local Markdown Files, Not a Database**: Memory is stored as plain Markdown files in a local directory outside git (`~/.ai-dev-workspace/<repo-name>`). There is no vector database, background AI daemon, or cloud sync service.
+- **Best-Effort Decision Capture**: Automatic extraction of decisions from session transcripts is best-effort. Explicit CLI commands (`ws remember`, `ws task new`, `ws checkpoint`) are deterministic.
+- **Guards are a Safety Net, Not a Security Boundary**: PreToolUse guards block dangerous shell commands (`rm -rf`, `git reset --hard`) and secret writes via deterministic regex rules, but cannot judge semantic intent.
+- **Client Verification Levels**: Claude Code and Codex are tested live on macOS and verified in CI on Linux and Windows. Cursor, Copilot, Gemini CLI, and Antigravity are fixture-tested.
+
 ## 0.1.0-beta.5 (2026-10-22)
 
 Team workspaces can now receive approved shared updates automatically or be read from a synced folder, while personal work stays private.

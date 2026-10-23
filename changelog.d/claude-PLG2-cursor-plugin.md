@@ -1,1 +1,0 @@
-Added: Cursor plugin preview (`.cursor-plugin/`): rule, skills, hooks and MCP entry through `bin/ws-plugin`, with a Cursor-format guard answer; fixture-tested only, not yet loaded in Cursor, and not submitted to Cursor's marketplace.
