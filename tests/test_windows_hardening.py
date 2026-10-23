@@ -277,6 +277,9 @@ class PluginLauncherTests(unittest.TestCase):
         codex = json.loads((KIT / 'hooks/codex-hooks.json').read_text())['hooks']
         for entries in codex.values():
             self.assertTrue(entries[0]['hooks'][0]['command'].startswith('sh "${PLUGIN_ROOT}/bin/ws-python" '), entries)
+        cursor = json.loads((KIT / 'hooks/cursor-hooks.json').read_text())['hooks']
+        for entries in cursor.values():
+            self.assertTrue(entries[0]['command'].startswith('sh ./bin/ws-python '), entries)
 
     @unittest.skipIf(os.name == 'nt', 'needs POSIX fake interpreters; the Windows path is CI/manual only')
     def test_launcher_picks_the_first_working_python(self):
