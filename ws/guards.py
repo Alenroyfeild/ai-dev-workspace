@@ -713,7 +713,8 @@ def reason(tool_name, tool_input, cwd=None):
 
 def hook(payload, client='claude'):
     """PreToolUse output in the selected client dialect; unknown inputs fail open."""
-    if not isinstance(payload, dict): return {}
+    allow = {'permission': 'allow'} if client == 'cursor' else {}  # Cursor blocks a permission hook whose output it cannot read
+    if not isinstance(payload, dict): return allow
     if client == 'antigravity':
         call = payload.get('toolCall'); call = call if isinstance(call, dict) else {}
         args = call.get('args'); args = args if isinstance(args, dict) else {}
@@ -731,7 +732,8 @@ def hook(payload, client='claude'):
         payload = {'tool_name': call.get('name'), 'tool_input': mapped,
                    'cwd': paths[0] if isinstance(paths, list) and paths else None}
     why = reason(payload.get('tool_name', ''), payload.get('tool_input'), payload.get('cwd'))
-    if not why: return {'decision': 'allow'} if client == 'antigravity' else {}
+    if not why: return {'decision': 'allow'} if client == 'antigravity' else allow
     why = f'ws guards: {why} If the user really wants this, they can run it themselves or start the assistant with WS_GUARDS=off.'
+    if client == 'cursor': return {'permission': 'deny', 'user_message': why, 'agent_message': why}
     if client == 'antigravity': return {'decision': 'deny', 'reason': why}
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': why}}

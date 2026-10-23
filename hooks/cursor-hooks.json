@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "command": "sh ./bin/ws-python ./bin/ws-plugin --client cursor",
+        "timeout": 15
+      }
+    ],
+    "preCompact": [
+      {
+        "type": "command",
+        "command": "sh ./bin/ws-python ./bin/ws-plugin --client cursor",
+        "timeout": 15
+      }
+    ],
+    "stop": [
+      {
+        "type": "command",
+        "command": "sh ./bin/ws-python ./bin/ws-plugin --client cursor",
+        "timeout": 15
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "command": "sh ./bin/ws-python ./bin/ws-plugin --client cursor",
+        "timeout": 15
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "type": "command",
+        "command": "sh ./bin/ws-python ./bin/ws-plugin --client cursor",
+        "timeout": 15
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "command": "sh ./bin/ws-python ./bin/ws-plugin --client cursor",
+        "timeout": 15
+      }
+    ]
+  }
+}

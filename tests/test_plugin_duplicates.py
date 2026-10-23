@@ -11,13 +11,13 @@ from ws import cli, core, repo as repo_setup
 
 
 class PluginDuplicateTests(Base):
-    def started_repo(self):
+    def started_repo(self, detected=()):
         repo = self.root.parent / 'app'; repo.mkdir()
         subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=repo, check=True)
         subprocess.run(['git', '-c', 'user.name=F', '-c', 'user.email=f@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'i'], cwd=repo, check=True)
         cwd = os.getcwd(); os.chdir(repo)
         try:
-            with mock.patch('ws.setup.detect', return_value=[]), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with mock.patch('ws.setup.detect', return_value=list(detected)), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 repo_setup.start(yes=True)
         finally: os.chdir(cwd)  # Windows cannot delete the current directory
         return repo, core.find_root(repo)
@@ -468,12 +468,12 @@ class PluginDuplicateTests(Base):
             self.assertEqual(json.loads((repo / name).read_text()), {'user_setting': name})
 
     # The Codex plugin and ws start's .codex/hooks.json must never both run an event.
-    def run_plugin(self, repo, event, **extra):
+    def run_plugin(self, repo, event, client='codex', **extra):
         from ws import plugin_runtime
         payload = dict({'cwd': str(repo), 'hook_event_name': event}, **extra)
         out = io.StringIO()
         with mock.patch('sys.stdin', io.StringIO(json.dumps(payload))), contextlib.redirect_stdout(out):
-            self.assertEqual(plugin_runtime.main(['--client', 'codex']), 0)
+            self.assertEqual(plugin_runtime.main(['--client', client]), 0)
         return json.loads(out.getvalue())
 
     def test_plugin_hooks_stay_silent_in_a_repo_ws_start_wired_for_codex(self):
@@ -499,6 +499,16 @@ class PluginDuplicateTests(Base):
         self.assertEqual(self.start_here(repo), 0)  # refresh wires PreToolUse into .codex/hooks.json
         self.assertIn('PreToolUse', json.loads((repo / '.codex/hooks.json').read_text())['hooks'])
         self.assertEqual(self.run_plugin(repo, 'PreToolUse', **deny), {})
+
+    def test_cursor_plugin_hooks_never_double_up_with_ws_start_cursor_hooks(self):
+        repo, root = self.started_repo([{'assistant': 'cursor', 'cli_available': True, 'apps': []}])
+        self.assertIn('.cursor/hooks.json', self.state(repo)['files'])
+        for event in ('sessionStart', 'preCompact', 'stop', 'sessionEnd', 'beforeSubmitPrompt'):
+            self.assertEqual(self.run_plugin(repo, event, 'cursor', prompt='hi'), {}, event)
+        core.pack_add(root, 'guards')  # ws start does not wire Cursor guards, so the plugin is the only guard here
+        deny = {'tool_name': 'Shell', 'tool_input': {'command': 'rm -rf ~'}}
+        self.assertEqual(self.run_plugin(repo, 'preToolUse', 'cursor', **deny)['permission'], 'deny')
+
 
     # --- plugin under a non-default CLAUDE_CONFIG_DIR, ws start rerun from a shell without it ---
 

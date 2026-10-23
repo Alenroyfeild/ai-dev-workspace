@@ -413,11 +413,26 @@ def _json(text, name):
     except ValueError as exc: raise core.WsError(f'Repo setup stopped; nothing was changed. {name} is not valid JSON ({exc}); JSON comments are not supported. Fix or move that file, then run ws start again.') from None
 
 
+def memory_instructions(where, command):
+    """The instruction text ws start writes into each client's rules file; `where` names the memory, `command` runs ws."""
+    return (f'Private task memory: {where}\nAt session start, run `{command} brief` unless saved task memory is already in context. Follow the current request. Save verified decisions and next actions with `{command} checkpoint`.\n'
+            'When the user states a decision or corrects an earlier one, call the MCP `remember` tool with it; for a correction, say what it replaces.\n')
+
+
+def plugin_where():
+    return 'linked to this repo only after `ws start` has run here (a `.ws-start.json` file exists). If there is no such file, ignore this rule.'
+
+
+def plugin_cursor_rule():
+    """rules/ai-dev-workspace.mdc for the Cursor plugin: ws start's rule text, with no machine-specific path."""
+    return ('---\ndescription: ai-dev-workspace task memory; applies only in repos where ws start has run\nalwaysApply: true\n---\n'
+            + memory_instructions(plugin_where(), 'ws'))
+
+
 def render(repo, root, clients, prior, plugin=False):
     """Repo wiring for this kit, built on each file's bytes from before ws (prior(name) -> bytes or None)."""
     command = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'), '--workspace-root', str(root)])
-    instructions = f'Private task memory: {root}\nAt session start, run `{command} brief` unless saved task memory is already in context. Follow the current request. Save verified decisions and next actions with `{command} checkpoint`.\n'
-    instructions += 'When the user states a decision or corrects an earlier one, call the MCP `remember` tool with it; for a correction, say what it replaces.\n'
+    instructions = memory_instructions(root, command)
     desired = {}
     for name, prefix in (('CLAUDE.local.md', '@AGENTS.md\n' if (repo / 'AGENTS.md').is_file() else ''), ('AGENTS.override.md', 'Read AGENTS.md for repo rules when it exists.\n')):
         desired[name] = (prior(name) or b'') + ('\n' + prefix + instructions).encode()
