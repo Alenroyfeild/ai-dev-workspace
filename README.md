@@ -8,6 +8,11 @@ Your assistant remembers work between sessions in Markdown you own. Shared, dura
 ![Switch from Claude Code to Codex: the saved decision follows the task (animation)](https://raw.githubusercontent.com/Alenroyfeild/ai-dev-workspace/main/docs/demo.gif)
 
 <!-- videos:start -->
+### Watch (videos for 0.1.0b5)
+
+- [Watch the 2-minute explainer](https://youtu.be/w5EwQNO8Lz0)
+- [Under the hood: real commands, real output](https://youtu.be/NyxxiGO6XLQ)
+- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/raqbF2ZR1rY) · [Assistants](https://youtu.be/1Pxo6HrlSTg)
 <!-- videos:end -->
 ## Quick start
 
