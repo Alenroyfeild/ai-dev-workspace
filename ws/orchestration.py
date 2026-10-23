@@ -188,6 +188,9 @@ def worker_command(binding, repo, body=''):
     return [exe, *args]
 
 
+TIMEOUT_CODE = 124  # the exit status GNU timeout uses; worker_run reports it when it kills a worker
+
+
 def worker_run(binding, repo, body, receipt=None):
     code = 1; timeout = timeout_ok(binding['timeout_seconds'])
     try:
@@ -199,7 +202,7 @@ def worker_run(binding, repo, body, receipt=None):
                 except OSError: pass
         try: stdout, stderr = process.communicate(body, timeout=timeout); code = process.returncode
         except subprocess.TimeoutExpired:
-            kill(); stdout, stderr = process.communicate(); stderr += f"\nWorker timed out after {timeout} seconds."
+            kill(); stdout, stderr = process.communicate(); stderr += f"\nWorker timed out after {timeout} seconds."; code = TIMEOUT_CODE
         except BaseException:
             # Ctrl-C or any error: the worker has its own session, so the terminal's SIGINT never reaches it.
             kill()
@@ -270,44 +273,69 @@ def delegate(root, task_id, role, run=False, diff=None):
     identifier = task_id + '-' + role + '-' + core.uuid.uuid4().hex[:8]
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')
     brief = root / '.ws/briefs' / (identifier + '.md'); output = brief.with_suffix('.out.md')
-    model, effort = binding['model'], binding['effort']; command = worker_command(binding, paths[0], body)
+    model, effort = binding['model'], binding['effort']
+    try: command = worker_command(binding, paths[0], body)
+    except core.WsError:
+        # A preparation-only first choice that cannot be shown (Windows .cmd shim) must not stop the fallback run below.
+        if not run or binding['headless']: raise
+        command = []
     with core.lock(root): core.atomic_write(brief, core.redact(body))
     suffix = ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)) if binding['headless'] else ''
     result = dict(binding=binding, brief=str(brief), output=str(output), command=shlex.join(command) + suffix)
     if not binding['headless']: result['note'] = 'Preparation only; review the brief and command before launching manually. Interactive clients need the brief pasted.'
     if not run: return result
-    attempts = []; run_records = []; selected = None
+    attempts = []; selected = None; index = 0
+
+    def log_attempt(candidate, status, incoming, outgoing, known, seconds, note, findings=None):
+        # One row per attempt, written as soon as it ends, so a later stop or error cannot lose earlier rows.
+        nonlocal index
+        index += 1
+        core.run_log(root, task_id, f'delegate {role} attempt {index}', candidate['provider'], candidate['model'] or '',
+                     seconds=seconds, tokens_in=incoming, tokens_out=outgoing, result=status,
+                     worker_role=role, effort=candidate['effort'], findings=findings,
+                     note=note if status == 'skipped' else f'Provider attempt {index}. {note}')
+
+    def claim_held():
+        with core.lock(root):
+            current = core.parse_meta(core.read_exact(core.task_path(root, task_id)))
+        return not current.get('claimed_by') or (worker == current['claimed_by'] and token == current.get('claim_token'))
+
     for provider in binding['preference']:
         candidate = route(root, role, provider)
         if not candidate['available']:
             reason = 'CLI not on PATH' if not candidate['executable'] else 'no model configured'
             attempts.append({'provider': provider, 'status': 'skipped', 'reason': reason})
-            run_records.append((candidate, 'skipped', 0, 0, False, 0.0, reason))
+            log_attempt(candidate, 'skipped', 0, 0, False, 0.0, reason)
             continue
         if not candidate['can_run']:
             attempts.append({'provider': provider, 'status': 'skipped', 'reason': 'provider has no headless command'})
             reason = 'Delegation mode is preparation-only.' if candidate['delegation_mode'] != 'read-only' else 'Provider has no headless command.'
-            run_records.append((candidate, 'skipped', 0, 0, False, 0.0, reason))
+            log_attempt(candidate, 'skipped', 0, 0, False, 0.0, reason)
             continue
         attempt_started = time.monotonic()
         code, rendered, tokens_in, tokens_out, usage_known = worker_run(candidate, paths[0], body)
         elapsed = time.monotonic() - attempt_started
+        # A timeout is a failed attempt like any other: it is labelled, logged and the next provider is tried.
         status = 'ok' if code == 0 else 'failed'
-        attempts.append({'provider': provider, 'status': status, 'exit_code': code})
+        attempts.append({'provider': provider, 'status': 'timeout' if code == TIMEOUT_CODE else status, 'exit_code': code})
         note = 'Worker output unverified; lead must review.' + ('' if usage_known else ' usage unavailable.')
         if code != 0:
             detail = ' '.join(core.plain_text(rendered).split()[:12])[:100]
             note = f'Provider exited {code}; {detail or "no error detail"}. ' + note
-        run_records.append((candidate, status, tokens_in, tokens_out, usage_known, elapsed,
-                            note))
+        findings = len(set(line.strip() for line in rendered.splitlines() if re.match(r'^(?:UNVERIFIED\s+)?[^:\n]+:\d+:\s+\S', line))) if role == 'reviewer' else None
+        log_attempt(candidate, status, tokens_in, tokens_out, usage_known, elapsed, note, findings)
         selected = candidate
+        if not claim_held():
+            # Stop at once: no further provider is started. Earlier rows stay; this attempt's output is kept too.
+            with core.lock(root): core.atomic_write(output, 'UNVERIFIED worker output\n' + rendered)
+            raise core.WsError('Claim changed during delegation; output saved, task evidence not changed.')
         if code == 0: break
     if selected is None:
-        raise core.WsError('All available providers are preparation-only; no headless worker was started.')
+        tried = ', '.join(item['provider'] + ' ' + item['status'] for item in attempts)
+        raise core.WsError(f'All available providers are preparation-only; no headless worker was started. Attempts: {tried}.')
     binding = selected
     model, effort = binding['model'], binding['effort']
     suffix = ' < ' + shlex.quote(str(brief)) + ' > ' + shlex.quote(str(output)) if binding['headless'] else ''
-    findings = len(set(line.strip() for line in rendered.splitlines() if re.match(r'^(?:UNVERIFIED\s+)?[^:\n]+:\d+:\s+\S', line))) if role == 'reviewer' else None
     with core.lock(root):
         core.atomic_write(output, 'UNVERIFIED worker output\n' + rendered)
         path = core.task_path(root, task_id); text = core.read_exact(path); current = core.parse_meta(text)
@@ -318,12 +346,6 @@ def delegate(root, task_id, role, run=False, diff=None):
         providers = ', '.join(item['provider'] + ' ' + item['status'] for item in attempts)
         summary = f'\nDelegated {role} via {binding["provider"]} ({model}, {effort}) after {len(attempts)} provider attempts [{providers}], exit {code}, unverified: ' + ' '.join(core.plain_text(rendered).split()[:45]) + '\n'
         core.atomic_write(path, text[:match.end()] + summary + text[match.end():])
-    for index, (candidate, status, incoming, outgoing, known, seconds, note) in enumerate(run_records, 1):
-        core.run_log(root, task_id, f'delegate {role} attempt {index}', candidate['provider'], candidate['model'] or '',
-                     seconds=seconds, tokens_in=incoming, tokens_out=outgoing, result=status,
-                     worker_role=role, effort=candidate['effort'],
-                     findings=findings if candidate is binding else None,
-                     note=note if status == 'skipped' else f'Provider attempt {index}/{len(run_records)}. {note}')
     result['binding'] = binding
     result['command'] = shlex.join(worker_command(binding, paths[0], body)) + suffix
     result.pop('note', None)
