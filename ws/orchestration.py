@@ -314,8 +314,13 @@ def delegate(root, task_id, role, run=False, diff=None):
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')
     brief = root / '.ws/briefs' / (identifier + '.md'); output = brief.with_suffix('.out.md')
     model, effort = binding['model'], binding['effort']
+    try: command = command_text(binding, paths[0], body, brief, output)
+    except core.WsError:
+        # A preparation-only first choice that cannot be shown (Windows .cmd shim) must not stop the fallback run below.
+        if not run or binding['headless']: raise
+        command = ''
     with core.lock(root): core.atomic_write(brief, core.redact(body))
-    result = dict(binding=binding, brief=str(brief), output=str(output), command=command_text(binding, paths[0], body, brief, output))
+    result = dict(binding=binding, brief=str(brief), output=str(output), command=command)
     if binding.get('gateway') and binding['gateway']['warning']: result['warning'] = binding['gateway']['warning']
     if not binding['headless'] and not binding.get('gateway'): result['note'] = 'Preparation only; review the brief and command before launching manually. Interactive clients need the brief pasted.'
     if not run: return result

@@ -212,6 +212,21 @@ class OrchestrationTests(Base):
         ])
         self.assertEqual([entry['result'] for entry in core.run_entries(self.root, 'T-1')], ['failed', 'ok'])
 
+    def test_run_falls_back_when_the_first_choice_command_cannot_be_shown(self):
+        # On Windows a preparation-only first choice behind a .cmd shim refused the prompt and aborted the whole run.
+        self.set_routing(role_overrides={'explorer': {'preference': ['cursor', 'claude']}})
+        directory = self.root / 'shim-bin'; directory.mkdir(exist_ok=True)
+        self.executable(directory, 'cursor-agent', 'print("unused")')
+        self.executable(directory, 'claude', 'import json; print(json.dumps({"result":"fallback result","usage":{"input_tokens":1,"output_tokens":1}}))')
+        real = orchestration.worker_command
+        def refusing(binding, repo, body=''):
+            if binding['provider'] == 'cursor': raise core.WsError('This provider runs through a Windows .cmd shim.')
+            return real(binding, repo, body)
+        with mock.patch.dict(os.environ, {'PATH': str(directory)}), mock.patch.object(orchestration, 'worker_command', refusing):
+            result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertEqual(result['exit_code'], 0)
+        self.assertEqual([(a['provider'], a['status']) for a in result['provider_attempts']], [('cursor', 'skipped'), ('claude', 'ok')])
+
     def test_timeout_is_a_failed_attempt_and_falls_back(self):
         self.set_routing(timeout_seconds=1)
         directory = self.root / 'timeout-bin'; directory.mkdir(exist_ok=True)
