@@ -77,9 +77,7 @@ speaks MCP, but tools return “Run ws start in this repo”; it does not use `W
 the existing memory hooks only for a validated repo link. Unknown events or invalid
 links return `{}`. Existing CLI and server invocations are unchanged.
 
-No Codex plugin package is published yet: keep existing repo-local connections for Codex
-until packaging, duplicate-connection detection and live client checks are complete. Installing or enabling a Codex plugin does not trust
-its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
+The Codex plugin is described [below](#codex-plugin-preview). Installing or enabling a Codex plugin does not trust its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
 
 ### Claude Code plugin (preview)
 
@@ -93,6 +91,24 @@ The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires 
 Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. The hooks run through `bin/ws-python`, which uses the first working `python3`, `python` or `py -3` (needs `sh`, as in Git Bash). The plugin's MCP server entry is started directly by the client and still calls `python3`; on Windows installs that only provide `python` or `py`, add a `python3.exe` copy or alias to PATH, or use `ws start` instead of the plugin. Windows is untested.
 
 With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.
+
+### Codex plugin (preview)
+
+**Preview, not released yet (coming in the release after beta.5).** The same marketplace also installs a Codex plugin (`.codex-plugin/`): the handoff, pickup, lesson and thinkbeforeact skills, plus hooks for SessionStart, PreCompact, Stop and UserPromptSubmit (the same four as `ws start`) and PreToolUse, all through `bin/ws-plugin`. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+
+```text
+codex plugin marketplace add Alenroyfeild/ai-dev-workspace
+codex plugin add ai-dev-workspace@ai-dev-workspace
+```
+
+What is and is not verified:
+
+- Fixture-tested: manifests, hook mapping, duplicate avoidance and the guard rule have unit tests.
+- Checked against codex-cli 0.155.1 in a throwaway `CODEX_HOME` with no signed-in session: the install works, the skills list, and Codex finds the five hooks with the plugin root filled in (status "untrusted" until you trust them).
+- Not live-tested: no real Codex session has fired these hooks yet, so what Codex does with their output is unconfirmed. Codex runs plugin hooks only for manual installs in the Codex desktop app and only after you trust them, and OpenAI does not accept plugins with hooks into its public directory. Not submitted anywhere.
+- No MCP server in this plugin. With codex-cli 0.155.1, a plugin's MCP entry gets no plugin-root path expansion, so the server cannot start from the plugin. Use `ws start` (or `ws connect codex --write`) for the MCP tools; the skills use the `ws` command.
+- The PreToolUse hook is the guard and acts only in a started repo whose workspace has the `guards` pack on; otherwise it allows everything. Like all ws hooks, any error lets the tool run.
+- Both can be on: for each event that the `.codex/hooks.json` from `ws start` already handles, the plugin hook does nothing, so a session still gets one brief and one capture.
 
 `ws audit` also inspects bounded local manifests for languages, declared test
 commands and CI, then prints wiring commands for linked assistants or clients

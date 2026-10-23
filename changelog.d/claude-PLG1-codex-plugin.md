@@ -1,0 +1,1 @@
+Added: Codex plugin preview (`.codex-plugin/`): skills plus SessionStart, PreCompact, Stop, UserPromptSubmit and guard hooks through `bin/ws-plugin`, which stays silent for events `ws start` already wired; fixture-tested, hooks not yet fired in a live Codex session, and no MCP server in the plugin.
