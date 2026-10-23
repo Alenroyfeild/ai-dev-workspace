@@ -467,6 +467,39 @@ class PluginDuplicateTests(Base):
         for name in names:
             self.assertEqual(json.loads((repo / name).read_text()), {'user_setting': name})
 
+    # The Codex plugin and ws start's .codex/hooks.json must never both run an event.
+    def run_plugin(self, repo, event, **extra):
+        from ws import plugin_runtime
+        payload = dict({'cwd': str(repo), 'hook_event_name': event}, **extra)
+        out = io.StringIO()
+        with mock.patch('sys.stdin', io.StringIO(json.dumps(payload))), contextlib.redirect_stdout(out):
+            self.assertEqual(plugin_runtime.main(['--client', 'codex']), 0)
+        return json.loads(out.getvalue())
+
+    def test_plugin_hooks_stay_silent_in_a_repo_ws_start_wired_for_codex(self):
+        repo, root = self.started_repo()
+        self.assertIn('.codex/hooks.json', self.state(repo)['files'])
+        for event in ('SessionStart', 'PreCompact', 'Stop', 'UserPromptSubmit'):
+            self.assertEqual(self.run_plugin(repo, event, prompt='hi', session_id='s'), {}, event)
+
+    def test_plugin_serves_codex_when_ws_start_did_not_wire_it(self):
+        repo, root = self.started_repo()
+        state = self.state(repo); del state['files']['.codex/hooks.json']
+        (repo / '.ws-start.json').write_text(json.dumps(state))
+        (repo / '.codex/hooks.json').unlink()
+        out = self.run_plugin(repo, 'SessionStart')
+        self.assertIn('Saved task memory', out['hookSpecificOutput']['additionalContext'])
+
+    def test_guard_comes_from_the_plugin_until_ws_start_wires_it_then_from_ws_start_only(self):
+        repo, root = self.started_repo()
+        deny = {'tool_name': 'Bash', 'tool_input': {'command': 'rm -rf ~'}}
+        self.assertEqual(self.run_plugin(repo, 'PreToolUse', **deny), {})  # guards pack off
+        core.pack_add(root, 'guards')  # on, but ws start has not refreshed .codex/hooks.json yet
+        self.assertEqual(self.run_plugin(repo, 'PreToolUse', **deny)['hookSpecificOutput']['permissionDecision'], 'deny')
+        self.assertEqual(self.start_here(repo), 0)  # refresh wires PreToolUse into .codex/hooks.json
+        self.assertIn('PreToolUse', json.loads((repo / '.codex/hooks.json').read_text())['hooks'])
+        self.assertEqual(self.run_plugin(repo, 'PreToolUse', **deny), {})
+
     # --- plugin under a non-default CLAUDE_CONFIG_DIR, ws start rerun from a shell without it ---
 
     def started_under_config_dir(self):

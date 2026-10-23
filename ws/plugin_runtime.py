@@ -8,13 +8,33 @@ from pathlib import Path
 from . import core
 
 
-def workspace(start=None):
-    # Plugin processes must not inherit unrelated memory through WS_ROOT.
+EVENTS = {'SessionStart': 'brief', 'PreCompact': 'nudge', 'Stop': 'nudge', 'UserPromptSubmit': 'paste', 'PreToolUse': 'guard'}
+REPO_HOOKS = {'codex': '.codex/hooks.json'}  # the file ws start writes for a client whose plugin ships the same hooks
+
+
+def linked_repo(start=None):
     base = Path(start or os.getcwd()).resolve()
     for candidate in (base, *base.parents):
         if (candidate / '.ws-start.json').is_file():
-            return core.find_root(candidate)
+            return candidate
     return None
+
+
+def workspace(start=None):
+    # Plugin processes must not inherit unrelated memory through WS_ROOT.
+    repo = linked_repo(start)
+    return core.find_root(repo) if repo else None
+
+
+def repo_wired(client, repo, event):
+    """True when ws start wrote this client's repo hooks and they already handle the event, so the plugin must not run it too."""
+    relative = REPO_HOOKS.get(client)
+    try:
+        files = json.loads((repo / '.ws-start.json').read_text(encoding='utf-8-sig')).get('files')
+        return bool(relative and isinstance(files, dict) and relative in files
+                    and event in json.loads((repo / relative).read_text(encoding='utf-8-sig')).get('hooks', {}))
+    except (OSError, ValueError, AttributeError, TypeError):
+        return False
 
 
 def main(argv=None):
@@ -28,9 +48,14 @@ def main(argv=None):
         if not isinstance(payload, dict): raise ValueError('Expected an object')
         cwd = payload.get('cwd')
         if cwd is not None and (not isinstance(cwd, str) or not cwd): raise ValueError('Invalid cwd')
-        command = {'SessionStart': 'brief', 'PreCompact': 'nudge', 'Stop': 'nudge',
-                   'UserPromptSubmit': 'paste'}.get(payload.get('hook_event_name'))
-        root = workspace(cwd) if command else None
+        event = payload.get('hook_event_name')
+        command = EVENTS.get(event)
+        if command == 'guard' and args.client != 'codex': command = None  # Claude's guard is a repo hook of the guards pack
+        repo = linked_repo(cwd) if command else None
+        root = core.find_root(repo) if repo else None
+        # Never double-run: ws start's own hook wins; the guard is the opt-in guards pack, never a plugin default.
+        if root and (repo_wired(args.client, repo, event) or command == 'guard' and 'guards' not in core.config(root).get('packs', [])):
+            root = None
     except (core.WsError, OSError, ValueError, TypeError, KeyError, RecursionError) as exc:
         print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open, like the other hooks
         root = None
