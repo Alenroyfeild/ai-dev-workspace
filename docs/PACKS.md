@@ -29,7 +29,7 @@ packs/android/
 }
 ```
 
-- `kind`: `domain` (knowledge for a platform), `worker` (a cheaper executor), `editor` (a way to read the vault), `rules` (opt-in guidelines like `behavior`), or `guard` (the built-in `guards` and `discipline` packs: hooks that `ws start` adds to Claude Code and Codex while the pack is on).
+- `kind`: `domain` (knowledge for a platform), `worker` (a cheaper executor), `editor` (a way to read the vault), `rules` (opt-in guidelines like `behavior`, coming in beta.6), or `guard` (the built-in `guards` and `discipline` packs: hooks that `ws start` adds to Claude Code and Codex while the pack is on).
 - `next`: optional lines `ws pack add` prints after installing, such as "run ws start again".
 - `requires`: each entry has `cmd` (checked on PATH) or `app` (checked in /Applications), plus `why` and `install`. `ws doctor` shows unmet ones with the install line.
 
@@ -43,7 +43,7 @@ packs/android/
 
 ## Optional digest advice
 
-In a started repo, run `ws pack add digest`, then `ws start` to review and apply
+Coming in beta.6: In a started repo, run `ws pack add digest`, then `ws start` to review and apply
 local hook changes. Restart Claude Code or Codex to refresh its MCP catalog.
 The core profile then lists `digest_file` alongside the seven memory tools;
 explicit custom tool lists stay unchanged. The existing tool accepts `path` and
