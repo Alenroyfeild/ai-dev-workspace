@@ -54,6 +54,7 @@ class PackagingTests(unittest.TestCase):
             source = next(dist.glob('*.tar.gz'))
             with ZipFile(wheel) as archive:
                 names = archive.namelist()
+                self.assertFalse(any('/build/' in '/' + name for name in names), 'video build artifacts in wheel')
                 metadata = archive.read(next(name for name in names if name.endswith('.dist-info/METADATA'))).decode()
                 self.assertIn('Version: 0.1.0b5\n', metadata)
                 self.assertNotIn('](docs/', metadata)  # relative README links break on the PyPI page
@@ -63,6 +64,8 @@ class PackagingTests(unittest.TestCase):
                 self.assertIn('ws/cli.py', names)
                 self.assertIn('ws/template/AGENTS.md', names)
             with tarfile.open(source, 'r:gz') as archive:
+                self.assertFalse(any('/build/' in item.name for item in archive.getmembers()),
+                                 'video build artifacts in sdist')
                 metadata = next(item for item in archive.getmembers() if item.name.endswith('/PKG-INFO'))
                 body = archive.extractfile(metadata).read().decode()
                 self.assertIn('Version: 0.1.0b5\n', body)
