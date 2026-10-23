@@ -499,3 +499,60 @@ class PluginDuplicateTests(Base):
         self.assertEqual(self.start_here(repo), 0)  # refresh wires PreToolUse into .codex/hooks.json
         self.assertIn('PreToolUse', json.loads((repo / '.codex/hooks.json').read_text())['hooks'])
         self.assertEqual(self.run_plugin(repo, 'PreToolUse', **deny), {})
+
+    # --- plugin under a non-default CLAUDE_CONFIG_DIR, ws start rerun from a shell without it ---
+
+    def started_under_config_dir(self):
+        elsewhere = Path(self.tmp.name) / 'claude-config'
+        self.enable(elsewhere / 'settings.json')
+        with mock.patch.dict(os.environ, CLAUDE_CONFIG_DIR=str(elsewhere)):
+            repo, root = self.started_repo()
+        return elsewhere, repo, root
+
+    def test_rerun_without_claude_config_dir_keeps_plugin_mode(self):
+        elsewhere, repo, root = self.started_under_config_dir()
+        self.assertFalse((repo / '.claude/settings.local.json').exists())
+        self.assertEqual(self.start_here(repo), 0)  # CLAUDE_CONFIG_DIR unset, default ~/.claude has no plugin entry
+        state = json.loads((repo / '.ws-start.json').read_text())
+        self.assertTrue(state['plugin'])
+        self.assertNotIn('.claude/settings.local.json', state['files'])
+        self.assertNotIn('.mcp.json', state['files'])
+        self.assertFalse((repo / '.claude/settings.local.json').exists())
+        self.assertFalse((repo / '.mcp.json').exists())
+        self.assertEqual(repo_setup.plugin_missing(root), [])
+        self.assertEqual(core.doctor(root)['claude_plugin_missing'], [])
+
+    def test_rerun_without_claude_config_dir_says_plugin_mode_was_kept(self):
+        elsewhere, repo, root = self.started_under_config_dir()
+        cwd = os.getcwd(); os.chdir(repo); err = io.StringIO()
+        try:
+            with mock.patch('ws.setup.detect', return_value=[]), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                cli.main(['start', '--yes'])
+        finally: os.chdir(cwd)
+        self.assertIn('Plugin mode kept', err.getvalue())
+        self.assertIn(str(elsewhere), err.getvalue())
+
+    def test_disabling_the_plugin_in_the_recorded_dir_still_restores_hooks(self):
+        elsewhere, repo, root = self.started_under_config_dir()
+        self.enable(elsewhere / 'settings.json', False)
+        self.assertEqual(repo_setup.plugin_missing(root), [str(repo.resolve())])
+        self.assertEqual(self.start_here(repo), 0)
+        self.assertFalse(json.loads((repo / '.ws-start.json').read_text())['plugin'])
+        self.assertIn('SessionStart', self.hooks(repo))
+
+    def test_default_dir_plugin_removal_still_restores_hooks(self):
+        self.enable(self.settings_user())
+        repo, root = self.started_repo()
+        self.settings_user().unlink()
+        self.assertEqual(self.start_here(repo), 0)
+        self.assertIn('SessionStart', self.hooks(repo))
+
+    def test_rerun_with_claude_config_dir_records_it_for_an_older_start(self):
+        elsewhere, repo, root = self.started_under_config_dir()
+        path = repo / '.ws-start.json'; state = json.loads(path.read_text())
+        del state['claude_config_dir']; path.write_text(json.dumps(state))  # a record from before this field existed
+        with mock.patch.dict(os.environ, CLAUDE_CONFIG_DIR=str(elsewhere)):
+            self.assertEqual(self.start_here(repo), 0)
+        self.assertEqual(json.loads(path.read_text())['claude_config_dir'], str(elsewhere))
+        self.assertEqual(self.start_here(repo), 0)  # later shell without the variable
+        self.assertTrue(json.loads(path.read_text())['plugin'])

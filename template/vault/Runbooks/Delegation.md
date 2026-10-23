@@ -12,4 +12,5 @@ The lead assistant decides, plans, reviews and accepts. Cheaper workers do bound
 Rules:
 - Pass the worker the task's Objective, Next action, Blockers and the relevant evidence, never the whole vault.
 - Log each step: `ws run log <task> <step> --provider <p> --model <m> --tokens-in N --tokens-out N --seconds S --result ok|failed|accepted|rejected`. `ws run report` shows where time and tokens go.
-- If a worker is unavailable, say so; never silently switch providers.
+- For `ws delegate --run`, the role's `routing.json` preference is the declared fallback order. A nonzero exit or structured provider error (including quota rejection) tries the next headless provider; explicit provider overrides stay pinned. The result prints every attempt and the run log records each provider and outcome. Preparation-only providers are reported as skipped.
+- This explicit fallback policy adapts the quota-aware routing idea in [OmniRoute](https://github.com/cheaper-inference/OmniRoute); it does not use OmniRoute code or require a gateway.
