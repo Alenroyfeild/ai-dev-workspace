@@ -29,6 +29,57 @@ class PackagingTests(unittest.TestCase):
         self.assertEqual(exit_info.exception.code, 0)
         self.assertEqual(output.getvalue().strip(), 'ws 0.1.0-beta.5')
 
+    def _check_plugin_versions(self, root):
+        kit_version = json.loads((root / 'kit.json').read_text(encoding='utf-8'))['version']
+        manifests = (
+            '.claude-plugin/plugin.json',
+            '.codex-plugin/plugin.json',
+            '.cursor-plugin/plugin.json',
+        )
+        marketplaces = (
+            '.claude-plugin/marketplace.json',
+            '.cursor-plugin/marketplace.json',
+        )
+        for rel in manifests:
+            data = json.loads((root / rel).read_text(encoding='utf-8'))
+            self.assertEqual(data.get('version'), kit_version, f'{rel} version mismatch')
+        for rel in marketplaces:
+            data = json.loads((root / rel).read_text(encoding='utf-8'))
+            self.assertEqual(data['plugins'][0].get('version'), kit_version, f'{rel} version mismatch')
+
+    def test_plugin_manifest_and_marketplace_versions_equal_kit_json(self):
+        self._check_plugin_versions(ROOT)
+
+    def test_plugin_version_parity_fails_if_any_file_differs(self):
+        kit_version = json.loads((ROOT / 'kit.json').read_text(encoding='utf-8'))['version']
+        all_targets = [
+            ('.claude-plugin/plugin.json', False),
+            ('.codex-plugin/plugin.json', False),
+            ('.cursor-plugin/plugin.json', False),
+            ('.claude-plugin/marketplace.json', True),
+            ('.cursor-plugin/marketplace.json', True),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            (tmp_root / 'kit.json').write_text(json.dumps({'version': kit_version}), encoding='utf-8')
+            for rel, is_market in all_targets:
+                target_path = tmp_root / rel
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                content = {'plugins': [{'version': kit_version}]} if is_market else {'version': kit_version}
+                target_path.write_text(json.dumps(content), encoding='utf-8')
+
+            for rel, is_market in all_targets:
+                with self.subTest(differing=rel):
+                    target_path = tmp_root / rel
+                    mismatched = {'plugins': [{'version': '0.0.0-mismatch'}]} if is_market else {'version': '0.0.0-mismatch'}
+                    target_path.write_text(json.dumps(mismatched), encoding='utf-8')
+
+                    with self.assertRaises(AssertionError):
+                        self._check_plugin_versions(tmp_root)
+
+                    restored = {'plugins': [{'version': kit_version}]} if is_market else {'version': kit_version}
+                    target_path.write_text(json.dumps(restored), encoding='utf-8')
+
     @unittest.skipUnless(HAS_BUILD_TOOLS, 'setuptools and wheel are needed for artifact builds')
     def test_pip_builds_a_wheel_from_the_sdist(self):
         # pip and pipx build source installs through PEP 517, where the source folder is not importable by default.
