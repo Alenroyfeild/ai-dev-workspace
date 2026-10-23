@@ -9,7 +9,8 @@ Developers on a team need to share approved decisions, domain knowledge, and les
 ## Steps
 ```sh
 ws start --yes
-ws team init ../team-remote.git --attest-private --yes
+mkdir -p team
+ws team init team --folder --attest-private --yes
 ws remember "Wrap all JSON API responses in an envelope"
 ws scope task:main team
 ws share task:main --yes
