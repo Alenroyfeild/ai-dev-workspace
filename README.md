@@ -7,13 +7,6 @@ Your assistant remembers work between sessions in Markdown you own. Shared, dura
 <!-- Demo GIF -->
 ![Switch from Claude Code to Codex: the saved decision follows the task (animation)](https://raw.githubusercontent.com/Alenroyfeild/ai-dev-workspace/main/docs/demo.gif)
 
-<!-- videos:start -->
-### Watch (videos for 0.1.0b5)
-
-- [Watch the 2-minute explainer](https://youtu.be/w5EwQNO8Lz0)
-- [Under the hood: real commands, real output](https://youtu.be/NyxxiGO6XLQ)
-- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/raqbF2ZR1rY) · [Assistants](https://youtu.be/1Pxo6HrlSTg)
-<!-- videos:end -->
 ## Quick start
 
 Try offline before connecting a repo: `ws demo` · [5-minute tutorial](docs/TUTORIAL.md) · [Claude Code + Codex guide](docs/guides/share-memory-claude-code-codex.md) · [remove it](docs/TUTORIAL.md#remove-it)
@@ -33,6 +26,14 @@ Prefer a Claude Code plugin? Preview. Not yet listed in Anthropic's official plu
 Live-checked on beta.5 (2026-10-22). See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview).
 
 `ws start` previews every file and writes nothing until you confirm. Generated assistant hooks and configs stay local (`.git/info/exclude`), task memory lives outside the repo in `~/.ai-dev-workspace/<repo-name>`, and `ws start --undo` cleanly removes repo wiring.
+
+<!-- videos:start -->
+### Watch (videos for 0.1.0b5)
+
+- [Watch the 2-minute explainer](https://youtu.be/w5EwQNO8Lz0)
+- [Under the hood: real commands, real output](https://youtu.be/NyxxiGO6XLQ)
+- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/raqbF2ZR1rY) · [Assistants](https://youtu.be/1Pxo6HrlSTg)
+<!-- videos:end -->
 
 ## Use cases
 
