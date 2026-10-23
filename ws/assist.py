@@ -122,14 +122,18 @@ def feature_suggestions(root, add):
             add('connect-' + client, 'Installed client has no matching workspace connection: ' + client, 'ws connect ' + client, 'changes-config')
 
 
-def _workspace_established(root):
+def _checkpoint_total(root, tasks):
     checkpoints = 0
-    for task in core.task_list(root):
+    for task in tasks:
         try:
             checkpoints += int(core.task_read(root, task['id'], ['Next action'])['meta'].get('checkpoint_count', 0))
         except (TypeError, ValueError):
             pass
-    if checkpoints >= 3:
+    return checkpoints
+
+
+def _workspace_established(root):
+    if _checkpoint_total(root, core.task_list(root)) >= 3:
         return True
     try:
         created = datetime.date.fromisoformat(str(core.config(root).get('created', ''))[:10])
@@ -151,7 +155,7 @@ def suggestions(root, include_hidden=False):
     if repos and core.shutil.which('graphify') and not (Path(repos[0]) / 'graphify-out').exists():
         add('graph', 'Graphify installed; configured repository has no graphify-out directory', 'graphify ' + shlex.quote(repos[0]), 'external')
     tasks = core.task_list(root)
-    if not core.lesson_search(root, '') and sum(int(core.task_read(root, t['id'], ['Next action'])['meta'].get('checkpoint_count', 0)) for t in tasks) >= 5:
+    if not core.lesson_search(root, '') and _checkpoint_total(root, tasks) >= 5:
         add('lesson', 'No lessons after at least 5 recorded checkpoints', 'ws lesson add "<what happened → rule>"', 'local-reversible')
     for task in tasks:
         record = data.get('sessions', {}).get(task['id'], {})

@@ -12,6 +12,21 @@ class AssistTests(Base):
         patch = mock.patch.object(assist, 'feature_suggestions')
         patch.start(); self.addCleanup(patch.stop)
 
+    def test_malformed_checkpoint_count_does_not_hide_other_tasks_suggestions(self):
+        core.task_new(self.root, 'T-2', 'Valid checkpoint history')
+        for _ in range(5): core.checkpoint(self.root, 'T-2', 'in_progress', 'Synthetic next')
+        path = core.task_path(self.root, 'T-1')
+        with mock.patch.object(core, 'tools', return_value=[]), \
+                mock.patch.object(assist, 'cost_data', return_value=({}, {})), \
+                mock.patch.dict(os.environ, WS_OFFLINE='1'):
+            for invalid in ('not-a-number', ''):
+                with self.subTest(checkpoint_count=invalid):
+                    path.write_text(core.set_meta(path.read_text(), {'checkpoint_count': invalid}))
+                    before = path.read_bytes()
+                    self.assertIn('lesson', [item['id'] for item in assist.suggestions(self.root, True)])
+                    core.notices(self.root)  # session-start advisory path must also remain usable
+                    self.assertEqual(path.read_bytes(), before)
+
     def test_tool_suggestions_wait_for_established_workspace_and_notice_once(self):
         entries = [
             {'name': 'codeburn', 'level': 'recommended', 'installed': False,
