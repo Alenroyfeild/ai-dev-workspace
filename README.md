@@ -139,7 +139,7 @@ Testers on Cursor, Copilot (VS Code), Gemini CLI, or Antigravity: please share p
 - **Client coverage:** Claude Code and Codex are live-tested on macOS; Linux and Windows are CI-tested only. Cursor, Copilot (VS Code), Gemini CLI, and Antigravity are fixture-tested.
 - **Capture is best-effort:** Explicit CLI commands (`ws remember`, `ws checkpoint`) are deterministic; automatic transcript cue-word capture is best-effort.
 - **Guards are a safety net:** Pattern matching blocks common risky commands and secrets in commands or written files, but is not an unbypassable security boundary.
-- **Team sharing:** Tested with local private repositories; hosted two-person remote check is pending ([Roadmap](docs/ROADMAP.md)).
+- **Team sharing:** Multi-user flow tested on one Mac over a local HTTPS Git server: three separate profiles, sharing in both directions, generated Claude Code and Codex hook output. A hosted GitHub check and live assistant sessions are pending. ([Roadmap](docs/ROADMAP.md))
 
 ## Privacy & safety
 

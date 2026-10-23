@@ -23,7 +23,7 @@ ws start --undo
 Preview: Share vetted decisions, domain constraints, and lessons across a team via an explicit private Git repository.
 Nothing is shared automatically: every shared item requires deliberate opt-in (`--team` or `ws share`), and `ws sync` previews all outbound files before pushing.
 Limits:
-Tested on local private repositories; hosted two-person remote verification is pending.
+Multi-user flow tested on one Mac over a local HTTPS Git server: three separate profiles, sharing in both directions, generated Claude Code and Codex hook output. A hosted GitHub check and live assistant sessions are pending.
 Requires manual Git syncing via `ws sync`; there is no central database, background sync daemon, or real-time multi-user editing.
 Remote repositories must be strictly private; `--attest-private` requires developer confirmation before linking.
 ## Narration
