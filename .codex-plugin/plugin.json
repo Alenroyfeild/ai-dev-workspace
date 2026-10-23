@@ -1,6 +1,6 @@
 {
   "name": "ai-dev-workspace",
-  "version": "0.1.0-beta.5",
+  "version": "0.1.0-beta.6",
   "description": "Private task memory that Claude Code and Codex share: a short brief at session start, saved decisions, checkpoints and search.",
   "author": {
     "name": "Alenroyfeild"

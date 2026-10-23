@@ -8,7 +8,7 @@
       "name": "ai-dev-workspace",
       "source": "./",
       "description": "Private task memory that Claude Code, Codex and Cursor share. Inactive until you run ws start in a repo.",
-      "version": "0.1.0-beta.5"
+      "version": "0.1.0-beta.6"
     }
   ]
 }

@@ -1,1 +1,0 @@
-Added: Preview: a routing provider entry with "kind": "openai-compatible" runs delegated explorer/reviewer briefs through any OpenAI-compatible gateway (for example OmniRoute or LiteLLM), with the API key read only from the named environment variable and usable in the fallback chain.

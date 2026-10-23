@@ -20,14 +20,14 @@ HAS_BUILD_TOOLS = all(importlib.util.find_spec(name) for name in ('setuptools', 
 class PackagingTests(unittest.TestCase):
     def test_beta_kit_version_is_published_as_pep440(self):
         version = json.loads((ROOT / 'kit.json').read_text())['version']
-        self.assertEqual(packaging.package_version(version), '0.1.0b5')
+        self.assertEqual(packaging.package_version(version), '0.1.0b6')
 
     def test_cli_prints_kit_version_without_a_command(self):
         output = StringIO()
         with redirect_stdout(output), self.assertRaises(SystemExit) as exit_info:
             cli.main(['--version'])
         self.assertEqual(exit_info.exception.code, 0)
-        self.assertEqual(output.getvalue().strip(), 'ws 0.1.0-beta.5')
+        self.assertEqual(output.getvalue().strip(), 'ws 0.1.0-beta.6')
 
     def _check_plugin_versions(self, root):
         kit_version = json.loads((root / 'kit.json').read_text(encoding='utf-8'))['version']
@@ -108,7 +108,7 @@ class PackagingTests(unittest.TestCase):
                 self.assertFalse(any('/build/' in '/' + name for name in names), 'video build artifacts in wheel')
                 self.assertFalse(any(name.endswith(('.gif', '.mp4')) for name in names), 'demo media in wheel')
                 metadata = archive.read(next(name for name in names if name.endswith('.dist-info/METADATA'))).decode()
-                self.assertIn('Version: 0.1.0b5\n', metadata)
+                self.assertIn('Version: 0.1.0b6\n', metadata)
                 self.assertNotIn('](docs/', metadata)  # relative README links break on the PyPI page
                 self.assertIn('](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/', metadata)
                 self.assertIn('Project-URL: Changelog, ', metadata)
@@ -121,7 +121,7 @@ class PackagingTests(unittest.TestCase):
                 self.assertFalse(any(item.name.endswith(('.gif', '.mp4')) for item in archive.getmembers()), 'demo media in sdist')
                 metadata = next(item for item in archive.getmembers() if item.name.endswith('/PKG-INFO'))
                 body = archive.extractfile(metadata).read().decode()
-                self.assertIn('Version: 0.1.0b5\n', body)
+                self.assertIn('Version: 0.1.0b6\n', body)
                 self.assertTrue(any(item.name.endswith('/ws/cli.py') for item in archive.getmembers()))
 
 
