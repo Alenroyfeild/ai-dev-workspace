@@ -100,3 +100,45 @@ class VideoTests(unittest.TestCase):
     def test_build_is_excluded_from_git_and_source_manifest(self):
         self.assertIn('build/', (ROOT / '.gitignore').read_text().splitlines())
         self.assertIn('prune build', (ROOT / 'MANIFEST.in').read_text().splitlines())
+
+    # --- version-synced video links (docs/video/videos.json) ---
+    def videos(self, temp, **latest):
+        path = Path(temp) / 'videos.json'
+        entry = dict({'explainer': None, 'tour': None, 'shorts': {'Guards': None}}, **latest)
+        path.write_text(__import__('json').dumps({'latest': '9.9', 'releases': {'9.9': entry}}))
+        return path
+
+    def test_videos_json_accepts_only_youtube_links(self):
+        with tempfile.TemporaryDirectory() as temp:
+            self.assertEqual(self.video.links_block(self.video.load_videos(self.videos(temp))), '')
+            with self.assertRaisesRegex(ValueError, 'only YouTube'):
+                self.video.load_videos(self.videos(temp, explainer='https://example.com/v.mp4'))
+
+    def test_links_block_lists_uploaded_videos_and_rewrite_is_idempotent(self):
+        url = 'https://youtu.be/' + 'a' * 11
+        with tempfile.TemporaryDirectory() as temp:
+            data = self.video.load_videos(self.videos(temp, explainer=url, shorts={'Guards': url}))
+            root = Path(temp)
+            (root / 'docs').mkdir()
+            for name in self.video.LINKED:
+                (root / name).write_text('top\n<!-- videos:start -->\nold\n<!-- videos:end -->\nend\n')
+            self.video.write_links(data, root)
+            once = (root / 'README.md').read_text()
+            self.video.write_links(data, root)
+            self.assertEqual((root / 'README.md').read_text(), once)
+            self.assertIn('[Watch the 2-minute explainer](' + url + ')', once)
+            self.assertIn('[Guards](' + url + ')', once)
+            self.assertNotIn('old', once)
+
+    def test_readme_and_tutorial_video_blocks_match_videos_json(self):
+        data = self.video.load_videos()
+        block = self.video.START + '\n' + self.video.links_block(data) + self.video.END
+        for name in self.video.LINKED:
+            self.assertIn(block, (ROOT / name).read_text(encoding='utf-8'), name + ': run bin/make-video --links')
+
+    def test_release_check_names_missing_steps(self):
+        with tempfile.TemporaryDirectory() as temp:
+            data = self.video.load_videos(self.videos(temp))
+            problems = self.video.release_check(data, '9.9')
+            self.assertTrue(any('explainer not uploaded' in p for p in problems))
+            self.assertTrue(any('latest is 9.9' in p for p in self.video.release_check(data, '10.0')))

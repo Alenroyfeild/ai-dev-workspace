@@ -117,12 +117,81 @@ def render(path, data, clip, python):
              f'[0:v]{scale}[t];[1:v]{scale}[s];[t][s]concat=n=2:v=1:a=0[v]', '-map', '[v]', '-an', clip], env=env)
 
 
+YOUTUBE = re.compile(r'https://(?:www\.youtube\.com/watch\?v=|youtu\.be/)[A-Za-z0-9_-]{11}')
+LINKED = ('README.md', 'docs/TUTORIAL.md')
+START, END = '<!-- videos:start -->', '<!-- videos:end -->'
+
+
+def load_videos(path=None):
+    data = json.loads((path or ROOT / 'docs/video/videos.json').read_text(encoding='utf-8'))
+    releases = data.get('releases') if isinstance(data, dict) else None
+    if not isinstance(releases, dict) or data.get('latest') not in releases:
+        raise ValueError('videos.json needs "latest" naming one of its "releases"')
+    for version, entry in releases.items():
+        urls = [entry.get('explainer'), entry.get('tour'), *(entry.get('shorts') or {}).values()]
+        if any(url is not None and not (isinstance(url, str) and YOUTUBE.fullmatch(url)) for url in urls):
+            raise ValueError(f'videos.json {version}: only YouTube watch/youtu.be URLs or null')
+    return data
+
+
+def links_block(data):
+    """Markdown for the latest edition; empty until something is uploaded (no placeholder links)."""
+    latest = data['releases'][data['latest']]
+    items = [f'- [{label}]({latest[key]})' for key, label in (('explainer', 'Watch the 2-minute explainer'),
+             ('tour', 'Under the hood: real commands, real output')) if latest.get(key)]
+    shorts = [f'[{name}]({url})' for name, url in (latest.get('shorts') or {}).items() if url]
+    if shorts:
+        items.append('- Feature shorts: ' + ' · '.join(shorts))
+    older = [f'[{v}]({e["explainer"]})' for v, e in data['releases'].items() if v != data['latest'] and e.get('explainer')]
+    if older:
+        items.append('- Earlier editions: ' + ' · '.join(older))
+    return f'### Watch (videos for {data["latest"]})\n\n' + '\n'.join(items) + '\n' if items else ''
+
+
+def write_links(data, root=ROOT):
+    block = links_block(data)
+    for name in LINKED:
+        path = root / name
+        text = path.read_text(encoding='utf-8')
+        if text.count(START) != 1 or text.count(END) != 1:
+            raise ValueError(f'{name}: needs exactly one {START} ... {END} block')
+        head, rest = text.split(START); _, tail = rest.split(END)
+        path.write_text(head + START + '\n' + block + END + tail, encoding='utf-8')
+
+
+def release_check(data, version):
+    """Video rules for a release: an edition for this version, the explainer uploaded, README in sync."""
+    problems = []
+    entry = data['releases'].get(version)
+    if data['latest'] != version or entry is None:
+        problems.append(f'videos.json latest is {data["latest"]}, release is {version}')
+    elif not entry.get('explainer'):
+        problems.append(f'{version}: explainer not uploaded (paste its YouTube URL)')
+    block = links_block(data)
+    for name in LINKED:
+        text = (ROOT / name).read_text(encoding='utf-8')
+        if START + '\n' + block + END not in text:
+            problems.append(f'{name}: video links are stale; run bin/make-video --links')
+    return problems
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--check', action='store_true', help='validate only; never run lesson commands')
     parser.add_argument('--ws-python', type=Path, default=Path(sys.executable), help='Python in the released ws venv')
+    parser.add_argument('--links', action='store_true', help='rewrite the README/TUTORIAL video block from docs/video/videos.json')
+    parser.add_argument('--release-check', metavar='VERSION', help='list missing video steps for this release; exit 1 if any')
     args = parser.parse_args(argv)
     try:
+        if args.links or args.release_check:
+            data = load_videos()
+            if args.links:
+                write_links(data); print('video links updated')
+            if args.release_check:
+                problems = release_check(data, args.release_check)
+                print('\n'.join(problems) or f'videos ready for {args.release_check}')
+                return 1 if problems else 0
+            return 0
         lessons = [(p, parse(p)) for p in sorted((ROOT / 'docs/video').glob('[0-9][0-9]-*.md'))]
         if not lessons:
             raise ValueError('no lessons')
