@@ -3,9 +3,11 @@
 tests/fixtures/records/<tag>/ holds the portable records (workspace.json, tasks, learnings, knowledge)
 that the tag's own `ws` wrote from synthetic text; __REPO__ stands for the code checkout path.
 """
+import datetime
 import json
 import re
 import subprocess
+from unittest import mock
 from pathlib import Path
 from test_ws import Base
 from ws import core
@@ -68,6 +70,18 @@ class RecordCorpusTests(Base):
         self.assertEqual(core.task_format(core.parse_meta(after['text'])), 1)  # a released file reads as format 1 ...
         self.assertNotIn('format', core.parse_meta(after['text']))  # ... and a checkpoint does not rewrite it to say so
         self.assertEqual(core.lesson_search(root, 'cents')[0][:12], '- 2026-10-16')
+
+    def test_default_recap_includes_fixture_at_its_recorded_date(self):
+        root = self.restore('v0.1.0-beta.1')
+        real_datetime = datetime.datetime
+
+        class FrozenDateTime(real_datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return real_datetime(2026, 10, 23, 12, tzinfo=tz)
+
+        with mock.patch.object(core.datetime, 'datetime', FrozenDateTime):
+            self.assertIn(DECISION, core.recap(root)['markdown'])
 
     def test_records_from_every_release_still_load(self):
         tags = sorted(p.name for p in CORPUS.iterdir() if p.is_dir())
