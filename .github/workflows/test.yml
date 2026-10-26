@@ -8,23 +8,50 @@ concurrency:  # a newer commit on a PR cancels its older run; push runs get thei
   group: test-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  changes:  # docs-only PRs test on Ubuntu only; every code PR, push to dev/main and `full-ci` label runs the whole matrix
+    runs-on: ubuntu-latest
+    outputs: {full: "${{ steps.c.outputs.full }}"}
+    steps:
+      - uses: actions/checkout@v7
+        with: {fetch-depth: 0}
+      - id: c
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ] || [ "${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}" = true ]; then
+            echo full=true >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD)
+          printf '%s\n' "$files"
+          if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^(README\.md|CHANGELOG\.md|llms(-full)?\.txt|docs/|changelog\.d/)'; then
+            echo full=false >> "$GITHUB_OUTPUT"
+          else
+            echo full=true >> "$GITHUB_OUTPUT"
+          fi
   test:
+    needs: changes
     runs-on: ${{ matrix.os }}
+    env:  # the six required checks still report; on a docs-only PR the macOS/Windows ones pass without running tests
+      RUN_TESTS: ${{ needs.changes.outputs.full == 'true' || matrix.os == 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.9", "3.12"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - if: env.RUN_TESTS != 'true'
+        run: echo "Docs-only PR, so this OS is skipped here; the full matrix runs after merge on dev."
+      - if: env.RUN_TESTS == 'true'
+        uses: actions/checkout@v7
+      - if: env.RUN_TESTS == 'true'
+        uses: actions/setup-python@v7
         with: {python-version: "${{ matrix.python }}"}
-      - if: runner.os == 'Windows'
+      - if: env.RUN_TESTS == 'true' && runner.os == 'Windows'
         run: chcp 65001
-      - run: python -m unittest discover -s tests -v
+      - if: env.RUN_TESTS == 'true'
+        run: python -m unittest discover -s tests -v
         env: {PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8"}
       - name: Shallow checkout, offline, minimal PATH
-        if: runner.os != 'Windows'
+        if: env.RUN_TESTS == 'true' && runner.os != 'Windows'
         shell: bash
         run: |
           python_path="$(command -v python)"
