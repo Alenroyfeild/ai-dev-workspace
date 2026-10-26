@@ -423,6 +423,8 @@ def main(argv=None):
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
     s = l.add_parser('search', help='find saved lessons'); s.add_argument('query', nargs='?', default='', help='words to look for (default: all)')
     s = l.add_parser('promote', help='write an inactive draft from a repeated-lesson ID'); s.add_argument('id')
+    s = l.add_parser('review', help='list old lesson date stamps for manual review; never delete')
+    s.add_argument('--days', type=int, default=60, help='strictly older than this many days (default: 60)')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
     s = f.add_parser('add', help='record feedback locally'); s.add_argument('text'); s.add_argument('--kind', default='idea', help='idea, bug, praise or friction (default idea)'); s.add_argument('--source', default='user')
     s = f.add_parser('list', help='list feedback items'); s.add_argument('--all', action='store_true', help='include items already done')
@@ -882,6 +884,8 @@ def main(argv=None):
             else: out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query, category=a.category))
         elif a.cmd == 'lesson':
+            if a.action == 'review':
+                out(core.lesson_review(root, a.days)); return 0
             if a.action == 'promote':
                 from . import lesson_rules
                 out(lesson_rules.promote(root, a.id)); return 0
