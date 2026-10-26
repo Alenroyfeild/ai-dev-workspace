@@ -15,7 +15,7 @@ KEY = 'gw' + '-secret-' + 'value' + '-0123456789'  # built from parts; never a r
 
 class Fake:
     """Local OpenAI-compatible server on 127.0.0.1 and a random port; records every request."""
-    def __init__(self, status=200, content='UNVERIFIED sample.py:1 gateway finding', delay=0, location=None):
+    def __init__(self, status=200, content='UNVERIFIED sample.py:1 gateway finding', delay=0, location=None, truncated=False):
         self.requests = []; outer = self
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *args): pass
@@ -25,6 +25,11 @@ class Fake:
                 time.sleep(delay)
                 if location:
                     self.send_response(302); self.send_header('Location', location); self.end_headers(); return
+                if truncated:
+                    self.send_response(200); self.send_header('Transfer-Encoding', 'chunked'); self.end_headers()
+                    self.wfile.write(b'40\r\n{"choices":[')
+                    self.close_connection = True
+                    return
                 text = content.replace('{key}', KEY)
                 payload = json.dumps({'choices': [{'message': {'content': text}}], 'usage': {'prompt_tokens': 7, 'completion_tokens': 3}}) if status == 200 \
                     else json.dumps({'error': 'bad key ' + KEY})
@@ -163,6 +168,17 @@ class GatewayTests(Base):
         self.codex('print("UNVERIFIED sample.py:1 local finding")')
         with self.environ():
             result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertEqual([(a['provider'], a['status']) for a in result['provider_attempts']], [('gw', 'failed'), ('codex', 'ok')])
+        self.assertEqual([(e['provider'], e['result']) for e in core.run_entries(self.root, 'T-1')], [('gw', 'failed'), ('codex', 'ok')])
+        self.assertKeyAbsent(json.dumps(result))
+
+    def test_truncated_chunked_reply_records_failure_and_falls_back(self):
+        broken = self.serve(truncated=True)
+        self.configure(broken.url, preference=['gw', 'codex'])
+        self.codex('print("UNVERIFIED sample.py:1 local finding")')
+        with self.environ():
+            result = orchestration.delegate(self.root, 'T-1', 'explorer', run=True)
+        self.assertEqual(len(broken.requests), 1)
         self.assertEqual([(a['provider'], a['status']) for a in result['provider_attempts']], [('gw', 'failed'), ('codex', 'ok')])
         self.assertEqual([(e['provider'], e['result']) for e in core.run_entries(self.root, 'T-1')], [('gw', 'failed'), ('codex', 'ok')])
         self.assertKeyAbsent(json.dumps(result))
