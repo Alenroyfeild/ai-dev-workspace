@@ -1815,6 +1815,31 @@ def lesson_search(root, query):
     return [l for l in lines if any(w in LESSON_META_RE.sub('', l.rstrip()).lower() for w in words)] if words else lines
 
 
+def lesson_review(root, days=60):
+    """Read-only aging by saved lesson date, never inferred last-use history."""
+    if isinstance(days, bool) or not isinstance(days, int) or days < 0:
+        raise WsError('Lesson review days must be a non-negative integer.')
+    today = datetime.date.fromisoformat(now()[:10])
+    try: cutoff = today - datetime.timedelta(days=days)
+    except OverflowError: raise WsError('Lesson review days exceeds the calendar range.') from None
+    path = inside(vault(root) / 'Learnings.md', [root])
+    raw = strip_private(read_lenient(path)) if path.exists() else ''
+    rows, undated = [], 0
+    for line in raw.splitlines():
+        if not line.startswith('- ') or re.search(r'#private\b', line, re.I): continue
+        match = re.fullmatch(r'- (\d{4}-\d{2}-\d{2})\s+(.*)', line)
+        try: date = datetime.date.fromisoformat(match[1]) if match else None
+        except ValueError: date = None
+        if date is None:
+            undated += 1; continue
+        if date >= cutoff: continue
+        text = redact(LESSON_META_RE.sub('', match[2].rstrip())).strip()
+        if text: rows.append({'date': date.isoformat(), 'age_days': (today-date).days, 'text': text})
+    return {'days': days, 'before': cutoff.isoformat(), 'undated': undated,
+            'basis': 'Lesson date stamps, not last use; review manually. Nothing is changed.',
+            'lessons': sorted(rows, key=lambda row: row['date'])}
+
+
 _BRIEF_GIT = threading.local()  # memo of read-only git output for one hook/brief; absent otherwise
 
 
