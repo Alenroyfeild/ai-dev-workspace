@@ -1,32 +1,26 @@
+# Measurement-only branch for CI2. DO NOT MERGE this workflow into dev/main.
 name: test
 on:
-  push:
-    branches: [dev, main]  # feature branches are tested through their pull request, once per commit
-  pull_request:
   workflow_dispatch:
-concurrency:  # a newer commit on a PR cancels its older run; push runs get their own group (run_id), so no dev/main run is ever replaced
-  group: test-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ["3.9", "3.12"]
+    name: CI2 Windows 3.12 durations
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
-        with: {python-version: "${{ matrix.python }}"}
-      - if: runner.os == 'Windows'
-        run: chcp 65001
-      - run: python -m unittest discover -s tests -v
+        with: {python-version: "3.12"}
+      - name: Full suite with isolated HOME and per-test durations
+        shell: pwsh
         env: {PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8"}
-      - name: Shallow checkout, offline, minimal PATH
-        if: runner.os != 'Windows'
-        shell: bash
         run: |
-          python_path="$(command -v python)"
-          PATH=/usr/bin:/bin WS_OFFLINE=1 "$python_path" -m unittest discover -s tests
-        env: {PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8"}
+          $fixtureRoot = Join-Path $env:RUNNER_TEMP 'ci2-home'
+          New-Item -ItemType Directory -Force $fixtureRoot | Out-Null
+          $env:HOME = $fixtureRoot
+          $env:USERPROFILE = $fixtureRoot
+          $env:CODEX_HOME = Join-Path $fixtureRoot '.codex'
+          $env:CLAUDE_CONFIG_DIR = Join-Path $fixtureRoot '.claude'
+          $env:GEMINI_CONFIG_DIR = Join-Path $fixtureRoot '.gemini'
+          $env:XDG_CONFIG_HOME = Join-Path $fixtureRoot '.config'
+          python -m unittest discover -s tests --durations 25
+          exit $LASTEXITCODE
