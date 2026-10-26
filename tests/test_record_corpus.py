@@ -51,7 +51,7 @@ class RecordCorpusTests(Base):
         self.assertEqual(task[0]['next'], NEXT)
         self.assertIn('PRICE-1', [t['id'] for t in core.task_list(root)])
         self.assertIn(DECISION, core.brief(root, 'PRICE-1'))
-        self.assertIn(DECISION, core.recap(root)['markdown'])
+        self.assertIn(DECISION, core.recap(root, '2026-10-16')['markdown'])
         self.assertIn(DECISION, core.pr_notes(root, 'PRICE-1')['markdown'])
         self.assertTrue(core.upgrade_workspace(root, dry_run=True)['dry_run'])
         before = core.task_read(root, 'PRICE-1')
