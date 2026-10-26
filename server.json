@@ -3,7 +3,7 @@
   "name": "io.github.alenroyfeild/ai-dev-workspace",
   "title": "ai-dev-workspace",
   "description": "Shared Markdown task memory for Claude Code and Codex with local stdio MCP access.",
-  "version": "0.1.0b5",
+  "version": "0.1.0b6",
   "websiteUrl": "https://github.com/Alenroyfeild/ai-dev-workspace",
   "repository": {
     "url": "https://github.com/Alenroyfeild/ai-dev-workspace",
@@ -15,7 +15,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "ai-dev-workspace",
-      "version": "0.1.0b5",
+      "version": "0.1.0b6",
       "runtimeHint": "uvx",
       "transport": {"type": "stdio"}
     }

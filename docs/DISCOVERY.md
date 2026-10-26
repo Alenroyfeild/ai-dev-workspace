@@ -14,7 +14,7 @@ The existing topics checked on 2026-10-23 are `agent-memory`, `agents-md`,
 `ai-agents`, `ai-coding-assistant`, `claude-code`, `codex`, `context-engineering`,
 `cursor`, `developer-tools`, `gemini-cli`, `github-copilot`, `llm`, `mcp`, and
 `model-context-protocol`. No hosted website or directory indexing is implied.
-Antigravity hooks are Coming next (beta.6), fixture-tested rather than live-checked.
+Antigravity hooks are a Preview in beta.6, fixture-tested rather than live-checked.
 
 `setup.py` adds the three search terms plus Tutorial and Client verification URLs.
 These are metadata for the next package release; this PR does not change PyPI.
@@ -22,7 +22,7 @@ These are metadata for the next package release; this PR does not change PyPI.
 was checked against the beta.5 README before drafting the summaries.
 
 [llms.txt](../llms.txt) is the short entry point; [llms-full.txt](../llms-full.txt)
-adds workflow and plugin-preview details. Stable links use main; unreleased guide
-links use dev and are labelled Coming next (beta.6). They describe existing behavior
+adds workflow and plugin-preview details. Links use main; unreleased work is listed
+under Coming next without links. They describe existing behavior
 and limits without claiming guaranteed recall, savings or directory acceptance.
 The maintainer submits registry/directory entries and applies repository settings.
