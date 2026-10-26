@@ -38,7 +38,7 @@ def preview(database, project):
     items = []
     for identifier, kind, date, *values in rows:
         raw = '\n'.join(str(v) for v in values if v)
-        if re.search(r'#private\b', raw, re.I) or raw.lstrip().lower().startswith('/private'): continue
+        if re.search(r'#private\b', raw, re.I) or any(v.lstrip().lower().startswith('/private') for v in values if v): continue
         body = ' '.join(core.plain_text(raw).split()[:150])
         if not body: continue
         origin = core.plain_text(f'claude-mem observation {identifier}, {date}')
