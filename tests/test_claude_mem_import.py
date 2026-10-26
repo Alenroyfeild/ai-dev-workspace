@@ -54,6 +54,20 @@ class ClaudeMemImportTests(Base):
         with contextlib.closing(sqlite3.connect(str(self.db))) as db, db: db.execute('DROP TABLE observations')
         with self.assertRaises(core.WsError): claude_mem.import_store(self.root, self.db, 'sample')
 
+    def test_private_narrative_marker_is_checked_before_fields_are_joined(self):
+        with contextlib.closing(sqlite3.connect(str(self.db))) as db, db:
+            db.execute('UPDATE observations SET narrative=? WHERE id=1', ('\n /PRIVATE HIDDEN_FIELD_827',))
+        before = self.db.read_bytes()
+        self.assertEqual(claude_mem.import_store(self.root, self.db, 'sample')['items'], [])
+        self.assertEqual(self.db.read_bytes(), before)
+        applied = run_ws('import', 'claude-mem', '--db', str(self.db), '--project', 'sample', '--apply', cwd=self.root, input='y\n')
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertNotIn('HIDDEN_FIELD_827', applied.stdout + applied.stderr)
+        self.assertFalse(list((core.vault(self.root) / 'Decisions').glob('*.md')))
+        with contextlib.closing(sqlite3.connect(str(self.db))) as db, db:
+            db.execute('UPDATE observations SET narrative=? WHERE id=1', ('Describe the /private command without importing private notes.',))
+        self.assertEqual(len(claude_mem.import_store(self.root, self.db, 'sample')['items']), 1)
+
     def test_cli_preview_then_confirm(self):
         args = ('import', 'claude-mem', '--db', str(self.db), '--project', 'sample')
         preview = run_ws(*args, cwd=self.root)
