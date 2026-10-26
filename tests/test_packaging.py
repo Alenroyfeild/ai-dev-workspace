@@ -80,6 +80,13 @@ class PackagingTests(unittest.TestCase):
                     restored = {'plugins': [{'version': kit_version}]} if is_market else {'version': kit_version}
                     target_path.write_text(json.dumps(restored), encoding='utf-8')
 
+    def test_mcp_registry_server_json_matches_the_package_version(self):
+        # The registry entry points at the PyPI release, so it must name the version this tree builds.
+        expected = packaging.package_version(json.loads((ROOT / 'kit.json').read_text(encoding='utf-8'))['version'])
+        server = json.loads((ROOT / 'server.json').read_text(encoding='utf-8'))
+        self.assertEqual(server['version'], expected)
+        self.assertEqual([p['version'] for p in server['packages']], [expected] * len(server['packages']))
+
     @unittest.skipUnless(HAS_BUILD_TOOLS, 'setuptools and wheel are needed for artifact builds')
     def test_pip_builds_a_wheel_from_the_sdist(self):
         # pip and pipx build source installs through PEP 517, where the source folder is not importable by default.
