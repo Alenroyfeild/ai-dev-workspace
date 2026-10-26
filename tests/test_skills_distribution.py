@@ -34,3 +34,21 @@ class SkillDistributionTests(unittest.TestCase):
                 compatibility = meta.get("compatibility", "")
                 self.assertIn("ws on PATH", compatibility)
                 self.assertIn("ws start", compatibility)
+
+    def test_handoff_skill_records_environment_and_evidence_checklist(self):
+        text = (ROOT / "skills/handoff/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("git status -sb", text)
+        self.assertIn("unpushed commits", text)
+        self.assertRegex(text, r"(?i)branch.*(?:pr|pull request|ci)")
+        self.assertRegex(text, r"(?i)running processes|dev servers|tmux")
+        self.assertRegex(text, r"(?i)attach|inspection")
+        self.assertRegex(text, r"(?i)checks run")
+        self.assertRegex(text, r"(?i)risks")
+
+    def test_pickup_skill_checks_for_environment_drift_before_continuing(self):
+        text = (ROOT / "skills/pickup/SKILL.md").read_text(encoding="utf-8")
+        self.assertRegex(text, r"(?i)drift")
+        self.assertRegex(text, r"(?i)branch")
+        self.assertRegex(text, r"(?i)uncommitted")
+        self.assertRegex(text, r"(?i)failing checks")
+        self.assertRegex(text, r"(?i)flag")
