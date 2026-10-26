@@ -25,6 +25,7 @@ Beta.6 expands cross-client memory support with preview plugins for Claude Code,
 ### Changed
 
 - Align release documentation with beta.6 Stable features and Preview limits for plugins, gateways, imports and Antigravity hooks.
+- The MCP registry entry (server.json) names 0.1.0b6, and a packaging test keeps it equal to the package version.
 
 ### Previews
 
