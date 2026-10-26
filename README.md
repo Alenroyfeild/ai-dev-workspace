@@ -28,11 +28,12 @@ Live-checked on beta.5 (2026-10-22). See the [plugin preview](docs/ADVANCED.md#c
 `ws start` previews every file and writes nothing until you confirm. Generated assistant hooks and configs stay local (`.git/info/exclude`), task memory lives outside the repo in `~/.ai-dev-workspace/<repo-name>`, and `ws start --undo` cleanly removes repo wiring.
 
 <!-- videos:start -->
-### Watch (videos for 0.1.0b5)
+### Watch (videos for 0.1.0b6)
 
-- [Watch the 2-minute explainer](https://youtu.be/w5EwQNO8Lz0)
-- [Under the hood: real commands, real output](https://youtu.be/NyxxiGO6XLQ)
-- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/raqbF2ZR1rY) · [Assistants](https://youtu.be/1Pxo6HrlSTg)
+- [Watch the 2-minute explainer](https://youtu.be/sfcBNSELq-8)
+- [Under the hood: real commands, real output](https://youtu.be/ZmwwgYzZUJY)
+- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/_jmPEb2wSj4) · [Assistants](https://youtu.be/R6-hfqvz1YA) · [Install as a plugin (Preview)](https://youtu.be/BnbVLSl1vVs)
+- Earlier editions: [0.1.0b5](https://youtu.be/w5EwQNO8Lz0)
 <!-- videos:end -->
 
 ## Use cases
