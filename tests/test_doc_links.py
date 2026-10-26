@@ -17,7 +17,7 @@ ALLOWLIST = {}
 
 
 def doc_files():
-    files = [ROOT / n for n in ('README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'llms.txt', 'bench/README.md')]
+    files = [ROOT / n for n in ('README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'llms.txt', 'llms-full.txt', 'bench/README.md')]
     files += sorted((ROOT / 'docs').rglob('*.md'))
     files += sorted(ROOT.glob('packs/*/AGENTS.snippet.md'))
     files += sorted(ROOT.glob('skills/**/SKILL.md'))

@@ -29,7 +29,7 @@ packs/android/
 }
 ```
 
-- `kind`: `domain` (knowledge for a platform), `worker` (a cheaper executor), `editor` (a way to read the vault), or `guard` (the built-in `guards` and `discipline` packs: hooks that `ws start` adds to Claude Code and Codex while the pack is on).
+- `kind`: `domain` (knowledge for a platform), `worker` (a cheaper executor), `editor` (a way to read the vault), `rules` (Stable: opt-in advice like `behavior`, not enforcement), or `guard` (the built-in `guards` and `discipline` packs: hooks that `ws start` adds to Claude Code and Codex while the pack is on).
 - `next`: optional lines `ws pack add` prints after installing, such as "run ws start again".
 - `requires`: each entry has `cmd` (checked on PATH) or `app` (checked in /Applications), plus `why` and `install`. `ws doctor` shows unmet ones with the install line.
 
@@ -40,3 +40,39 @@ packs/android/
 - A worker pack that can change files or run commands must ship a `selftest.sh` that checks effects on disk and prints `SELFTEST OK` only when every check passed.
 - Use `<kit>` in `AGENTS.snippet.md` for paths into the kit; `ws` replaces it with the real path.
 - Add a test in `tests/` if the pack adds code.
+
+## Optional digest advice
+
+Preview in beta.6 (opt-in, size-only advice): In a started repo, run `ws pack add digest`, then `ws start` to review and apply
+local hook changes. Restart Claude Code or Codex to refresh its MCP catalog.
+The core profile then lists `digest_file` alongside the seven memory tools;
+explicit custom tool lists stay unchanged. The existing tool accepts `path` and
+optional `focus`, reads only workspace/linked-repo files, and redacts summaries.
+
+For successful tool outputs above 40 KB (40,000 bytes), a PostToolUse hook adds a size-only
+suggestion to use `ws digest <file>` or `digest_file`. Structured responses are
+measured as compact UTF-8 JSON. The hook never saves the output, changes it,
+blocks a call or creates a summary automatically. Save a log inside an allowed
+repo yourself before digesting it. Smaller, malformed or unrelated events are
+ignored. The hint is advisory and contains no tool-output text or input paths.
+
+Remove it with `ws pack remove digest`, rerun `ws start`, and restart the client.
+This removes the advertised extra tool and hook. Existing digest calls remain
+available by name, as with other tools outside the selected MCP profile.
+
+[Headroom](https://github.com/headroomlabs-ai/headroom/tree/e995eb9f1dacac7ed548758406de6c1508caef95)
+(Apache-2.0) inspired the large-output reminder; no code or prose was copied.
+Headroom is a separate compression proxy/adapter, chosen and configured by the
+user. This pack adds no proxy, routes no traffic, requires no dependency and
+makes no claim about combined live compatibility or savings.
+
+Contracts: [MCP tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools),
+[Claude hooks](https://code.claude.com/docs/en/hooks) and
+[Codex hooks](https://developers.openai.com/codex/hooks/). The hook returns only
+`hookSpecificOutput.additionalContext`; clients decide how to present it.
+
+## Behavior guidelines
+
+Stable in beta.6: `ws pack add behavior` adds short, opt-in engineering guidelines
+through AGENTS.md. They advise thinking first, minimal edits and verification;
+they do not enforce policy or learn suggestions from session patterns.

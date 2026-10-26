@@ -6,6 +6,8 @@ graft mcp
 graft bin
 graft docs
 prune tests
+prune build
+recursive-exclude docs *.gif *.mp4
 prune packs/codex-worker/runtime
 global-exclude *.pyc .DS_Store
 recursive-exclude * __pycache__/*

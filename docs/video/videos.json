@@ -1,0 +1,32 @@
+{
+  "latest": "0.1.0b6",
+  "releases": {
+    "0.1.0b5": {
+      "explainer": "https://youtu.be/w5EwQNO8Lz0",
+      "tour": "https://youtu.be/NyxxiGO6XLQ",
+      "shorts": {
+        "Switch assistants": "https://youtu.be/GAX8Jbl4KqY",
+        "Resume the next step": "https://youtu.be/d4iicMtNq0o",
+        "Dead ends": "https://youtu.be/Pf5JuXsKz98",
+        "Skills": "https://youtu.be/NI69JfxGR_s",
+        "Team workspace (Preview)": "https://youtu.be/-BlKcnaS6yM",
+        "Guards": "https://youtu.be/raqbF2ZR1rY",
+        "Assistants": "https://youtu.be/1Pxo6HrlSTg"
+      }
+    },
+    "0.1.0b6": {
+      "explainer": "https://youtu.be/sfcBNSELq-8",
+      "tour": "https://youtu.be/ZmwwgYzZUJY",
+      "shorts": {
+        "Switch assistants": "https://youtu.be/GAX8Jbl4KqY",
+        "Resume the next step": "https://youtu.be/d4iicMtNq0o",
+        "Dead ends": "https://youtu.be/Pf5JuXsKz98",
+        "Skills": "https://youtu.be/NI69JfxGR_s",
+        "Team workspace (Preview)": "https://youtu.be/-BlKcnaS6yM",
+        "Guards": "https://youtu.be/_jmPEb2wSj4",
+        "Assistants": "https://youtu.be/R6-hfqvz1YA",
+        "Install as a plugin (Preview)": "https://youtu.be/BnbVLSl1vVs"
+      }
+    }
+  }
+}

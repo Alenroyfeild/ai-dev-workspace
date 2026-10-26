@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/bin/ws-python\" \"${PLUGIN_ROOT}/bin/ws-plugin\" --client codex",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/bin/ws-python\" \"${PLUGIN_ROOT}/bin/ws-plugin\" --client codex",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/bin/ws-python\" \"${PLUGIN_ROOT}/bin/ws-plugin\" --client codex",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/bin/ws-python\" \"${PLUGIN_ROOT}/bin/ws-plugin\" --client codex",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/bin/ws-python\" \"${PLUGIN_ROOT}/bin/ws-plugin\" --client codex",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

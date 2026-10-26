@@ -6,7 +6,24 @@ Most workspaces need only `ws tools`, `ws assist` and the defaults. These settin
 
 `ws route [role]` resolves a binding from `routing.json` (default role: lead). Availability means the CLI is on `PATH` and a model is configured; it does not verify login or account access. Ordered preferences choose an available provider and report every skipped provider; an explicit provider override pins one provider and stops if it is unavailable. There is no silent fallback. Root `role_overrides` can set provider/preference, tier, family, model or effort. Managed defaults may change on upgrade; root overrides are preserved. Claude family aliases and explicit Codex model IDs are supported. Ollama requires an already-installed local model; the kit never pulls models.
 
-`ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#delegate).
+Preview in beta.6: `ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Fallback tries only the declared providers; a timeout counts as a failed attempt. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#delegate).
+
+### OpenAI-compatible gateway (Preview)
+
+Preview: a provider entry can point at any server that speaks the OpenAI chat-completions API, such as a local OmniRoute or LiteLLM proxy. The idea comes from users of those gateways; the implementation here is our own and shares no code with them. How far it is tested: only against a local fake server in our test suite, not against a live OmniRoute or LiteLLM, so try it with your own gateway first. Released in beta.6 as Preview; the local fake-server check is not live gateway proof.
+
+Add the entry under `_ws_managed.providers` in `routing.json` (upgrades keep your providers), then route a role to it with `role_overrides`. Nothing uses the gateway unless you do both:
+
+```json
+"providers": {"gateway": {"kind": "openai-compatible", "base_url": "http://localhost:20128/v1", "model": "your-model-id", "api_key_env": "OPENAI_API_KEY"}}
+"role_overrides": {"explorer": {"preference": ["gateway", "codex"]}}
+```
+
+- `ws delegate TASK --role explorer --run` sends the redacted brief (at most 400 words) as one chat request to `base_url/chat/completions` and stores the reply as unverified output. The gateway has no tools and no file access; what its upstream models do with the brief is up to that gateway.
+- The key is read only from the environment variable named in `api_key_env` (omit it for a gateway that needs none). It is never stored, logged or printed, and is removed from replies. If the variable is unset the provider counts as unavailable and fallback moves on.
+- `base_url` must be `http://` or `https://` without credentials, query or fragment. Loopback (`localhost`, `127.0.0.1`, `::1`) is the expected setup. A non-loopback host is allowed, but `ws route` and `ws delegate` print a warning that the brief leaves this machine, and a key is refused over clear-text `http://` there.
+- Redirects are not followed, proxies from the environment are skipped for loopback, and there is no streaming, tool use or retry. A timeout or error counts as a failed attempt, so the fallback chain tries the next provider.
+- Limits: the `timeout_seconds` setting applies to each network wait rather than the whole reply, and availability only checks the entry and the variable, not that the gateway is up or the model exists.
 
 ### Prepare a private implementation checkout
 
@@ -77,13 +94,11 @@ speaks MCP, but tools return “Run ws start in this repo”; it does not use `W
 the existing memory hooks only for a validated repo link. Unknown events or invalid
 links return `{}`. Existing CLI and server invocations are unchanged.
 
-No Codex plugin package is published yet: keep existing repo-local connections for Codex
-until packaging, duplicate-connection detection and live client checks are complete. Installing or enabling a Codex plugin does not trust
-its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
+The released Codex plugin (Preview) is described [below](#codex-plugin-preview). Installing or enabling a Codex plugin does not trust its hooks; [review them first](https://developers.openai.com/plugins/build/plugins).
 
 ### Claude Code plugin (preview)
 
-The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires the same four hooks as `ws start` (SessionStart, PreCompact, Stop, UserPromptSubmit) through `bin/ws-plugin`, the MCP server in `--plugin` mode, and the handoff, pickup and lesson skills. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+**Preview, released in beta.6; requires the CLI and `ws start`, not listed in Anthropic's official directory, Windows untested.** The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires the same four hooks as `ws start` (SessionStart, PreCompact, Stop, UserPromptSubmit) through `bin/ws-plugin`, the MCP server in `--plugin` mode, and the handoff, pickup and lesson skills. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
 
 ```text
 /plugin marketplace add Alenroyfeild/ai-dev-workspace
@@ -92,4 +107,51 @@ The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires 
 
 Use the plugin or the repo connection from `ws start`, not both: with both, every session gets two briefs and two captures. The hooks run through `bin/ws-python`, which uses the first working `python3`, `python` or `py -3` (needs `sh`, as in Git Bash). The plugin's MCP server entry is started directly by the client and still calls `python3`; on Windows installs that only provide `python` or `py`, add a `python3.exe` copy or alias to PATH, or use `ws start` instead of the plugin. Windows is untested.
 
-With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.
+With the plugin enabled (`enabledPlugins` at user, project or local scope), `ws start` leaves Claude to it: no Claude hooks or `.mcp.json` entry, other assistants as usual. For a repo started before you enabled the plugin, `ws start` and `ws doctor` warn; run `ws start --undo` and `ws start` again. `ws start` saves the Claude config dir (`CLAUDE_CONFIG_DIR`) it checked and uses it when a later shell leaves the variable unset, so plugin mode is not dropped by accident. If you later disable the plugin, `ws doctor` says so and `ws start` puts Claude's hooks and MCP entry back. `ws start` regenerates the entries it wrote (its hooks and the `ai-dev-workspace` MCP server) on every refresh and removes them on undo, so put your own settings beside them, not inside them.
+
+### Codex plugin (preview)
+
+**Preview, released in beta.6: hooks require a trusted manual desktop install; no MCP server in this plugin, and hooks are not live-tested.** The same marketplace also installs a Codex plugin (`.codex-plugin/`): the handoff, pickup, lesson and thinkbeforeact skills, plus hooks for SessionStart, PreCompact, Stop and UserPromptSubmit (the same four as `ws start`) and PreToolUse, all through `bin/ws-plugin`. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+
+```text
+codex plugin marketplace add Alenroyfeild/ai-dev-workspace
+codex plugin add ai-dev-workspace@ai-dev-workspace
+```
+
+What is and is not verified:
+
+- Fixture-tested: manifests, hook mapping, duplicate avoidance and the guard rule have unit tests.
+- Checked against codex-cli 0.155.1 in a throwaway `CODEX_HOME` with no signed-in session: the install works, the skills list, and Codex finds the five hooks with the plugin root filled in (status "untrusted" until you trust them).
+- Not live-tested: no real Codex session has fired these hooks yet, so what Codex does with their output is unconfirmed. Codex runs plugin hooks only for manual installs in the Codex desktop app and only after you trust them, and OpenAI does not accept plugins with hooks into its public directory. Not submitted anywhere.
+- No MCP server in this plugin. With codex-cli 0.155.1, a plugin's MCP entry gets no plugin-root path expansion, so the server cannot start from the plugin. Use `ws start` (or `ws connect codex --write`) for the MCP tools; the skills use the `ws` command.
+- The PreToolUse hook is the guard and acts only in a started repo whose workspace has the `guards` pack on; otherwise it allows everything. Like all ws hooks, any error lets the tool run.
+- Both can be on: for each event that the `.codex/hooks.json` from `ws start` already handles, the plugin hook does nothing, so a session still gets one brief and one capture.
+
+### Cursor plugin (preview)
+
+**Preview, released in beta.6: fixture-tested only, not submitted, and not tested in Cursor; no verified install command.** The repo carries a Cursor plugin (`.cursor-plugin/plugin.json` and `marketplace.json`): the handoff, pickup, lesson and thinkbeforeact skills, one always-on rule (`rules/ai-dev-workspace.mdc`, generated from the same text `ws start` writes into `.cursor/rules`, and told to do nothing in a repo without `.ws-start.json`), hooks for sessionStart, preCompact, stop, sessionEnd, beforeSubmitPrompt and preToolUse through `bin/ws-plugin`, and the MCP server in `--plugin` mode. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+
+- Fixture-tested only: manifests, hook mapping, the rule file, duplicate avoidance and the guard output are unit tests written from [Cursor's plugin](https://cursor.com/docs/plugins/building) and [hooks](https://cursor.com/docs/hooks) docs. No Cursor install has loaded this plugin yet. Where the docs were silent we assumed: hook commands run from the plugin folder (`./bin/...`), and the MCP server is started in the opened repo. If Cursor starts it elsewhere, its tools answer "run ws start"; use the `ws start` MCP entry instead.
+- Not published: public listing needs Cursor's review (cursor.com/marketplace/publish) and nothing has been submitted. Cursor's docs describe importing a GitHub repo as a team marketplace; we have not run that, so there is no install command to show yet.
+- The preToolUse hook is the guard and acts only in a started repo whose workspace has the `guards` pack on; otherwise it answers allow, because Cursor blocks a permission hook that prints nothing readable. Other hook errors let the action proceed.
+- Both can be on: for each event that the `.cursor/hooks.json` from `ws start` already handles, the plugin hook does nothing.
+
+Stable in beta.6: `ws audit` also inspects bounded local manifests for languages, declared test
+commands and CI, then prints wiring commands for linked assistants or clients
+with project-local configuration. These are suggestions: audit never runs test
+scripts, installs tools or changes configuration. Config presence does not prove
+that a client is authenticated. Unknown stacks remain unknown.
+Idea credit: [Anthropic's claude-code-setup](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-code-setup)
+(Apache-2.0); this cross-client implementation is independently written and fixture-tested.
+
+### Import a claude-mem copy
+
+Preview in beta.6 (fixture-tested schema; newer upstream schemas may not import): `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields and private-marked observations are excluded. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
+
+### Draft a rule from repeated lessons
+
+Stable in beta.6: Three local lesson/dead-end occurrences with at least 60% word-set overlap can add a `ws lesson promote L-<id>` hint to the brief. It scans at most 200 entries and 256 KiB; this is a signal to review, not proof a rule is right. The explicit command writes `.ws/rule-drafts/<id>.md` in the workspace; it never installs rules/skills or overwrites an edited draft. Inspired by [Task Observer](https://github.com/rebelytics/one-skill-to-rule-them-all), independently implemented without an observer or model calls. Review and copy useful wording into your code repo only when appropriate.
+
+### Compact MCP recall
+
+Stable in beta.6: MCP `search_vault` first returns bounded ID/title/date cards instead of snippets. Call it again with `detail: "<id>"` for up to 20,000 characters of sanitized content, labelled untrusted. Dates use saved metadata when available and file modification dates otherwise. Vault notes, validated team entries and configured codebase reports stay read-only; hidden/local-only files, run logs, traversal and escaping symlinks are refused. The core catalog remains seven tools; CLI `ws search` keeps its existing snippets. This applies the progressive-disclosure idea described by [claude-mem](https://github.com/thedotmack/claude-mem), using our own implementation and existing readers.

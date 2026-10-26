@@ -1,0 +1,7 @@
+---
+description: ai-dev-workspace task memory; applies only in repos where ws start has run
+alwaysApply: true
+---
+Private task memory: linked to this repo only after `ws start` has run here (a `.ws-start.json` file exists). If there is no such file, ignore this rule.
+At session start, run `ws brief` unless saved task memory is already in context. Follow the current request. Save verified decisions and next actions with `ws checkpoint`.
+When the user states a decision or corrects an earlier one, call the MCP `remember` tool with it; for a correction, say what it replaces.

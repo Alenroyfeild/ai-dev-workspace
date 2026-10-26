@@ -10,20 +10,23 @@ from pathlib import Path
 from . import core, assist, native
 
 
+class InputTooLarge(core.WsError): pass
+
+
 def _read_limited_stdin():
     limit = core.MAX_READ_BYTES
     stream = getattr(sys.stdin, 'buffer', None)
     if stream is not None:
         raw = stream.read(limit + 1)
         if len(raw) > limit:
-            raise core.WsError('Input exceeds 50 MB.')
+            raise InputTooLarge('Input exceeds 50 MB.')
         try: return raw.decode('utf-8')
         except UnicodeDecodeError: raise core.WsError('Paste input must be UTF-8 text.')
     text = sys.stdin.read(limit + 1)
     try: size = len(text.encode('utf-8'))
     except UnicodeEncodeError: raise core.WsError('Paste contains text that cannot be saved as UTF-8.')
     if len(text) > limit or size > limit:
-        raise core.WsError('Input exceeds 50 MB.')
+        raise InputTooLarge('Input exceeds 50 MB.')
     return text
 
 
@@ -308,6 +311,7 @@ def main(argv=None):
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary (default in a terminal)'); s.add_argument('--json', action='store_true', help='print JSON even in a terminal')
     s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('guard', help='guards pack: PreToolUse check that denies destructive commands, secrets and muted tests'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
+    s = sub.add_parser('digest-hint', help='digest pack: advisory hint for large tool output'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('discipline', help='discipline pack: advisory nudge after the same command fails 3 times'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('map', help='write a compact codebase map'); s.add_argument('repo', nargs='?')
     s = sub.add_parser('connect', help='connect an assistant to this workspace')
@@ -406,7 +410,11 @@ def main(argv=None):
     sessions = sub.add_parser('sessions', help='search local assistant transcripts').add_subparsers(dest='action', required=True)
     s = sessions.add_parser('search', help='search transcripts of earlier assistant sessions'); s.add_argument('query')
     s.add_argument('--root', action='append', metavar='CLIENT=DIR', help='search explicit transcript directories instead of defaults')
-    s = sub.add_parser('import', help='preview or import assistant-native memories (read-only)').add_subparsers(dest='action', required=True).add_parser('native')
+    imports = sub.add_parser('import', help='preview read-only memory sources; save copies only on request').add_subparsers(dest='action', required=True)
+    s = imports.add_parser('claude-mem', help='preview a checkpointed SQLite copy; source is never written')
+    s.add_argument('--db', required=True); s.add_argument('--project', required=True)
+    s.add_argument('--apply', action='store_true', help='show the preview and ask before saving private records')
+    s = imports.add_parser('native')
     s.add_argument('--client', choices=(*native.CLIENTS, 'all'), default='all'); s.add_argument('--task'); s.add_argument('--yes', action='store_true')
     l = sub.add_parser('lesson', help='add or search reusable lessons', formatter_class=argparse.RawDescriptionHelpFormatter,
                        epilog='Examples:\n  ws lesson add "Mocked DB hid a bad migration; run migrations in tests" --tag testing\n  ws lesson search migration').add_subparsers(dest='action', required=True)
@@ -414,6 +422,7 @@ def main(argv=None):
     s.add_argument('--team', action='store_true', help='also preview sharing it with the linked team'); s.add_argument('--yes', action='store_true', help='apply the team preview without asking'); s.add_argument('--author', help='name for the team copy')
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
     s = l.add_parser('search', help='find saved lessons'); s.add_argument('query', nargs='?', default='', help='words to look for (default: all)')
+    s = l.add_parser('promote', help='write an inactive draft from a repeated-lesson ID'); s.add_argument('id')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
     s = f.add_parser('add', help='record feedback locally'); s.add_argument('text'); s.add_argument('--kind', default='idea', help='idea, bug, praise or friction (default idea)'); s.add_argument('--source', default='user')
     s = f.add_parser('list', help='list feedback items'); s.add_argument('--all', action='store_true', help='include items already done')
@@ -430,7 +439,7 @@ def main(argv=None):
     for command in ('brief', 'nudge'):
         s = sub.add_parser(command, help='local task memory for assistant sessions')
         s.add_argument('--hook', action='store_true', help='consume assistant hook input on stdin')
-        s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode'), default='claude')
+        s.add_argument('--client', choices=('claude', 'codex', 'cursor', 'gemini', 'vscode', 'antigravity'), default='claude')
         if command == 'brief': s.add_argument('--refresh', action='store_true', help='also update the current-task block in client instruction files')
     s = sub.add_parser('digest', help='summarise a big log/JSON file deterministically'); s.add_argument('file')
     s.add_argument('--focus', help='show regex-matching line prefixes before the summary (bounded regex; 4096 chars/line)')
@@ -549,7 +558,17 @@ def main(argv=None):
             from . import guards
             try: payload = core.stdin_json()
             except ValueError: payload = {}
-            print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}))); return 0
+            print(json.dumps(guards.hook(payload if isinstance(payload, dict) else {}, client=getattr(a, 'client', 'claude')))); return 0
+        if a.cmd == 'digest-hint':
+            from . import digest_hint
+            try:
+                payload = core.json_loads(_read_limited_stdin())
+                result = digest_hint.hook(core.find_root(a.workspace_root), payload)
+            except InputTooLarge:  # the case the hint matters most: advise on size alone
+                try: result = digest_hint.oversize(core.find_root(a.workspace_root), core.MAX_READ_BYTES)
+                except (ValueError, OSError, core.WsError): result = {}
+            except (ValueError, OSError, core.WsError, RecursionError): result = {}
+            print(json.dumps(result)); return 0
         if a.cmd == 'discipline':  # advisory only: any error prints {} so the tool result reaches the model unchanged
             from . import discipline
             try:
@@ -724,6 +743,17 @@ def main(argv=None):
             branch_task = None
             if not isinstance(payload, dict):
                 raise core.WsError('Hook input must be a JSON object.')
+            if a.client == 'antigravity':
+                if 'transcriptPath' in payload and 'transcript_path' not in payload:
+                    payload['transcript_path'] = payload.get('transcriptPath')
+                if 'conversationId' in payload and 'session_id' not in payload:
+                    payload['session_id'] = payload.get('conversationId')
+                if 'workspacePaths' in payload and 'cwd' not in payload and isinstance(payload['workspacePaths'], list) and payload['workspacePaths']:
+                    payload['cwd'] = payload['workspacePaths'][0]
+                if 'hook_event_name' not in payload and 'hookEventName' in payload:
+                    payload['hook_event_name'] = payload.get('hookEventName')
+                if 'hook_event_name' not in payload and a.cmd == 'brief':
+                    payload['hook_event_name'] = 'SessionStart'
             if a.hook and a.cmd == 'brief' and payload.get('hook_event_name') in ('SessionStart', 'sessionStart'):
                 from . import team_auto
                 update = team_auto.maybe_pull(root)
@@ -738,6 +768,9 @@ def main(argv=None):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client,
                                            assist.session_task(root, payload.get('session_id')))
                 message, summary = core.brief_and_summary(root, branch_task) if a.cmd == 'brief' else ('', '')
+                if a.client == 'antigravity':
+                    out({'injectSteps': [{'systemMessage': {'systemMessage': message}}]} if message else {})
+                    return 0
                 summary = summary if message and a.client == 'codex' else ''
                 out({'additional_context': message} if a.client == 'cursor' and message else
                     {'systemMessage': summary, 'hookSpecificOutput': {'hookEventName': 'SessionStart', 'additionalContext': message}} if summary else
@@ -842,9 +875,16 @@ def main(argv=None):
                     with saved_locally(): share_gate(item)
             elif a.action == 'list': out(knowledge.list_entries(root, a.category, a.layer))
             else: out(knowledge.show(root, a.id))
-        elif a.cmd == 'import': out(native.import_native(root, a.client, a.task, a.yes))
+        elif a.cmd == 'import':
+            if a.action == 'claude-mem':
+                from . import claude_mem
+                out(claude_mem.import_store(root, a.db, a.project, a.apply))
+            else: out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query, category=a.category))
         elif a.cmd == 'lesson':
+            if a.action == 'promote':
+                from . import lesson_rules
+                out(lesson_rules.promote(root, a.id)); return 0
             out(core.lesson_add(root, a.text, a.tag, a.path, a.area) if a.action == 'add' else '\n'.join(core.lesson_search(root, a.query)) or 'No lessons match.')
             if a.action == 'add' and a.team:
                 from . import sharing
@@ -910,7 +950,7 @@ def main(argv=None):
             else: out(core.run_report(root, a.task))
         return 0
     except Exception as exc:
-        if a.cmd in ('guard', 'discipline') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
+        if a.cmd in ('guard', 'discipline', 'digest-hint') or getattr(a, 'hook', False) and a.cmd in ('brief', 'nudge', 'paste'):
             print(f'ws: hook skipped ({type(exc).__name__}: {str(exc)[:200]})', file=sys.stderr)  # fail open: exit 2 would block the client
             print('{}'); return 0
         if isinstance(exc, OSError) and exc.filename is None:  # e.g. a failed launchd call: its own words say more than a file hint

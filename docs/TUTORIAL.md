@@ -2,6 +2,15 @@
 
 You will save a decision in one session, then see the next session start with it. Use a throwaway repo. Nothing here touches your real projects.
 
+<!-- videos:start -->
+### Watch (videos for 0.1.0b6)
+
+- [Watch the 2-minute explainer](https://youtu.be/sfcBNSELq-8)
+- [Under the hood: real commands, real output](https://youtu.be/ZmwwgYzZUJY)
+- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/_jmPEb2wSj4) · [Assistants](https://youtu.be/R6-hfqvz1YA) · [Install as a plugin (Preview)](https://youtu.be/BnbVLSl1vVs)
+- Earlier editions: [0.1.0b5](https://youtu.be/w5EwQNO8Lz0)
+<!-- videos:end -->
+
 ## 1. Install and make a demo repo
 
 ```bash
@@ -12,6 +21,8 @@ git add . && git commit -m "Initial commit"
 git switch -c fix-login
 ```
 
+*No pipx?* `brew install pipx` or `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace` (and add `~/.ws/bin` to your `PATH`).
+
 The branch name becomes the task name.
 
 ## 2. Connect the repo
@@ -20,7 +31,7 @@ The branch name becomes the task name.
 ws start
 ```
 
-It prints a preview and asks once (`Apply this setup? [y/N]`). Add `--yes` to skip the question. Use `--dry-run` to see every file without writing.
+It prints a preview and asks once (`Apply this setup? [y/N]`). Add `--yes` to skip the question. Use `--dry-run` to see every file without writing. The preview lists only the detected clients' files (for example, it can include `GEMINI.md` and `.agents/mcp_config.json` when Gemini CLI or Antigravity are detected).
 
 ```text
 Preview: local repo files (Git-excluded) and private workspace ~/.ai-dev-workspace/demo-app

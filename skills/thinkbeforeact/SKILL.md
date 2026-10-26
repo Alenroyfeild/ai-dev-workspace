@@ -1,6 +1,7 @@
 ---
 name: thinkbeforeact
 description: Plan requested code changes with checks for need, reuse, risk and verification.
+compatibility: Requires ws on PATH (pipx install ai-dev-workspace --pip-args='--pre') and a Git repository initialized with ws start.
 argument-hint: <what you want changed or built>
 ---
 

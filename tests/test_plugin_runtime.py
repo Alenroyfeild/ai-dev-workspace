@@ -47,11 +47,11 @@ class PluginRuntimeTests(unittest.TestCase):
         self.assertEqual(result.stderr, '')
         return [json.loads(line)['result'] for line in result.stdout.splitlines()]
 
-    def hook(self, payload):
+    def hook(self, payload, client='codex', raw=None):
         from ws import plugin_runtime
         output = io.StringIO()
-        with mock.patch('sys.stdin', io.StringIO(json.dumps(payload))), contextlib.redirect_stdout(output):
-            result = plugin_runtime.main(['--client', 'codex'])
+        with mock.patch('sys.stdin', io.StringIO(raw if raw is not None else json.dumps(payload))), contextlib.redirect_stdout(output), contextlib.redirect_stderr(io.StringIO()):
+            result = plugin_runtime.main(['--client', client])
         self.assertEqual(result, 0)
         return json.loads(output.getvalue())
 
@@ -94,6 +94,69 @@ class PluginRuntimeTests(unittest.TestCase):
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
         self.assertEqual(self.hook({'cwd': str(self.repo), 'hook_event_name': 'SessionStart'}), {})
         self.assertTrue(self.wire(self.repo)[2]['isError'])
+
+    def test_codex_pretooluse_runs_guard_only_when_the_guards_pack_is_on(self):
+        from ws import cli
+        payload = {'cwd': str(self.repo), 'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': 'rm -rf ~'}}
+        with mock.patch.object(cli, 'main', side_effect=AssertionError('guards pack is off')):
+            self.assertEqual(self.hook(payload), {})  # a plugin must not add guards the user never opted into
+        core.pack_add(self.root, 'guards')
+        output = self.hook(payload)
+        self.assertEqual(output['hookSpecificOutput']['permissionDecision'], 'deny')
+        self.assertEqual(self.hook(dict(payload, tool_input={'command': 'ls'})), {})
+
+    def test_codex_pretooluse_outside_a_started_repo_allows(self):
+        core.pack_add(self.root, 'guards')
+        self.assertEqual(self.hook({'cwd': str(self.base), 'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': 'rm -rf ~'}}), {})
+
+    def test_claude_plugin_never_runs_guard(self):
+        from ws import plugin_runtime
+        core.pack_add(self.root, 'guards')
+        payload = {'cwd': str(self.repo), 'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': 'rm -rf ~'}}
+        output = io.StringIO()
+        with mock.patch('sys.stdin', io.StringIO(json.dumps(payload))), contextlib.redirect_stdout(output):
+            self.assertEqual(plugin_runtime.main(['--client', 'claude']), 0)
+        self.assertEqual(json.loads(output.getvalue()), {})  # Claude's guard stays a repo hook, as before
+
+    def test_codex_hook_skips_when_ws_start_already_wired_that_event(self):
+        from ws import cli
+        core.pack_add(self.root, 'guards')
+        hooks = self.repo / '.codex/hooks.json'; hooks.parent.mkdir()
+        hooks.write_text(json.dumps({'hooks': {'SessionStart': [], 'PreToolUse': []}}))
+        (self.repo / '.ws-start.json').write_text(json.dumps({'workspace': str(self.root), 'files': {'.codex/hooks.json': {}}}))
+        with mock.patch.object(cli, 'main', side_effect=AssertionError('ws start already runs this hook')):
+            for event in ('SessionStart', 'PreToolUse'):
+                self.assertEqual(self.hook({'cwd': str(self.repo), 'hook_event_name': event, 'tool_name': 'Bash', 'tool_input': {'command': 'rm -rf ~'}}), {}, event)
+        with mock.patch.object(cli, 'main', side_effect=lambda args: print('{}') or 0) as handler:
+            self.hook({'cwd': str(self.repo), 'hook_event_name': 'Stop'})  # not wired by ws start, so the plugin still serves it
+            handler.assert_called_once()
+        (self.repo / '.ws-start.json').write_text(json.dumps({'workspace': str(self.root), 'files': {}}))
+        self.assertEqual(self.hook({'cwd': str(self.repo), 'hook_event_name': 'PreToolUse', 'tool_name': 'Bash', 'tool_input': {'command': 'rm -rf ~'}})['hookSpecificOutput']['permissionDecision'], 'deny')  # a hooks.json ws did not write does not count
+
+
+    def test_cursor_hooks_find_the_repo_from_workspace_roots_and_speak_cursor(self):
+        # Cursor's common hook payload has workspace_roots but no cwd, and its preToolUse treats unreadable output as a block.
+        brief = self.hook({'workspace_roots': [str(self.repo)], 'hook_event_name': 'sessionStart'}, 'cursor')
+        self.assertIn('Saved task memory', brief['additional_context'])
+        allow = {'permission': 'allow'}
+        shell = {'hook_event_name': 'preToolUse', 'tool_name': 'Shell', 'tool_input': {'command': 'rm -rf ~'}, 'cwd': str(self.repo)}
+        self.assertEqual(self.hook(shell, 'cursor'), allow)  # guards pack off
+        self.assertEqual(self.hook(dict(shell, cwd=str(self.base)), 'cursor'), allow)  # outside a started repo
+        self.assertEqual(self.hook({}, 'cursor', raw='not json'), allow)  # fail open with output Cursor can read
+        core.pack_add(self.root, 'guards')
+        self.assertEqual(self.hook(shell, 'cursor')['permission'], 'deny')
+        self.assertEqual(self.hook(dict(shell, tool_input={'command': 'ls'}), 'cursor'), allow)
+        self.assertEqual(self.hook({'workspace_roots': [str(self.base)], 'hook_event_name': 'sessionStart'}, 'cursor'), {})
+
+    def test_cursor_hook_skips_when_ws_start_already_wired_that_event(self):
+        from ws import cli
+        core.pack_add(self.root, 'guards')
+        hooks = self.repo / '.cursor/hooks.json'; hooks.parent.mkdir()
+        hooks.write_text(json.dumps({'version': 1, 'hooks': {'sessionStart': [], 'preToolUse': []}}))
+        (self.repo / '.ws-start.json').write_text(json.dumps({'workspace': str(self.root), 'files': {'.cursor/hooks.json': {}}}))
+        with mock.patch.object(cli, 'main', side_effect=AssertionError('ws start already runs this hook')):
+            self.assertEqual(self.hook({'workspace_roots': [str(self.repo)], 'hook_event_name': 'sessionStart'}, 'cursor'), {})
+            self.assertEqual(self.hook({'cwd': str(self.repo), 'hook_event_name': 'preToolUse', 'tool_name': 'Shell', 'tool_input': {'command': 'rm -rf ~'}}, 'cursor'), {'permission': 'allow'})
 
 
 class DoctorAutoPullTextTests(unittest.TestCase):

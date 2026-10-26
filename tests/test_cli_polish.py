@@ -41,10 +41,14 @@ class CliPolishTests(unittest.TestCase):
 
     def test_readme_is_short_and_points_to_extended_docs(self):
         readme = (ROOT / 'README.md').read_text()
-        self.assertLessEqual(len(readme.splitlines()), 40)
-        self.assertIn('Your assistant remembers work between sessions in Markdown you own.', readme)
+        self.assertLessEqual(len(readme.splitlines()), 180)
+        first_12 = '\n'.join(readme.splitlines()[:12])
+        self.assertIn('Your assistant remembers work between sessions in Markdown you own.', first_12)
+        self.assertIn('## Quick start', first_12)
         self.assertIn('<!-- Demo GIF -->', readme)
-        sections = ('## Quick start', '## Example', '## Results', '## Compatibility')
+        sections = ('## Quick start', '## Use cases', '## Example', '## Features', '## How it works',
+                    '## Results', '## Compared with', '## Compatibility', '## Privacy & safety',
+                    '## Documentation', '## Status & contributing')
         self.assertEqual(sorted(readme.index(section) for section in sections),
                          [readme.index(section) for section in sections])
         self.assertIn('docs/OVERVIEW.md', readme)
@@ -53,7 +57,8 @@ class CliPolishTests(unittest.TestCase):
                        'Codex | supported, tested live on macOS | CI-tested',
                        'Cursor | supported, fixture-tested; live reports welcome | CI-tested',
                        'Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested',
-                       'Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested'):
+                       'Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested',
+                       'Antigravity | Preview, fixture-tested; rules, MCP, SessionStart/PreToolUse hooks; no automatic capture | CI-tested'):
             self.assertIn(status, readme)
         self.assertIn('[Something broke]', readme)
         self.assertIn('https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml', readme)
