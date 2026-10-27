@@ -2250,10 +2250,46 @@ def _brief_once(root, task_id=None):
     return _bounded_brief(fields, truncated), _summary_line(task['id'], remembered, next_action if saved_next else '', saved_context, unverified_count)
 
 
-def capture_decisions(root, transcript_path, client='claude', task_id=None):
+def _codex_cursor(root, task_id, value=None):
+    from .transcripts import unsafe
+    existing_task_path(root, task_id)
+    path = root / '.ws/codex-capture' / (task_id + '.json')
+    if any(unsafe(p) for p in (root / '.ws', path.parent, path)) or (path.exists() and not path.is_file()):
+        raise WsError('Unsafe capture state.')
+    path = inside(path, [root])
+    if value is not None:
+        atomic_write(path, json.dumps(value) + '\n'); return value
+    if not path.exists(): return None
+    value = json.loads(read_text(path, [root]))
+    if (not isinstance(value, dict) or set(value) != {'client', 'session_id', 'size', 'sha256'}
+            or value['client'] != 'codex' or not isinstance(value['session_id'], str)
+            or type(value['size']) is not int or not 0 < value['size'] <= 50 * 1024 * 1024
+            or not isinstance(value['sha256'], str) or not re.fullmatch('[0-9a-f]{64}', value['sha256'])):
+        raise WsError('Invalid capture state.')
+    return value
+
+
+def codex_catchup(root, task_id):
+    """Only SessionStart may refresh the currently claimed task; ordinary memory reads never write."""
+    try:
+        if not task_id or config(root).get('capture') is False or sole_local_claim(root) != task_id: return
+        previous = _codex_cursor(root, task_id)
+        if not previous: return
+        from .transcripts import codex_session
+        source = codex_session(previous['session_id'])
+        if not source: return
+        path, data, _ = source
+        size = previous['size']
+        if len(data) <= size or hashlib.sha256(data[:size]).hexdigest() != previous['sha256']: return
+        capture_decisions(root, str(path), 'codex', task_id, previous['session_id'])
+    except (WsError, OSError, ValueError, TypeError, AttributeError, KeyError, RecursionError):
+        pass  # Optional catch-up must never hide the brief or authorize another source.
+
+
+def capture_decisions(root, transcript_path, client='claude', task_id=None, session_id=None):
     """Capture bounded, unverified transcript memory to a locally owned task."""
     with lock(root):
-        reason = _capture_decisions(root, transcript_path, client, task_id)
+        reason = _capture_decisions(root, transcript_path, client, task_id, session_id)
         outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
         health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
                   'outcome': outcome, 'reason': reason}
@@ -2264,7 +2300,7 @@ def capture_decisions(root, transcript_path, client='claude', task_id=None):
     return reason == 'captured'
 
 
-def _capture_decisions(root, transcript_path, client, task_id=None):
+def _capture_decisions(root, transcript_path, client, task_id=None, session_id=None):
     if not isinstance(transcript_path, str) or not transcript_path:
         return 'missing_transcript_path'
     try:
@@ -2273,12 +2309,19 @@ def _capture_decisions(root, transcript_path, client, task_id=None):
     except (OSError, ValueError, AttributeError):
         pass  # Unreadable config keeps the default: capture on.
     decisions, summary, worked, recognized = [], '', False, False
+    source = None
     try:
         path = Path(transcript_path)
+        if client == 'codex' and session_id is not None:
+            from .transcripts import codex_session, unsafe
+            try:
+                source = codex_session(session_id)
+                if source and (unsafe(path) or path.resolve() != source[0].resolve()): source = None
+            except (OSError, ValueError, TypeError, AttributeError, KeyError, RecursionError): pass
         if path.stat().st_size > 50 * 1024 * 1024:
             return 'transcript_too_large'
         # ponytail: scan at most 50 MB per hook; add incremental reads if sessions outgrow this.
-        with io.StringIO(read_text(path, errors='strict')) as stream:
+        with io.StringIO(source[1].decode('utf-8') if source else read_text(path, errors='strict')) as stream:
             from .transcripts import records
             for line in stream if client == 'claude' else records(stream, client):
                 try:
@@ -2343,6 +2386,18 @@ def _capture_decisions(root, transcript_path, client, task_id=None):
     if len(owned) != 1:
         return 'ambiguous_claims' if owned else 'no_local_claim'
     path, original = owned[0]
+    if client == 'codex':
+        try:
+            previous = _codex_cursor(root, path.stem)
+            if previous and source is None: return 'unchanged'  # Legacy callbacks cannot displace a tracked session.
+            if previous:
+                if previous['session_id'] == session_id:
+                    if (len(source[1]) <= previous['size'] or
+                            hashlib.sha256(source[1][:previous['size']]).hexdigest() != previous['sha256']): return 'unchanged'
+                else:
+                    older = codex_session(previous['session_id'])
+                    if not older or source[2] <= older[2]: return 'unchanged'
+        except (WsError, OSError, ValueError, TypeError, AttributeError, KeyError, RecursionError): return 'unchanged'
     text = original
     match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
     if not match:
@@ -2354,10 +2409,13 @@ def _capture_decisions(root, transcript_path, client, task_id=None):
     else:
         section_text = section_text.rstrip('\n') + '\n\n' + block
     text = text[:match.start()] + section_text + text[match.end():]
-    if text == original:
-        return 'unchanged'
-    atomic_write(path, text)
-    return 'captured'
+    if text != original: atomic_write(path, text)
+    if source:
+        try:
+            _codex_cursor(root, path.stem, {'client': 'codex', 'session_id': session_id,
+                                          'size': len(source[1]), 'sha256': hashlib.sha256(source[1]).hexdigest()})
+        except (WsError, OSError): pass
+    return 'captured' if text != original else 'unchanged'
 
 
 def capture_health(root):

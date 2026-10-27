@@ -1,0 +1,1 @@
+Fixed: Codex SessionStart catches up changed transcripts from the last captured session for the locally claimed task, including resumed turns with no callback; ambiguous or unsafe sources are skipped.
