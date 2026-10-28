@@ -2261,11 +2261,15 @@ def _codex_cursor(root, task_id, value=None):
         atomic_write(path, json.dumps(value) + '\n'); return value
     if not path.exists(): return None
     value = json.loads(read_text(path, [root]))
-    if (not isinstance(value, dict) or set(value) != {'client', 'session_id', 'size', 'sha256'}
+    fields = {'client', 'session_id', 'size', 'sha256'}
+    if (not isinstance(value, dict) or set(value) not in (fields, fields | {'started'})
             or value['client'] != 'codex' or not isinstance(value['session_id'], str)
             or type(value['size']) is not int or not 0 < value['size'] <= 50 * 1024 * 1024
             or not isinstance(value['sha256'], str) or not re.fullmatch('[0-9a-f]{64}', value['sha256'])):
         raise WsError('Invalid capture state.')
+    if 'started' in value:
+        if not isinstance(value['started'], str) or datetime.datetime.fromisoformat(value['started'].replace('Z', '+00:00')).tzinfo is None:
+            raise WsError('Invalid capture start stamp.')
     return value
 
 
@@ -2394,9 +2398,8 @@ def _capture_decisions(root, transcript_path, client, task_id=None, session_id=N
                 if previous['session_id'] == session_id:
                     if (len(source[1]) <= previous['size'] or
                             hashlib.sha256(source[1][:previous['size']]).hexdigest() != previous['sha256']): return 'unchanged'
-                else:
-                    older = codex_session(previous['session_id'])
-                    if not older or source[2] <= older[2]: return 'unchanged'
+                elif 'started' in previous:
+                    if source[2] <= datetime.datetime.fromisoformat(previous['started'].replace('Z', '+00:00')): return 'unchanged'
         except (WsError, OSError, ValueError, TypeError, AttributeError, KeyError, RecursionError): return 'unchanged'
     text = original
     match = re.search(r'^## Handoff[ \t]*\n.*?(?=^## |\Z)', text, re.M | re.S)
@@ -2413,7 +2416,8 @@ def _capture_decisions(root, transcript_path, client, task_id=None, session_id=N
     if source:
         try:
             _codex_cursor(root, path.stem, {'client': 'codex', 'session_id': session_id,
-                                          'size': len(source[1]), 'sha256': hashlib.sha256(source[1]).hexdigest()})
+                                          'size': len(source[1]), 'sha256': hashlib.sha256(source[1]).hexdigest(),
+                                          'started': source[2].isoformat()})
         except (WsError, OSError): pass
     return 'captured' if text != original else 'unchanged'
 

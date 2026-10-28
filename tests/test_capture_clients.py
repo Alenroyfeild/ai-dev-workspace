@@ -153,7 +153,8 @@ class CodexCatchupTests(Base):
         self.assertIn('Decision: preserve rows.', handoff)
         self.assertEqual(core.task_read(self.root, 'T-1', ['Next action'])['sections']['Next action'], 'Inspect fixture.')
         cursor = json.loads(self.cursor())
-        self.assertEqual(set(cursor), {'client', 'session_id', 'size', 'sha256'})
+        self.assertEqual(set(cursor), {'client', 'session_id', 'size', 'sha256', 'started'})
+        self.assertEqual(cursor['started'], '2026-10-27T10:00:00+00:00')
         self.assertEqual(cursor['session_id'], self.SID)
         before = self.cursor()
         with mock.patch.object(core, '_capture_decisions', wraps=core._capture_decisions) as capture:
@@ -174,11 +175,39 @@ class CodexCatchupTests(Base):
         newer = self.transcript(self.NEW, '2026-10-27T11:00:00Z', 'Decided: only violet.')
         self.start(self.NEW); self.stop(newer, self.NEW)
         before = self.cursor(); handoff = self.handoff()
+        newer.unlink()  # Ordering must survive removal of the tracked newer transcript too.
         self.append(); self.stop(self.path, self.SID)
         self.assertFalse(core.capture_decisions(self.root, str(self.path), 'codex'))
         self.start()
         self.assertEqual(self.cursor(), before); self.assertEqual(self.handoff(), handoff)
         self.assertIn('violet', core.brief(self.root))
+
+    def test_archived_tracked_session_does_not_block_newer_capture(self):
+        archived = self.home / 'archived_sessions'; archived.mkdir()
+        self.path.rename(archived / self.path.name)
+        newer = self.transcript(self.NEW, '2026-10-27T11:00:00Z', 'Decided: only violet.')
+        self.start(self.NEW); self.stop(newer, self.NEW)
+        self.assertIn('violet', self.handoff())
+        self.assertEqual(json.loads(self.cursor())['session_id'], self.NEW)
+
+    def test_deleted_tracked_session_and_old_cursor_migrate_to_newer_capture(self):
+        cursor = self.root / '.ws/codex-capture/T-1.json'
+        old = json.loads(self.cursor()); old.pop('started')
+        cursor.write_text(json.dumps(old))
+        self.path.unlink()
+        newer = self.transcript(self.NEW, '2026-10-27T11:00:00Z', 'Decided: only violet.')
+        self.start(self.NEW); self.stop(newer, self.NEW)
+        self.assertIn('violet', self.handoff())
+        self.assertEqual(json.loads(self.cursor())['started'], '2026-10-27T11:00:00+00:00')
+
+    def test_invalid_start_stamps_leave_cursor_and_memory_unchanged(self):
+        self.append(); cursor = self.root / '.ws/codex-capture/T-1.json'
+        original = json.loads(self.cursor()); handoff = self.handoff()
+        for stamp in ('not-a-date', '2026-10-27T10:00:00', None):
+            with self.subTest(stamp=stamp):
+                bad = dict(original, started=stamp); cursor.write_text(json.dumps(bad))
+                self.assertIn('T-1', self.start())
+                self.assertEqual(json.loads(self.cursor()), bad); self.assertEqual(self.handoff(), handoff)
 
     def test_rejected_sources_do_not_advance_or_hide_the_brief(self):
         original = self.path.read_bytes(); cursor = self.cursor(); handoff = self.handoff()
