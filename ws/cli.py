@@ -766,9 +766,11 @@ def main(argv=None):
                 try: assist.observe(root, payload)
                 except OSError: pass  # Optional usage metadata must not block read-only memory.
             if a.hook and a.client != 'claude':
+                if a.client == 'codex' and a.cmd == 'brief' and payload.get('hook_event_name') == 'SessionStart':
+                    core.codex_catchup(root, branch_task or assist.session_task(root, payload.get('session_id')))
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client,
-                                           assist.session_task(root, payload.get('session_id')))
+                                           assist.session_task(root, payload.get('session_id')), payload.get('session_id'))
                 message, summary = core.brief_and_summary(root, branch_task) if a.cmd == 'brief' else ('', '')
                 if a.client == 'antigravity':
                     out({'injectSteps': [{'systemMessage': {'systemMessage': message}}]} if message else {})

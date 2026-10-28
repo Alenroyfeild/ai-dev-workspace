@@ -1,5 +1,49 @@
 """Client transcript adapters; only conversational text and tool-use presence."""
 import json
+import datetime
+import os
+import re
+import stat
+from pathlib import Path
+
+
+def unsafe(path):
+    try: info = Path(path).lstat()
+    except FileNotFoundError: return False
+    return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 1024)
+
+
+def codex_session(session_id):
+    """One regular transcript under this client's sessions directory; never accept a cached path."""
+    if not isinstance(session_id, str) or not re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', session_id): return None
+    home = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex').absolute()
+    base = home / 'sessions'
+    if unsafe(home) or unsafe(base): return None
+    matches = []
+    for directory, dirs, files in os.walk(base, followlinks=False):
+        dirs[:] = [name for name in dirs if not unsafe(Path(directory) / name)]
+        for name in files:
+            if name.endswith(session_id + '.jsonl'):
+                path = Path(directory) / name
+                if unsafe(path) or not path.resolve().is_relative_to(base.resolve()): return None
+                matches.append(path)
+                if len(matches) > 1: return None
+    if len(matches) != 1: return None
+    path = matches[0]; before = path.stat(); limit = 50 * 1024 * 1024
+    if not stat.S_ISREG(before.st_mode) or before.st_size > limit: return None
+    with os.fdopen(os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0)), 'rb') as stream:
+        opened = os.fstat(stream.fileno()); data = stream.read(limit + 1)
+    after = path.stat()
+    identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns)
+    if identity(before) != identity(opened) or identity(before) != identity(after) or len(data) > limit: return None
+    if any(unsafe(p) for p in (path, *path.parents) if p == home or home in p.parents): return None
+    entries = [json.loads(line) for line in data.decode('utf-8').splitlines() if line.strip()]
+    if not entries or not all(isinstance(e, dict) for e in entries): return None
+    header = entries[0]
+    if header.get('type') != 'session_meta' or header.get('payload', {}).get('id') != session_id: return None
+    stamp = datetime.datetime.fromisoformat(header['payload']['timestamp'].replace('Z', '+00:00'))
+    if stamp.tzinfo is None: return None
+    return path, data, stamp
 
 
 def records(stream, client):
