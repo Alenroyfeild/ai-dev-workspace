@@ -69,6 +69,20 @@ class DisciplineTests(Base):
             results = [discipline.hook(self.root, payload) for _ in range(3)]
             self.assertIn('failed 3 times', results[2]['hookSpecificOutput']['additionalContext'])
 
+    def test_shell_quoting_escapes_and_line_breaks_are_distinct_attempts(self):
+        pairs = [('test "$CHECK_MODE" = ready', "test '$CHECK_MODE' = ready"),
+                 ('test "$CHECK_MODE" = ready', 'test \\$CHECK_MODE = ready'),
+                 ('printf ready\nfalse', 'printf ready false')]
+        for session, (original, changed) in enumerate(pairs):
+            with self.subTest(command=changed):
+                for _ in range(2):
+                    self.assertEqual(discipline.hook(self.root, claude_failure(original, str(session))), {})
+                self.assertEqual(discipline.hook(self.root, claude_failure(changed, str(session))), {})
+                self.assertTrue(discipline.hook(self.root, claude_failure(original, str(session))))
+                self.assertEqual(discipline.hook(self.root, claude_failure(changed, str(session))), {})
+                self.assertTrue(discipline.hook(self.root, claude_failure(changed, str(session))))
+                self.assertEqual(discipline.hook(self.root, claude_failure(original, str(session))), {})
+
     def test_success_other_tools_and_bad_input_are_ignored(self):
         self.assertFalse(discipline.failed(claude_failure('x', code=0)))
         self.assertEqual(discipline.hook(self.root, {**claude_failure('x'), 'tool_name': 'Edit'}), {})

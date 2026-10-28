@@ -37,7 +37,8 @@ def hook(root, payload):
     command = payload['tool_input'].get('command', '')
     if isinstance(command, list): command = shlex.join(map(str, command))
     if not isinstance(command, str) or not command.strip(): return {}
-    try: tokens = json.dumps(shlex.split(command))  # tokens keep whitespace inside quotes
+    # Quoting, escapes and line breaks can change shell meaning; preserve them.
+    try: tokens = command.strip() if any(c in command for c in "'\"\\\r\n") else json.dumps(shlex.split(command))
     except ValueError: tokens = command.strip()
     nudge, extra = NUDGE, ''
     if not failed(payload):
