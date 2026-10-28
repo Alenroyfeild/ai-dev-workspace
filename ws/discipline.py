@@ -38,7 +38,7 @@ def hook(root, payload):
     if isinstance(command, list): command = shlex.join(map(str, command))
     if not isinstance(command, str) or not command.strip(): return {}
     # Quoting, escapes and line breaks can change shell meaning; preserve them.
-    try: tokens = command.strip() if any(c in command for c in "'\"\\\r\n") else json.dumps(shlex.split(command))
+    try: tokens = command if any(c in command for c in "'\"\\\r\n") else json.dumps(shlex.split(command))
     except ValueError: tokens = command.strip()
     nudge, extra = NUDGE, ''
     if not failed(payload):

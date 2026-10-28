@@ -70,9 +70,12 @@ class DisciplineTests(Base):
             self.assertIn('failed 3 times', results[2]['hookSpecificOutput']['additionalContext'])
 
     def test_shell_quoting_escapes_and_line_breaks_are_distinct_attempts(self):
+        trailing = """sh -c 'printf "%s" "$1"; exit 1' fixture x"""
         pairs = [('test "$CHECK_MODE" = ready', "test '$CHECK_MODE' = ready"),
                  ('test "$CHECK_MODE" = ready', 'test \\$CHECK_MODE = ready'),
-                 ('printf ready\nfalse', 'printf ready false')]
+                 ('printf ready\nfalse', 'printf ready false'),
+                 (trailing + '\\ ', trailing + '\\'),
+                 (trailing + '\\\n', trailing + '\\')]
         for session, (original, changed) in enumerate(pairs):
             with self.subTest(command=changed):
                 for _ in range(2):
