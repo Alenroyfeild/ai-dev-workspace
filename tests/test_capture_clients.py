@@ -161,6 +161,22 @@ class CodexCatchupTests(Base):
             self.start(); self.assertEqual(capture.call_count, 0)
         self.assertEqual(self.cursor(), before); self.assertEqual(self.handoff(), handoff)
 
+    def test_catchup_discovers_and_reads_the_source_once(self):
+        from ws import transcripts
+        self.append()
+        with mock.patch.object(transcripts, 'codex_session', wraps=transcripts.codex_session) as discover:
+            core.codex_catchup(self.root, 'T-1')
+        self.assertEqual(discover.call_count, 1)
+        self.assertIn('cobalt', self.handoff())
+        self.assertEqual(json.loads(self.cursor())['size'], self.path.stat().st_size)
+        self.assertEqual(core.capture_health(self.root)['outcome'], 'captured')
+        cursor, handoff = self.cursor(), self.handoff()
+        with mock.patch.object(transcripts, 'codex_session', wraps=transcripts.codex_session) as discover:
+            core.codex_catchup(self.root, 'T-1')
+        self.assertEqual(discover.call_count, 1)
+        self.assertEqual(self.cursor(), cursor)
+        self.assertEqual(self.handoff(), handoff)
+
     def test_private_markers_and_secrets_remain_filtered(self):
         secret = 'sk-' + 'synthetic' * 6
         self.append(text='Decided: cobalt. <private>only hidden-canary</private> Never log API_KEY=' + secret)
