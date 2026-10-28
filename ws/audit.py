@@ -46,7 +46,7 @@ def _mcp_servers(repo):
     try: servers = core.json_loads((repo / '.mcp.json').read_text(encoding='utf-8')).get('mcpServers')
     except (OSError, ValueError, AttributeError): servers = None
     if isinstance(servers, dict): names |= set(servers)
-    try: names |= set(re.findall(r'(?m)^\[mcp_servers\.([^\].]+)\]', (repo / '.codex/config.toml').read_text(encoding='utf-8')))
+    try: names |= set(re.findall(r'(?m)^\[mcp_servers\.([^\].]+)\]', (repo / '.codex/config.toml').read_text(encoding='utf-8', errors='replace')))
     except OSError: pass
     return sorted(names)
 
