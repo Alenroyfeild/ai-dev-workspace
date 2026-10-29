@@ -40,7 +40,7 @@ def _note(root, identifier, terms=()):
     body = ''.join(c for c in body if c.isprintable() or c.isspace())
     meta = {**core.parse_meta(body), **metadata}
     title = meta.get('title') or next((l.lstrip('# ').strip() for l in body.splitlines() if l.startswith('# ')), path.stem)
-    date = meta.get('created', meta.get('date', '')) or datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).date().isoformat()
+    date = meta.get('created') or meta.get('date') or datetime.datetime.fromtimestamp(path.stat().st_mtime, datetime.timezone.utc).date().isoformat()
     result = {'id': identifier, 'title': ' '.join(str(title).split())[:100], 'date': str(date)[:40],
             'content': body[:20000], 'truncated': len(body) > 20000, 'untrusted': True}
     if terms: result['_matches'] = any(word.lower() in body.lower() for word in terms)

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,6 +27,20 @@ class CompactRecallTests(Base):
         body = json.loads(result['content'][0]['text'])['content']
         self.assertIn('Long receipt', body); self.assertNotIn('HIDDEN_321', body)
         self.assertEqual(len(server.CORE_TOOLS), 7)
+
+    def test_saved_date_survives_an_empty_created_field(self):
+        path = core.vault(self.root) / 'Project/dated.md'
+        for created, date, expected in (('', '2026-01-02', '2026-01-02'),
+                                        ('2026-01-01', '2026-01-02', '2026-01-01'),
+                                        ('', '', '2000-01-01')):
+            with self.subTest(created=created, date=date):
+                path.write_text(f'---\ntitle: Dated receipt\ncreated: {created}\ndate: {date}\n---\nReceipt checksum.\n')
+                os.utime(path, (946684800, 946684800))
+                rows = json.loads(self.call({'query': 'receipt'})['result']['content'][0]['text'])
+                row = next(row for row in rows if row['id'].endswith('dated.md'))
+                self.assertEqual(row['date'], expected)
+                detail = json.loads(self.call({'detail': row['id']})['result']['content'][0]['text'])
+                self.assertEqual(detail['date'], expected)
 
     def test_match_after_detail_window_still_returns_metadata(self):
         path = core.vault(self.root) / 'Project/long.md'
