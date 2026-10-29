@@ -14,9 +14,11 @@ from . import core, knowledge, sharing, team_sync
 
 def pull(root, automatic=False):
     with core.lock(root):
-        if automatic and core.config(root).get('team_workspace',{}).get('auto_pull') is not True:
+        link=core.config(root).get('team_workspace',{})
+        if not isinstance(link,dict): raise core.WsError('Invalid team_workspace in workspace.json; expected an object.')
+        if automatic and link.get('auto_pull') is not True:
             return {'skipped':True,'pushed':False}
-        if core.config(root).get('team_workspace',{}).get('host')=='folder':
+        if link.get('host')=='folder':
             from . import team_folder
             return team_folder.pull(root)
         token=team_sync.AUTO_DEADLINE.set(time.monotonic()+4) if automatic else None
@@ -43,7 +45,9 @@ def _launch(*args):
 def schedule(root, at, apply=False, expected=None):
     if not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',at): raise core.WsError('Daily time must be HH:MM (local time).')
     cfg=core.config(root)
-    if cfg.get('team_workspace',{}).get('auto_pull') is not True: raise core.WsError('Automatic pulls need explicit link consent (team_workspace.auto_pull=true).')
+    link=cfg.get('team_workspace',{})
+    if not isinstance(link,dict): raise core.WsError('Invalid team_workspace in workspace.json; expected an object.')
+    if link.get('auto_pull') is not True: raise core.WsError('Automatic pulls need explicit link consent (team_workspace.auto_pull=true).')
     knowledge._bases(root,'team')
     hour,minute=map(int,at.split(':'));label='com.ai-dev-workspace.team-pull.'+core.digest_text(str(root))[:12]
     argv=[sys.executable,str(core.KIT/'bin/ws'),'--workspace-root',str(root),'sync','--pull-only','--automatic']
