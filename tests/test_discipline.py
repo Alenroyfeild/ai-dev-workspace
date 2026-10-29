@@ -86,6 +86,16 @@ class DisciplineTests(Base):
                 self.assertTrue(discipline.hook(self.root, claude_failure(changed, str(session))))
                 self.assertEqual(discipline.hook(self.root, claude_failure(original, str(session))), {})
 
+    def test_raw_command_cannot_alias_a_normalized_token_array(self):
+        original = 'false synthetic'
+        changed = '["false", "synthetic"]'
+        for _ in range(2):
+            self.assertEqual(discipline.hook(self.root, claude_failure(original)), {})
+        self.assertEqual(discipline.hook(self.root, claude_failure(changed)), {})
+        self.assertTrue(discipline.hook(self.root, claude_failure(original)))
+        self.assertEqual(discipline.hook(self.root, claude_failure(changed)), {})
+        self.assertTrue(discipline.hook(self.root, claude_failure(changed)))
+
     def test_success_other_tools_and_bad_input_are_ignored(self):
         self.assertFalse(discipline.failed(claude_failure('x', code=0)))
         self.assertEqual(discipline.hook(self.root, {**claude_failure('x'), 'tool_name': 'Edit'}), {})

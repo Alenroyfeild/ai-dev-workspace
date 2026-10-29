@@ -38,8 +38,8 @@ def hook(root, payload):
     if isinstance(command, list): command = shlex.join(map(str, command))
     if not isinstance(command, str) or not command.strip(): return {}
     # Quoting, escapes and line breaks can change shell meaning; preserve them.
-    try: tokens = command if any(c in command for c in "'\"\\\r\n") else json.dumps(shlex.split(command))
-    except ValueError: tokens = command.strip()
+    try: tokens = json.dumps(command) if any(c in command for c in "'\"\\\r\n") else json.dumps(shlex.split(command))
+    except ValueError: tokens = json.dumps(command)
     nudge, extra = NUDGE, ''
     if not failed(payload):
         if payload.get('hook_event_name') != 'PostToolUse' or exit_code(payload) is not None: return {}  # an explicit status (0) is not a repeat failure
