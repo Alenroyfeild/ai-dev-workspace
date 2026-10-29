@@ -2,6 +2,27 @@
 
 Most workspaces need only `ws tools`, `ws assist` and the defaults. These settings are optional; the CLI remains compatible with existing configuration.
 
+## Codex SessionStart catch-up
+
+**Coming next (dev, not yet released); fixture-tested, not live-tested with Codex resume.**
+When the Codex `SessionStart` hook requests a brief, it can catch up the last
+captured session for the single locally claimed task. This covers appended turns
+from a resumed session that received no capture callback. It saves bounded user
+constraints and the last assistant summary/next step in an **unverified** Handoff
+block, preserving manual notes and the verified Next action. Ordinary `ws brief`
+reads do not trigger catch-up. `capture: false` disables it.
+
+Catch-up needs an existing cursor in `.ws/codex-capture/<task>.json`. It looks for
+exactly one matching session under the current `CODEX_HOME/sessions` (default
+`~/.codex/sessions`); a transcript stored only in another home is skipped. It
+checks the session ID and start timestamp, refuses symlinks/junctions and files
+over 50 MiB, and requires the saved transcript prefix to be unchanged before
+capturing added text. Missing, ambiguous, malformed, truncated or unsafe sources,
+invalid cursors and absent/ambiguous local ownership leave the brief available
+without catching up. Unchanged transcripts add no duplicate block. Private
+markers and secrets still pass through the existing capture filters. Tests use
+synthetic transcripts; they do not establish live hook delivery or capture rates.
+
 ## Routing
 
 `ws route [role]` resolves a binding from `routing.json` (default role: lead). Availability means the CLI is on `PATH` and a model is configured; it does not verify login or account access. Ordered preferences choose an available provider and report every skipped provider; an explicit provider override pins one provider and stops if it is unavailable. There is no silent fallback. Root `role_overrides` can set provider/preference, tier, family, model or effort. Managed defaults may change on upgrade; root overrides are preserved. Claude family aliases and explicit Codex model IDs are supported. Ollama requires an already-installed local model; the kit never pulls models.
