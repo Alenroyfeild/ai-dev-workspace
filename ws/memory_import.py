@@ -22,7 +22,7 @@ def _read(path, base):
 
 
 def _label(label):
-    return ''.join(c for c in ' '.join(label.split()) if c.isprintable())
+    return core.plain_text(''.join(c for c in ' '.join(label.split()) if c.isprintable()))
 
 
 def _usable(path, base):
