@@ -80,7 +80,9 @@ def entries(root):
 
 def sync_line(before, after, published, pending=0):
     new = sum(1 for k in after if k not in before); updated = sum(1 for k in after if k in before and after[k] != before[k])
-    pulled = f'pulled {new} new, {updated} updated' if new or updated else 'nothing new from the team'
+    removed = sum(1 for k in before if k not in after)
+    pulled = (f'pulled {new} new, {updated} updated' + (f', {removed} removed' if removed else '')
+              if new or updated or removed else 'nothing new from the team')
     names = list(published or []); done = [n for n in names if ENTRY.fullmatch(n)]
     sent = (f'published {len(done)}.' if done else f'published {len(names)} file(s).' if names else
             f'not published ({pending} file(s) pending; run ws sync to publish).' if pending else 'nothing to publish.')

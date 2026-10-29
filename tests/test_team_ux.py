@@ -101,6 +101,28 @@ class TeamUxTests(unittest.TestCase):
         code, _, err = self.run_cli('sync', '--yes', root=mate)
         self.assertEqual(code, 0); self.assertIn('pulled 1 new', err)
 
+    def test_sync_summary_reports_a_teammates_unshared_note(self):
+        self.assertEqual(self.run_cli('know', 'add', 'Temporary queue rule.', '--team', '--yes')[0], 0)
+        item = 'knowledge:' + knowledge.list_entries(self.root, layer='private')['entries'][0]['id']
+        self.assertEqual(self.run_cli('sync', '--yes')[0], 0)
+        mate = self.base / 'mate'; core.init(mate, 'synthetic', clients=[])
+        self.assertEqual(self.run_cli('team', 'link', str(self.remote), '--yes', '--attest-private', root=mate)[0], 0)
+        self.assertEqual(len(team_ui.entries(mate)), 1)
+        self.assertEqual(self.run_cli('unshare', item, '--yes')[0], 0)
+        self.assertEqual(self.run_cli('sync', '--yes')[0], 0)
+        code, _, err = self.run_cli('sync', '--yes', root=mate)
+        self.assertEqual(code, 0)
+        self.assertEqual(team_ui.entries(mate), {})
+        self.assertIn('1 removed', err)
+        self.assertNotIn('nothing new from the team', err)
+        self.assertNotIn('removed', self.run_cli('sync', '--yes', root=mate)[2])
+
+    def test_sync_line_counts_removals_alone_and_with_other_changes(self):
+        self.assertEqual(team_ui.sync_line({'old': '1'}, {}, None),
+                         'Team sync: pulled 0 new, 0 updated, 1 removed; nothing to publish.')
+        self.assertEqual(team_ui.sync_line({'old': '1', 'kept': '1'}, {'kept': '2', 'new': '1'}, None),
+                         'Team sync: pulled 1 new, 1 updated, 1 removed; nothing to publish.')
+
     def test_sync_line_wording(self):
         self.assertEqual(team_ui.sync_line({'a': '1', 'b': '1'}, {'a': '2', 'b': '1', 'c': '1'}, ['entries/' + 'a' * 32 + '.md']),
                          'Team sync: pulled 1 new, 1 updated; published 1.')
