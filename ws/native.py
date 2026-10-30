@@ -24,7 +24,7 @@ def _line(text, limit=ITEM_CHARS):
 
 def _folders(root):
     cfg = core.config(root)
-    return [Path(p).expanduser().resolve() for p in (str(root), *cfg.get('repos', []))]
+    return [Path(root).resolve(), *(core.repo_path(root, p) for p in cfg.get('repos', []))]
 
 
 def _codex_home():
