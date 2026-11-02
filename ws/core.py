@@ -2285,15 +2285,16 @@ def codex_catchup(root, task_id):
         path, data, _ = source
         size = previous['size']
         if len(data) <= size or hashlib.sha256(data[:size]).hexdigest() != previous['sha256']: return
-        capture_decisions(root, str(path), 'codex', task_id, previous['session_id'])
+        capture_decisions(root, str(path), 'codex', task_id, previous['session_id'], _source=source)
     except (WsError, OSError, ValueError, TypeError, AttributeError, KeyError, RecursionError):
         pass  # Optional catch-up must never hide the brief or authorize another source.
 
 
-def capture_decisions(root, transcript_path, client='claude', task_id=None, session_id=None):
+def capture_decisions(root, transcript_path, client='claude', task_id=None, session_id=None, *, _source=None):
     """Capture bounded, unverified transcript memory to a locally owned task."""
     with lock(root):
-        reason = _capture_decisions(root, transcript_path, client, task_id, session_id)
+        options = {'_source': _source} if _source is not None else {}
+        reason = _capture_decisions(root, transcript_path, client, task_id, session_id, **options)
         outcome = reason if reason in ('captured', 'unchanged') else 'skipped'
         health = {'date': now(), 'client': client if client in ('claude', 'codex', 'cursor', 'gemini', 'vscode') else 'unsupported',
                   'outcome': outcome, 'reason': reason}
@@ -2304,7 +2305,7 @@ def capture_decisions(root, transcript_path, client='claude', task_id=None, sess
     return reason == 'captured'
 
 
-def _capture_decisions(root, transcript_path, client, task_id=None, session_id=None):
+def _capture_decisions(root, transcript_path, client, task_id=None, session_id=None, *, _source=None):
     if not isinstance(transcript_path, str) or not transcript_path:
         return 'missing_transcript_path'
     try:
@@ -2319,7 +2320,8 @@ def _capture_decisions(root, transcript_path, client, task_id=None, session_id=N
         if client == 'codex' and session_id is not None:
             from .transcripts import codex_session, unsafe
             try:
-                source = codex_session(session_id)
+                # SessionStart already discovered and verified this immutable snapshot.
+                source = _source if _source is not None else codex_session(session_id)
                 if source and (unsafe(path) or path.resolve() != source[0].resolve()): source = None
             except (OSError, ValueError, TypeError, AttributeError, KeyError, RecursionError): pass
         if path.stat().st_size > 50 * 1024 * 1024:
