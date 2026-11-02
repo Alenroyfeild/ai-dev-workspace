@@ -33,7 +33,7 @@
 - Preview: Claude Code plugin needs the CLI and `ws start`; not in Anthropic's
   directory, Windows untested. Codex plugin hooks need a trusted manual desktop install;
   no MCP in the plugin, no live hook proof. Cursor plugin is fixture-tested only,
-  not submitted, with no verified install command. [Plugin limits](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/ADVANCED.md#plugin-runtime-packaging-preview).
+  not submitted, with no verified install command. MCP plugin server roots discovery (Preview) activates only from client roots for already started workspaces and refuses others. [Plugin limits](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/ADVANCED.md#plugin-runtime-packaging-preview).
 
 ## Coming next
 

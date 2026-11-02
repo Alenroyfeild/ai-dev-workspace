@@ -51,7 +51,8 @@ The table describes repo wiring from `ws start`. All three native plugins are
 **Preview**: Claude Code needs the CLI and `ws start`, is not in Anthropic's official
 directory, and is untested on Windows; Codex hooks need a trusted manual desktop
 install, have no live hook proof, and provide no MCP; Cursor is fixture-tested only,
-not submitted, with no verified install command. See [plugin limits](ADVANCED.md#plugin-runtime-packaging-preview).
+not submitted, with no verified install command. MCP plugin server roots discovery (Preview)
+activates only from a client root that is an already started workspace and refuses others. See [plugin limits](ADVANCED.md#plugin-runtime-packaging-preview).
 
 **Antigravity (agy):** `ws connect antigravity` writes project `.agents/mcp_config.json`; rules use the existing `AGENTS.md`/`GEMINI.md`. `ws start` detects `agy` or the Antigravity app, previews repo-local MCP, `.agents/hooks.json` and `GEMINI.md` wiring, and restores previous files on undo. Existing project config is preserved or staged as `.ws-new`; no global Gemini/Antigravity state is changed. Restart/trust the project, approve MCP access, then request `brief` and save decisions with `remember`/`checkpoint`. **Preview in beta.6:** rules, MCP, SessionStart brief and PreToolUse guard hooks via `.agents/hooks.json` are fixture-tested; MCP and hooks are not verified live, and a signed-in native session is not yet proved. Automatic capture and plugin import are not wired. Antigravity has a different hook dialect from Gemini CLI. References: [rules](https://antigravity.google/docs/rules/), [MCP config](https://antigravity.google/docs/mcp?tab=cli), [hooks](https://antigravity.google/docs/hooks/), [plugins](https://antigravity.google/docs/plugins?tab=cli).
 

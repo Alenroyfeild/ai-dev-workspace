@@ -108,8 +108,11 @@ remains unverified; review it with `ws worker review`, `accept` or `discard` ([d
 
 ## Plugin runtime (packaging preview)
 
-The optional `python3 mcp/server.py --plugin` entrypoint discovers memory only through
-`.ws-start.json` in the current repo or its parents. Outside a started repo it still
+The optional `python3 mcp/server.py --plugin` entrypoint discovers memory through
+`.ws-start.json` in the current repo or its parents, or dynamically from client roots
+when started outside the repo (Preview). When the client supports MCP roots, the server
+activates only from a client root that is an already started workspace (`ws start`) and
+refuses unstarted, invalid or unlinked roots; without roots or outside a started repo it still
 speaks MCP, but tools return “Run ws start in this repo”; it does not use `WS_ROOT`.
 `python3 bin/ws-plugin --client claude|codex` accepts a hook payload and delegates to
 the existing memory hooks only for a validated repo link. Unknown events or invalid
@@ -152,7 +155,7 @@ What is and is not verified:
 
 **Preview, released in beta.6: fixture-tested only, not submitted, and not tested in Cursor; no verified install command.** The repo carries a Cursor plugin (`.cursor-plugin/plugin.json` and `marketplace.json`): the handoff, pickup, lesson and thinkbeforeact skills, one always-on rule (`rules/ai-dev-workspace.mdc`, generated from the same text `ws start` writes into `.cursor/rules`, and told to do nothing in a repo without `.ws-start.json`), hooks for sessionStart, preCompact, stop, sessionEnd, beforeSubmitPrompt and preToolUse through `bin/ws-plugin`, and the MCP server in `--plugin` mode. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
 
-- Fixture-tested only: manifests, hook mapping, the rule file, duplicate avoidance and the guard output are unit tests written from [Cursor's plugin](https://cursor.com/docs/plugins/building) and [hooks](https://cursor.com/docs/hooks) docs. No Cursor install has loaded this plugin yet. Where the docs were silent we assumed: hook commands run from the plugin folder (`./bin/...`), and the MCP server is started in the opened repo. If Cursor starts it elsewhere, its tools answer "run ws start"; use the `ws start` MCP entry instead.
+- Fixture-tested only: manifests, hook mapping, the rule file, duplicate avoidance and the guard output are unit tests written from [Cursor's plugin](https://cursor.com/docs/plugins/building) and [hooks](https://cursor.com/docs/hooks) docs. No Cursor install has loaded this plugin yet. Where the docs were silent we assumed: hook commands run from the plugin folder (`./bin/...`), and the MCP server is started in the opened repo. If Cursor starts it elsewhere, its tools answer "run ws start" unless the client advertises roots for an already started workspace; use the `ws start` MCP entry instead.
 - Not published: public listing needs Cursor's review (cursor.com/marketplace/publish) and nothing has been submitted. Cursor's docs describe importing a GitHub repo as a team marketplace; we have not run that, so there is no install command to show yet.
 - The preToolUse hook is the guard and acts only in a started repo whose workspace has the `guards` pack on; otherwise it answers allow, because Cursor blocks a permission hook that prints nothing readable. Other hook errors let the action proceed.
 - Both can be on: for each event that the `.cursor/hooks.json` from `ws start` already handles, the plugin hook does nothing.
