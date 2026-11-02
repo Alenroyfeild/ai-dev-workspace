@@ -8,6 +8,8 @@ import json
 import math
 import os
 import sys
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 from pathlib import Path
 
 kit = Path(__file__).resolve().parents[1]
@@ -42,12 +44,13 @@ def S(**props):
 # Listed by default: what a session needs to read and save memory. Every other tool stays callable by name.
 CORE_TOOLS = ('brief', 'find_task', 'read_task', 'checkpoint', 'remember', 'search_vault', 'add_lesson')
 PLUGIN_INACTIVE = False
+ROOTS_DISCOVERY = False
 NO_WORKSPACE = "No ai-dev-workspace here: run `ws start` in your repo (first: `pipx install ai-dev-workspace --pip-args='--pre'`, or pass --workspace-root)."
 
 
-def listed_tools(root):
+def listed_tools(root, root_capable=False):
     """workspace.json `mcp_tools`: "core" (default), "all", or a list of tool names."""
-    if root is None and PLUGIN_INACTIVE: return ['brief']
+    if root is None and PLUGIN_INACTIVE: return list(CORE_TOOLS) if root_capable else ['brief']
     cfg = core.config(root) if root else {}
     choice = cfg.get('mcp_tools', 'core') if root else 'all'
     names = TOOLS if choice == 'all' else choice if isinstance(choice, list) else CORE_TOOLS
@@ -181,7 +184,7 @@ def validate_input(value, schema, field='arguments'):
             validate_input(item, schema['items'], field + '[]')
 
 
-def _dispatch(root, msg):
+def _dispatch(root, msg, root_capable=False):
     method, mid = msg['method'], msg['id']
     params = msg.get('params', {})
     if method == 'initialize':
@@ -226,7 +229,7 @@ def _dispatch(root, msg):
         except (core.WsError, OSError) as exc:
             return rpc_error(mid, -32603, str(exc))
     elif method == 'tools/list':
-        result = {'tools': [{'name': n, 'description': TOOLS[n][0], 'inputSchema': TOOLS[n][1]} for n in listed_tools(root)]}
+        result = {'tools': [{'name': n, 'description': TOOLS[n][0], 'inputSchema': TOOLS[n][1]} for n in listed_tools(root, root_capable)]}
     elif method == 'tools/call':
         name = params.get('name')
         args = params.get('arguments', {})
@@ -250,6 +253,28 @@ def _dispatch(root, msg):
     else:
         return {'jsonrpc': '2.0', 'id': mid, 'error': {'code': -32601, 'message': f'Method not found: {method}'}}
     return {'jsonrpc': '2.0', 'id': mid, 'result': result}
+
+
+def workspace_from_roots(result):
+    """Roots are hints; only ws start's existing Git/link validator authorizes a workspace."""
+    from ws import plugin_runtime
+    rows = result.get('roots') if isinstance(result, dict) else None
+    if not isinstance(rows, list): return None
+    for row in rows:
+        try:
+            uri = row.get('uri') if isinstance(row, dict) else None
+            if not isinstance(uri, str): continue
+            parsed = urlsplit(uri)
+            if parsed.scheme != 'file' or parsed.netloc.lower() not in ('', 'localhost') or parsed.query or parsed.fragment: continue
+            local = url2pathname(parsed.path)
+            if local.startswith(('//', '\\\\')): continue  # Never probe a network share.
+            path = Path(local)
+            if not path.is_absolute() or not (path / '.ws-start.json').is_file(): continue
+            root = plugin_runtime.workspace(path)
+            if root is not None: return root
+        except (core.WsError, OSError, ValueError, TypeError, KeyError, RuntimeError):
+            continue
+    return None
 
 
 def handle(root, msg, legacy=None):
@@ -285,11 +310,25 @@ def handle(root, msg, legacy=None):
             return rpc_error(mid, -32601, 'Method unavailable in ' + MODERN)
     elif method != 'initialize' and legacy is not None and 'version' not in legacy:
         return rpc_error(mid, -32602, 'Provide per-request metadata or initialize a supported legacy version')
-    clean = dict(msg, params={k: v for k, v in params.items() if k != '_meta'})
+    root_capable = False
+    if modern and ROOTS_DISCOVERY:
+        root = None  # Modern input belongs to this request, never a prior client's call.
+        caps = meta[PREFIX + 'clientCapabilities']
+        root_capable = isinstance(caps.get('roots'), dict)
+        if method in ('tools/call', 'resources/read', 'prompts/get') and isinstance(caps.get('roots'), dict):
+            if 'inputResponses' not in params:
+                return {'jsonrpc': '2.0', 'id': mid, 'result': {'resultType': 'input_required',
+                        'inputRequests': {'workspace-roots': {'method': 'roots/list'}},
+                        '_meta': {PREFIX + 'serverInfo': {'name': 'ai-dev-workspace', 'version': core.kit_meta()['version']}}}}
+            supplied = params['inputResponses']
+            if not isinstance(supplied, dict): return rpc_error(mid, -32602, 'inputResponses must be an object')
+            root = workspace_from_roots(supplied.get('workspace-roots'))
+    excluded = ('_meta', 'inputResponses', 'requestState') if modern else ('_meta',)
+    clean = dict(msg, params={k: v for k, v in params.items() if k not in excluded})
     if method == 'server/discover':
         reply = {'jsonrpc': '2.0', 'id': mid, 'result': {'supportedVersions': list(VERSIONS), 'capabilities': CAPABILITIES}}
     else:
-        reply = _dispatch(root, clean)
+        reply = _dispatch(root, clean, root_capable=True) if root_capable else _dispatch(root, clean)
     if method == 'initialize' and 'result' in reply and legacy is not None:
         legacy['version'] = reply['result']['protocolVersion']
     if modern:
@@ -320,8 +359,46 @@ def serve(root, raw, legacy):
         return rpc_error(mid if type(mid) in (str, int) else None, -32603, f'Internal error: {type(exc).__name__}')
 
 
+class RootSession:
+    """Legacy roots requests share the stdio loop, so a missing response never blocks tools."""
+    def __init__(self, root, discover):
+        self.root, self.discover, self.legacy = root, discover, {}
+        self.capability, self.pending, self.serial, self.ready = None, None, 0, False
+
+    def request_roots(self):
+        self.serial += 1
+        self.pending = 'ws-roots-' + str(self.serial)
+        return [{'jsonrpc': '2.0', 'id': self.pending, 'method': 'roots/list'}]
+
+    def receive(self, raw):
+        try: msg = json.loads(raw.decode('utf-8'))
+        except (ValueError, RecursionError): msg = None
+        if isinstance(msg, dict) and msg.get('jsonrpc') == '2.0':
+            if 'method' not in msg and 'id' in msg and ('result' in msg or 'error' in msg):
+                if self.pending is not None and msg['id'] == self.pending:
+                    self.pending = None
+                    self.root = workspace_from_roots(msg.get('result'))
+                return []  # Responses (including unmatched ones) never receive a response.
+            if 'id' not in msg and isinstance(msg.get('params', {}), dict) and self.discover:
+                event = msg.get('method')
+                if event == 'notifications/initialized' and self.capability is not None and not self.ready:
+                    self.ready = True
+                    return self.request_roots()
+                if event == 'notifications/roots/list_changed' and self.ready and self.capability.get('listChanged') is True:
+                    self.root = None
+                    return self.request_roots()
+        reply = serve(self.root, raw, self.legacy)
+        if (self.discover and isinstance(msg, dict) and msg.get('method') == 'initialize'
+                and reply and 'result' in reply):
+            caps = msg.get('params', {}).get('capabilities', {})
+            value = caps.get('roots') if isinstance(caps, dict) else None
+            self.capability = value if isinstance(value, dict) else None
+            self.ready, self.pending, self.root = False, None, None
+        return [reply] if reply is not None else []
+
+
 def main():
-    global PLUGIN_INACTIVE
+    global PLUGIN_INACTIVE, ROOTS_DISCOVERY
     if os.name == 'nt':
         for stream in (sys.stdin, sys.stdout, sys.stderr): stream.reconfigure(encoding='utf-8')
     p = argparse.ArgumentParser()
@@ -336,10 +413,10 @@ def main():
         try: root = core.find_root(args.root)
         except core.WsError: root = None  # still answer initialize/tools/list; tools/call reports NO_WORKSPACE
     PLUGIN_INACTIVE = args.plugin and root is None
-    legacy = {}
+    ROOTS_DISCOVERY = args.plugin and root is None
+    session = RootSession(root, ROOTS_DISCOVERY)
     for raw in sys.stdin.buffer:
-        reply = serve(root, raw, legacy)
-        if reply is not None:
+        for reply in session.receive(raw):
             sys.stdout.write(json.dumps(reply) + '\n')
             sys.stdout.flush()
 
