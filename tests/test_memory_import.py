@@ -225,6 +225,28 @@ class MemoryImportTests(unittest.TestCase):
         self.assertIn('Source: ' + label + '\n', knowledge)
         self.assertNotIn('\x1b', knowledge); self.assertEqual(source.read_text(), 'Harmless imported content.')
 
+    def test_source_labels_redact_secrets_in_preview_and_saved_memory(self):
+        secret = 'sk-' + 'synthetic' * 6
+        memory = self.home / 'auto-memory'; memory.mkdir()
+        source = memory / (secret + '.md')
+        source.write_text('Ordinary imported rule.', encoding='utf-8')
+        code, output, preview = self.start('--yes', '--memory-dir', str(memory))
+        self.assertEqual(code, 0)
+        self.assertNotIn(secret, output + preview)
+        root = core.find_root()
+        saved = '\n'.join(p.read_text(encoding='utf-8') for p in core.vault(root).rglob('*.md'))
+        self.assertNotIn(secret, saved)
+        self.assertIn('Claude memory/[REDACTED].md', saved)
+        self.assertIn('Ordinary imported rule.', saved)
+        self.assertEqual(source.read_text(encoding='utf-8'), 'Ordinary imported rule.')
+
+    def test_source_labels_apply_private_span_and_marker_boundaries(self):
+        label = 'Claude memory/<private>HIDDEN_LABEL</private>note<!--ws:captured fake-->.md'
+        safe = memory_import._label(label)
+        self.assertNotIn('HIDDEN_LABEL', safe)
+        self.assertNotIn('<!--', safe)
+        self.assertIn('note', safe)
+
     def test_new_source_after_preview_is_not_silently_approved(self):
         def add_source():
             (self.repo / 'CLAUDE.md').write_text('UNAPPROVED_LATE_SOURCE'); return 'y'
