@@ -86,3 +86,10 @@ class CodeburnTests(Base):
             core.task_new(self.root, 'T-2', 'Overlapping task')
             result = core.import_codeburn(self.root, since=core.now()[:10])
             self.assertEqual(result, {'imported': 0, 'ambiguous': 2, 'unmatched': 2})
+
+    def test_export_nonzero_exit_reports_specific_failure_message(self):
+        core.checkpoint(self.root, 'T-1', 'in_progress', 'Synthetic next')
+        with mock.patch.object(core.shutil, 'which', return_value='codeburn'), \
+                mock.patch.object(core.subprocess, 'run', return_value=mock.Mock(returncode=1)):
+            with self.assertRaisesRegex(core.WsError, r'^Codeburn export failed; diagnose locally with codeburn export -f json -o <temporary path>\.$'):
+                core.import_codeburn(self.root)

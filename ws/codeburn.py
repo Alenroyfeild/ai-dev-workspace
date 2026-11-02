@@ -29,6 +29,8 @@ def import_usage(root, since=None, task_id=None):
             if result.returncode:
                 raise core.WsError('Codeburn export failed; diagnose locally with codeburn export -f json -o <temporary path>.')
             data = json.loads(path.read_text(encoding='utf-8'))
+    except core.WsError:
+        raise
     except (OSError, ValueError, core.subprocess.TimeoutExpired) as exc:
         raise core.WsError('Codeburn export unavailable or invalid; no usage imported.') from exc
     if not isinstance(data, dict) or data.get('schema') != 'codeburn.export.v2' or not isinstance(data.get('records'), list):
