@@ -85,6 +85,29 @@ class SharingTests(unittest.TestCase):
         with self.assertRaises(core.WsError):
             sharing.check_public(self.root, 'entries/synthetic.md', r'Read \\synthetic-host\restricted\SENTINEL.txt')
 
+    def test_unc_variants_hide_complete_path_and_keep_next_line(self):
+        from ws import sharing
+        for path in ('//synthetic-host/restricted/SENTINEL.txt',
+                     r'\\synthetic-host\my share\SENTINEL.txt'):
+            with self.subTest(path=path):
+                item = sharing.standalone(self.root, 'decision', 'Read ' + path + '\nVisible next line.')
+                plan = sharing.preview(self.root, item); sharing.apply(self.root, plan)
+                text = (self.clone / plan['destination']).read_text()
+                self.assertNotIn('SENTINEL', text)
+                self.assertNotIn('synthetic-host', text)
+                self.assertIn('[local path]', text)
+                self.assertIn('Visible next line.', text)
+
+    def test_publication_refuses_forward_slash_unc(self):
+        from ws import sharing
+        with self.assertRaises(core.WsError):
+            sharing.check_public(self.root, 'entries/synthetic.md', '//synthetic-host/restricted/SENTINEL.txt')
+
+    def test_unc_filter_keeps_urls_and_nonpath_text(self):
+        from ws import sharing
+        text = 'Use https://example.invalid/guide and <b>text</b>.\nA relative path src/file stays.'
+        self.assertEqual(sharing.portable(self.root, text), text)
+
     def test_unshare_missing_source_uses_only_owned_receipt(self):
         from ws import sharing
         plan = sharing.preview(self.root, 'task:T1'); sharing.apply(self.root, plan)

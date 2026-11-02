@@ -57,6 +57,8 @@ In text you share (`--team`, `ws share`), these stay out of the team copy:
 - `<private>...</private>` drops only the span. An unclosed `<private>` hides everything after it: the text before it is shared and the rest is not.
 - Home and other local paths become `[local path]`; `key=value` secrets, Bearer tokens and keys become `[REDACTED]`.
 
+UNC paths (`\\host\share` or `//host/share`) hide the rest of their line, including spaces. Put other text on a new line.
+
 A note saved without `--team` never leaves your machine, so the saved file keeps its text
 (and paths) as written; only secret-looking values are still redacted. Its
 summaries and indexes leave marked text out, and the markers are applied in full
