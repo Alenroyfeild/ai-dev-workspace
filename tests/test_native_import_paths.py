@@ -7,6 +7,14 @@ from ws import core, native
 
 
 class NativeImportPathTests(NativeBase):
+    def setUp(self):
+        self.previous_cwd = Path.cwd()
+        super().setUp()
+
+    def tearDown(self):
+        os.chdir(self.previous_cwd)  # Windows cannot remove the directory while it is cwd.
+        super().tearDown()
+
     def relative_repos(self):
         cfg = core.config(self.root); cfg['repos'] = ['ios']
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
