@@ -7,6 +7,7 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 ### New
 
 - `ws lesson review [--days N]` lists old lesson date stamps for manual review, oldest first.
+- MCP plugin servers can discover a ws-started repository from client roots while remaining inactive for unlinked or invalid roots.
 
 ### Improved
 
@@ -26,6 +27,11 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 - Team pulls and daily scheduling reject non-object `team_workspace` values with a clear error before backend access.
 - Interrupted chunked gateway replies are recorded as failed attempts so configured provider fallback can continue.
 - Claude-mem imports exclude observations when any text field begins with /private, even when a public title precedes it.
+
+- Resolve relative repositories from the workspace during native memory imports, avoiding memories from an unrelated current directory.
+- Windows UNC paths are localized in shared notes and rejected by publication privacy checks when unredacted.
+- Preserve the specific diagnostic error message when Codeburn export exits with a nonzero code.
+- Shared notes hide forward-slash UNC paths and the full line of UNC paths containing spaces, rather than leaking path suffixes.
 
 ### Previews
 
