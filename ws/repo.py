@@ -239,6 +239,8 @@ def _ws_hook_parts(command):
         if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
         if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
         if '--workspace-root' not in parts: return None
+        interpreter = re.split(r'[\\/]', parts[0])[-1]
+        if parts[0] != core.python_command() and not re.fullmatch(r'(?:python(?:w|[0-9.]+)?|pypy[0-9.]*|py)(?:\.exe)?', interpreter, re.I): return None
         kit = parts[1]
         if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return None
     except (ValueError, IndexError): return None
