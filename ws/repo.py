@@ -239,6 +239,8 @@ def _ws_hook_parts(command, *, diagnose=False):
         if core.WINDOWS: parts = [p[1:-1] if len(p) > 1 and p[0] == p[-1] == '"' else p for p in parts]
         if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
         if '--workspace-root' not in parts: return None
+        idx = parts.index('--workspace-root')
+        if not diagnose and idx + 1 >= len(parts): return None
         interpreter = re.split(r'[\\/]', parts[0])[-1]
         if parts[0] != core.python_command() and not re.fullmatch(r'(?:python(?:w|[0-9.]+)?|pypy[0-9.]*|py)(?:\.exe)?', interpreter, re.I):
             # A missing custom launcher is diagnostic evidence, never removal authority.
@@ -254,9 +256,12 @@ def _missing_in_hook(command, root):
     """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
     parts = _ws_hook_parts(command, diagnose=True)
     if not parts: return ''
-    interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
+    interpreter, kit = parts[0], parts[1]
     for item in (interpreter, kit):
         if not Path(item).exists() and not shutil.which(item): return item
+    idx = parts.index('--workspace-root')
+    if idx + 1 >= len(parts): return parts[idx]
+    workspace = parts[idx + 1]
     return '' if Path(workspace).resolve() == Path(root).resolve() else workspace  # resolve: /private symlinks on macOS
 
 
