@@ -378,6 +378,36 @@ def _mutes(name, args, bodies):
 _GIT_VALUE = ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix')  # global options that take the next word
 
 
+def _find_reason(args, cwd_bad):
+    roots, i = [], 0
+    while i < len(args):  # find's traversal options precede its search roots.
+        option = args[i]
+        if option in ('-H', '-L', '-P', '-X', '-s') or re.fullmatch(r'-O\d', option): i += 1
+        elif option == '-D': i += 2
+        elif option == '-f' and i + 1 < len(args): roots.append(args[i + 1]); i += 2
+        elif option == '--': i += 1; break
+        else: break
+    while i < len(args) and args[i][:1] not in ('-', '!', '('):
+        roots.append(args[i]); i += 1
+    if not any(p in HOME_OR_ROOT or _is_home(p) or _is_root(p) or (cwd_bad and _WIPE_CWD.fullmatch(p)) for p in (roots or ['.'])):
+        return ''
+    values = ('-name -iname -path -ipath -wholename -iwholename -regex -iregex -type -xtype -size -perm '
+              '-user -group -uid -gid -inum -links -mtime -mmin -atime -amin -ctime -cmin -newer '
+              '-maxdepth -mindepth -fstype -printf -fprint -fprint0 -fls -context -regextype').split()
+    while i < len(args):
+        option = args[i]
+        if option == '-delete': return 'find -delete on home or root would delete files recursively.'
+        if option in ('-exec', '-execdir', '-ok', '-okdir'):
+            end = i + 1
+            while end < len(args) and args[end] not in (';', '+'): end += 1
+            command, _ = _strip(args[i + 1:end])
+            if command and _exe(command[0]) == 'rm': return 'find executing rm on home or root would delete files recursively.'
+            i = end + 1  # An exec argument named -delete is data, not a find action.
+        else:
+            i += 3 if option == '-fprintf' else 2 if option in values or option.startswith('-newer') else 1
+    return ''
+
+
 def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
     """Reason for one simple command (wrappers and NAME=value already stripped), or ''."""
     if name in SHELLS:  # bash -lc "<command>", bash <<EOF ... EOF, bash <<< "<command>", echo "<command>" | bash
@@ -394,6 +424,9 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
     why = _edits_hooks(name, args, cmd.words)
     if why: return why
     if _mutes(name, args, cmd.bodies): return 'This command skips or narrows tests (skip/only); fix the test or ask the user first.'
+    if name == 'find':
+        why = _find_reason(args, cwd_bad)
+        if why: return why
     flags = ''.join(a[1:] for a in args if a.startswith('-') and not a.startswith('--'))
     if name == 'rm' and ('r' in flags.lower() or '--recursive' in args):
         targets = args if not xargs or any(a[:1] != '-' for a in args) else (cmd.pipe_in or [])[1:]
