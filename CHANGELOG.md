@@ -6,19 +6,18 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 
 ### New
 
-- `ws lesson review [--days N]` lists old lesson date stamps for manual review, oldest first.
+- `ws lesson review [--days N]` lists old lesson date stamps for manual review without changing or deleting saved lessons.
 - MCP plugin servers can discover a ws-started repository from client roots while remaining inactive for unlinked or invalid roots.
 
 ### Improved
 
 - Expand handoff and pickup skills with working-tree, process, check, and drift checklists inspired by steipete/agent-scripts (MIT).
-- Update docs/ROADMAP.md for beta.6, moving PyPI install to available and refreshing preview status.
 - Document exact claude-mem privacy exclusions and distinguish released beta.6 from the upcoming per-field prefix check.
 - Discipline retry nudges keep commands with different shell quoting, escapes or line breaks in separate counters.
 
 ### Changed
 
-- Expand `thinkbeforeact` planning checks for verified evidence, outward effects, failure paths and adversarial review (#357).
+- Expand `thinkbeforeact` planning checks for verified evidence, outward effects, failure paths and adversarial review.
 
 ### Fixed
 
@@ -31,7 +30,6 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 - Team pulls and daily scheduling reject non-object `team_workspace` values with a clear error before backend access.
 - Interrupted chunked gateway replies are recorded as failed attempts so configured provider fallback can continue.
 - Claude-mem imports exclude observations when any text field begins with /private, even when a public title precedes it.
-
 - Resolve relative repositories from the workspace during native memory imports, avoiding memories from an unrelated current directory.
 - Windows UNC paths are localized in shared notes and rejected by publication privacy checks when unredacted.
 - Preserve the specific diagnostic error message when Codeburn export exits with a nonzero code.
