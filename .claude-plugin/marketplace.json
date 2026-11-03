@@ -20,7 +20,8 @@
       "skills": [
         "./skills/handoff",
         "./skills/pickup",
-        "./skills/lesson"
+        "./skills/lesson",
+        "./skills/thinkbeforeact"
       ]
     }
   ]

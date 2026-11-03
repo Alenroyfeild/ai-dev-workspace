@@ -14,9 +14,6 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 - Expand handoff and pickup skills with working-tree, process, check, and drift checklists inspired by steipete/agent-scripts (MIT).
 - Document exact claude-mem privacy exclusions and distinguish released beta.6 from the upcoming per-field prefix check.
 - Discipline retry nudges keep commands with different shell quoting, escapes or line breaks in separate counters.
-
-### Changed
-
 - Expand `thinkbeforeact` planning checks for verified evidence, outward effects, failure paths and adversarial review.
 
 ### Fixed
@@ -37,6 +34,9 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 - Guards deny root/home destructive find, remote branch deletion and module-launched attempts to undo their own hooks; local cleanup, Git dry runs and literal command text stay allowed.
 - Refreshing repo setup preserves user hooks that print or inspect a ws command instead of executing it.
 - Handle non-dictionary JSON payloads in status files gracefully during team sync formatting without raising AttributeError.
+- Guards parse git push options and attached values without falsely denying legitimate push commands; remote deletion flags stay blocked.
+- Diagnose hook commands with trailing --workspace-root without an argument as malformed without crashing or claiming mutation ownership.
+- Guards deny git push remote deletion via unique-prefix abbreviations of --delete, --prune and --mirror while allowing ambiguous prefixes and dry runs.
 
 ### Previews
 

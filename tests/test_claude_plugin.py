@@ -21,7 +21,7 @@ class ClaudePluginTests(Base):
         self.assertEqual(manifest['mcpServers']['ai-dev-workspace']['args'], ['${CLAUDE_PLUGIN_ROOT}/mcp/server.py', '--plugin'])
         for skill in entry['skills']:  # only the skills ws start installs; not every folder under skills/
             self.assertTrue((KIT / skill / 'SKILL.md').is_file(), skill)
-        self.assertEqual(sorted(Path(s).name for s in entry['skills']), ['handoff', 'lesson', 'pickup'])
+        self.assertEqual(sorted(Path(s).name for s in entry['skills']), ['handoff', 'lesson', 'pickup', 'thinkbeforeact'])
 
     def test_hooks_cover_the_same_events_as_ws_start(self):
         hooks = load(load('.claude-plugin/plugin.json')['hooks'])['hooks']

@@ -20,8 +20,9 @@ class CursorPluginTests(Base):
         claude = load('.claude-plugin/plugin.json')
         self.assertEqual(manifest['version'], core.kit_meta()['version'])  # a release bump must not miss the Cursor manifest
         self.assertRegex(manifest['name'], r'^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$')
-        for key in ('name', 'description', 'homepage', 'repository', 'license', 'author'):
+        for key in ('name', 'homepage', 'repository', 'license', 'author'):
             self.assertEqual(manifest[key], claude[key], key)
+        self.assertIn('Cursor (preview)', manifest['description'])
         self.assertEqual((manifest['rules'], manifest['skills'], manifest['hooks']), ('./rules/', './skills/', './hooks/cursor-hooks.json'))
         self.assertEqual(manifest['mcpServers']['ai-dev-workspace']['args'], ['${CURSOR_PLUGIN_ROOT}/mcp/server.py', '--plugin'])
         entry = load('.cursor-plugin/marketplace.json')['plugins'][0]

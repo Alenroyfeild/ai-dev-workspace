@@ -14,7 +14,7 @@ The existing topics checked on 2026-10-23 are `agent-memory`, `agents-md`,
 `ai-agents`, `ai-coding-assistant`, `claude-code`, `codex`, `context-engineering`,
 `cursor`, `developer-tools`, `gemini-cli`, `github-copilot`, `llm`, `mcp`, and
 `model-context-protocol`. No hosted website or directory indexing is implied.
-Antigravity hooks are a Preview in beta.6, fixture-tested rather than live-checked.
+Antigravity hooks are a Preview in beta.7, fixture-tested rather than live-checked.
 
 `setup.py` adds the three search terms plus Tutorial and Client verification URLs.
 These are metadata for the next package release; this PR does not change PyPI.
