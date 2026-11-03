@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.1.0-beta.7 (Unreleased)
+
+Beta.7 improves session continuity, error resilience and memory privacy, and adds read-only lesson date review.
+
+### New
+
+- `ws lesson review [--days N]` lists old lesson date stamps for manual review without changing or deleting saved lessons.
+- MCP plugin servers can discover a ws-started repository from client roots while remaining inactive for unlinked or invalid roots.
+
+### Improved
+
+- Expand handoff and pickup skills with working-tree, process, check, and drift checklists inspired by steipete/agent-scripts (MIT).
+- Document exact claude-mem privacy exclusions and distinguish released beta.6 from the upcoming per-field prefix check.
+- Discipline retry nudges keep commands with different shell quoting, escapes or line breaks in separate counters.
+
+### Changed
+
+- Expand `thinkbeforeact` planning checks for verified evidence, outward effects, failure paths and adversarial review.
+
+### Fixed
+
+- Codex SessionStart catches up changed transcripts from the last captured session for the locally claimed task, including resumed turns with no callback; ambiguous or unsafe sources are skipped.
+- Codex SessionStart catch-up reuses its verified transcript snapshot instead of discovering and reading it twice.
+- `ws audit` tolerates non-UTF-8 Codex config comments without changing the file or losing readable MCP server headers.
+- Redact source filenames as well as contents when importing local memory, including previews and saved provenance.
+- MCP recall uses a saved note date when the created field is empty.
+- `ws sync` includes removed team notes in its pull summary.
+- Team pulls and daily scheduling reject non-object `team_workspace` values with a clear error before backend access.
+- Interrupted chunked gateway replies are recorded as failed attempts so configured provider fallback can continue.
+- Claude-mem imports exclude observations when any text field begins with /private, even when a public title precedes it.
+- Resolve relative repositories from the workspace during native memory imports, avoiding memories from an unrelated current directory.
+- Windows UNC paths are localized in shared notes and rejected by publication privacy checks when unredacted.
+- Preserve the specific diagnostic error message when Codeburn export exits with a nonzero code.
+- Shared notes hide forward-slash UNC paths and the full line of UNC paths containing spaces, rather than leaking path suffixes.
+- Guards deny root/home destructive find, remote branch deletion and module-launched attempts to undo their own hooks; local cleanup, Git dry runs and literal command text stay allowed.
+- Refreshing repo setup preserves user hooks that print or inspect a ws command instead of executing it.
+- Handle non-dictionary JSON payloads in status files gracefully during team sync formatting without raising AttributeError.
+
+### Previews
+
+- **Codex SessionStart catch-up**: recovers changed transcript content for the locally claimed task, including resumed turns without a callback. *Limit:* unsafe and ambiguous transcript sources are skipped; live resume behavior has not been verified.
+- **Worker provider fallback**: `ws delegate --run` can try the next declared headless provider after an error, timeout, quota rejection or interrupted gateway reply. *Limit:* only declared providers and read-only roles run; a timeout counts as a failed attempt.
+- **OpenAI-compatible gateway**: configure a `providers` entry with `kind: openai-compatible`, `base_url` and a model, then route a read-only role. *Limit:* the gateway receives a redacted brief only, with no tools or file access.
+- **claude-mem import**: fixture-tested import of checkpointed SQLite copies, with per-field private-path exclusions. *Limit:* newer upstream schemas may not import.
+- **Antigravity session hooks**: configures `.agents/hooks.json`. *Limit:* CI fixture-tested; not verified with a live signed-in account and does not capture transcripts.
+- **Claude Code, Codex and Cursor plugins** remain previews; see the beta.6 section for install and verification limits.
+
+### Known limits
+
+- Automatic transcript capture is best-effort; explicit `ws remember` and `ws checkpoint` commands remain deterministic.
+- Guards are a regex-based safety net, not an unbypassable security boundary.
+- Claude Code and Codex have live macOS checks; Linux and Windows are CI-tested. Cursor, Copilot, Gemini CLI and Antigravity are fixture-tested.
+- Memory remains plain Markdown outside git at `~/.ai-dev-workspace/<repo-name>`; there is no centralized database or daemon.
+
 ## 0.1.0-beta.6 (2026-10-26)
 
 ### Highlights
