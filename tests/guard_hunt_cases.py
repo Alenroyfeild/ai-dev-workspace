@@ -159,7 +159,7 @@ CASES = [
     ('Bash', {'command': 'git push origin main -f'}, 'd', 'trailing -f'),
     ('Bash', {'command': 'git push origin main --force'}, 'd', 'trailing --force'),
     ('Bash', {'command': 'git push origin main --force=1'}, 'a', 'nonexistent'),
-    ('Bash', {'command': 'git push --prune origin'}, 'a', 'prune'),
+    ('Bash', {'command': 'git push --prune origin'}, 'd', 'prune'),
     ('Bash', {'command': 'git reset --hard'}, 'd', 'reset hard'),
     ('Bash', {'command': 'git reset --hard HEAD~1'}, 'd', 'reset hard HEAD~1'),
     ('Bash', {'command': 'git reset HEAD --hard'}, 'd', 'flag after'),

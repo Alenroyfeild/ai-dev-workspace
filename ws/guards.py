@@ -380,6 +380,21 @@ def _mutes(name, args, bodies):
 
 
 _GIT_VALUE = ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix')  # global options that take the next word
+_GIT_PUSH_OPTIONS = (
+    'all', 'atomic', 'branches', 'delete', 'dry-run', 'exec',
+    'follow-tags', 'force', 'force-if-includes', 'force-with-lease',
+    'ipv4', 'ipv6', 'mirror', 'no-verify', 'porcelain', 'progress',
+    'prune', 'push-option', 'quiet', 'receive-pack', 'recurse-submodules',
+    'repo', 'set-upstream', 'signed', 'tags', 'thin', 'verbose', 'verify',
+)
+
+
+def _git_push_opt(arg):
+    if not arg.startswith('--'): return ''
+    name = arg[2:].split('=', 1)[0]
+    if name in _GIT_PUSH_OPTIONS: return name
+    matches = [o for o in _GIT_PUSH_OPTIONS if o.startswith(name)]
+    return matches[0] if len(matches) == 1 else ''
 
 
 def _find_reason(args, cwd_bad):
@@ -445,8 +460,9 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
             opts, i = [], 0
             while i < len(flagged):
                 a = flagged[i]
-                if a in ('--push-option', '--repo', '--receive-pack', '--exec'): i += 2
-                elif a.startswith(('--push-option=', '--repo=', '--receive-pack=', '--exec=')): i += 1
+                opt = _git_push_opt(a)
+                if opt in ('push-option', 'repo', 'receive-pack', 'exec'):
+                    i += 1 if '=' in a else 2
                 elif a[:1] == '-' and a[1:2] != '-' and 'o' in a:
                     cluster = a[1:a.index('o')]
                     if cluster: opts.append('-' + cluster)
@@ -454,10 +470,11 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
                 else: opts.append(a); i += 1
             flagged = opts
         short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
-        dry = '--dry-run' in flagged or any('n' in a for a in short)
+        long_opts = [_git_push_opt(a) for a in flagged if a.startswith('--')]
+        dry = 'dry-run' in long_opts or any('n' in a for a in short)
         if sub == 'reset' and any(a in ('--hard', '--har', '--ha') for a in flagged): return 'git reset --hard throws away uncommitted work.'
         refspecs = flagged + (rest[rest.index('--') + 1:] if '--' in rest else [])
-        if sub == 'push' and not dry and ('--delete' in flagged or any('d' in a for a in short) or any(re.match(r'\+?:.', a) for a in refspecs)):
+        if sub == 'push' and not dry and (any(opt in ('delete', 'mirror', 'prune') for opt in long_opts) or any('d' in a for a in short) or any(re.match(r'\+?:.', a) for a in refspecs)):
             return 'This remote branch will be deleted for everyone. Use gh pr merge --delete-branch, the GitHub UI, or WS_GUARDS=off for one session.'
         if sub == 'push' and not dry and ('--force' in flagged or any('f' in a for a in short) or any(a.startswith('+') for a in rest)):
             return 'Force push rewrites shared history; use --force-with-lease if you must.'

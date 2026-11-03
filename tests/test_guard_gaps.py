@@ -36,7 +36,6 @@ class FindGuardGapTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assertEqual(guards.command_reason(command), '')
-
     def test_bsd_traversal_flags_do_not_hide_find_roots(self):
         for option in ('-d', '-E', '-x', '-dsx'):
             with self.subTest(option=option):
@@ -76,7 +75,6 @@ class RemoteDeletionGuardTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assertEqual(guards.command_reason(command), '')
-
     def test_push_options_do_not_trip_remote_deletion_guard(self):
         commands = ('git push -odev origin main', 'git push -odraft origin main',
                     'git push -o -d origin main', 'git push --push-option -d origin main',
@@ -84,7 +82,6 @@ class RemoteDeletionGuardTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assertEqual(guards.command_reason(command), '')
-
     def test_push_delete_flags_stay_denied(self):
         commands = ('git push -d origin feat', 'git push -fd origin feat',
                     'git push origin --delete feat')
@@ -92,3 +89,47 @@ class RemoteDeletionGuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 reason = guards.command_reason(command)
                 self.assertIn('deleted for everyone', reason)
+
+    def test_push_unique_prefix_and_mirror_prune_are_denied(self):
+        commands = (
+            'git push origin --del feat',
+            'git push origin --dele feat',
+            'git push origin --delet feat',
+            'git push origin --de feat',
+            'git push --del origin feat',
+            'git push --dele origin feat',
+            'git push --prune origin',
+            'git push --prune origin refs/heads/*:refs/heads/*',
+            'git push --pru origin',
+            'git push --prun origin',
+            'git push --mirror origin',
+            'git push --mir origin',
+            'git push --m origin',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                reason = guards.command_reason(command)
+                self.assertIn('deleted for everyone', reason)
+
+    def test_push_ambiguous_prefixes_and_dry_runs_are_allowed(self):
+        commands = (
+            'git push --p origin main',
+            'git push --pr origin main',
+            'git push --d origin main',
+            'git push origin main',
+            'git push --push-option=dev origin main',
+            'git push --porcelain origin main',
+            'git push --progress origin main',
+            'git push --del --dry-run origin feat',
+            'git push -n --dele origin feat',
+            'git push --mirror --dry-run origin',
+            'git push -n --mirror origin',
+            'git push --m -n origin',
+            'git push --prune --dry-run origin',
+            'git push -n --prune origin',
+            'git push --pru -n origin',
+            'git push --dry --prune origin',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(guards.command_reason(command), '')
