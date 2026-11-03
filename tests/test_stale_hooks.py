@@ -69,6 +69,13 @@ class StaleHookTests(Base):
         self.assertEqual(repo_setup._missing_in_hook(
             'echo /gone/bin/ws --workspace-root /gone brief', root), '')
 
+    def test_trailing_workspace_root_is_diagnosed_as_malformed_but_not_owned(self):
+        repo, root = self.started()
+        command = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'),
+                                     'brief', '--hook', '--workspace-root'])
+        self.assertEqual(repo_setup._missing_in_hook(command, root), '--workspace-root')
+        self.assertFalse(repo_setup._is_ws_hook({'command': command}))
+
     def test_users_own_hooks_are_ignored(self):
         repo, root = self.started()
         file = repo / '.claude/settings.local.json'; data = json.loads(file.read_text())
