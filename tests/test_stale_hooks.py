@@ -96,7 +96,8 @@ class StaleHookTests(Base):
                 repo_setup.start(yes=True)
         finally: os.chdir(cwd)
 
-        self.assertIn(bad_cmd, file.read_text())
+        data_after = json.loads(file.read_text())
+        self.assertEqual(data_after['hooks']['PostToolUse'][0]['hooks'][0]['command'], bad_cmd)
 
         text_after = cli.text_doctor(core.doctor(root))
         self.assertIn('Hook command is malformed', text_after)
