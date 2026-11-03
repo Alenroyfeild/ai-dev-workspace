@@ -37,6 +37,7 @@ def _file(name, text):
     if name.startswith('status/'):
         try: row = json.loads(text)
         except (TypeError, ValueError): row = {}
+        if not isinstance(row, dict): row = {}
         return f"+ status {row.get('author', name)}: {_one(str(row.get('line', '')))}" if text is not None else f'- {name} (removed)'
     if name == 'team.json': return '+ team manifest (first publish)'
     return None  # derived INDEX.md / *.index.md cards
