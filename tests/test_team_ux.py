@@ -133,3 +133,10 @@ class TeamUxTests(unittest.TestCase):
         mate = self.base / 'mate2'; core.init(mate, 'synthetic', clients=[])
         code, _, err = self.run_cli('team', 'link', str(empty), '--yes', '--attest-private', root=mate)
         self.assertNotEqual(code, 0); self.assertIn('ws team init', err); self.assertIn('ws sync', err)
+
+    def test_sync_and_file_handle_valid_non_object_json_gracefully(self):
+        for payload in ('[1, 2, 3]', 'null', '"just a string"', '42', 'true'):
+            with self.subTest(payload=payload):
+                plan = {'remote': 'origin', 'files': {'status/alice.json': payload}}
+                out = team_ui.sync(plan)
+                self.assertIn('+ status status/alice.json:', out)
