@@ -40,6 +40,18 @@ class StartTests(unittest.TestCase):
         self.assertIn('[y/N] \nws: No confirmation; use ws start --yes or --dry-run.', err)  # error starts on its own line
         self.assertNotIn('review local files', err)
 
+    def test_refresh_preserves_user_hook_that_only_prints_a_ws_command(self):
+        target = self.repo / '.claude/settings.local.json'; target.parent.mkdir()
+        command = 'echo /synthetic/bin/ws --workspace-root /synthetic brief'
+        target.write_text(json.dumps({'hooks': {'SessionStart': [{'hooks': [
+            {'type': 'command', 'command': command}]}]}}))
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn(command, target.read_text())
+        self.assertEqual(self.start('--yes')[0], 0)
+        self.assertIn(command, target.read_text())
+        self.assertEqual(self.start('--undo', '--yes')[0], 0)
+        self.assertIn(command, target.read_text())
+
     def test_jsonc_settings_error_names_the_file(self):
         (self.repo / '.claude').mkdir(); (self.repo / '.claude/settings.local.json').write_text('{\n// note\n}\n')
         code, _, err = self.start('--yes')
