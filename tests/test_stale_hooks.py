@@ -76,6 +76,33 @@ class StaleHookTests(Base):
         self.assertEqual(repo_setup._missing_in_hook(command, root), '--workspace-root')
         self.assertFalse(repo_setup._is_ws_hook({'command': command}))
 
+    def test_malformed_trailing_workspace_root_requires_hand_editing(self):
+        repo, root = self.started()
+        file = repo / '.claude/settings.local.json'
+        data = json.loads(file.read_text())
+        bad_cmd = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'),
+                                     'brief', '--hook', '--workspace-root'])
+        data['hooks']['PostToolUse'] = [{'hooks': [{'type': 'command', 'command': bad_cmd}]}]
+        file.write_text(json.dumps(data))
+
+        text_before = cli.text_doctor(core.doctor(root))
+        self.assertIn('Hook command is malformed', text_before)
+        self.assertIn('edit it by hand', text_before)
+        self.assertNotIn('run ws start again', text_before)
+
+        cwd = os.getcwd(); os.chdir(repo)
+        try:
+            with mock.patch('ws.setup.detect', return_value=[]), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                repo_setup.start(yes=True)
+        finally: os.chdir(cwd)
+
+        self.assertIn(bad_cmd, file.read_text())
+
+        text_after = cli.text_doctor(core.doctor(root))
+        self.assertIn('Hook command is malformed', text_after)
+        self.assertIn('edit it by hand', text_after)
+        self.assertNotIn('run ws start again', text_after)
+
     def test_users_own_hooks_are_ignored(self):
         repo, root = self.started()
         file = repo / '.claude/settings.local.json'; data = json.loads(file.read_text())

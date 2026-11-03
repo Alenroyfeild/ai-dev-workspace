@@ -129,7 +129,10 @@ def doctor_verdict(report):
     if not report.get('valid'): return 'Needs attention: workspace invalid. Next: run ws validate.'
     if report.get('upgrade_due'): return 'Needs attention: workspace was written by an older kit. Next: ws upgrade --dry-run to preview, then ws upgrade.'
     if report.get('codex_manual_pending'): return 'Needs attention: Codex needs a manual step. Next: paste the printed Codex config block (see below).'
-    if report.get('stale_hooks'): return 'Needs attention: repo hooks point to something missing. Next: run ws start again in that repo.'
+    if report.get('stale_hooks'):
+        if any(i.get('missing') == '--workspace-root' for i in report['stale_hooks']):
+            return 'Needs attention: repo hook command is malformed. Next: edit it by hand in that repo.'
+        return 'Needs attention: repo hooks point to something missing. Next: run ws start again in that repo.'
     if not connected: return 'Needs attention: no assistant connected. Next: run ws start in your repo, or ws connect claude.'
     return 'OK: workspace valid; ' + '; '.join(n + ' connected' for n in connected)
 
@@ -147,7 +150,11 @@ def text_doctor(report):
         assistants = ', '.join(report['setup']['assistants'])
         lines.append('Setup preset: ' + report['setup']['preset'] + (f' ({assistants})' if assistants else ''))
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
-    for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
+    for item in report.get('stale_hooks', []):
+        if item.get('missing') == '--workspace-root':
+            lines.append(f"Hook command is malformed — {item['repo']}/{item['file']}: {item['missing']}; edit it by hand in that repo")
+        else:
+            lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
     for path in report.get('claude_plugin_duplicates', []): lines.append('Claude: plugin and ws start hooks both active (two briefs per session) — ' + path + '; disable one')
     for path in report.get('claude_plugin_missing', []): lines.append('Claude: the plugin was enabled when ws start ran but is not now, so Claude has no memory hooks — ' + path + '; run ws start to restore Claude hooks')
     clients = report.get('configured_clients', {})
