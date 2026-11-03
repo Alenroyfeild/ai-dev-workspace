@@ -36,3 +36,43 @@ class FindGuardGapTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assertEqual(guards.command_reason(command), '')
+
+    def test_bsd_traversal_flags_do_not_hide_find_roots(self):
+        for option in ('-d', '-E', '-x', '-dsx'):
+            with self.subTest(option=option):
+                self.assertTrue(guards.command_reason(f'find {option} / -delete'))
+                self.assertTrue(guards.command_reason(f'find {option} "$HOME" -exec rm {{}} \\;'))
+
+    def test_bsd_find_local_cleanup_and_reads_stay_allowed(self):
+        for command in ('find -dsx ./build -delete', 'find -E / -print',
+                        'find -d / -name -delete -print'):
+            with self.subTest(command=command):
+                self.assertEqual(guards.command_reason(command), '')
+
+
+class RemoteDeletionGuardTests(unittest.TestCase):
+    def test_remote_deletion_is_denied_for_every_branch(self):
+        commands = ('git push origin :main', 'git push origin :feature/topic',
+                    'git push origin +:dev', 'git push origin :refs/heads/master',
+                    'git push origin HEAD:feature :other',
+                    'git push --delete origin main', 'git push origin --delete topic',
+                    'git push origin -d feature', 'git push -du origin feature',
+                    'sudo git -C repo push origin :topic',
+                    'git push origin -- :topic', 'git push origin :topic -- -n')
+        for command in commands:
+            with self.subTest(command=command):
+                reason = guards.command_reason(command)
+                for text in ('deleted for everyone', 'gh pr merge --delete-branch',
+                             'GitHub UI', 'WS_GUARDS=off'):
+                    self.assertIn(text, reason)
+
+    def test_dry_runs_updates_and_literal_data_are_allowed(self):
+        commands = ('git push -n origin :main', 'git push origin --dry-run :topic',
+                    'git push --delete origin topic --dry-run', 'git push -dn origin topic',
+                    'git push -nd origin topic', 'git push origin -n -d feature',
+                    'git push origin HEAD:main', 'git push origin :',
+                    'git push origin -- -d', 'git push git@example.invalid:repo HEAD:main',
+                    'echo "git push origin :main"')
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(guards.command_reason(command), '')

@@ -1,1 +1,1 @@
-Fixed: Guards recognize destructive find actions on home or root while allowing project-local cleanup and literal search arguments.
+Fixed: Guards deny destructive find actions on home or root and all remote branch deletion forms, while preserving project-local cleanup, Git dry runs and literal search arguments.

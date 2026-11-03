@@ -382,7 +382,7 @@ def _find_reason(args, cwd_bad):
     roots, i = [], 0
     while i < len(args):  # find's traversal options precede its search roots.
         option = args[i]
-        if option in ('-H', '-L', '-P', '-X', '-s') or re.fullmatch(r'-O\d', option): i += 1
+        if re.fullmatch(r'-[HLPXsdEx]+|-O\d', option): i += 1
         elif option == '-D': i += 2
         elif option == '-f' and i + 1 < len(args): roots.append(args[i + 1]); i += 2
         elif option == '--': i += 1; break
@@ -440,6 +440,8 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
         short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
         dry = '--dry-run' in flagged or any('n' in a for a in short)
         if sub == 'reset' and any(a in ('--hard', '--har', '--ha') for a in flagged): return 'git reset --hard throws away uncommitted work.'
+        if sub == 'push' and not dry and ('--delete' in flagged or any('d' in a for a in short) or any(re.match(r'\+?:.', a) for a in rest)):
+            return 'This remote branch will be deleted for everyone. Use gh pr merge --delete-branch, the GitHub UI, or WS_GUARDS=off for one session.'
         if sub == 'push' and not dry and ('--force' in flagged or any('f' in a for a in short) or any(a.startswith('+') for a in rest)):
             return 'Force push rewrites shared history; use --force-with-lease if you must.'
         if sub == 'clean' and not dry and ('--force' in flagged or any('f' in a for a in short)):
