@@ -322,7 +322,11 @@ def _undoes_start(name, args):
     if re.fullmatch(r'python(?:w|[0-9.]*)|py', name):
         while args and args[0].startswith('-'):
             option, args = args[0], args[1:]
-            if option == '-m': break
+            if option.startswith('-m'):
+                module = option[2:] or (args[0] if args else '')
+                tail = args if option[2:] else args[1:]
+                args = ['ws' if module == 'ws.cli' else module, *tail] if module else []
+                break
             if option.startswith('-c') or option in ('--help', '-V', '--version'): return False
             if option in ('-W', '-X'): args = args[1:]
         if not args: return False

@@ -68,6 +68,19 @@ class ShellRoutesTests(GuardTestCase):
         self.check(allowed=('ws start', 'ws start --dry-run', 'ws start --yes', 'ws status', 'echo start --undo', 'git start --undo', 'ws task start --undo-me', 'ws pack add guards'))
 
 
+    def test_python_module_launchers_cannot_undo_guards(self):
+        self.check(denied=('python3 -m ws.cli start --undo', 'python -m ws start --undo',
+                           'python3 -I -m ws.cli --workspace-root . start --und',
+                           'py -3 -m ws.cli start --undo',
+                           'env X=1 python3 -m ws.cli start --yes --undo',
+                           'python3 -mws.cli start --undo', 'python3 -mws start --undo'))
+
+    def test_module_undo_data_and_other_modules_stay_allowed(self):
+        self.check(allowed=('python3 -m ws.cli start --dry-run', 'python3 -m ws.cli status',
+                            'python3 -m ws.cli task start --undo', 'python3 -m unrelated start --undo',
+                            'python3 -c "print(\"python -m ws.cli start --undo\")"',
+                            'echo "python3 -m ws.cli start --undo"'))
+
     def test_undo_text_is_data_unless_ws_is_the_command(self):
         self.check(allowed=('echo ws start --undo', "printf '%s' 'ws start --undo'", 'python3 -c "print(\"ws start --undo\")"',
                             'ws task start --undo', 'ws --workspace-root start status --undo'))
