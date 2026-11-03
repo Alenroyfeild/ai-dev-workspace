@@ -76,3 +76,19 @@ class RemoteDeletionGuardTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assertEqual(guards.command_reason(command), '')
+
+    def test_push_options_do_not_trip_remote_deletion_guard(self):
+        commands = ('git push -odev origin main', 'git push -odraft origin main',
+                    'git push -o -d origin main', 'git push --push-option -d origin main',
+                    'git push --push-option=dev origin main')
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(guards.command_reason(command), '')
+
+    def test_push_delete_flags_stay_denied(self):
+        commands = ('git push -d origin feat', 'git push -fd origin feat',
+                    'git push origin --delete feat')
+        for command in commands:
+            with self.subTest(command=command):
+                reason = guards.command_reason(command)
+                self.assertIn('deleted for everyone', reason)
