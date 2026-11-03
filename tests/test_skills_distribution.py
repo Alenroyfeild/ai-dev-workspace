@@ -8,6 +8,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SkillDistributionTests(unittest.TestCase):
+    def test_thinkbeforeact_skill_includes_verification_checklist(self):
+        text = (ROOT / "skills/thinkbeforeact/SKILL.md").read_text(encoding="utf-8").lower()
+        for phrase in ("verified", "outward", "failure path", "adversarial", "verification gate"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+
     def test_repository_skills_have_discoverable_string_metadata(self):
         paths = sorted((ROOT / "skills").glob("*/SKILL.md"))
         self.assertEqual({p.parent.name for p in paths},
