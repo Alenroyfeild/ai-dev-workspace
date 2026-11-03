@@ -16,6 +16,10 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 - Document exact claude-mem privacy exclusions and distinguish released beta.6 from the upcoming per-field prefix check.
 - Discipline retry nudges keep commands with different shell quoting, escapes or line breaks in separate counters.
 
+### Changed
+
+- Expand `thinkbeforeact` planning checks for verified evidence, outward effects, failure paths and adversarial review (#357).
+
 ### Fixed
 
 - Codex SessionStart catches up changed transcripts from the last captured session for the locally claimed task, including resumed turns with no callback; ambiguous or unsafe sources are skipped.
