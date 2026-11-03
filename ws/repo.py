@@ -231,8 +231,8 @@ def _strings(node):
 HOOK_COMMANDS = {'brief', 'nudge', 'paste', 'guard', 'discipline', 'digest-hint'}
 
 
-def _ws_hook_parts(command):
-    """argv of a hook command ws wrote (<python> <kit>/bin/ws[-plugin] --workspace-root <root> ... <hook subcommand>), else None; a user's own hook is never matched."""
+def _ws_hook_parts(command, *, diagnose=False):
+    """Parse ws launch argv; diagnose permits missing custom launchers for read-only reports, never ownership."""
     if 'bin/ws' not in command and '--workspace-root' not in command and 'EncodedCommand' not in command: return None
     try:
         parts = shlex.split(command, posix=not core.WINDOWS)  # posix splitting eats the backslashes of Windows paths
@@ -240,16 +240,19 @@ def _ws_hook_parts(command):
         if parts[:1] == [core._HOOK_PREFIX[0]]: parts = core.encoded_hook_args(parts)
         if '--workspace-root' not in parts: return None
         interpreter = re.split(r'[\\/]', parts[0])[-1]
-        if parts[0] != core.python_command() and not re.fullmatch(r'(?:python(?:w|[0-9.]+)?|pypy[0-9.]*|py)(?:\.exe)?', interpreter, re.I): return None
+        if parts[0] != core.python_command() and not re.fullmatch(r'(?:python(?:w|[0-9.]+)?|pypy[0-9.]*|py)(?:\.exe)?', interpreter, re.I):
+            # A missing custom launcher is diagnostic evidence, never removal authority.
+            launcher = Path(parts[0])
+            if not diagnose or not launcher.is_absolute() or launcher.exists() or shutil.which(parts[0]): return None
         kit = parts[1]
         if Path(kit).name not in ('ws', 'ws-plugin') or Path(kit).parent.name != 'bin' or not set(parts) & HOOK_COMMANDS: return None
-    except (ValueError, IndexError): return None
+    except (ValueError, IndexError, OSError): return None
     return parts
 
 
 def _missing_in_hook(command, root):
     """First dead path in a ws-written hook command, else ''. Commands we cannot parse are skipped, never reported."""
-    parts = _ws_hook_parts(command)
+    parts = _ws_hook_parts(command, diagnose=True)
     if not parts: return ''
     interpreter, kit, workspace = parts[0], parts[1], parts[parts.index('--workspace-root') + 1]
     for item in (interpreter, kit):

@@ -59,6 +59,16 @@ class StaleHookTests(Base):
         self.assertEqual(found['.codex/hooks.json'], str(repo.parent / 'no-python'))
         self.assertEqual(found['.claude/settings.local.json'], str(repo.parent / 'other-ws'))
 
+    def test_missing_custom_launcher_is_diagnosed_but_not_owned(self):
+        repo, root = self.started()
+        missing = repo.parent / 'missing-custom-runtime'
+        command = core.command_line([str(missing), str(core.KIT / 'bin/ws'),
+                                     '--workspace-root', str(root), 'brief', '--hook'])
+        self.assertEqual(repo_setup._missing_in_hook(command, root), str(missing))
+        self.assertFalse(repo_setup._is_ws_hook({'command': command}))
+        self.assertEqual(repo_setup._missing_in_hook(
+            'echo /gone/bin/ws --workspace-root /gone brief', root), '')
+
     def test_users_own_hooks_are_ignored(self):
         repo, root = self.started()
         file = repo / '.claude/settings.local.json'; data = json.loads(file.read_text())
