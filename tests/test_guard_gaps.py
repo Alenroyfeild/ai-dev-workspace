@@ -133,3 +133,55 @@ class RemoteDeletionGuardTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assertEqual(guards.command_reason(command), '')
+
+    def test_guard_hunt_4_and_opposing_flags_and_config_bypasses_are_denied(self):
+        commands = (
+            ('git reset --h', 'throws away uncommitted work'),
+            ('git reset -q --h', 'throws away uncommitted work'),
+            ('git clean --forc', 'deletes untracked files'),
+            ('git clean --for', 'deletes untracked files'),
+            ('git clean --fo', 'deletes untracked files'),
+            ('git clean --f', 'deletes untracked files'),
+            ('git clean -d --forc', 'deletes untracked files'),
+            ('rm --rec ~', 'delete your home folder'),
+            ('rm --recurse ~', 'delete your home folder'),
+            ('rm --r ~', 'delete your home folder'),
+            ('rm -f --rec /', 'delete your home folder or the filesystem root'),
+            ('git -c clean.requireForce=false clean', 'deletes untracked files'),
+            ('git -c clean.requireForce=0 clean', 'deletes untracked files'),
+            ('git -c clean.requireForce=no clean -d', 'deletes untracked files'),
+            ('git -c clean.requireforce=off clean', 'deletes untracked files'),
+            ('git push --dry-run --no-dry-run origin :feat', 'deleted for everyone'),
+            ('git push -n --no-dry-run origin :feat', 'deleted for everyone'),
+            ('git push --dry-run --no-dr origin :feat', 'deleted for everyone'),
+            ('git push --dry-run --no-dry origin --delete feat', 'deleted for everyone'),
+            ('git push --dry-run --no-dry-run origin --force', 'Force push rewrites shared history'),
+            ('git -c remote.origin.mirror=true push origin', 'deleted for everyone'),
+            ('git -c remote.origin.mirror=1 push origin', 'deleted for everyone'),
+            ('git -c remote.origin.mirror push origin', 'deleted for everyone'),
+            ('git -c remote.upstream.mirror=yes push upstream', 'deleted for everyone'),
+            ('git -c remote.origin.push=+refs/heads/*:refs/heads/* push origin', 'Force push rewrites shared history'),
+        )
+        for command, expected in commands:
+            with self.subTest(command=command):
+                reason = guards.command_reason(command)
+                self.assertIn(expected, reason)
+
+    def test_guard_hunt_4_and_config_allow_controls(self):
+        commands = (
+            'git push --no-dry-run --dry-run origin :feat',
+            'git push --no-dry-run -n origin :feat',
+            'git push --no-dry-run --dry origin :feat',
+            'git -c remote.origin.mirror=false push origin main',
+            'git -c remote.origin.mirror=0 push origin main',
+            'git -c clean.requireForce=true clean',
+            'git -c clean.requireForce=false clean -n',
+            'git -c clean.requireForce=false clean --dry-run',
+            'git -c clean.requireForce=false clean --no-dry-run -n',
+            'git clean -n',
+            'git reset',
+            'rm file.txt',
+        )
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(guards.command_reason(command), '')

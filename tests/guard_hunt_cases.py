@@ -165,7 +165,7 @@ CASES = [
     ('Bash', {'command': 'git reset HEAD --hard'}, 'd', 'flag after'),
     ('Bash', {'command': 'git reset --hard=1'}, 'a', 'nonexist'),
     ('Bash', {'command': 'git reset --har'}, 'd', 'abbrev --har (unique prefix)'),
-    ('Bash', {'command': 'git reset --h'}, 'a', 'ambiguous --h'),
+    ('Bash', {'command': 'git reset --h'}, 'd', 'abbrev --h (unique prefix)'),
     ('Bash', {'command': 'git reset --keep HEAD~1'}, 'a', 'keep'),
     ('Bash', {'command': 'git reset --merge'}, 'a', 'merge'),
     ('Bash', {'command': 'git reset -q --hard'}, 'd', '-q --hard'),
