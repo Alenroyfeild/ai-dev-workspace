@@ -36,6 +36,9 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 - Windows UNC paths are localized in shared notes and rejected by publication privacy checks when unredacted.
 - Preserve the specific diagnostic error message when Codeburn export exits with a nonzero code.
 - Shared notes hide forward-slash UNC paths and the full line of UNC paths containing spaces, rather than leaking path suffixes.
+- Guards deny root/home destructive find, remote branch deletion and module-launched attempts to undo their own hooks; local cleanup, Git dry runs and literal command text stay allowed.
+- Refreshing repo setup preserves user hooks that print or inspect a ws command instead of executing it.
+- Handle non-dictionary JSON payloads in status files gracefully during team sync formatting without raising AttributeError.
 
 ### Previews
 
