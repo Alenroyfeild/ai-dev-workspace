@@ -241,6 +241,39 @@ def verify_readme_mentions_new_commands(changelog_text, readme_text, version):
             raise AssertionError(f'README.md does not mention `{match.group(1)}`')
 
 
+SECTION_FORBIDDEN_PHRASES = ('upcoming', 'coming next', 'not yet released', 'next release')
+
+
+def verify_release_section_is_dated(changelog_text, version, release_check=None):
+    if release_check is None:
+        release_check = is_release_check()
+    if not release_check:
+        return
+    date_str, _ = extract_changelog_section(changelog_text, version)
+    if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_str.strip()):
+        raise AssertionError(f'CHANGELOG section for {version} is not dated (found "{date_str}")')
+
+
+def verify_published_version_matches_kit(root, version, release_check=None):
+    if release_check is None:
+        release_check = is_release_check()
+    if not release_check:
+        return
+    text = (root / 'tests/test_published_docs.py').read_text(encoding='utf-8')
+    match = re.search(r"(?m)^PUBLISHED_VERSION\s*=\s*'([^']+)'", text)
+    found = match.group(1) if match else None
+    if found != version:
+        raise AssertionError(f'PUBLISHED_VERSION is {found}, expected {version} in release mode')
+
+
+def verify_release_section_has_no_future_phrases(changelog_text, version):
+    _, section = extract_changelog_section(changelog_text, version)
+    lowered = section.casefold()
+    for phrase in SECTION_FORBIDDEN_PHRASES:
+        if phrase in lowered:
+            raise AssertionError(f"CHANGELOG section for {version} contains '{phrase}'")
+
+
 class ReleaseSyncTests(unittest.TestCase):
     def setUp(self):
         self.version = get_kit_version(ROOT)
@@ -369,3 +402,36 @@ class ReleaseSyncTests(unittest.TestCase):
         with self.assertRaises(AssertionError) as ctx:
             verify_readme_mentions_new_commands(changelog_sample, '# README\n', self.version)
         self.assertIn('ws lesson review', str(ctx.exception))
+
+    def test_release_section_dated_on_repo(self):
+        verify_release_section_is_dated((ROOT / 'CHANGELOG.md').read_text(encoding='utf-8'), self.version)
+
+    def test_release_section_dated_fails_first_in_release_mode_only(self):
+        sample = f"## {self.version} (Unreleased)\n\n### New\n\n- x\n"
+        verify_release_section_is_dated(sample, self.version, release_check=False)
+        with self.assertRaises(AssertionError) as ctx:
+            verify_release_section_is_dated(sample, self.version, release_check=True)
+        self.assertIn('not dated', str(ctx.exception))
+
+    def test_published_version_matches_kit_on_repo(self):
+        verify_published_version_matches_kit(ROOT, self.version)
+
+    def test_published_version_fails_first_in_release_mode_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / 'tests').mkdir()
+            (root / 'tests/test_published_docs.py').write_text("PUBLISHED_VERSION = '0.1.0-beta.6'\n", encoding='utf-8')
+            verify_published_version_matches_kit(root, self.version, release_check=False)
+            with self.assertRaises(AssertionError) as ctx:
+                verify_published_version_matches_kit(root, self.version, release_check=True)
+            self.assertIn('PUBLISHED_VERSION', str(ctx.exception))
+
+    def test_release_section_has_no_future_phrases_on_repo(self):
+        verify_release_section_has_no_future_phrases((ROOT / 'CHANGELOG.md').read_text(encoding='utf-8'), self.version)
+
+    def test_release_section_future_phrases_fail_first(self):
+        for phrase in SECTION_FORBIDDEN_PHRASES:
+            sample = f"## {self.version} (2026-11-04)\n\n### New\n\n- Feature is {phrase.upper()} soon.\n"
+            with self.assertRaises(AssertionError) as ctx:
+                verify_release_section_has_no_future_phrases(sample, self.version)
+            self.assertIn(phrase, str(ctx.exception))
