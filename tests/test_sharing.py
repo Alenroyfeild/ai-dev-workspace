@@ -59,6 +59,55 @@ class SharingTests(unittest.TestCase):
         (directory / 'K1.md').write_bytes(b'---\r\nid: K1\r\nscope: team\r\n---\r\n\r\nKeep the first word and every line.\r\n')
         self.assertIn('Keep the first word and every line.', sharing.preview(self.root, 'knowledge:K1')['content'])
 
+    def test_team_save_localizes_unc_paths_before_saving(self):
+        from ws import sharing
+        for path in (r'\\synthetic-host\restricted\SENTINEL.txt',
+                     r'\\?\UNC\synthetic-host\restricted\SENTINEL.txt',
+                     r'\\?\C:\restricted\SENTINEL.txt'):
+            with self.subTest(path=path):
+                item = sharing.standalone(self.root, 'decision', 'Read ' + path)
+                text = scope._read(self.root, item)[3]
+                self.assertIn('[local path]', text)
+                self.assertNotIn('SENTINEL', text)
+
+    def test_share_localizes_unc_without_changing_private_source(self):
+        from ws import sharing
+        item = sharing.standalone(self.root, 'decision', r'Read \\synthetic-host\restricted\SENTINEL.txt', False)
+        scope.record(self.root, item, 'team')
+        source = scope._read(self.root, item)[2]; before = source.read_bytes()
+        plan = sharing.preview(self.root, item); sharing.apply(self.root, plan)
+        shared = (self.clone / plan['destination']).read_text()
+        self.assertIn('[local path]', shared); self.assertNotIn('SENTINEL', shared)
+        self.assertEqual(source.read_bytes(), before)
+
+    def test_publication_privacy_check_refuses_unc_paths(self):
+        from ws import sharing
+        with self.assertRaises(core.WsError):
+            sharing.check_public(self.root, 'entries/synthetic.md', r'Read \\synthetic-host\restricted\SENTINEL.txt')
+
+    def test_unc_variants_hide_complete_path_and_keep_next_line(self):
+        from ws import sharing
+        for path in ('//synthetic-host/restricted/SENTINEL.txt',
+                     r'\\synthetic-host\my share\SENTINEL.txt'):
+            with self.subTest(path=path):
+                item = sharing.standalone(self.root, 'decision', 'Read ' + path + '\nVisible next line.')
+                plan = sharing.preview(self.root, item); sharing.apply(self.root, plan)
+                text = (self.clone / plan['destination']).read_text()
+                self.assertNotIn('SENTINEL', text)
+                self.assertNotIn('synthetic-host', text)
+                self.assertIn('[local path]', text)
+                self.assertIn('Visible next line.', text)
+
+    def test_publication_refuses_forward_slash_unc(self):
+        from ws import sharing
+        with self.assertRaises(core.WsError):
+            sharing.check_public(self.root, 'entries/synthetic.md', '//synthetic-host/restricted/SENTINEL.txt')
+
+    def test_unc_filter_keeps_urls_and_nonpath_text(self):
+        from ws import sharing
+        text = 'Use https://example.invalid/guide and <b>text</b>.\nA relative path src/file stays.'
+        self.assertEqual(sharing.portable(self.root, text), text)
+
     def test_unshare_missing_source_uses_only_owned_receipt(self):
         from ws import sharing
         plan = sharing.preview(self.root, 'task:T1'); sharing.apply(self.root, plan)

@@ -23,7 +23,8 @@ def portable(root, text):
     text = '\n'.join(line for line in text.splitlines() if not re.search(r'#private\b', line, re.I) and not line.lstrip().lower().startswith('/private'))
     text = core.localize_paths(core.redact(text), root)
     # A real closing tag (</form>) survives; a bracketed path (</opt/x>) has more slashes and is localized.
-    text = re.sub(r'(</[A-Za-z][A-Za-z0-9-]*\s*>)|(?<![\w:/])(?:/[\w.-]+(?:/[\w./~-]*)?|[A-Za-z]:[\\/]\S+)',
+    # UNC paths may contain spaces: hide the rest of that line rather than expose a suffix.
+    text = re.sub(r'(</[A-Za-z][A-Za-z0-9-]*\s*>)|(?<![\w:/])(?:/[\w.-]+(?:/[\w./~-]*)?|[A-Za-z]:[\\/]\S+|(?:\\\\[^\\\s]+\\|//[^/\s]+/)[^\n]+)',
                   lambda m: m.group(1) or '[local path]', text)
     if core.SECRET_RE.search(text) or core.conflicted(text): raise core.WsError('Unsafe or conflicted projection; edit the private source first.')
     return text.strip()

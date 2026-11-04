@@ -59,6 +59,51 @@ class StaleHookTests(Base):
         self.assertEqual(found['.codex/hooks.json'], str(repo.parent / 'no-python'))
         self.assertEqual(found['.claude/settings.local.json'], str(repo.parent / 'other-ws'))
 
+    def test_missing_custom_launcher_is_diagnosed_but_not_owned(self):
+        repo, root = self.started()
+        missing = repo.parent / 'missing-custom-runtime'
+        command = core.command_line([str(missing), str(core.KIT / 'bin/ws'),
+                                     '--workspace-root', str(root), 'brief', '--hook'])
+        self.assertEqual(repo_setup._missing_in_hook(command, root), str(missing))
+        self.assertFalse(repo_setup._is_ws_hook({'command': command}))
+        self.assertEqual(repo_setup._missing_in_hook(
+            'echo /gone/bin/ws --workspace-root /gone brief', root), '')
+
+    def test_trailing_workspace_root_is_diagnosed_as_malformed_but_not_owned(self):
+        repo, root = self.started()
+        command = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'),
+                                     'brief', '--hook', '--workspace-root'])
+        self.assertEqual(repo_setup._missing_in_hook(command, root), '--workspace-root')
+        self.assertFalse(repo_setup._is_ws_hook({'command': command}))
+
+    def test_malformed_trailing_workspace_root_requires_hand_editing(self):
+        repo, root = self.started()
+        file = repo / '.claude/settings.local.json'
+        data = json.loads(file.read_text())
+        bad_cmd = core.command_line([core.python_command(), str(core.KIT / 'bin/ws'),
+                                     'brief', '--hook', '--workspace-root'])
+        data['hooks']['PostToolUse'] = [{'hooks': [{'type': 'command', 'command': bad_cmd}]}]
+        file.write_text(json.dumps(data))
+
+        text_before = cli.text_doctor(core.doctor(root))
+        self.assertIn('Hook command is malformed', text_before)
+        self.assertIn('edit it by hand', text_before)
+        self.assertNotIn('run ws start again', text_before)
+
+        cwd = os.getcwd(); os.chdir(repo)
+        try:
+            with mock.patch('ws.setup.detect', return_value=[]), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                repo_setup.start(yes=True)
+        finally: os.chdir(cwd)
+
+        data_after = json.loads(file.read_text())
+        self.assertEqual(data_after['hooks']['PostToolUse'][0]['hooks'][0]['command'], bad_cmd)
+
+        text_after = cli.text_doctor(core.doctor(root))
+        self.assertIn('Hook command is malformed', text_after)
+        self.assertIn('edit it by hand', text_after)
+        self.assertNotIn('run ws start again', text_after)
+
     def test_users_own_hooks_are_ignored(self):
         repo, root = self.started()
         file = repo / '.claude/settings.local.json'; data = json.loads(file.read_text())

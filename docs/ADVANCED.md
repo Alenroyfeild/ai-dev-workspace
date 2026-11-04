@@ -2,11 +2,32 @@
 
 Most workspaces need only `ws tools`, `ws assist` and the defaults. These settings are optional; the CLI remains compatible with existing configuration.
 
+## Codex SessionStart catch-up
+
+**Preview in beta.7; fixture-tested, not live-tested with Codex resume.**
+When the Codex `SessionStart` hook requests a brief, it can catch up the last
+captured session for the single locally claimed task. This covers appended turns
+from a resumed session that received no capture callback. It saves bounded user
+constraints and the last assistant summary/next step in an **unverified** Handoff
+block, preserving manual notes and the verified Next action. Ordinary `ws brief`
+reads do not trigger catch-up. `capture: false` disables it.
+
+Catch-up needs an existing cursor in `.ws/codex-capture/<task>.json`. It looks for
+exactly one matching session under the current `CODEX_HOME/sessions` (default
+`~/.codex/sessions`); a transcript stored only in another home is skipped. It
+checks the session ID and start timestamp, refuses symlinks/junctions and files
+over 50 MiB, and requires the saved transcript prefix to be unchanged before
+capturing added text. Missing, ambiguous, malformed, truncated or unsafe sources,
+invalid cursors and absent/ambiguous local ownership leave the brief available
+without catching up. Unchanged transcripts add no duplicate block. Private
+markers and secrets still pass through the existing capture filters. Tests use
+synthetic transcripts; they do not establish live hook delivery or capture rates.
+
 ## Routing
 
 `ws route [role]` resolves a binding from `routing.json` (default role: lead). Availability means the CLI is on `PATH` and a model is configured; it does not verify login or account access. Ordered preferences choose an available provider and report every skipped provider; an explicit provider override pins one provider and stops if it is unavailable. There is no silent fallback. Root `role_overrides` can set provider/preference, tier, family, model or effort. Managed defaults may change on upgrade; root overrides are preserved. Claude family aliases and explicit Codex model IDs are supported. Ollama requires an already-installed local model; the kit never pulls models.
 
-Preview in beta.6: `ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Fallback tries only the declared providers; a timeout counts as a failed attempt. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#delegate).
+Preview in beta.7: `ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Fallback tries only the declared providers; a timeout counts as a failed attempt. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#delegate).
 
 ### OpenAI-compatible gateway (Preview)
 
@@ -87,8 +108,11 @@ remains unverified; review it with `ws worker review`, `accept` or `discard` ([d
 
 ## Plugin runtime (packaging preview)
 
-The optional `python3 mcp/server.py --plugin` entrypoint discovers memory only through
-`.ws-start.json` in the current repo or its parents. Outside a started repo it still
+The optional `python3 mcp/server.py --plugin` entrypoint discovers memory through
+`.ws-start.json` in the current repo or its parents, or dynamically from client roots
+when started outside the repo (Preview). When the client supports MCP roots, the server
+activates only from a client root that is an already started workspace (`ws start`) and
+refuses unstarted, invalid or unlinked roots; without roots or outside a started repo it still
 speaks MCP, but tools return “Run ws start in this repo”; it does not use `WS_ROOT`.
 `python3 bin/ws-plugin --client claude|codex` accepts a hook payload and delegates to
 the existing memory hooks only for a validated repo link. Unknown events or invalid
@@ -98,7 +122,7 @@ The released Codex plugin (Preview) is described [below](#codex-plugin-preview).
 
 ### Claude Code plugin (preview)
 
-**Preview, released in beta.6; requires the CLI and `ws start`, not listed in Anthropic's official directory, Windows untested.** The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires the same four hooks as `ws start` (SessionStart, PreCompact, Stop, UserPromptSubmit) through `bin/ws-plugin`, the MCP server in `--plugin` mode, and the handoff, pickup and lesson skills. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
+**Preview, released in beta.6; requires the CLI and `ws start`, not listed in Anthropic's official directory, Windows untested.** The repo is also a Claude Code plugin marketplace (`.claude-plugin/`). It wires the same four hooks as `ws start` (SessionStart, PreCompact, Stop, UserPromptSubmit) through `bin/ws-plugin`, the MCP server in `--plugin` mode, and the handoff, pickup, lesson and thinkbeforeact skills. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
 
 ```text
 /plugin marketplace add Alenroyfeild/ai-dev-workspace
@@ -131,7 +155,7 @@ What is and is not verified:
 
 **Preview, released in beta.6: fixture-tested only, not submitted, and not tested in Cursor; no verified install command.** The repo carries a Cursor plugin (`.cursor-plugin/plugin.json` and `marketplace.json`): the handoff, pickup, lesson and thinkbeforeact skills, one always-on rule (`rules/ai-dev-workspace.mdc`, generated from the same text `ws start` writes into `.cursor/rules`, and told to do nothing in a repo without `.ws-start.json`), hooks for sessionStart, preCompact, stop, sessionEnd, beforeSubmitPrompt and preToolUse through `bin/ws-plugin`, and the MCP server in `--plugin` mode. It stays inactive until `ws start` has run in a repo, so `ws` itself is still needed.
 
-- Fixture-tested only: manifests, hook mapping, the rule file, duplicate avoidance and the guard output are unit tests written from [Cursor's plugin](https://cursor.com/docs/plugins/building) and [hooks](https://cursor.com/docs/hooks) docs. No Cursor install has loaded this plugin yet. Where the docs were silent we assumed: hook commands run from the plugin folder (`./bin/...`), and the MCP server is started in the opened repo. If Cursor starts it elsewhere, its tools answer "run ws start"; use the `ws start` MCP entry instead.
+- Fixture-tested only: manifests, hook mapping, the rule file, duplicate avoidance and the guard output are unit tests written from [Cursor's plugin](https://cursor.com/docs/plugins/building) and [hooks](https://cursor.com/docs/hooks) docs. No Cursor install has loaded this plugin yet. Where the docs were silent we assumed: hook commands run from the plugin folder (`./bin/...`), and the MCP server is started in the opened repo. If Cursor starts it elsewhere, its tools answer "run ws start" unless the client advertises roots for an already started workspace; use the `ws start` MCP entry instead.
 - Not published: public listing needs Cursor's review (cursor.com/marketplace/publish) and nothing has been submitted. Cursor's docs describe importing a GitHub repo as a team marketplace; we have not run that, so there is no install command to show yet.
 - The preToolUse hook is the guard and acts only in a started repo whose workspace has the `guards` pack on; otherwise it answers allow, because Cursor blocks a permission hook that prints nothing readable. Other hook errors let the action proceed.
 - Both can be on: for each event that the `.cursor/hooks.json` from `ws start` already handles, the plugin hook does nothing.
@@ -146,7 +170,9 @@ Idea credit: [Anthropic's claude-code-setup](https://github.com/anthropics/claud
 
 ### Import a claude-mem copy
 
-Preview in beta.6 (fixture-tested schema; newer upstream schemas may not import): `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields and private-marked observations are excluded. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
+Preview in beta.7 (fixture-tested schema; newer upstream schemas may not import): `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields are excluded. See the privacy rules below before importing. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
+
+Privacy rules (case-insensitive): `#private` anywhere in the selected text fields excludes the whole observation; `#privately` does not match. In beta.6, an observation was excluded only when its combined text began with `/private`, ignoring leading whitespace. Since beta.7, the `/private` prefix is checked separately in each supported field (`title`, `subtitle`, `narrative`, `facts`, `text`), so a public title cannot hide a private narrative. Mentioning `/private` in the middle of a field does not trigger this prefix rule.
 
 ### Draft a rule from repeated lessons
 

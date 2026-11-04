@@ -322,7 +322,11 @@ def _undoes_start(name, args):
     if re.fullmatch(r'python(?:w|[0-9.]*)|py', name):
         while args and args[0].startswith('-'):
             option, args = args[0], args[1:]
-            if option == '-m': break
+            if option.startswith('-m'):
+                module = option[2:] or (args[0] if args else '')
+                tail = args if option[2:] else args[1:]
+                args = ['ws' if module == 'ws.cli' else module, *tail] if module else []
+                break
             if option.startswith('-c') or option in ('--help', '-V', '--version'): return False
             if option in ('-W', '-X'): args = args[1:]
         if not args: return False
@@ -376,6 +380,51 @@ def _mutes(name, args, bodies):
 
 
 _GIT_VALUE = ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env', '--super-prefix')  # global options that take the next word
+_GIT_PUSH_OPTIONS = (
+    'all', 'atomic', 'branches', 'delete', 'dry-run', 'exec',
+    'follow-tags', 'force', 'force-if-includes', 'force-with-lease',
+    'ipv4', 'ipv6', 'mirror', 'no-verify', 'porcelain', 'progress',
+    'prune', 'push-option', 'quiet', 'receive-pack', 'recurse-submodules',
+    'repo', 'set-upstream', 'signed', 'tags', 'thin', 'verbose', 'verify',
+)
+
+
+def _git_push_opt(arg):
+    if not arg.startswith('--'): return ''
+    name = arg[2:].split('=', 1)[0]
+    if name in _GIT_PUSH_OPTIONS: return name
+    matches = [o for o in _GIT_PUSH_OPTIONS if o.startswith(name)]
+    return matches[0] if len(matches) == 1 else ''
+
+
+def _find_reason(args, cwd_bad):
+    roots, i = [], 0
+    while i < len(args):  # find's traversal options precede its search roots.
+        option = args[i]
+        if re.fullmatch(r'-[HLPXsdEx]+|-O\d', option): i += 1
+        elif option == '-D': i += 2
+        elif option == '-f' and i + 1 < len(args): roots.append(args[i + 1]); i += 2
+        elif option == '--': i += 1; break
+        else: break
+    while i < len(args) and args[i][:1] not in ('-', '!', '('):
+        roots.append(args[i]); i += 1
+    if not any(p in HOME_OR_ROOT or _is_home(p) or _is_root(p) or (cwd_bad and _WIPE_CWD.fullmatch(p)) for p in (roots or ['.'])):
+        return ''
+    values = ('-name -iname -path -ipath -wholename -iwholename -regex -iregex -type -xtype -size -perm '
+              '-user -group -uid -gid -inum -links -mtime -mmin -atime -amin -ctime -cmin -newer '
+              '-maxdepth -mindepth -fstype -printf -fprint -fprint0 -fls -context -regextype').split()
+    while i < len(args):
+        option = args[i]
+        if option == '-delete': return 'find -delete on home or root would delete files recursively.'
+        if option in ('-exec', '-execdir', '-ok', '-okdir'):
+            end = i + 1
+            while end < len(args) and args[end] not in (';', '+'): end += 1
+            command, _ = _strip(args[i + 1:end])
+            if command and _exe(command[0]) == 'rm': return 'find executing rm on home or root would delete files recursively.'
+            i = end + 1  # An exec argument named -delete is data, not a find action.
+        else:
+            i += 3 if option == '-fprintf' else 2 if option in values or option.startswith('-newer') else 1
+    return ''
 
 
 def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
@@ -394,6 +443,9 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
     why = _edits_hooks(name, args, cmd.words)
     if why: return why
     if _mutes(name, args, cmd.bodies): return 'This command skips or narrows tests (skip/only); fix the test or ask the user first.'
+    if name == 'find':
+        why = _find_reason(args, cwd_bad)
+        if why: return why
     flags = ''.join(a[1:] for a in args if a.startswith('-') and not a.startswith('--'))
     if name == 'rm' and ('r' in flags.lower() or '--recursive' in args):
         targets = args if not xargs or any(a[:1] != '-' for a in args) else (cmd.pipe_in or [])[1:]
@@ -404,9 +456,26 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
     if name == 'git' and args:
         sub, rest = args[0], args[1:]
         flagged = rest[:rest.index('--')] if '--' in rest else rest  # after `--` come names, not options
+        if sub == 'push':
+            opts, i = [], 0
+            while i < len(flagged):
+                a = flagged[i]
+                opt = _git_push_opt(a)
+                if opt in ('push-option', 'repo', 'receive-pack', 'exec'):
+                    i += 1 if '=' in a else 2
+                elif a[:1] == '-' and a[1:2] != '-' and 'o' in a:
+                    cluster = a[1:a.index('o')]
+                    if cluster: opts.append('-' + cluster)
+                    i += 2 if a.endswith('o') else 1
+                else: opts.append(a); i += 1
+            flagged = opts
         short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
-        dry = '--dry-run' in flagged or any('n' in a for a in short)
+        long_opts = [_git_push_opt(a) for a in flagged if a.startswith('--')]
+        dry = 'dry-run' in long_opts or any('n' in a for a in short)
         if sub == 'reset' and any(a in ('--hard', '--har', '--ha') for a in flagged): return 'git reset --hard throws away uncommitted work.'
+        refspecs = flagged + (rest[rest.index('--') + 1:] if '--' in rest else [])
+        if sub == 'push' and not dry and (any(opt in ('delete', 'mirror', 'prune') for opt in long_opts) or any('d' in a for a in short) or any(re.match(r'\+?:.', a) for a in refspecs)):
+            return 'This remote branch will be deleted for everyone. Use gh pr merge --delete-branch, the GitHub UI, or WS_GUARDS=off for one session.'
         if sub == 'push' and not dry and ('--force' in flagged or any('f' in a for a in short) or any(a.startswith('+') for a in rest)):
             return 'Force push rewrites shared history; use --force-with-lease if you must.'
         if sub == 'clean' and not dry and ('--force' in flagged or any('f' in a for a in short)):

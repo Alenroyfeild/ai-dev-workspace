@@ -3,6 +3,7 @@
 The API key is read only from the environment variable the routing entry names. It is never stored,
 logged, printed or put in a URL, and it is scrubbed from anything this module returns.
 """
+import http.client
 import ipaddress
 import json
 import re
@@ -71,5 +72,5 @@ def run(config, model, body, timeout, environ):
     except urllib.error.URLError as exc:
         if isinstance(exc.reason, (socket.timeout, TimeoutError)): return 124, f'Gateway timed out after {timeout} seconds.', 0, 0, False
         return 1, 'Gateway could not be reached.', 0, 0, False
-    except (OSError, ValueError, KeyError, IndexError, TypeError):
+    except (http.client.HTTPException, OSError, ValueError, KeyError, IndexError, TypeError):
         return 1, 'Gateway reply was not a chat completion.', 0, 0, False

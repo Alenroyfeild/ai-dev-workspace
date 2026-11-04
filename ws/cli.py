@@ -129,7 +129,10 @@ def doctor_verdict(report):
     if not report.get('valid'): return 'Needs attention: workspace invalid. Next: run ws validate.'
     if report.get('upgrade_due'): return 'Needs attention: workspace was written by an older kit. Next: ws upgrade --dry-run to preview, then ws upgrade.'
     if report.get('codex_manual_pending'): return 'Needs attention: Codex needs a manual step. Next: paste the printed Codex config block (see below).'
-    if report.get('stale_hooks'): return 'Needs attention: repo hooks point to something missing. Next: run ws start again in that repo.'
+    if report.get('stale_hooks'):
+        if any(i.get('missing') == '--workspace-root' for i in report['stale_hooks']):
+            return 'Needs attention: repo hook command is malformed. Next: edit it by hand in that repo.'
+        return 'Needs attention: repo hooks point to something missing. Next: run ws start again in that repo.'
     if not connected: return 'Needs attention: no assistant connected. Next: run ws start in your repo, or ws connect claude.'
     return 'OK: workspace valid; ' + '; '.join(n + ' connected' for n in connected)
 
@@ -147,7 +150,11 @@ def text_doctor(report):
         assistants = ', '.join(report['setup']['assistants'])
         lines.append('Setup preset: ' + report['setup']['preset'] + (f' ({assistants})' if assistants else ''))
     for path in report.get('codex_manual_pending', []): lines.append('Codex: manual step pending — ' + path)
-    for item in report.get('stale_hooks', []): lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
+    for item in report.get('stale_hooks', []):
+        if item.get('missing') == '--workspace-root':
+            lines.append(f"Hook command is malformed — {item['repo']}/{item['file']}: {item['missing']}; edit it by hand in that repo")
+        else:
+            lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
     for path in report.get('claude_plugin_duplicates', []): lines.append('Claude: plugin and ws start hooks both active (two briefs per session) — ' + path + '; disable one')
     for path in report.get('claude_plugin_missing', []): lines.append('Claude: the plugin was enabled when ws start ran but is not now, so Claude has no memory hooks — ' + path + '; run ws start to restore Claude hooks')
     clients = report.get('configured_clients', {})
@@ -423,6 +430,8 @@ def main(argv=None):
     s.add_argument('--path', action='append', default=[], help='relative repo glob; repeat for multiple paths'); s.add_argument('--area', default='')
     s = l.add_parser('search', help='find saved lessons'); s.add_argument('query', nargs='?', default='', help='words to look for (default: all)')
     s = l.add_parser('promote', help='write an inactive draft from a repeated-lesson ID'); s.add_argument('id')
+    s = l.add_parser('review', help='list old lesson date stamps for manual review; never delete')
+    s.add_argument('--days', type=int, default=60, help='strictly older than this many days (default: 60)')
     f = sub.add_parser('feedback', help='record or submit product feedback').add_subparsers(dest='action', required=True)
     s = f.add_parser('add', help='record feedback locally'); s.add_argument('text'); s.add_argument('--kind', default='idea', help='idea, bug, praise or friction (default idea)'); s.add_argument('--source', default='user')
     s = f.add_parser('list', help='list feedback items'); s.add_argument('--all', action='store_true', help='include items already done')
@@ -764,9 +773,11 @@ def main(argv=None):
                 try: assist.observe(root, payload)
                 except OSError: pass  # Optional usage metadata must not block read-only memory.
             if a.hook and a.client != 'claude':
+                if a.client == 'codex' and a.cmd == 'brief' and payload.get('hook_event_name') == 'SessionStart':
+                    core.codex_catchup(root, branch_task or assist.session_task(root, payload.get('session_id')))
                 if a.cmd == 'nudge' and payload.get('hook_event_name') in ('PreCompact', 'Stop', 'preCompact', 'stop', 'sessionEnd', 'PreCompress', 'AfterAgent', 'SessionEnd'):
                     core.capture_decisions(root, payload.get('transcript_path'), a.client,
-                                           assist.session_task(root, payload.get('session_id')))
+                                           assist.session_task(root, payload.get('session_id')), payload.get('session_id'))
                 message, summary = core.brief_and_summary(root, branch_task) if a.cmd == 'brief' else ('', '')
                 if a.client == 'antigravity':
                     out({'injectSteps': [{'systemMessage': {'systemMessage': message}}]} if message else {})
@@ -882,6 +893,8 @@ def main(argv=None):
             else: out(native.import_native(root, a.client, a.task, a.yes))
         elif a.cmd == 'search': out(core.search(root, a.query, category=a.category))
         elif a.cmd == 'lesson':
+            if a.action == 'review':
+                out(core.lesson_review(root, a.days)); return 0
             if a.action == 'promote':
                 from . import lesson_rules
                 out(lesson_rules.promote(root, a.id)); return 0

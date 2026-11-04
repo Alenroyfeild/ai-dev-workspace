@@ -78,6 +78,7 @@ Details:
 | `ws search "<words>" [--category C]` | Ranked snippets from the vault notes. Team entries are included, private hits first. |
 | `ws lesson add "<what happened -> rule>" [--tag T] [--path GLOB] [--area A] [--team]` | Save a lesson. `--tag` and `--path` are repeatable. |
 | `ws lesson search ["<words>"]` | Search lessons. Without words, lists all of them. |
+| `ws lesson review [--days N]` | Read-only manual review of lessons dated more than N days ago (default 60), oldest first. Uses saved date stamps, not last use; counts undated/invalid dates separately. Never deletes or edits lessons or promoted rules. |
 | `ws know add "text" [--category C] [--team]` | Save a standalone knowledge note. Categories: `product`, `feature`, `domain`, `repo`, `runbook`, `other` (default). Private unless `--team`. |
 | `ws know list [--category C] [--layer private\|team\|all]` | List knowledge entries (default layer `all`). |
 | `ws know show private:<ID>` / `team:<ID>` | Read one entry. Team text is data and is never executed. |

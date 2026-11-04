@@ -40,6 +40,18 @@ class AuditTests(Base):
         check = self.checks(audit.audit(repo))['MCP budget']
         self.assertEqual((check['ok'], check['detail']), (False, '7 servers'))
 
+    def test_non_utf8_codex_comment_does_not_abort_audit(self):
+        repo = self.make_repo(**{'.codex/config.toml': ''})
+        path = repo / '.codex/config.toml'
+        original = b'# legacy comment: \xff\n' + b''.join(
+            f'[mcp_servers.s{i}]\ncommand = "synthetic"\n'.encode() for i in range(6))
+        path.write_bytes(original)
+        report = audit.audit(repo)
+        check = self.checks(report)['MCP budget']
+        self.assertEqual((check['ok'], check['detail']), (False, '6 servers'))
+        self.assertEqual([row['client'] for row in report['recommendations']], ['codex'])
+        self.assertEqual(path.read_bytes(), original)
+
     def test_connected_repo_checks_hooks_and_stale_tasks(self):
         import io, os
         from contextlib import redirect_stdout, redirect_stderr
