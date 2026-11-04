@@ -112,6 +112,8 @@ The assistant can check `ws notices` at session start. `ws tools` lists optional
 
 ## Upgrading
 
+Short route: `ws update` (the ws software), `ws upgrade --dry-run` then `ws upgrade --yes` (managed private-workspace files), `ws start` in each repo (repo wiring). Running assistant sessions and MCP servers keep the old code until you start a new session or reload MCP connections; `ws update` and `ws upgrade --yes` print this once when they really changed something.
+
 1. `pipx upgrade ai-dev-workspace` (or `pip install -U ai-dev-workspace` in a venv install).
 2. `ws upgrade` in the workspace; `ws upgrade --dry-run` previews it.
 3. `ws start` in each repo to refresh its hooks.
