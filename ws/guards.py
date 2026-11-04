@@ -383,18 +383,31 @@ _GIT_VALUE = ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-e
 _GIT_PUSH_OPTIONS = (
     'all', 'atomic', 'branches', 'delete', 'dry-run', 'exec',
     'follow-tags', 'force', 'force-if-includes', 'force-with-lease',
-    'ipv4', 'ipv6', 'mirror', 'no-verify', 'porcelain', 'progress',
-    'prune', 'push-option', 'quiet', 'receive-pack', 'recurse-submodules',
-    'repo', 'set-upstream', 'signed', 'tags', 'thin', 'verbose', 'verify',
+    'ipv4', 'ipv6', 'mirror', 'no-all', 'no-atomic', 'no-branches',
+    'no-delete', 'no-dry-run', 'no-follow-tags', 'no-force',
+    'no-force-if-includes', 'no-force-with-lease', 'no-mirror',
+    'no-porcelain', 'no-progress', 'no-prune', 'no-push-option',
+    'no-quiet', 'no-recurse-submodules', 'no-repo', 'no-signed',
+    'no-tags', 'no-thin', 'no-verbose', 'no-verify',
+    'porcelain', 'progress', 'prune', 'push-option', 'quiet',
+    'receive-pack', 'recurse-submodules', 'repo', 'set-upstream',
+    'signed', 'tags', 'thin', 'verbose', 'verify',
 )
+
+
+_GIT_PUSH_VAL_OPTS = ('push-option', 'repo', 'receive-pack', 'exec', 'force-with-lease', 'force-if-includes', 'signed', 'recurse-submodules')
 
 
 def _git_push_opt(arg):
     if not arg.startswith('--'): return ''
+    has_eq = '=' in arg
     name = arg[2:].split('=', 1)[0]
-    if name in _GIT_PUSH_OPTIONS: return name
-    matches = [o for o in _GIT_PUSH_OPTIONS if o.startswith(name)]
-    return matches[0] if len(matches) == 1 else ''
+    matched = name if name in _GIT_PUSH_OPTIONS else None
+    if matched is None:
+        matches = [o for o in _GIT_PUSH_OPTIONS if o.startswith(name)]
+        matched = matches[0] if len(matches) == 1 else ''
+    if has_eq and matched not in _GIT_PUSH_VAL_OPTS: return ''
+    return matched
 
 
 def _find_reason(args, cwd_bad):
@@ -447,16 +460,60 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
         why = _find_reason(args, cwd_bad)
         if why: return why
     flags = ''.join(a[1:] for a in args if a.startswith('-') and not a.startswith('--'))
-    if name == 'rm' and ('r' in flags.lower() or '--recursive' in args):
+    if name == 'rm' and ('r' in flags.lower() or any(a.startswith('--r') for a in args)):
         targets = args if not xargs or any(a[:1] != '-' for a in args) else (cmd.pipe_in or [])[1:]
         hit = [a for a in targets if a in HOME_OR_ROOT or _is_home(a) or _is_root(a) or (cwd_bad and _WIPE_CWD.fullmatch(a))]
         if hit: return f'rm -r on {hit[0]} would delete your home folder or the filesystem root.'
+    configs = []
     while name == 'git' and args and args[0].startswith('-'):  # global options: git -C dir, -c k=v, --no-pager ...
-        args = args[2:] if args[0] in _GIT_VALUE else args[1:]
+        opt = args[0]
+        if opt == '-c' and len(args) > 1:
+            configs.append(args[1]); args = args[2:]
+        elif opt.startswith('--config-env='):
+            configs.append(opt.split('=', 1)[1]); args = args[1:]
+        elif opt in _GIT_VALUE:
+            args = args[2:]
+        else:
+            args = args[1:]
+    parsed_configs = []
+    for c in configs:
+        if '=' in c:
+            k, v = c.split('=', 1)
+            parsed_configs.append((k, v))
+        else:
+            parsed_configs.append((c, None))
     if name == 'git' and args:
         sub, rest = args[0], args[1:]
         flagged = rest[:rest.index('--')] if '--' in rest else rest  # after `--` come names, not options
+        short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
+        if sub == 'reset' and any(a in ('--hard', '--har', '--ha', '--h') for a in flagged):
+            return 'git reset --hard throws away uncommitted work.'
+        if sub == 'clean':
+            clean_dry = False
+            for a in flagged:
+                if a.startswith('--'):
+                    opt = a[2:].split('=', 1)[0]
+                    if 'dry-run'.startswith(opt) and opt.startswith('dr'): clean_dry = True
+                    elif 'no-dry-run'.startswith(opt) and opt.startswith('no-d'): clean_dry = False
+                elif a.startswith('-'):
+                    if 'n' in a[1:]: clean_dry = True
+            clean_require_force = True
+            for k, v in parsed_configs:
+                if k.lower() == 'clean.requireforce':
+                    clean_require_force = (v is None or v.lower() in ('true', 'yes', 'on', '1'))
+            has_force = any(a.startswith('--f') for a in flagged) or any('f' in a for a in short)
+            if not clean_dry and (not clean_require_force or has_force):
+                return 'git clean -f deletes untracked files for good.'
         if sub == 'push':
+            remote_target = None
+            i = 0
+            while i < len(flagged):
+                a = flagged[i]
+                if a.startswith('--repo='):
+                    remote_target = a.split('=', 1)[1]
+                elif a == '--repo' and i + 1 < len(flagged):
+                    remote_target = flagged[i + 1]
+                i += 1
             opts, i = [], 0
             while i < len(flagged):
                 a = flagged[i]
@@ -469,17 +526,61 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
                     i += 2 if a.endswith('o') else 1
                 else: opts.append(a); i += 1
             flagged = opts
-        short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
-        long_opts = [_git_push_opt(a) for a in flagged if a.startswith('--')]
-        dry = 'dry-run' in long_opts or any('n' in a for a in short)
-        if sub == 'reset' and any(a in ('--hard', '--har', '--ha') for a in flagged): return 'git reset --hard throws away uncommitted work.'
-        refspecs = flagged + (rest[rest.index('--') + 1:] if '--' in rest else [])
-        if sub == 'push' and not dry and (any(opt in ('delete', 'mirror', 'prune') for opt in long_opts) or any('d' in a for a in short) or any(re.match(r'\+?:.', a) for a in refspecs)):
-            return 'This remote branch will be deleted for everyone. Use gh pr merge --delete-branch, the GitHub UI, or WS_GUARDS=off for one session.'
-        if sub == 'push' and not dry and ('--force' in flagged or any('f' in a for a in short) or any(a.startswith('+') for a in rest)):
-            return 'Force push rewrites shared history; use --force-with-lease if you must.'
-        if sub == 'clean' and not dry and ('--force' in flagged or any('f' in a for a in short)):
-            return 'git clean -f deletes untracked files for good.'
+            if remote_target is None:
+                positional = [a for a in flagged if not a.startswith('-')]
+                if positional and not positional[0].startswith(':') and not positional[0].startswith('+:'):
+                    remote_target = positional[0]
+
+            short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
+            long_opts = [_git_push_opt(a) for a in flagged if a.startswith('--')]
+
+            config_mirror = False
+            config_push_force = False
+            config_push_delete = False
+            for k, v in parsed_configs:
+                if k[:7].lower() == 'remote.' and '.' in k[7:]:
+                    r_name, var = k[7:].rsplit('.', 1)
+                    if remote_target is None or r_name == remote_target:
+                        v_var = var.lower()
+                        if v_var == 'mirror':
+                            if v is not None and v.lower() in ('false', 'no', 'off', '0', ''):
+                                config_mirror = False
+                            else:
+                                config_mirror = True
+                        elif v_var == 'push' and v is not None:
+                            for spec in v.split():
+                                if spec.startswith(':') or spec.startswith('+:'):
+                                    config_push_delete = True
+                                elif spec.startswith('+'):
+                                    config_push_force = True
+
+            dry, delete, mirror, prune, force = False, False, config_mirror, False, False
+            for a in flagged:
+                if a.startswith('--'):
+                    opt = _git_push_opt(a)
+                    if opt == 'dry-run': dry = True
+                    elif opt == 'no-dry-run': dry = False
+                    elif opt == 'delete': delete = True
+                    elif opt == 'no-delete': delete = False
+                    elif opt == 'mirror': mirror = True
+                    elif opt == 'no-mirror': mirror = False
+                    elif opt == 'prune': prune = True
+                    elif opt == 'no-prune': prune = False
+                    elif opt == 'force': force = True
+                    elif opt == 'no-force': force = False
+                elif a.startswith('-'):
+                    if 'n' in a[1:]: dry = True
+                    if 'd' in a[1:]: delete = True
+                    if 'f' in a[1:]: force = True
+
+            refspecs = flagged + (rest[rest.index('--') + 1:] if '--' in rest else [])
+            has_deletion_refspec = any(re.match(r'^\+?:.', a) for a in refspecs)
+            has_force_refspec = any(a.startswith('+') and not a.startswith('+:') for a in refspecs)
+
+            if not dry and (delete or mirror or prune or has_deletion_refspec or config_push_delete):
+                return 'This remote branch will be deleted for everyone. Use gh pr merge --delete-branch, the GitHub UI, or WS_GUARDS=off for one session.'
+            if not dry and (force or has_force_refspec or config_push_force):
+                return 'Force push rewrites shared history; use --force-with-lease if you must.'
     return ''
 
 
