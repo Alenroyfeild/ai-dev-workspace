@@ -219,6 +219,28 @@ Beta.6 expands cross-client memory support...
 """
 
 
+def verify_llms_released_sections(root, version):
+    beta = parse_beta_number(version)
+    if beta is None:
+        return
+    for name in ('llms.txt', 'llms-full.txt'):
+        text = (root / name).read_text(encoding='utf-8')
+        if f'## Released in beta.{beta}' not in text:
+            raise AssertionError(f'{name} is missing "## Released in beta.{beta}"')
+
+
+def verify_readme_mentions_new_commands(changelog_text, readme_text, version):
+    _, section = extract_changelog_section(changelog_text, version)
+    in_new = False
+    for line in section.splitlines():
+        if line.startswith('### '):
+            in_new = line[4:].strip() == 'New'
+            continue
+        match = re.match(r'^-\s+`(ws [a-z][a-z-]*(?: [a-z][a-z-]*)?)', line) if in_new else None
+        if match and match.group(1) not in readme_text:
+            raise AssertionError(f'README.md does not mention `{match.group(1)}`')
+
+
 class ReleaseSyncTests(unittest.TestCase):
     def setUp(self):
         self.version = get_kit_version(ROOT)
@@ -324,3 +346,26 @@ class ReleaseSyncTests(unittest.TestCase):
         with self.assertRaises(AssertionError) as ctx:
             verify_roadmap_contains_new_features(changelog_sample, roadmap_sample, self.version)
         self.assertIn('not found in docs/ROADMAP.md', str(ctx.exception))
+
+    def test_llms_files_have_current_release_section_on_repo(self):
+        verify_llms_released_sections(ROOT, self.version)
+
+    def test_llms_release_section_fails_first_when_missing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for name in ('llms.txt', 'llms-full.txt'):
+                (root / name).write_text('## Released in beta.6\n', encoding='utf-8')
+            with self.assertRaises(AssertionError) as ctx:
+                verify_llms_released_sections(root, '0.1.0-beta.7')
+            self.assertIn('## Released in beta.7', str(ctx.exception))
+
+    def test_readme_mentions_new_commands_on_repo(self):
+        changelog_text = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
+        readme_text = (ROOT / 'README.md').read_text(encoding='utf-8')
+        verify_readme_mentions_new_commands(changelog_text, readme_text, self.version)
+
+    def test_readme_command_check_fails_first_when_missing(self):
+        changelog_sample = f"## {self.version} (2026-11-04)\n\n### New\n\n- `ws lesson review [--days N]` lists dates.\n"
+        with self.assertRaises(AssertionError) as ctx:
+            verify_readme_mentions_new_commands(changelog_sample, '# README\n', self.version)
+        self.assertIn('ws lesson review', str(ctx.exception))

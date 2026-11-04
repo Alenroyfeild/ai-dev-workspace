@@ -18,6 +18,19 @@
   Anthropic's official plugin directory. Install from our GitHub marketplace;
   the CLI and `ws start` in the target repo are still required.
 
+## Released in beta.7
+
+- Stable: `ws lesson review [--days N]` lists old lesson date stamps for manual
+  review; it is read-only and never changes or deletes saved lessons.
+- Preview: Codex SessionStart catch-up recovers changed transcript content for the
+  locally claimed task, including resumed turns without a callback; unsafe and
+  ambiguous sources are skipped, and it is fixture-tested, not live-tested with
+  Codex resume.
+- Preview: MCP plugin servers discover a ws-started repo from client roots and stay
+  inactive for unlinked or invalid roots; Codex offers no roots.
+- Stable: guards parse git push option grammar, including abbreviations of
+  --delete, --prune and --mirror; they remain a safety net, not a security boundary.
+
 ## Released in beta.6
 
 - Stable: bounded compact MCP recall, read-only stack audit and the advisory behavior pack.
