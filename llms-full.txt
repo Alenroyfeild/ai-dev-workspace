@@ -2,7 +2,7 @@
 
 > Shared Markdown task memory for developers who switch between Claude Code and Codex. Save decisions, next actions and dead ends in files you own; configured local hooks provide a task brief at session start. Install `pipx install ai-dev-workspace --pip-args='--pre'`, then run `ws start` in a Git repo to preview setup. Python 3.9+ CLI (`ws`) and local stdio MCP server; MIT licensed.
 
-## Stable — published 0.1.0b6
+## Stable — published 0.1.0b7
 
 - Local Markdown task records, explicit `ws remember`, `ws checkpoint` and `ws brief`.
 - Seven core MCP tools by default; other tools remain callable by name.
@@ -11,7 +11,7 @@
 - Only saved information is remembered; automatic transcript capture is best-effort.
 - The optional guards pack is a safety net, not a security boundary.
 
-## Stable workflow — published 0.1.0b6
+## Stable workflow — published 0.1.0b7
 
 ```sh
 pipx install ai-dev-workspace --pip-args='--pre'
@@ -45,6 +45,19 @@ This is our GitHub marketplace, not Anthropic's official directory. The beta.5
 plugin has a live Claude check; setup and duplicate-wiring limits are described
 in the [plugin guide](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/ADVANCED.md#claude-code-plugin-preview).
 Team sharing is also preview: share only reviewed notes with a private team repo.
+
+## Released in beta.7
+
+- Stable: `ws lesson review [--days N]` lists old lesson date stamps for manual
+  review; it is read-only and never changes or deletes saved lessons.
+- Preview: Codex SessionStart catch-up recovers changed transcript content for the
+  locally claimed task, including resumed turns without a callback; unsafe and
+  ambiguous sources are skipped, and it is fixture-tested, not live-tested with
+  Codex resume.
+- Preview: MCP plugin servers discover a ws-started repo from client roots and stay
+  inactive for unlinked or invalid roots; Codex offers no roots.
+- Stable: guards parse git push option grammar, including abbreviations of
+  --delete, --prune and --mirror; they remain a safety net, not a security boundary.
 
 ## Released in beta.6
 
