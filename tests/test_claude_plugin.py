@@ -8,6 +8,13 @@ from ws import core
 KIT = Path(__file__).resolve().parents[1]
 
 
+CLAUDE_DESC = (
+    'Local Markdown memory that Claude Code and Codex share: a short brief at session start, '
+    'saved decisions and dead ends, checkpoints, search and opt-in safety guards. '
+    'Inactive until you run ws start in a repo.'
+)
+
+
 def load(path):
     return json.loads((KIT / path).read_text(encoding='utf-8'))
 
@@ -18,10 +25,12 @@ class ClaudePluginTests(Base):
         self.assertEqual(manifest['version'], core.kit_meta()['version'])  # a release bump must not miss the plugin
         entry = load('.claude-plugin/marketplace.json')['plugins'][0]
         self.assertEqual((entry['name'], entry['source']), (manifest['name'], './'))
+        self.assertEqual(manifest['description'], CLAUDE_DESC)
+        self.assertEqual(entry['description'], CLAUDE_DESC)
         self.assertEqual(manifest['mcpServers']['ai-dev-workspace']['args'], ['${CLAUDE_PLUGIN_ROOT}/mcp/server.py', '--plugin'])
-        for skill in entry['skills']:  # only the skills ws start installs; not every folder under skills/
+        for skill in entry['skills']:  # the ws start skills plus thinkbeforeact, like the Codex and Cursor plugins
             self.assertTrue((KIT / skill / 'SKILL.md').is_file(), skill)
-        self.assertEqual(sorted(Path(s).name for s in entry['skills']), ['handoff', 'lesson', 'pickup'])
+        self.assertEqual(sorted(Path(s).name for s in entry['skills']), ['handoff', 'lesson', 'pickup', 'thinkbeforeact'])
 
     def test_hooks_cover_the_same_events_as_ws_start(self):
         hooks = load(load('.claude-plugin/plugin.json')['hooks'])['hooks']

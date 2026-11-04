@@ -33,7 +33,7 @@ Status: **matches** (code agrees with docs), **fixed**, **unclear** (docs silent
 | Codex hook output | SessionStart `additionalContext`; prompt guard `{"decision": "block", "reason": ...}` | SessionStart `hookSpecificOutput.additionalContext` (plain stdout also context); UserPromptSubmit `decision: "block"` or exit 2 (same page) | matches |
 | Codex memories / goals (report only) | Reads `memories_1.sqlite` `stage1_outputs` | Memories are off by default, enabled with `[features] memories = true`; files under `~/.codex/memories/`, "generated state" (https://developers.openai.com/codex/memories). Goals: `/goal`, `features.goals` (https://developers.openai.com/codex/use-cases/follow-goals/). Upstream feature table: `memories` stable and off by default, `goals` stable and on by default (openai/codex `codex-rs/features/src/lib.rs`). The docs do not describe the `memories_1.sqlite` schema we read | unclear for the sqlite reader; not changed |
 
-## beta.6 release coverage
+## beta.7 release coverage
 
 These labels describe the released integrations, not new live-session evidence.
 All plugin paths require the CLI and `ws start` in the target repo.

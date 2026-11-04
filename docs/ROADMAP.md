@@ -33,6 +33,8 @@ Compatibility claims stay limited to tested behavior; see the [client table](CLI
 - [x] **Opt-in Digest Pack** (Preview): advertises `digest_file` over MCP and emits an advisory size hint for tool outputs exceeding 40 KB (see [Packs](PACKS.md#optional-digest-advice)).
 - [x] **Antigravity Session Hooks** (Preview): configures `.agents/hooks.json` with `SessionStart` brief injection and `PreToolUse` safety guards (see [Client Verification](CLIENT-VERIFICATION.md)).
 - [x] **claude-mem Import** (Preview): `ws import claude-mem --db <file> --project <name>` previews checkpointed claude-mem SQLite copies read-only with safety allowlists and caps (see [Advanced](ADVANCED.md#import-a-claude-mem-copy)).
+- [x] **MCP Client Roots Discovery** (Preview): MCP plugin servers can discover a ws-started repository from client roots while remaining inactive for unlinked or invalid roots (see [Advanced](ADVANCED.md#plugin-runtime-packaging-preview)).
+- [x] **Codex SessionStart Catch-up** (Preview): recovers changed transcript content for the locally claimed task, including resumed turns without a callback; unsafe and ambiguous transcript sources are skipped (see [Advanced](ADVANCED.md#codex-sessionstart-catch-up)).
 
 ## Next
 

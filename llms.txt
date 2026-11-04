@@ -37,8 +37,9 @@
 
 ## Coming next
 
-Common Agent Plugins root manifest (PLG3) and repo discovery through MCP roots (PLG5)
-are parked and unavailable. The Codex plugin still uses `ws start` for MCP.
+Common Agent Plugins root manifest (PLG3) and Codex plugin MCP through roots (PLG5)
+are parked and unavailable for Codex; codex-cli 0.155.1 offers no roots and cannot expand
+plugin MCP paths, so use `ws start` for MCP. Clients that offer roots get the beta.7 Preview.
 
 ## Released documentation
 
