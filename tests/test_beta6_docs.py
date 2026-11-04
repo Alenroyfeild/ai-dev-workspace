@@ -13,7 +13,7 @@ class Beta6DocsTests(unittest.TestCase):
             with self.subTest(file=name):
                 text = (ROOT / name).read_text(encoding='utf-8')
                 self.assertNotRegex(text, r'(?i)coming (?:in |next \()beta\.6|merged on dev, not released|not released yet')
-        self.assertIn('v0.1.0-beta.6 on PyPI', (ROOT / 'README.md').read_text())
+        self.assertIn('v0.1.0-beta.7 on PyPI', (ROOT / 'README.md').read_text())
 
     def test_pypi_readme_passes_the_final_release_metadata_gate(self):
         text = (ROOT / 'README.md').read_text().casefold()
@@ -56,7 +56,7 @@ class Beta6DocsTests(unittest.TestCase):
         for name in ('llms.txt', 'llms-full.txt'):
             text = (ROOT / name).read_text()
             with self.subTest(file=name):
-                self.assertIn('published 0.1.0b6', text)
+                self.assertIn('published 0.1.0b7', text)
                 for limit in ('trusted manual desktop install', 'no MCP', 'not submitted', 'fixture-tested'):
                     self.assertIn(limit, text)
                 self.assertNotIn('/blob/dev/docs/guides/', text)

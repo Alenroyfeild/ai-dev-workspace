@@ -25,7 +25,7 @@ class DiscoverabilityTests(unittest.TestCase):
         for name in ('llms.txt', 'llms-full.txt'):
             with self.subTest(file=name):
                 text = (ROOT / name).read_text(encoding='utf-8')
-                for value in ('0.1.0b6', '## Stable', '## Preview', '## Coming next',
+                for value in ('0.1.0b7', '## Stable', '## Preview', '## Coming next',
                               'pipx install ai-dev-workspace', 'ws start', 'fixture-tested',
                               'best-effort', 'not a security boundary'):
                     self.assertIn(value, text)
