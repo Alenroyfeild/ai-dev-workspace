@@ -4,7 +4,7 @@ Most workspaces need only `ws tools`, `ws assist` and the defaults. These settin
 
 ## Codex SessionStart catch-up
 
-**Coming next (dev, not yet released); fixture-tested, not live-tested with Codex resume.**
+**Preview in beta.7; fixture-tested, not live-tested with Codex resume.**
 When the Codex `SessionStart` hook requests a brief, it can catch up the last
 captured session for the single locally claimed task. This covers appended turns
 from a resumed session that received no capture callback. It saves bounded user
