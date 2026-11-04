@@ -282,12 +282,17 @@ class WsParser(argparse.ArgumentParser):
         self.exit(2, f"{self.prog}: unknown {'command' if top else 'choice'} '{bad[1]}'{hint}" + (' Run ws --help' if top and near else '') + '\n')
 
 
+RELOAD_NOTE = 'Note: running assistant sessions and MCP servers keep the old code until you start a new session or reload MCP connections.'
+
+
 def main(argv=None):
     if core.WINDOWS:  # the pip/pipx `ws` script skips bin/ws, whose cp1252 pipes cannot carry non-ASCII text
         for stream in (sys.stdin, sys.stdout, sys.stderr): getattr(stream, 'reconfigure', lambda **_: None)(encoding='utf-8')
     p = WsParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
                  formatter_class=GroupedHelpFormatter,
-                 epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
+                 epilog='Updating? `ws update` updates the ws software; then `ws upgrade --dry-run` previews and `ws upgrade --yes` applies managed '
+                       'private-workspace updates; then `ws start` in each repo refreshes its wiring.\n'
+                       'More: `ws help all` lists every command; `ws <command> --help` shows its options.')
     p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
@@ -537,12 +542,15 @@ def main(argv=None):
         if a.cmd == 'version':
             out(core.kit_meta()['version']); return 0
         if a.cmd == 'update':
+            def installed(done):  # a real source update only; the package route just prints a command, and a pull can be a no-op
+                if 'updated_to' in done and 'up to date' not in done.get('git', '').lower().replace('-', ' '): print(RELOAD_NOTE, file=sys.stderr)
+                return 0
             if core.PACKAGED and not a.check:
                 out(core.update_kit()); return 0
             res = core.check_update(force=True)
             if a.check or not res.get('update_available'):
                 out(res); return 0
-            out(core.update_kit()); return 0
+            done = core.update_kit(); out(done); return installed(done)
         if a.cmd == 'doctor':
             problem = ''
             try:
@@ -730,7 +738,9 @@ def main(argv=None):
                     except EOFError: print(file=sys.stderr); raise core.WsError('No confirmation; use ws upgrade --yes or --dry-run.')
                     if not go: out('Not applied.'); return 0
                 result = core.upgrade_workspace(root, False, result['changes'])  # refuses if the plan changed since the preview
-            out({'pending_review': result['pending'], 'backups': result['backups']}); return 0
+            out({'pending_review': result['pending'], 'backups': result['backups']})
+            if not a.dry_run and result['changes']: print(RELOAD_NOTE, file=sys.stderr)  # only when files were written
+            return 0
         if a.cmd == 'assist':
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
         if a.cmd == 'status':

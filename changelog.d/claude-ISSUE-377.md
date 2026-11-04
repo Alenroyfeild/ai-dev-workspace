@@ -1,0 +1,1 @@
+Added: `ws --help`, the README and the setup guide show an "Updating?" route (`ws update`, `ws upgrade --dry-run`/`--yes`, `ws start`), and `ws update` and `ws upgrade --yes` say on stderr that running assistant sessions and MCP servers need a new session or reload after a real change.

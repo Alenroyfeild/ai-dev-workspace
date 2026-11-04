@@ -18,6 +18,8 @@ cd ~/code/myapp && ws start
 
 No pipx? `brew install pipx`, or `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` before `ws start`.
 
+Updating? `ws update` updates the ws software (a package install prints the `pipx upgrade` command instead). Then `ws upgrade --dry-run` previews managed private-workspace updates and `ws upgrade --yes` applies them. Then run `ws start` in each repo to refresh its wiring. Running assistant sessions and MCP servers keep the old code until you start a new session or reload MCP connections.
+
 Prefer a Claude Code plugin? Preview. Not yet listed in Anthropic's official plugin directory; install from our GitHub marketplace:
 ```text
 /plugin marketplace add Alenroyfeild/ai-dev-workspace
