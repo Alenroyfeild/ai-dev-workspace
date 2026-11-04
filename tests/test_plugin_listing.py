@@ -51,7 +51,7 @@ class PluginListingTests(unittest.TestCase):
         self.assertEqual(manifest['description'], CLAUDE_CODEX_LONG_DESC)
         self.assertEqual(manifest['keywords'], EXPECTED_KEYWORDS)
         self.assertEqual(manifest['author']['name'], DEVELOPER_NAME)
-        self.assertEqual(manifest['icon'], './assets/icon.svg')
+        self.assertEqual(manifest['icon'], './assets/icon.png')
         self.assertTrue((ROOT / manifest['icon']).is_file())
 
         entry = load('.claude-plugin/marketplace.json')['plugins'][0]
@@ -70,6 +70,9 @@ class PluginListingTests(unittest.TestCase):
         self.assertEqual(interface['longDescription'], CLAUDE_CODEX_LONG_DESC)
         self.assertEqual(interface['developerName'], DEVELOPER_NAME)
         self.assertEqual(interface['category'], CATEGORY)
+        self.assertEqual(interface['capabilities'], [])
+        self.assertEqual(interface['websiteURL'], 'https://github.com/Alenroyfeild/ai-dev-workspace')
+        self.assertEqual(interface['supportURL'], 'https://github.com/Alenroyfeild/ai-dev-workspace/issues')
         self.assertEqual(interface['brandColor'], BRAND_COLOR)
         self.assertEqual(interface['brandColorDark'], BRAND_COLOR_DARK)
         self.assertEqual(interface['logo'], './assets/mark-square.svg')
@@ -83,7 +86,7 @@ class PluginListingTests(unittest.TestCase):
 
     def test_cursor_manifest_and_marketplace(self):
         manifest = load('.cursor-plugin/plugin.json')
-        self.assertEqual(manifest['displayName'], SHARED_DISPLAY_NAME)
+        self.assertNotIn('displayName', manifest)
         self.assertEqual(manifest['description'], CURSOR_LONG_DESC)
         self.assertEqual(manifest['keywords'], EXPECTED_KEYWORDS)
         self.assertEqual(manifest['author']['name'], DEVELOPER_NAME)
