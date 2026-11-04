@@ -562,6 +562,51 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0); self.assertFalse(config.exists())
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
 
+    def custom_codex(self, edit=lambda block: block):
+        """beta.6-style setup whose .codex/config.toml the user extended; `edit` may damage the ws block."""
+        self.assertEqual(self.start('--yes')[0], 0)
+        config = self.repo / '.codex/config.toml'; block = core.codex_mcp_config(core.find_root())
+        config.write_text('# mine\n[mcp_servers.other]\ncommand = "other"\n\n' + edit(block) + '\n[profiles.fast]\nmodel = "x"\n')
+        link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['kit_version'] = '0.1.0-beta.6'
+        link.write_text(json.dumps(state)); return config, link, config.read_bytes()
+
+    def test_customized_codex_config_with_current_ws_block_is_not_partial(self):
+        config, link, before = self.custom_codex()
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0, err)
+        self.assertIn('.codex/config.toml: kept your customization; its ai-dev-workspace entry is current; nothing to do.', err)
+        self.assertNotIn('Setup is incomplete', err)
+        self.assertEqual(config.read_bytes(), before)
+        self.assertEqual(json.loads(link.read_text())['kit_version'], core.kit_meta()['version'])
+        self.assertEqual(self.start('--yes')[0], 0)
+
+    def assert_codex_pending(self, edit):
+        config, link, before = self.custom_codex(edit)
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 2, err)
+        self.assertEqual(config.read_bytes(), before)
+        self.assertEqual(json.loads(link.read_text())['kit_version'], '0.1.0-beta.6')
+        self.assertIn('.codex/config.toml: kept your edits', err); self.assertIn('ai-dev-workspace entry differs', err); self.assertIn('ws connect codex', err)
+        self.assertNotIn('--undo', err); self.assertNotIn('Setup is incomplete', err)
+
+    def test_customized_codex_config_with_edited_ws_block_stays_pending(self):
+        self.assert_codex_pending(lambda b: b.replace('enabled = true', 'enabled = false'))
+
+    def test_customized_codex_config_with_extended_ws_block_stays_pending(self):
+        self.assert_codex_pending(lambda b: b + 'startup_timeout_sec = 5\n')
+
+    def test_customized_codex_config_without_ws_block_stays_pending(self):
+        self.assert_codex_pending(lambda b: '')
+
+    def test_customized_codex_config_with_duplicated_ws_block_stays_pending(self):
+        self.assert_codex_pending(lambda b: b + '\n' + b)
+
+    def test_missing_recorded_file_still_reports_incomplete_setup(self):
+        self.assertEqual(self.start('--yes')[0], 0)
+        (self.repo / 'CLAUDE.local.md').unlink()
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 2); self.assertIn('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', err)
+
     def test_codex_write_installs_global_config_even_when_project_is_connected(self):
         self.assertEqual(self.start('--yes')[0], 0)
         project = self.repo / '.codex/config.toml'

@@ -1,0 +1,1 @@
+Fixed: `ws start` no longer reports a partial setup (exit 2) when your customized `.codex/config.toml` still holds the current ai-dev-workspace entry, and the recorded repo version now advances; a changed entry gets a file-specific message instead of the generic undo advice.
