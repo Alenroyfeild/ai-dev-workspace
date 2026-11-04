@@ -35,8 +35,9 @@ Semantic versioning in `kit.json`:
 The release workflow uses two promotion steps and tags the merge commit on `main`, keeping `dev` as the integration branch:
 
 1. **Release Candidate (RC) PR to `dev`:**
-   - Fold [changelog fragments](../changelog.d/README.md) into `CHANGELOG.md` under `## <version> (Unreleased)`. Turn each fragment into a bullet: `Added:` goes under New, `Changed:` under Improved and `Fixed:` under Fixed. Allowed subsections are `New`, `Improved`, `Fixed`, `Previews`, `Known limits`, and `Measured`. Delete the folded fragment files; keep `changelog.d/README.md`. Write a one-sentence summary at the top of the section.
-   - Bump version in `kit.json`, `server.json` (2 fields), the plugin manifests (`.codex-plugin`, `.cursor-plugin`, `.claude-plugin`), and `tests/test_packaging.py`.
+   - First run `python3 -m unittest discover -s tests -p test_changelog_fragments.py`.
+   - Fold [changelog fragments](../changelog.d/README.md) into `CHANGELOG.md` under `## <version> (Unreleased)`. Turn each fragment into a bullet: `Added:` goes under New, `Changed:` under Improved and `Fixed:` under Fixed. Allowed subsections are `New`, `Improved`, `Fixed`, `Previews`, `Known limits`, and `Measured`. Preserve existing entries and combine duplicate bullets. Write a one-sentence summary first (the update notice shows it), and retain Measured and Known limits where applicable. Use absolute links in release notes; relative ones break on the release page. Delete the folded fragment files; keep `changelog.d/README.md`.
+   - Bump version in `kit.json`, `server.json` (2 fields), the five plugin manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.cursor-plugin/marketplace.json`), and `tests/test_packaging.py`.
    - Save this release's record corpus under `tests/fixtures/records/v<version>/` (see `docs/UPGRADE-CHECK.md`).
    - Update documentation: add new capabilities to `docs/ROADMAP.md` under "Available in the beta", update `docs/CLIENT-VERIFICATION.md` to `## beta.N release coverage`, and update preview labels in `docs/SETUP.md` and `docs/DISCOVERY.md` to `Preview in beta.N`.
    - Run the full test suite in a temp HOME and `bin/release-smoke` on the built wheel. Open the RC PR to `dev` and merge once peer-reviewed and CI is green.
@@ -54,15 +55,16 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - Maintainer reviews and merges `dev` → `main`.
 
 4. **Tag on the `main` merge commit:**
-   - The tag `v<version>` is placed on the merge commit on `main` (never directly on `dev`).
-   - The maintainer tags and pushes: `git tag v<version> <main-merge-sha> && git push origin v<version>`. Do not create the GitHub Release by hand.
+   - The annotated tag `v<version>` is placed on the merge commit on `main` (never directly on `dev`).
+   - The maintainer tags and pushes: `git tag -a v<version> -m "v<version>" <main-merge-sha> && git push origin v<version>`. Do not create the GitHub Release by hand.
 
-5. **Automated GitHub Release:**
+5. **Automated GitHub Release (with fallback):**
    - `.github/workflows/release.yml` checks that the tag matches `kit.json`, runs the tests, and publishes the GitHub Release as Latest with that CHANGELOG section plus upgrade steps. Users see the summary on their next `ws doctor` / `ws update --check`.
+   - *Fallback:* If `release.yml` does not start (e.g. GitHub Actions outage), run `bin/publish-release v<version> notes.md` with notes built by `release.yml`'s own awk and printf commands; the script is idempotent with a late workflow run.
 
 6. **PyPI publication:**
-   - Checkout the release tag on `main`.
-   - Build distribution packages using `python3 -m build` (or `python3 -m build --no-isolation`).
+   - Build distribution packages from a clean `git archive` of the tag, not the working checkout:
+     `git archive v<version> | tar -x -C <tmp>`, then run `python -m build --no-isolation` in the release venv (a maintainer checkout may be on another branch or contain untracked files).
    - Upload `dist/*` artifacts using PyPI publishing tools. Keep publishing credentials outside the repository.
 
 7. **Post-PyPI documentation PR to `dev`:**
@@ -80,9 +82,9 @@ Run `bin/release-smoke` (stdlib, offline, throwaway HOME) on the final candidate
 | File | What changes | When | Enforcing test |
 | --- | --- | --- | --- |
 | `kit.json` | Version string bump | RC PR | `tests/test_packaging.py` |
-| `.codex-plugin/plugin.json`, `.codex-plugin/marketplace.json` | Version string bump | RC PR | `tests/test_packaging.py` |
-| `.cursor-plugin/plugin.json`, `.cursor-plugin/marketplace.json` | Version string bump | RC PR | `tests/test_packaging.py` |
 | `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | Version string bump | RC PR | `tests/test_packaging.py` |
+| `.codex-plugin/plugin.json` | Version string bump | RC PR | `tests/test_packaging.py` |
+| `.cursor-plugin/plugin.json`, `.cursor-plugin/marketplace.json` | Version string bump | RC PR | `tests/test_packaging.py` |
 | `server.json` | Version strings (2 fields) | RC PR | `tests/test_packaging.py` |
 | `tests/test_packaging.py` | Version string assertion | RC PR | `tests/test_packaging.py` |
 | `CHANGELOG.md` | Fold fragments into New/Improved/Fixed/Previews/Known limits/Measured, write summary | RC PR | `tests/test_release_sync.py` |
@@ -96,7 +98,7 @@ Run `bin/release-smoke` (stdlib, offline, throwaway HOME) on the final candidate
 | `llms.txt`, `llms-full.txt` | Update `published <canonical-version>` | After PyPI publish | `tests/test_published_docs.py` |
 | `docs/DISCOVERY.md` | Update PyPI link to release version | After PyPI publish | `tests/test_published_docs.py` |
 | `tests/test_published_docs.py` | Bump `PUBLISHED_VERSION` constant | After PyPI publish | `tests/test_published_docs.py` |
-| `docs/video/videos.json` | Update when new video assets are recorded | When new videos ship | `tests/test_record_corpus.py` |
+| `docs/video/videos.json` | Update when new video assets are recorded | When new videos ship | `tests/test_make_video.py` |
 
 ## Repository setting
 

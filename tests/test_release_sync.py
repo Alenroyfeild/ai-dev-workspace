@@ -1,5 +1,6 @@
 """Release sync validation contracts and failing-first regression tests."""
 import json
+import os
 import re
 import tempfile
 import unittest
@@ -56,7 +57,13 @@ def extract_changelog_section(changelog_text, version):
     return date_str.strip(), section_text
 
 
-def verify_changelog_section_and_fragments(changelog_text, changelog_d_dir, version):
+def is_release_check():
+    return os.environ.get('GITHUB_REF_TYPE') == 'tag' or os.environ.get('WS_RELEASE_CHECK') == '1'
+
+
+def verify_changelog_section_and_fragments(changelog_text, changelog_d_dir, version, release_check=None):
+    if release_check is None:
+        release_check = is_release_check()
     date_str, section_text = extract_changelog_section(changelog_text, version)
 
     subsections = re.findall(r'(?m)^###\s+(.+)$', section_text)
@@ -71,7 +78,7 @@ def verify_changelog_section_and_fragments(changelog_text, changelog_d_dir, vers
             )
 
     is_dated = bool(re.match(r'^\d{4}-\d{2}-\d{2}$', date_str))
-    if is_dated and changelog_d_dir.is_dir():
+    if release_check and is_dated and changelog_d_dir.is_dir():
         fragment_files = [p.name for p in changelog_d_dir.iterdir() if p.is_file() and p.name != 'README.md']
         if fragment_files:
             raise AssertionError(
@@ -235,15 +242,36 @@ class ReleaseSyncTests(unittest.TestCase):
                 verify_changelog_section_and_fragments(BETA6_CHANGELOG_SNIPPET, Path(tmpdir), '0.1.0-beta.6')
             self.assertIn("Disallowed CHANGELOG subsection '### Highlights'", str(ctx.exception))
 
-    def test_changelog_fails_first_when_dated_with_leftover_fragments(self):
+    def test_dated_section_with_fragment_passes_in_normal_mode_and_fails_in_release_mode(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)
             (tmp_path / 'README.md').write_text('readme', encoding='utf-8')
             (tmp_path / 'unmerged-fragment.md').write_text('fragment', encoding='utf-8')
             changelog_dated = f"## {self.version} (2026-11-04)\n\n### New\n\n- Some feature\n"
+            # Normal mode (release_check=False): passes
+            verify_changelog_section_and_fragments(
+                changelog_dated, tmp_path, self.version, release_check=False
+            )
+            # Release mode (release_check=True): fails
             with self.assertRaises(AssertionError) as ctx:
-                verify_changelog_section_and_fragments(changelog_dated, tmp_path, self.version)
+                verify_changelog_section_and_fragments(
+                    changelog_dated, tmp_path, self.version, release_check=True
+                )
             self.assertIn('still holds unmerged fragments', str(ctx.exception))
+
+    def test_repo_passes_with_fragment_present(self):
+        changelog_d = ROOT / 'changelog.d'
+        fragment = changelog_d / 'tmp-test-fragment.md'
+        try:
+            fragment.write_text('Fixed: guard bypass\n', encoding='utf-8')
+            changelog_text = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
+            # In default normal mode (not a release tag), this passes with fragment present
+            verify_changelog_section_and_fragments(
+                changelog_text, changelog_d, self.version
+            )
+        finally:
+            if fragment.is_file():
+                fragment.unlink()
 
     def test_no_stale_release_phrases_on_repo(self):
         files_to_check = [ROOT / 'README.md', ROOT / 'llms.txt', ROOT / 'llms-full.txt']
