@@ -12,7 +12,7 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 ### Improved
 
 - Expand handoff and pickup skills with working-tree, process, check, and drift checklists inspired by steipete/agent-scripts (MIT).
-- Document exact claude-mem privacy exclusions and distinguish released beta.6 from the upcoming per-field prefix check.
+- Document exact claude-mem privacy exclusions; since beta.7 the `/private` prefix is checked in each field.
 - Discipline retry nudges keep commands with different shell quoting, escapes or line breaks in separate counters.
 - Expand `thinkbeforeact` planning checks for verified evidence, outward effects, failure paths and adversarial review.
 
