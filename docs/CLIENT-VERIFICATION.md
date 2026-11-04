@@ -49,4 +49,4 @@ All plugin paths require the CLI and `ws start` in the target repo.
 
 - `docs/COMMANDS.md`: Gemini memory import wording now says the heading comes from older versions.
 - `tests/test_client_docs.py`: pins event names, nesting, every event's timeout units, Cursor `version`, MCP key names, the Cursor rule front matter, and non-Claude SessionStart context output. Prompt blocking (including Claude exit 2) is exercised by `tests/test_paste_guard.py`; Claude Stop output by `tests/test_finish_nudge.py`.
-- The 2026-10-09 documentation audit required no code changes. The beta.6 compatibility tables now include the fixture-tested Antigravity hooks and plugin previews above.
+- The 2026-10-09 documentation audit required no code changes. The compatibility tables include the fixture-tested Antigravity hooks and plugin previews above.

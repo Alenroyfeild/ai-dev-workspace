@@ -65,8 +65,9 @@ You: “Yes, continue.”
 | Decisions & handoffs | Stable | Saves status, next action, and explicit rulings (`ws checkpoint`, `ws remember`) | [Commands](docs/COMMANDS.md) |
 | Dead ends | Stable | Records failed approaches and displays them as `Do not redo:` | [Concepts](docs/CONCEPTS.md) |
 | Lessons | Stable | Captures reusable cross-task takeaways and guidance (`ws lesson`) | [Commands](docs/COMMANDS.md) |
+| `ws lesson review` | Stable | Read-only list of lessons with old date stamps (`--days N`); changes or deletes nothing | [Commands](docs/COMMANDS.md#search-and-lessons) |
 | MCP server | Stable | Exposes 7 core tools by default; others by name on request via stdio | [MCP](docs/MCP.md) |
-| Guards pack | Stable | PreToolUse hook denies risky commands and secrets before execution | [Packs](docs/PACKS.md) |
+| Guards pack | Stable | PreToolUse hook denies risky commands and secrets before execution; beta.7 reads git push option grammar (abbreviations, `--prune`, `--mirror`); a safety net, not a security boundary | [Packs](docs/PACKS.md) |
 | Discipline pack | Stable | Advisory nudge when the same command fails repeatedly in a session | [Packs](docs/PACKS.md) |
 | `ws digest` | Stable | Compresses verbose terminal output into focused markdown notes | [Commands](docs/COMMANDS.md#search-and-lessons) |
 | Native imports | Stable | Reads existing Claude and Codex memory files (`ws import native`) | [Commands](docs/COMMANDS.md#import-existing-memory) |
@@ -76,6 +77,8 @@ You: “Yes, continue.”
 | Claude Code plugin | Preview | Hooks + MCP; needs CLI + `ws start`; not in Anthropic directory; Windows untested | [Advanced](docs/ADVANCED.md#claude-code-plugin-preview) |
 | Codex plugin | Preview | Hooks need a trusted manual desktop install; no MCP; hooks not live-tested | [Advanced](docs/ADVANCED.md#codex-plugin-preview) |
 | Cursor plugin | Preview | Fixture-tested only; not submitted; no verified install command | [Advanced](docs/ADVANCED.md#cursor-plugin-preview) |
+| Codex SessionStart catch-up | Preview | Recovers changed transcript content for the claimed task; fixture-tested, not live-tested with Codex resume | [Advanced](docs/ADVANCED.md#codex-sessionstart-catch-up) |
+| MCP plugin roots discovery | Preview | Plugin server finds a `ws start` repo from client roots; Codex offers no roots | [Advanced](docs/ADVANCED.md#plugin-runtime-packaging-preview) |
 | Worker fallback chain | Preview | Only declared providers and read-only roles run; timeout is a failed attempt | [Advanced](docs/ADVANCED.md#routing) |
 | Gateway provider | Preview | Local fake-server tests only; sends a redacted brief to configured base_url, without tools | [Advanced](docs/ADVANCED.md#openai-compatible-gateway-preview) |
 | Compact MCP recall | Stable | Bounded note cards and explicit untrusted detail; CLI snippets unchanged | [Advanced](docs/ADVANCED.md#compact-mcp-recall) |
