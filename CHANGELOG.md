@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0-beta.7 (Unreleased)
+## 0.1.0-beta.7 (2026-11-04)
 
 Beta.7 improves session continuity, error resilience and memory privacy, and adds read-only lesson date review.
 
