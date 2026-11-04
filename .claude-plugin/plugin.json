@@ -1,7 +1,7 @@
 {
   "name": "ai-dev-workspace",
   "version": "0.1.0-beta.7",
-  "description": "Private task memory that Claude Code and Codex share: a short brief at session start, saved decisions, checkpoints and search.",
+  "description": "Local Markdown memory that Claude Code and Codex share: a short brief at session start, saved decisions and dead ends, checkpoints, search and opt-in safety guards. Inactive until you run ws start in a repo.",
   "author": {
     "name": "Alenroyfeild"
   },

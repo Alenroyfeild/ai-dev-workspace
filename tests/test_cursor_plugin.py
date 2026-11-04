@@ -22,10 +22,11 @@ class CursorPluginTests(Base):
         self.assertRegex(manifest['name'], r'^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$')
         for key in ('name', 'homepage', 'repository', 'license', 'author'):
             self.assertEqual(manifest[key], claude[key], key)
-        self.assertIn('Cursor (preview)', manifest['description'])
+        self.assertEqual(manifest['description'], claude['description'].replace('Claude Code and Codex share', 'Claude Code, Codex and Cursor (preview) share'))
         self.assertEqual((manifest['rules'], manifest['skills'], manifest['hooks']), ('./rules/', './skills/', './hooks/cursor-hooks.json'))
         self.assertEqual(manifest['mcpServers']['ai-dev-workspace']['args'], ['${CURSOR_PLUGIN_ROOT}/mcp/server.py', '--plugin'])
         entry = load('.cursor-plugin/marketplace.json')['plugins'][0]
+        self.assertEqual(entry['description'], manifest['description'])
         self.assertEqual((entry['name'], entry['source'], entry['version']), (manifest['name'], './', manifest['version']))
         self.assertTrue(load('.cursor-plugin/marketplace.json')['owner']['name'])
         for path in manifest['rules'], manifest['skills']:  # paths stay inside the plugin

@@ -18,8 +18,9 @@ class ClaudePluginTests(Base):
         self.assertEqual(manifest['version'], core.kit_meta()['version'])  # a release bump must not miss the plugin
         entry = load('.claude-plugin/marketplace.json')['plugins'][0]
         self.assertEqual((entry['name'], entry['source']), (manifest['name'], './'))
+        self.assertEqual(entry['description'], manifest['description'])
         self.assertEqual(manifest['mcpServers']['ai-dev-workspace']['args'], ['${CLAUDE_PLUGIN_ROOT}/mcp/server.py', '--plugin'])
-        for skill in entry['skills']:  # only the skills ws start installs; not every folder under skills/
+        for skill in entry['skills']:  # skills shipped with the plugin (handoff, pickup, lesson, thinkbeforeact)
             self.assertTrue((KIT / skill / 'SKILL.md').is_file(), skill)
         self.assertEqual(sorted(Path(s).name for s in entry['skills']), ['handoff', 'lesson', 'pickup', 'thinkbeforeact'])
 
