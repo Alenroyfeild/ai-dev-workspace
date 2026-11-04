@@ -1,23 +1,32 @@
 """Release-copy contracts; fixture coverage is not live-client proof."""
-from pathlib import Path
+import re
 import unittest
+from pathlib import Path
+
+from ws import packaging
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ('README.md', 'docs/ADVANCED.md', 'docs/OVERVIEW.md', 'docs/SETUP.md',
          'docs/PACKS.md', 'docs/CLIENT-VERIFICATION.md', 'llms.txt', 'llms-full.txt')
 
+# The version currently published on PyPI. Bumped after PyPI publish.
+PUBLISHED_VERSION = '0.1.0-beta.7'
+PUBLISHED_CANONICAL = packaging.package_version(PUBLISHED_VERSION)
+PUBLISHED_BETA = PUBLISHED_VERSION.split('-')[-1] if '-' in PUBLISHED_VERSION else PUBLISHED_VERSION
 
-class Beta6DocsTests(unittest.TestCase):
-    def test_released_features_are_not_still_marked_as_beta6_future(self):
+
+class PublishedDocsTests(unittest.TestCase):
+    def test_released_features_are_not_still_marked_as_future(self):
+        pattern = rf'(?i)coming (?:in |next \(){re.escape(PUBLISHED_BETA)}|merged on dev, not released|not released yet'
         for name in FILES:
             with self.subTest(file=name):
                 text = (ROOT / name).read_text(encoding='utf-8')
-                self.assertNotRegex(text, r'(?i)coming (?:in |next \()beta\.6|merged on dev, not released|not released yet')
-        self.assertIn('v0.1.0-beta.6 on PyPI', (ROOT / 'README.md').read_text())
+                self.assertNotRegex(text, pattern)
+        self.assertIn(f'v{PUBLISHED_VERSION} on PyPI', (ROOT / 'README.md').read_text())
 
     def test_pypi_readme_passes_the_final_release_metadata_gate(self):
         text = (ROOT / 'README.md').read_text().casefold()
-        self.assertNotIn('coming in beta.6', text)
+        self.assertNotIn(f'coming in {PUBLISHED_BETA}'.casefold(), text)
         self.assertNotIn('not released', text)
         coming = text.split('## coming next', 1)[1].split('\n## ', 1)[0]
         for line in coming.splitlines():
@@ -56,7 +65,7 @@ class Beta6DocsTests(unittest.TestCase):
         for name in ('llms.txt', 'llms-full.txt'):
             text = (ROOT / name).read_text()
             with self.subTest(file=name):
-                self.assertIn('published 0.1.0b6', text)
+                self.assertIn(f'published {PUBLISHED_CANONICAL}', text)
                 for limit in ('trusted manual desktop install', 'no MCP', 'not submitted', 'fixture-tested'):
                     self.assertIn(limit, text)
                 self.assertNotIn('/blob/dev/docs/guides/', text)
