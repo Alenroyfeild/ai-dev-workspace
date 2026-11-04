@@ -562,11 +562,12 @@ class StartTests(unittest.TestCase):
         self.assertEqual(self.start('--undo')[0], 0); self.assertFalse(config.exists())
         self.assertEqual(subprocess.check_output(['git', 'status', '--porcelain']), b'')
 
-    def custom_codex(self, edit=lambda block: block):
+    def custom_codex(self, edit=lambda block: block, eol='\n'):
         """beta.6-style setup whose .codex/config.toml the user extended; `edit` may damage the ws block."""
         self.assertEqual(self.start('--yes')[0], 0)
         config = self.repo / '.codex/config.toml'; block = core.codex_mcp_config(core.find_root())
-        config.write_text('# mine\n[mcp_servers.other]\ncommand = "other"\n\n' + edit(block) + '\n[profiles.fast]\nmodel = "x"\n')
+        text = '# mine\n[mcp_servers.other]\ncommand = "other"\n\n' + edit(block) + '\n[profiles.fast]\nmodel = "x"\n'
+        config.write_bytes(text.replace('\n', eol).encode('utf-8'))  # explicit bytes: same on every OS
         link = self.repo / '.ws-start.json'; state = json.loads(link.read_text()); state['kit_version'] = '0.1.0-beta.6'
         link.write_text(json.dumps(state)); return config, link, config.read_bytes()
 
@@ -580,14 +581,26 @@ class StartTests(unittest.TestCase):
         self.assertEqual(json.loads(link.read_text())['kit_version'], core.kit_meta()['version'])
         self.assertEqual(self.start('--yes')[0], 0)
 
-    def assert_codex_pending(self, edit):
-        config, link, before = self.custom_codex(edit)
+    def assert_codex_pending(self, edit, eol='\n'):
+        config, link, before = self.custom_codex(edit, eol)
         code, _, err = self.start('--yes')
         self.assertEqual(code, 2, err)
         self.assertEqual(config.read_bytes(), before)
         self.assertEqual(json.loads(link.read_text())['kit_version'], '0.1.0-beta.6')
         self.assertIn('.codex/config.toml: kept your edits', err); self.assertIn('ai-dev-workspace entry differs', err); self.assertIn('ws connect codex', err)
         self.assertNotIn('--undo', err); self.assertNotIn('Setup is incomplete', err)
+
+    def test_customized_codex_config_with_crlf_line_endings_and_current_block_is_not_partial(self):
+        config, link, before = self.custom_codex(eol='\r\n')
+        self.assertIn(b'\r\n', before)
+        code, _, err = self.start('--yes')
+        self.assertEqual(code, 0, err)
+        self.assertIn('kept your customization', err)
+        self.assertEqual(config.read_bytes(), before)
+        self.assertEqual(json.loads(link.read_text())['kit_version'], core.kit_meta()['version'])
+
+    def test_customized_codex_config_with_crlf_and_edited_ws_block_stays_pending(self):
+        self.assert_codex_pending(lambda b: b.replace('enabled = true', 'enabled = false'), '\r\n')
 
     def test_customized_codex_config_with_edited_ws_block_stays_pending(self):
         self.assert_codex_pending(lambda b: b.replace('enabled = true', 'enabled = false'))

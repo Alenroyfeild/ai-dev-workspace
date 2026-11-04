@@ -536,7 +536,7 @@ WITHOUT_PLUGIN = ('.claude/settings.local.json', '.mcp.json')  # Claude files th
 
 def codex_block_current(root, raw):
     """True when the Codex config bytes hold, byte for byte, the one ai-dev-workspace server table this version writes, with no other ws entry."""
-    try: text = raw.decode('utf-8')
+    try: text = raw.decode('utf-8').replace('\r\n', '\n')  # only the comparison normalizes; the file is never rewritten
     except UnicodeDecodeError: return False
     block = core.codex_mcp_config(root)
     at = text.find(block)
