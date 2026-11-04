@@ -102,6 +102,16 @@ class PluginListingTests(unittest.TestCase):
         server = load('server.json')
         self.assertEqual(server['description'], SERVER_JSON_DESC)
 
+    def test_setup_py_listing_metadata(self):
+        import ast
+        tree = ast.parse((ROOT / 'setup.py').read_text(encoding='utf-8'))
+        call = next(n for n in ast.walk(tree) if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Name) and n.func.id == 'setup')
+        meta = {kw.arg: kw.value for kw in call.keywords}
+        self.assertEqual(ast.literal_eval(meta['description']), 'Local Markdown memory your AI coding agents share: Claude Code, Codex, Cursor (preview) and more')
+        keywords = set(ast.literal_eval(meta['keywords']).split())
+        self.assertTrue({'session-memory', 'decisions', 'dead-ends', 'markdown', 'guards'} <= keywords)
+
     def test_all_referenced_assets_exist_and_open_cleanly(self):
         assets_dir = ROOT / 'assets'
         self.assertTrue(assets_dir.is_dir(), 'assets directory must exist')
