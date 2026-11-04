@@ -440,7 +440,66 @@ def _find_reason(args, cwd_bad):
     return ''
 
 
-def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
+_UNKNOWN = object()  # a git config value that cannot be read from the command text
+_ASSIGN = re.compile(r'([A-Za-z_]\w*)(\+?)=(.*)', re.S)
+# Real git builtins only: an alias never overrides one. A name missing here is expanded (stricter), never skipped.
+_GIT_BUILTINS = frozenset((
+    'add am apply archive bisect blame branch bundle cat-file checkout cherry-pick clean clone commit config describe diff fetch format-patch gc '
+    'grep init log ls-files ls-tree merge mv notes pull push rebase reflog remote reset restore revert rev-parse rm shortlog show stash status switch tag worktree').split())
+_ENV_DENY = 'git config from the environment (--config-env, GIT_CONFIG_*) can change clean.requireForce, remote push settings or aliases; ws guards cannot prove it safe.'
+
+
+def _assigns(words, stripped):
+    """NAME=value words ahead of the command (also after env/sudo): _strip drops them, git needs them. $ or a backtick in a value makes it _UNKNOWN."""
+    cut = len(words) - len(stripped) if stripped == words[len(words) - len(stripped):] else len(words)
+    out = {}
+    for word in words[:cut]:
+        m = _ASSIGN.fullmatch(word)
+        if m: out[m[1]] = _UNKNOWN if m[2] or '$' in m[3] or '`' in m[3] else m[3]
+    return out
+
+
+def _env_config(envs):
+    """(key, value) pairs git reads from GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT/KEY_n/VALUE_n; (None, _UNKNOWN) when a source cannot be read."""
+    out, params, count = [], envs.get('GIT_CONFIG_PARAMETERS'), envs.get('GIT_CONFIG_COUNT')
+    if params is _UNKNOWN: out.append((None, _UNKNOWN))
+    elif params:
+        try:
+            for item in shlex.split(params):
+                key, eq, value = item.partition('=')
+                out.append((key, value if eq else None))
+        except ValueError: out.append((None, _UNKNOWN))
+    if count is _UNKNOWN or count is not None and not re.fullmatch(r'\d{1,3}', count): out.append((None, _UNKNOWN)); count = 0
+    count = int(count or 0)
+    for i in sorted(set(range(count)) | {int(m[1]) for m in map(re.compile(r'GIT_CONFIG_(?:KEY|VALUE)_(\d+)').fullmatch, envs) if m}):
+        key, value = envs.get(f'GIT_CONFIG_KEY_{i}'), envs.get(f'GIT_CONFIG_VALUE_{i}', _UNKNOWN)
+        if key is None and i < count or key is _UNKNOWN: out.append((None, _UNKNOWN))
+        elif key is not None: out.append((key, value))
+    return out
+
+
+def _guarded_key(key):
+    key = key.lower()
+    return key == 'clean.requireforce' or key.startswith('alias.') or key.startswith('remote.') and key.rsplit('.', 1)[-1] in ('mirror', 'push')
+
+
+def _alias_reason(sub, aliases, args, cmd, xargs, cwd_bad, budget, depth, hops, envs, configs):
+    """Reason for `git <sub> ...` when sub is an alias defined on the command line, or None when it is not one. The expansion goes through the same checker."""
+    values = aliases.get(sub.lower())
+    if values is None or sub in _GIT_BUILTINS: return None
+    if len(values) != 1 or sub.lower() in hops or len(hops) >= 5: return 'This git alias is defined twice, loops or nests too deeply for ws guards to check.'
+    value = next(iter(values))
+    if not value: return 'This git alias is empty or has no value, so ws guards cannot check it.'
+    if value[:1] == '!':
+        if len(aliases) > 1: return 'This shell alias runs next to other aliases, so ws guards cannot check what it calls.'
+        return command_reason(value[1:] + ' ' + shlex.join(args[1:]), False, budget, depth + 1)
+    try: words = shlex.split(value)
+    except ValueError: return 'This git alias cannot be parsed, so ws guards cannot check it.'
+    if not words: return 'This git alias is empty or has no value, so ws guards cannot check it.'
+    return _simple(cmd, 'git', words + args[1:], xargs, cwd_bad, budget, depth, envs, configs, hops + (sub.lower(),))
+
+
+def _simple(cmd, name, args, xargs, cwd_bad, budget, depth, envs=None, inherited=(), hops=()):
     """Reason for one simple command (wrappers and NAME=value already stripped), or ''."""
     if name in SHELLS:  # bash -lc "<command>", bash <<EOF ... EOF, bash <<< "<command>", echo "<command>" | bash
         inner = _shell_command(args)
@@ -464,24 +523,32 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
         targets = args if not xargs or any(a[:1] != '-' for a in args) else (cmd.pipe_in or [])[1:]
         hit = [a for a in targets if a in HOME_OR_ROOT or _is_home(a) or _is_root(a) or (cwd_bad and _WIPE_CWD.fullmatch(a))]
         if hit: return f'rm -r on {hit[0]} would delete your home folder or the filesystem root.'
-    configs = []
+    parsed_configs, env_configs = list(inherited), []
     while name == 'git' and args and args[0].startswith('-'):  # global options: git -C dir, -c k=v, --no-pager ...
         opt = args[0]
         if opt == '-c' and len(args) > 1:
-            configs.append(args[1]); args = args[2:]
-        elif opt.startswith('--config-env='):
-            configs.append(opt.split('=', 1)[1]); args = args[1:]
+            key, eq, value = args[1].partition('=')
+            parsed_configs.append((key, value if eq else None)); args = args[2:]
+        elif opt == '--config-env' and len(args) > 1 or opt.startswith('--config-env='):
+            spec, args = (args[1], args[2:]) if opt == '--config-env' else (opt.split('=', 1)[1], args[1:])
+            key, eq, var = spec.partition('=')
+            env_configs.append((key, (envs or {}).get(var, _UNKNOWN) if eq else _UNKNOWN))
         elif opt in _GIT_VALUE:
             args = args[2:]
         else:
             args = args[1:]
-    parsed_configs = []
-    for c in configs:
-        if '=' in c:
-            k, v = c.split('=', 1)
-            parsed_configs.append((k, v))
-        else:
-            parsed_configs.append((c, None))
+    if name == 'git':
+        for key, value in env_configs + _env_config(envs or {}):
+            if key is not None and not _guarded_key(key): continue
+            if key is None or not key.lower().startswith('alias.') or value is _UNKNOWN or value is None: return _ENV_DENY
+            parsed_configs.append((key, value))
+    aliases = {}
+    for key, value in parsed_configs:
+        if key.lower().startswith('alias.'): aliases.setdefault(key[6:].lower(), set()).add(value)
+    if name == 'git' and args:
+        why = _alias_reason(args[0], aliases, args, cmd, xargs, cwd_bad, budget, depth, hops, envs, parsed_configs)
+        if why is not None: return why
+        if hops and args[0] not in _GIT_BUILTINS: return 'This git alias expands to a command ws guards cannot check.'
     if name == 'git' and args:
         sub, rest = args[0], args[1:]
         flagged = rest[:rest.index('--')] if '--' in rest else rest  # after `--` come names, not options
@@ -490,13 +557,18 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
             return 'git reset --hard throws away uncommitted work.'
         if sub == 'clean':
             clean_dry = False
+            skip = False  # -e / --exclude take a value: -fenothing and -e -n are patterns, not -n
             for a in flagged:
+                if skip: skip = False; continue
                 if a.startswith('--'):
                     opt = a[2:].split('=', 1)[0]
                     if 'dry-run'.startswith(opt) and opt.startswith('dr'): clean_dry = True
                     elif 'no-dry-run'.startswith(opt) and opt.startswith('no-d'): clean_dry = False
+                    elif opt and 'exclude'.startswith(opt) and '=' not in a: skip = True  # unique prefixes work too: --e, --ex
                 elif a.startswith('-'):
-                    if 'n' in a[1:]: clean_dry = True
+                    before, e, _ = a[1:].partition('e')
+                    if 'n' in before: clean_dry = True
+                    skip = e and a.endswith('e')
             clean_require_force = True
             for k, v in parsed_configs:
                 if k.lower() == 'clean.requireforce':
@@ -644,7 +716,7 @@ def command_reason(command, ps=False, _budget=None, _depth=0):
             target = args[0] if args and args[0][:1] != '-' else '~' if not args else ''
             cwd_bad = bool(target) and (target in HOME_OR_ROOT or _is_home(target) or _is_root(target))
             continue
-        why = _simple(cmd, name, args, xargs, cwd_bad, budget, _depth)
+        why = _simple(cmd, name, args, xargs, cwd_bad, budget, _depth, _assigns(cmd.words, words))
         if why: return why
     if looks_secret(command): return 'The command contains what looks like a secret (token, key or password).'
     return ''
