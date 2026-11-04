@@ -39,7 +39,7 @@ class BuildKit(build_py):
 
 
 setup(name='ai-dev-workspace', version=package_version(json.loads((ROOT / 'kit.json').read_text())['version']),
-      description='Shared task memory for AI coding assistants: Claude Code, Codex, Cursor, Copilot, Gemini CLI',
+      description='Local Markdown memory your AI coding agents share: Claude Code, Codex, Cursor (preview) and more',
       # PyPI cannot resolve repo-relative links, so README links point at the release branch on GitHub.
       long_description=re.sub(r'\]\((?!https?:|#|mailto:)([^)\s]+)\)', lambda m: '](' + REPO + '/blob/main/' + m[1] + ')',
                               (ROOT / 'README.md').read_text(encoding='utf-8')), long_description_content_type='text/markdown',
@@ -47,7 +47,7 @@ setup(name='ai-dev-workspace', version=package_version(json.loads((ROOT / 'kit.j
       project_urls={'Documentation': REPO + '/blob/main/docs/OVERVIEW.md', 'Changelog': REPO + '/blob/main/CHANGELOG.md',
                     'Issues': REPO + '/issues', 'Source': REPO, 'Tutorial': REPO + '/blob/main/docs/TUTORIAL.md',
                     'Client verification': REPO + '/blob/main/docs/CLIENT-VERIFICATION.md'},
-      keywords='ai coding assistant memory claude-code codex cursor copilot gemini-cli mcp agents context handoff ai-memory agent-skills antigravity',
+      keywords='ai coding assistant memory claude-code codex cursor copilot gemini-cli mcp agents context handoff ai-memory agent-skills antigravity session-memory decisions dead-ends markdown guards',
       classifiers=['Development Status :: 4 - Beta', 'Environment :: Console', 'Intended Audience :: Developers',
                    'License :: OSI Approved :: MIT License', 'Operating System :: OS Independent',
                    'Programming Language :: Python :: 3', 'Programming Language :: Python :: 3.9', 'Programming Language :: Python :: 3.12',

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="40 40 432 432" width="512" height="512">
+  <title>ai-dev-workspace</title>
+  <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="120" y1="72" x2="394" y2="440"><stop offset="0" stop-color="#6366F1"/><stop offset="1" stop-color="#0891B2"/></linearGradient></defs>
+  <path d="M206 72 H372 A22 22 0 0 1 394 94 V372 L300 312" fill="none" stroke="#A5B4FC" stroke-opacity="0.85" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M142 118 H322 A22 22 0 0 1 344 140 V440 L232 364 L120 440 V140 A22 22 0 0 1 142 118 Z" fill="url(#g)"/>
+  <path d="M178 192 L236 236 L178 280" fill="none" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M254 282 H292" stroke="#FFFFFF" stroke-width="30" stroke-linecap="round"/>
+</svg>

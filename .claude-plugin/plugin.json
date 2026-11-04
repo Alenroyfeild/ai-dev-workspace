@@ -1,13 +1,27 @@
 {
   "name": "ai-dev-workspace",
+  "displayName": "AI Dev Workspace",
   "version": "0.1.0-beta.7",
   "description": "Local Markdown memory that Claude Code and Codex share: a short brief at session start, saved decisions and dead ends, checkpoints, search and opt-in safety guards. Inactive until you run ws start in a repo.",
+  "icon": "./assets/icon.png",
   "author": {
     "name": "Alenroyfeild"
   },
   "homepage": "https://github.com/Alenroyfeild/ai-dev-workspace",
   "repository": "https://github.com/Alenroyfeild/ai-dev-workspace",
   "license": "MIT",
+  "keywords": [
+    "memory",
+    "session-memory",
+    "handoff",
+    "decisions",
+    "claude-code",
+    "codex",
+    "cursor",
+    "mcp",
+    "markdown",
+    "guards"
+  ],
   "hooks": "./hooks/claude-hooks.json",
   "mcpServers": {
     "ai-dev-workspace": {
