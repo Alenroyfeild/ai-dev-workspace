@@ -67,7 +67,12 @@ The release workflow uses two promotion steps and tags the merge commit on `main
      `git archive v<version> | tar -x -C <tmp>`, then run `python -m build --no-isolation` in the release venv (a maintainer checkout may be on another branch or contain untracked files).
    - Upload `dist/*` artifacts using PyPI publishing tools. Keep publishing credentials outside the repository.
 
-7. **Post-PyPI documentation PR to `dev`:**
+7. **MCP registry publication:**
+   - Bump the `server.json` version (already done in step 1), then publish to the MCP registry:
+     `mcp-publisher publish` with the name `io.github.Alenroyfeild/ai-dev-workspace`.
+   - The MCP registry namespace is case-sensitive and each version can be published only once.
+
+8. **Post-PyPI documentation PR to `dev`:**
    - After the release appears on PyPI, open a documentation PR to `dev`:
      - Update `README.md` to `v<version> on PyPI`.
      - Update `llms.txt` and `llms-full.txt` to `published <canonical-version>`.
@@ -98,6 +103,7 @@ Run `bin/release-smoke` (stdlib, offline, throwaway HOME) on the final candidate
 | `llms.txt`, `llms-full.txt` | Update `published <canonical-version>` | After PyPI publish | `tests/test_published_docs.py` |
 | `docs/DISCOVERY.md` | Update PyPI link to release version | After PyPI publish | `tests/test_published_docs.py` |
 | `tests/test_published_docs.py` | Bump `PUBLISHED_VERSION` constant | After PyPI publish | `tests/test_published_docs.py` |
+| `server.json` | Publish to MCP registry (`io.github.Alenroyfeild/ai-dev-workspace`) | After PyPI publish | `tests/test_packaging.py` |
 | `docs/video/videos.json` | Update when new video assets are recorded | When new videos ship | `tests/test_make_video.py` |
 
 ## Repository setting

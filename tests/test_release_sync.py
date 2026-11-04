@@ -260,18 +260,18 @@ class ReleaseSyncTests(unittest.TestCase):
             self.assertIn('still holds unmerged fragments', str(ctx.exception))
 
     def test_repo_passes_with_fragment_present(self):
-        changelog_d = ROOT / 'changelog.d'
-        fragment = changelog_d / 'tmp-test-fragment.md'
-        try:
-            fragment.write_text('Fixed: guard bypass\n', encoding='utf-8')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_d = Path(tmpdir) / 'changelog.d'
+            tmp_d.mkdir()
+            for src_file in (ROOT / 'changelog.d').glob('*.md'):
+                (tmp_d / src_file.name).write_text(src_file.read_text(encoding='utf-8'), encoding='utf-8')
+            (tmp_d / 'tmp-test-fragment.md').write_text('Fixed: guard bypass\n', encoding='utf-8')
             changelog_text = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
-            # In default normal mode (not a release tag), this passes with fragment present
+            # Pass release_check=False explicitly so this test verifies normal-mode behaviour
+            # without breaking on a tag build (where default mode is release mode).
             verify_changelog_section_and_fragments(
-                changelog_text, changelog_d, self.version
+                changelog_text, tmp_d, self.version, release_check=False
             )
-        finally:
-            if fragment.is_file():
-                fragment.unlink()
 
     def test_no_stale_release_phrases_on_repo(self):
         files_to_check = [ROOT / 'README.md', ROOT / 'llms.txt', ROOT / 'llms-full.txt']

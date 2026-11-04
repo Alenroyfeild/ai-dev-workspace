@@ -16,10 +16,9 @@ The existing topics checked on 2026-10-23 are `agent-memory`, `agents-md`,
 `model-context-protocol`. No hosted website or directory indexing is implied.
 Antigravity hooks are a Preview in beta.7, fixture-tested rather than live-checked.
 
-`setup.py` adds the three search terms plus Tutorial and Client verification URLs.
-These are metadata for the next package release; this PR does not change PyPI.
+`setup.py` provides the package search terms plus Tutorial and Client verification URLs.
 [Published PyPI metadata](https://pypi.org/project/ai-dev-workspace/0.1.0b7/)
-was checked against the beta.5 README before drafting the summaries.
+reflects the published 0.1.0b7 package metadata and README documentation.
 
 [llms.txt](../llms.txt) is the short entry point; [llms-full.txt](../llms-full.txt)
 adds workflow and plugin-preview details. Links use main; unreleased work is listed
