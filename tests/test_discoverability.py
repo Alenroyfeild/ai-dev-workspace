@@ -2,6 +2,8 @@ import ast
 import unittest
 from pathlib import Path
 
+from tests.test_published_docs import PUBLISHED_CANONICAL
+
 ROOT = Path(__file__).resolve().parents[1]
 GUIDES = ('share-memory-claude-code-codex.md', 'keep-decisions-without-background-ai.md',
           'stop-retrying-failed-approaches.md')
@@ -25,7 +27,7 @@ class DiscoverabilityTests(unittest.TestCase):
         for name in ('llms.txt', 'llms-full.txt'):
             with self.subTest(file=name):
                 text = (ROOT / name).read_text(encoding='utf-8')
-                for value in ('0.1.0b6', '## Stable', '## Preview', '## Coming next',
+                for value in (PUBLISHED_CANONICAL, '## Stable', '## Preview', '## Coming next',
                               'pipx install ai-dev-workspace', 'ws start', 'fixture-tested',
                               'best-effort', 'not a security boundary'):
                     self.assertIn(value, text)
