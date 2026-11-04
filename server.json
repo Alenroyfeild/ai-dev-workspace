@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.alenroyfeild/ai-dev-workspace",
   "title": "ai-dev-workspace",
-  "description": "Shared Markdown task memory for Claude Code and Codex with local stdio MCP access.",
+  "description": "Local Markdown task memory shared by Claude Code and Codex over stdio MCP.",
   "version": "0.1.0b7",
   "websiteUrl": "https://github.com/Alenroyfeild/ai-dev-workspace",
   "repository": {

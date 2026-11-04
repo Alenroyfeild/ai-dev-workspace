@@ -9,5 +9,17 @@
   "repository": "https://github.com/Alenroyfeild/ai-dev-workspace",
   "license": "MIT",
   "skills": "./skills/",
-  "hooks": "./hooks/codex-hooks.json"
+  "hooks": "./hooks/codex-hooks.json",
+  "interface": {
+    "displayName": "AI Dev Workspace",
+    "shortDescription": "Memory your AI agents share",
+    "longDescription": "Local Markdown memory that Claude Code and Codex share: a short brief at session start, saved decisions and dead ends, checkpoints, search and opt-in safety guards. Inactive until you run ws start in a repo.",
+    "developerName": "Alenroyfeild",
+    "category": "Productivity",
+    "brandColor": "#4F46E5",
+    "brandColorDark": "#6366F1",
+    "logo": "./assets/mark-square.svg",
+    "logoDark": "./assets/mark-square-dark.svg",
+    "composerIcon": "./assets/icon.svg"
+  }
 }
