@@ -185,3 +185,54 @@ class RemoteDeletionGuardTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assertEqual(guards.command_reason(command), '')
+
+    def test_guard_hunt_5_groups_4_to_10_bypass_denials(self):
+        cases = (
+            ('R03', 'git -c Clean.RequireForce=true -c clean.requireforce=true -c Clean.RequireForce=false clean', 'deletes untracked files'),
+            ('B14', 'git -c Clean.RequireForce=00 clean', 'deletes untracked files'),
+            ('B15', 'git -c Clean.RequireForce=-0 clean', 'deletes untracked files'),
+            ('B16', 'git -c Clean.RequireForce=+0 clean', 'deletes untracked files'),
+            ('B_0k', 'git -c clean.requireForce=0k clean', 'deletes untracked files'),
+            ('B_0x0', 'git -c clean.requireForce=0x0 clean', 'deletes untracked files'),
+            ('B_space_0', 'git -c "clean.requireForce= 0" clean', 'deletes untracked files'),
+            ('F02', 'git -c remote.fixture.dot.url=../sink.git -c remote.fixture.dot.push=+refs/heads/main:refs/heads/main push fixture.dot', 'Force push rewrites shared history'),
+            ('F04', 'git -c remote.fixture.push=+refs/heads/main:refs/heads/main -c remote.fixture.push=refs/heads/victim:refs/heads/victim push fixture', 'Force push rewrites shared history'),
+            ('F07', 'git -c remote.fixture.push=:refs/heads/victim push fixture', 'deleted for everyone'),
+            ('F08', 'git -c remote.fixture.push=+refs/heads/main:refs/heads/main push --no-force fixture', 'Force push rewrites shared history'),
+            ('F09', 'git -c remote.fixture.dot.url=../sink.git -c remote.fixture.dot.mirror=true push fixture.dot', 'deleted for everyone'),
+            ('D08', 'git clean -f --dry-run --no-d', 'deletes untracked files'),
+        )
+        for probe_id, command, expected in cases:
+            with self.subTest(probe_id=probe_id, command=command):
+                reason = guards.command_reason(command)
+                self.assertIn(expected, reason)
+
+    def test_guard_hunt_5_controls_and_allowlist(self):
+        allow_commands = (
+            ('B09', 'git -c Clean.RequireForce=true clean'),
+            ('B10', 'git -c Clean.RequireForce=yes clean'),
+            ('B11', 'git -c Clean.RequireForce=on clean'),
+            ('B12', 'git -c Clean.RequireForce=1 clean'),
+            ('B13', 'git -c Clean.RequireForce clean'),
+            ('R01', 'git -c clean.requireForce=false -c clean.requireForce=true clean'),
+            ('R04', 'git -c Clean.RequireForce=false -c clean.requireforce=false -c Clean.RequireForce=true clean'),
+            ('F06', 'git -c remote.unused.mirror=true push fixture main'),
+            ('D02', 'git clean -f --dr'),
+            ('D03', 'git clean -f --dry'),
+            ('D04', 'git clean -f --dry-'),
+            ('D05', 'git clean -f --dry-r'),
+            ('D06', 'git clean -f --dry-ru'),
+            ('D07', 'git clean -f --dry-run'),
+        )
+        for probe_id, command in allow_commands:
+            with self.subTest(probe_id=probe_id, command=command):
+                self.assertEqual(guards.command_reason(command), '')
+
+        deny_commands = (
+            ('F05', 'git -c remote.fixture.push=+refs/heads/main:refs/heads/main push fixture main', 'Force push rewrites shared history'),
+            ('D01', 'git clean -f --d', 'deletes untracked files'),
+        )
+        for probe_id, command, expected in deny_commands:
+            with self.subTest(probe_id=probe_id, command=command):
+                reason = guards.command_reason(command)
+                self.assertIn(expected, reason)

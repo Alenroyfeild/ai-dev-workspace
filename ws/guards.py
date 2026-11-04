@@ -475,8 +475,13 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
             args = args[2:]
         else:
             args = args[1:]
-    git_cfg = dict(c.split('=', 1) if '=' in c else (c, 'true') for c in configs)
-    git_cfg = {k.lower(): v.lower() for k, v in git_cfg.items()}
+    parsed_configs = []
+    for c in configs:
+        if '=' in c:
+            k, v = c.split('=', 1)
+            parsed_configs.append((k, v))
+        else:
+            parsed_configs.append((c, None))
     if name == 'git' and args:
         sub, rest = args[0], args[1:]
         flagged = rest[:rest.index('--')] if '--' in rest else rest  # after `--` come names, not options
@@ -489,14 +494,26 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
                 if a.startswith('--'):
                     opt = a[2:].split('=', 1)[0]
                     if 'dry-run'.startswith(opt) and opt.startswith('dr'): clean_dry = True
-                    elif 'no-dry-run'.startswith(opt) and opt.startswith('no-dr'): clean_dry = False
+                    elif 'no-dry-run'.startswith(opt) and opt.startswith('no-d'): clean_dry = False
                 elif a.startswith('-'):
                     if 'n' in a[1:]: clean_dry = True
-            clean_require_force = git_cfg.get('clean.requireforce', 'true') not in ('false', '0', 'no', 'off', '')
+            clean_require_force = True
+            for k, v in parsed_configs:
+                if k.lower() == 'clean.requireforce':
+                    clean_require_force = (v is None or v.lower() in ('true', 'yes', 'on', '1'))
             has_force = any(a.startswith('--f') for a in flagged) or any('f' in a for a in short)
             if not clean_dry and (not clean_require_force or has_force):
                 return 'git clean -f deletes untracked files for good.'
         if sub == 'push':
+            remote_target = None
+            i = 0
+            while i < len(flagged):
+                a = flagged[i]
+                if a.startswith('--repo='):
+                    remote_target = a.split('=', 1)[1]
+                elif a == '--repo' and i + 1 < len(flagged):
+                    remote_target = flagged[i + 1]
+                i += 1
             opts, i = [], 0
             while i < len(flagged):
                 a = flagged[i]
@@ -509,13 +526,35 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
                     i += 2 if a.endswith('o') else 1
                 else: opts.append(a); i += 1
             flagged = opts
+            if remote_target is None:
+                positional = [a for a in flagged if not a.startswith('-')]
+                if positional and not positional[0].startswith(':') and not positional[0].startswith('+:'):
+                    remote_target = positional[0]
+
             short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
             long_opts = [_git_push_opt(a) for a in flagged if a.startswith('--')]
 
-            config_mirror = any(re.fullmatch(r'remote\.[^.]+\.mirror', k) and v not in ('false', '0', 'no', 'off', '') for k, v in git_cfg.items())
-            config_force = any(re.fullmatch(r'remote\.[^.]+\.push', k) and any(spec.startswith('+') for spec in v.split()) for k, v in git_cfg.items())
+            config_mirror = False
+            config_push_force = False
+            config_push_delete = False
+            for k, v in parsed_configs:
+                if k[:7].lower() == 'remote.' and '.' in k[7:]:
+                    r_name, var = k[7:].rsplit('.', 1)
+                    if remote_target is None or r_name == remote_target:
+                        v_var = var.lower()
+                        if v_var == 'mirror':
+                            if v is not None and v.lower() in ('false', 'no', 'off', '0', ''):
+                                config_mirror = False
+                            else:
+                                config_mirror = True
+                        elif v_var == 'push' and v is not None:
+                            for spec in v.split():
+                                if spec.startswith(':') or spec.startswith('+:'):
+                                    config_push_delete = True
+                                elif spec.startswith('+'):
+                                    config_push_force = True
 
-            dry, delete, mirror, prune, force = False, False, config_mirror, False, config_force
+            dry, delete, mirror, prune, force = False, False, config_mirror, False, False
             for a in flagged:
                 if a.startswith('--'):
                     opt = _git_push_opt(a)
@@ -538,9 +577,9 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
             has_deletion_refspec = any(re.match(r'^\+?:.', a) for a in refspecs)
             has_force_refspec = any(a.startswith('+') and not a.startswith('+:') for a in refspecs)
 
-            if not dry and (delete or mirror or prune or has_deletion_refspec):
+            if not dry and (delete or mirror or prune or has_deletion_refspec or config_push_delete):
                 return 'This remote branch will be deleted for everyone. Use gh pr merge --delete-branch, the GitHub UI, or WS_GUARDS=off for one session.'
-            if not dry and (force or has_force_refspec):
+            if not dry and (force or has_force_refspec or config_push_force):
                 return 'Force push rewrites shared history; use --force-with-lease if you must.'
     return ''
 
