@@ -100,6 +100,7 @@ class PluginListingTests(unittest.TestCase):
 
     def test_server_json_description(self):
         server = load('server.json')
+        self.assertEqual(server['name'], 'io.github.Alenroyfeild/ai-dev-workspace')
         self.assertEqual(server['description'], SERVER_JSON_DESC)
 
     def test_setup_py_listing_metadata(self):
