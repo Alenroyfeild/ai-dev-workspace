@@ -10,7 +10,7 @@ FILES = ('README.md', 'docs/ADVANCED.md', 'docs/OVERVIEW.md', 'docs/SETUP.md',
          'docs/PACKS.md', 'docs/CLIENT-VERIFICATION.md', 'llms.txt', 'llms-full.txt')
 
 # The version currently published on PyPI. Bumped after PyPI publish.
-PUBLISHED_VERSION = '0.1.0-beta.6'
+PUBLISHED_VERSION = '0.1.0-beta.7'
 PUBLISHED_CANONICAL = packaging.package_version(PUBLISHED_VERSION)
 PUBLISHED_BETA = PUBLISHED_VERSION.split('-')[-1] if '-' in PUBLISHED_VERSION else PUBLISHED_VERSION
 

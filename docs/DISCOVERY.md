@@ -18,7 +18,7 @@ Antigravity hooks are a Preview in beta.7, fixture-tested rather than live-check
 
 `setup.py` adds the three search terms plus Tutorial and Client verification URLs.
 These are metadata for the next package release; this PR does not change PyPI.
-[Published PyPI metadata](https://pypi.org/project/ai-dev-workspace/0.1.0b5/)
+[Published PyPI metadata](https://pypi.org/project/ai-dev-workspace/0.1.0b7/)
 was checked against the beta.5 README before drafting the summaries.
 
 [llms.txt](../llms.txt) is the short entry point; [llms-full.txt](../llms-full.txt)
