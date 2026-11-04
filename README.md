@@ -74,7 +74,7 @@ You: “Yes, continue.”
 | `ws import claude-mem` | Preview | Fixture-tested SQLite copy import; newer upstream schemas may not import | [Advanced](docs/ADVANCED.md#import-a-claude-mem-copy) |
 | `ws audit` | Stable | Read-only stack/wiring suggestions from bounded local manifests; no login or live-client proof | [Commands](docs/COMMANDS.md#daily-use) |
 | `ws demo` | Stable | Creates an isolated sandbox repo to test commands safely | [Tutorial](docs/TUTORIAL.md) |
-| Claude Code plugin | Preview | Hooks + MCP; needs CLI + `ws start`; not in Anthropic directory; Windows untested | [Advanced](docs/ADVANCED.md#claude-code-plugin-preview) |
+| Claude Code plugin | Preview | Hooks + MCP + the handoff, pickup, lesson and thinkbeforeact skills; needs CLI + `ws start`; not in Anthropic directory; Windows untested | [Advanced](docs/ADVANCED.md#claude-code-plugin-preview) |
 | Codex plugin | Preview | Hooks need a trusted manual desktop install; no MCP; hooks not live-tested | [Advanced](docs/ADVANCED.md#codex-plugin-preview) |
 | Cursor plugin | Preview | Fixture-tested only; not submitted; no verified install command | [Advanced](docs/ADVANCED.md#cursor-plugin-preview) |
 | Codex SessionStart catch-up | Preview | Recovers changed transcript content for the claimed task; fixture-tested, not live-tested with Codex resume | [Advanced](docs/ADVANCED.md#codex-sessionstart-catch-up) |

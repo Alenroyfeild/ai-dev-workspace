@@ -39,12 +39,14 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - Fold [changelog fragments](../changelog.d/README.md) into `CHANGELOG.md` under `## <version> (Unreleased)`. Turn each fragment into a bullet: `Added:` goes under New, `Changed:` under Improved and `Fixed:` under Fixed. Allowed subsections are `New`, `Improved`, `Fixed`, `Previews`, `Known limits`, and `Measured`. Preserve existing entries and combine duplicate bullets. Write a one-sentence summary first (the update notice shows it), and retain Measured and Known limits where applicable. Use absolute links in release notes; relative ones break on the release page. Delete the folded fragment files; keep `changelog.d/README.md`.
    - Bump version in `kit.json`, `server.json` (2 fields), the five plugin manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.cursor-plugin/marketplace.json`), and `tests/test_packaging.py`.
    - Save this release's record corpus under `tests/fixtures/records/v<version>/` (see `docs/UPGRADE-CHECK.md`).
+   - Add a video script per `### New` feature under `docs/video/`; make README and `llms.txt`/`llms-full.txt` name each new feature (a `## Released in beta.N` section, and every backticked `ws` command from New in README), enforced by `tests/test_release_sync.py`.
    - Update documentation: add new capabilities to `docs/ROADMAP.md` under "Available in the beta", update `docs/CLIENT-VERIFICATION.md` to `## beta.N release coverage`, and update preview labels in `docs/SETUP.md` and `docs/DISCOVERY.md` to `Preview in beta.N`.
    - Run the full test suite in a temp HOME and `bin/release-smoke` on the built wheel. Open the RC PR to `dev` and merge once peer-reviewed and CI is green.
 
-2. **One-line dating PR to `dev`:**
+2. **Dating PR to `dev`:**
    - Freeze `dev`.
-   - Open a one-line PR replacing `## <version> (Unreleased)` with `## <version> (<YYYY-MM-DD>)` in `CHANGELOG.md`.
+   - Open a PR that replaces `## <version> (Unreleased)` with `## <version> (<YYYY-MM-DD>)` in `CHANGELOG.md` and moves the published-version text (next bullet).
+   - In the same PR, move all published-version text to the new version: README `v<version> on PyPI`, `llms.txt` and `llms-full.txt` `published <canonical-version>`, the `docs/DISCOVERY.md` PyPI link and `PUBLISHED_VERSION` in `tests/test_published_docs.py`. The tagged tree is what PyPI and GitHub show, so this cannot wait until after the upload.
    - Verify `changelog.d/` contains only `README.md`.
    - Merge to `dev` after review and green CI.
 
@@ -60,24 +62,30 @@ The release workflow uses two promotion steps and tags the merge commit on `main
 
 5. **Automated GitHub Release (with fallback):**
    - `.github/workflows/release.yml` checks that the tag matches `kit.json`, runs the tests, and publishes the GitHub Release as Latest with that CHANGELOG section plus upgrade steps. Users see the summary on their next `ws doctor` / `ws update --check`.
+   - Within 10 minutes of pushing the tag, `gh run list --workflow release.yml --limit 1` must show a run for the tag; if not, use the fallback. Then `gh release view v<version>` must show Latest, not draft.
    - *Fallback:* If `release.yml` does not start (e.g. GitHub Actions outage), run `bin/publish-release v<version> notes.md` with notes built by `release.yml`'s own awk and printf commands; the script is idempotent with a late workflow run.
 
 6. **PyPI publication:**
    - Build distribution packages from a clean `git archive` of the tag, not the working checkout:
      `git archive v<version> | tar -x -C <tmp>`, then run `python -m build --no-isolation` in the release venv (a maintainer checkout may be on another branch or contain untracked files).
-   - Upload `dist/*` artifacts using PyPI publishing tools. Keep publishing credentials outside the repository.
+   - Run `~/.venvs/release/bin/twine check dist/*`, then `~/.venvs/release/bin/twine upload dist/*` with username `__token__` and a project-scoped token typed in the terminal. Keep credentials outside the repository.
+   - Compare the sha256 values in the PyPI JSON (`https://pypi.org/pypi/ai-dev-workspace/<canonical-version>/json`) with `shasum -a 256 dist/*`.
 
 7. **MCP registry publication:**
-   - Bump the `server.json` version (already done in step 1), then publish to the MCP registry:
-     `mcp-publisher publish` with the name `io.github.Alenroyfeild/ai-dev-workspace`.
-   - The MCP registry namespace is case-sensitive and each version can be published only once.
+   - `server.json` already carries the version (step 1). Run `mcp-publisher login github`, `mcp-publisher validate`, then `mcp-publisher publish` (name `io.github.Alenroyfeild/ai-dev-workspace`).
+   - Verify: `curl -s "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.Alenroyfeild%2Fai-dev-workspace/versions/latest"` shows the new version.
+   - The namespace is case-sensitive and each version can be published only once; a 400 duplicate-version means it is already published.
 
-8. **Post-PyPI documentation PR to `dev`:**
-   - After the release appears on PyPI, open a documentation PR to `dev`:
-     - Update `README.md` to `v<version> on PyPI`.
-     - Update `llms.txt` and `llms-full.txt` to `published <canonical-version>`.
-     - Update `docs/DISCOVERY.md` with the new PyPI URL.
-     - Bump `PUBLISHED_VERSION` in `tests/test_published_docs.py`.
+8. **Videos after PyPI:**
+   - Record and upload a short per `### New` feature (scripts in `docs/video/`, written in the RC PR), add the edition to `docs/video/videos.json`, then run `bin/make-video --links`.
+   - `bin/make-video --release-check <canonical-version>` must exit 0.
+
+9. **Plugin live check:**
+   - Live-install the Claude Code plugin from the marketplace on the released version, then update the `Live-checked on beta.N (date)` labels (README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md`). If this was not done, leave the labels as they are.
+
+10. **If PyPI failed or was delayed:** revert the published-version lines moved in step 2 (README, `llms.txt`, `llms-full.txt`, `docs/DISCOVERY.md`, `PUBLISHED_VERSION`) until the upload succeeds.
+
+**Landing:** merge a PR only at 7/7 checks, with `gh pr merge <n> --merge --match-head-commit <reviewed sha>`. Land one PR at a time and wait for each post-merge CI before the next.
 
 Run `bin/release-smoke` (stdlib, offline, throwaway HOME) on the final candidate before merging: it builds the sdist and wheel, installs the wheel in a temp venv and runs version, demo, start, remember, checkpoint, brief, token redaction, doctor, recap, pr-notes, MCP and `ws start --undo` against a toy repo, then checks the artifacts for tests, `.ws` files and stray paths. Exit 0 means every required step passed. Rebuild and repeat if the candidate changes.
 `--wheel PATH` tests an existing wheel, `--source` runs `bin/ws` from the checkout without building (fast, used by the tests) and `--json` prints machine-readable results.
@@ -99,12 +107,13 @@ Run `bin/release-smoke` (stdlib, offline, throwaway HOME) on the final candidate
 | `docs/ROADMAP.md` | New features added under "Available in the beta" | RC PR | `tests/test_release_sync.py` |
 | `docs/CLIENT-VERIFICATION.md` | Release coverage heading updated to `beta.N release coverage` | RC PR | `tests/test_release_sync.py` |
 | `docs/SETUP.md`, `docs/DISCOVERY.md` | Preview labels updated to `Preview in beta.N` | RC PR | `tests/test_release_sync.py` |
-| `README.md` | Update PyPI version string `v<version> on PyPI` | After PyPI publish | `tests/test_published_docs.py` |
-| `llms.txt`, `llms-full.txt` | Update `published <canonical-version>` | After PyPI publish | `tests/test_published_docs.py` |
-| `docs/DISCOVERY.md` | Update PyPI link to release version | After PyPI publish | `tests/test_published_docs.py` |
-| `tests/test_published_docs.py` | Bump `PUBLISHED_VERSION` constant | After PyPI publish | `tests/test_published_docs.py` |
-| `server.json` | Publish to MCP registry (`io.github.Alenroyfeild/ai-dev-workspace`) | After PyPI publish | `tests/test_packaging.py` |
-| `docs/video/videos.json` | Update when new video assets are recorded | When new videos ship | `tests/test_make_video.py` |
+| `README.md` | Update PyPI version string `v<version> on PyPI`; name each new `ws` command and feature | Dating PR (features: RC PR) | `tests/test_published_docs.py`, `tests/test_release_sync.py` |
+| `llms.txt`, `llms-full.txt` | Update `published <canonical-version>`; add `## Released in beta.N` | Dating PR (section: RC PR) | `tests/test_published_docs.py`, `tests/test_release_sync.py` |
+| `docs/DISCOVERY.md` | Update PyPI link to release version | Dating PR | `tests/test_published_docs.py` |
+| `tests/test_published_docs.py` | Bump `PUBLISHED_VERSION` constant | Dating PR | `tests/test_release_sync.py` (release mode) |
+| `server.json` | Publish to MCP registry (`io.github.Alenroyfeild/ai-dev-workspace`) | After PyPI publish (step 7) | `tests/test_packaging.py` |
+| `docs/video/videos.json` | Add the release edition after recording | After PyPI publish (step 8) | `tests/test_make_video.py`, `bin/make-video --release-check` |
+| README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md` | `Live-checked on beta.N (date)` labels | After plugin live check (step 9) | none; leave unchanged if not checked |
 
 ## Repository setting
 
