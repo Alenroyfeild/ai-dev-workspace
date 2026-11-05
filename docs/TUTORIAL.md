@@ -7,7 +7,7 @@ You will save a decision in one session, then see the next session start with it
 
 - [Watch the 2-minute explainer](https://youtu.be/sfcBNSELq-8)
 - [Under the hood: real commands, real output](https://youtu.be/ZmwwgYzZUJY)
-- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/_jmPEb2wSj4) · [Assistants](https://youtu.be/R6-hfqvz1YA) · [Install as a plugin (Preview)](https://youtu.be/BnbVLSl1vVs) · [Review old lessons](https://youtu.be/y9ww8yjbzqg) · [Guards read git's grammar](https://youtu.be/sFIIkSt2Bmg)
+- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/_jmPEb2wSj4) · [Assistants](https://youtu.be/R6-hfqvz1YA) · [Install as a plugin (Preview)](https://youtu.be/BnbVLSl1vVs) · [Review old lessons](https://youtu.be/mcec1EtTi0A) · [Guards read git's grammar](https://youtu.be/GSZikn9b9qE)
 - Earlier editions: [0.1.0b5](https://youtu.be/w5EwQNO8Lz0) · [0.1.0b6](https://youtu.be/sfcBNSELq-8)
 <!-- videos:end -->
 
