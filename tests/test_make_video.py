@@ -78,6 +78,33 @@ class VideoTests(unittest.TestCase):
             typed = [line for line in tape.splitlines() if line.startswith('Type ')]
             self.assertFalse(any('VIDEO_STEP_0_OK' in line for line in typed))
 
+    def test_typed_commands_with_quotes_use_a_vhs_string_without_escapes(self):
+        # VHS strings have no escape sequences, so a JSON-style \" breaks the tape parser.
+        data = {'commands': ['ws lesson add "Mocked DB hid a bad migration" --tag testing', "echo 'single' \"double\""]}
+        with tempfile.TemporaryDirectory() as temp:
+            tape = self.video.tape(data, Path(temp), Path(temp) / 'raw.mp4')
+        typed = [line[len('Type '):] for line in tape.splitlines() if line.startswith('Type ')][1:]
+        self.assertEqual(len(typed), 2)
+        for text, command in zip(typed, data['commands']):
+            quote = text[0]
+            self.assertIn(quote, '"\'`')
+            self.assertEqual(text[-1], quote)
+            self.assertNotIn(quote, text[1:-1])
+            self.assertTrue(text[1:-1].startswith(command))
+        with self.assertRaises(ValueError):
+            self.video.vhs_string('a " b \' c ` d')
+
+    def test_tape_uses_wait_line_to_survive_scrolling_terminal_output(self):
+        # VHS Wait+Screen queries only the initial terminal lines (charmbracelet/vhs #659);
+        # multi-line command output scrolls the marker off the top buffer, timing out.
+        # Wait+Line inspects cursorY + viewportY, surviving scrolled outputs.
+        data = {'commands': ['ws start --yes', 'ws lesson review']}
+        with tempfile.TemporaryDirectory() as temp:
+            tape = self.video.tape(data, Path(temp), Path(temp) / 'raw.mp4')
+        self.assertIn('Wait+Line /VIDEO_STEP_0_OK/', tape)
+        self.assertIn('Wait+Line /VIDEO_STEP_1_OK/', tape)
+        self.assertNotIn('Wait+Screen', tape)
+
     def test_failed_render_never_replaces_clip_or_commits_hash(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -96,6 +123,27 @@ class VideoTests(unittest.TestCase):
                 self.assertEqual(self.video.main(['--ws-python', str(python_arg)]), 2)
             self.assertFalse((root / 'build/video/01-example.mp4').exists())
             self.assertFalse((root / 'build/video/manifest.json').exists())
+
+    def test_main_can_render_selected_subset_of_lessons(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'docs/video').mkdir(parents=True)
+            self.lesson(root / 'docs/video')
+            p2 = root / 'docs/video/02-other.md'
+            p2.write_text(self.lesson(root / 'docs/video').read_text().replace('01-example', '02-other'))
+            (root / 'docs/demo.tape').write_text('Set Shell bash\n')
+            rendered = []
+            def fake_render(path, data, clip, python):
+                rendered.append(path.name)
+                clip.write_bytes(b'fake')
+            with patch.object(self.video, 'ROOT', root), \
+                    patch.object(self.video.Path, 'resolve', return_value=Path(sys.executable)), \
+                    patch.object(self.video.shutil, 'which', return_value='tool'), \
+                    patch.object(self.video, 'render', side_effect=fake_render):
+                self.assertEqual(self.video.main(['01-example']), 0)
+            self.assertEqual(rendered, ['01-example.md'])
+            self.assertTrue((root / 'build/video/01-example.mp4').is_file())
+            self.assertFalse((root / 'build/video/02-other.mp4').is_file())
 
     def test_build_is_excluded_from_git_and_source_manifest(self):
         self.assertIn('build/', (ROOT / '.gitignore').read_text().splitlines())
