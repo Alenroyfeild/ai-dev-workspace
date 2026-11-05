@@ -14,7 +14,7 @@
 ## Preview
 
 - Private team sharing needs preview/review before sharing; no hosted team check yet.
-- The Claude Code plugin is live-checked on beta.5 but not yet listed in
+- The Claude Code plugin is live-checked on beta.7 but not yet listed in
   Anthropic's official plugin directory. Install from our GitHub marketplace;
   the CLI and `ws start` in the target repo are still required.
 
