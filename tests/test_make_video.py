@@ -78,6 +78,22 @@ class VideoTests(unittest.TestCase):
             typed = [line for line in tape.splitlines() if line.startswith('Type ')]
             self.assertFalse(any('VIDEO_STEP_0_OK' in line for line in typed))
 
+    def test_typed_commands_with_quotes_use_a_vhs_string_without_escapes(self):
+        # VHS strings have no escape sequences, so a JSON-style \" breaks the tape parser.
+        data = {'commands': ['ws lesson add "Mocked DB hid a bad migration" --tag testing', "echo 'single' \"double\""]}
+        with tempfile.TemporaryDirectory() as temp:
+            tape = self.video.tape(data, Path(temp), Path(temp) / 'raw.mp4')
+        typed = [line[len('Type '):] for line in tape.splitlines() if line.startswith('Type ')][1:]
+        self.assertEqual(len(typed), 2)
+        for text, command in zip(typed, data['commands']):
+            quote = text[0]
+            self.assertIn(quote, '"\'`')
+            self.assertEqual(text[-1], quote)
+            self.assertNotIn(quote, text[1:-1])
+            self.assertTrue(text[1:-1].startswith(command))
+        with self.assertRaises(ValueError):
+            self.video.vhs_string('a " b \' c ` d')
+
     def test_failed_render_never_replaces_clip_or_commits_hash(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
