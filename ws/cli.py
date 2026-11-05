@@ -548,6 +548,9 @@ def main(argv=None):
             if core.PACKAGED and not a.check:
                 out(core.update_kit()); return 0
             res = core.check_update(force=True)
+            if a.check:
+                from .updates import kit_preflight
+                res['preflight'] = kit_preflight()
             if a.check or not res.get('update_available'):
                 out(res); return 0
             done = core.update_kit(); out(done); return installed(done)
