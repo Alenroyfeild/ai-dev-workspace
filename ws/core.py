@@ -1464,21 +1464,25 @@ def claim_next(root, worker):
     if not isinstance(worker, str) or not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', worker):
         raise WsError('Worker is a short label such as claude-main or codex-1.')
     with lock(root):
-        tasks = {t['id']: t for t in task_list(root)}
-        for candidate in task_next(root)['ready']:
-            task = tasks[candidate['id']]
-            if task['claimed_by'] or task.get('format_warning'):
-                continue
-            path = task_path(root, task['id'])
-            if not path.is_file(): continue
-            text = read_exact(path)
+        # A write decision must use canonical filenames, not task_list's
+        # display IDs: stray frontmatter must not shadow another task.
+        tasks = {}
+        directory = inside(vault(root) / 'Tasks', [root])
+        for path in sorted(directory.glob('*.md')):
+            if not ID_RE.fullmatch(path.stem): continue
+            try: text = read_text(path, [root])
+            except WsError: continue
             meta = parse_meta(text)
-            if (conflicted(text) or meta.get('claimed_by') or task_format(meta) > TASK_FORMAT
-                    or meta.get('id', path.stem) != path.stem):
+            if (conflicted(text) or task_format(meta) > TASK_FORMAT or meta.get('id', path.stem) != path.stem):
                 continue
-            if any(tasks.get(d, {}).get('status') != 'done' or tasks[d].get('format_warning') for d in _deps(meta)):
+            tasks[path.stem] = meta
+        rank = {'in_progress': 0, 'review': 1, 'ready': 2, 'backlog': 3}
+        candidates = sorted((rank[meta['status']], task_id) for task_id, meta in tasks.items()
+                            if meta.get('status') in rank and not meta.get('claimed_by'))
+        for _, task_id in candidates:
+            if any(tasks.get(d, {}).get('status') != 'done' for d in _deps(tasks[task_id])):
                 continue
-            return _claim_locked(root, task['id'], worker)
+            return _claim_locked(root, task_id, worker)
         raise WsError('No eligible unclaimed tasks.')
 
 

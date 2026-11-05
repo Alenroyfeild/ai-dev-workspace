@@ -64,6 +64,22 @@ class ClaimNextTests(unittest.TestCase):
         with self.assertRaises(core.WsError): core.release(self.root, 'A', old['worker'], old['token'])
         self.assertEqual(core.parse_meta(core.task_path(self.root, 'A').read_text())['claim_token'], new['token'])
 
+    def test_foreign_id_cannot_make_blocked_task_eligible(self):
+        self.add('A', status='blocked')
+        self.add('B')
+        p = self.add('Z', id='A')
+        self.assertEqual(core.claim_next(self.root, 'worker')['task'], 'B')
+        self.assertFalse(core.parse_meta(core.task_path(self.root, 'A').read_text()).get('claimed_by'))
+        self.assertEqual(core.parse_meta(p.read_text())['id'], 'A')
+
+    def test_foreign_id_cannot_make_blocked_dependency_done(self):
+        self.add('A', depends_on='D')
+        self.add('B')
+        self.add('D', status='blocked')
+        self.add('Z', id='D', status='done')
+        self.assertEqual(core.claim_next(self.root, 'worker')['task'], 'B')
+        self.assertFalse(core.parse_meta(core.task_path(self.root, 'A').read_text()).get('claimed_by'))
+
     def test_crash_between_local_and_task_writes_leaves_selectable_task(self):
         self.add('A')
         original = core.atomic_write
