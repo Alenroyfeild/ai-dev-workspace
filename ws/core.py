@@ -1423,30 +1423,67 @@ def claim(root, task_id, worker):
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', worker):
         raise WsError('Worker is a short label such as claude-main or codex-1.')
     with lock(root):
-        path = existing_task_path(root, task_id)
-        text = read_exact(path)
-        if conflicted(text): raise WsError(conflict_hint(task_id))
-        meta = parse_meta(text)
-        if meta.get('claimed_by'):
-            # The local claim file (gitignored) proves this workspace made the claim: a later session here resumes it.
-            try:
-                local = json.loads(_local_claim_path(root, task_id).read_text(encoding='utf-8'))
-            except (OSError, ValueError):
-                local = {}
-            if local.get('token') and local.get('token') == meta.get('claim_token'):
-                return {'task': task_id, 'worker': meta['claimed_by'], 'token': local['token'], 'resumed': True}
-            raise WsError(f'{task_id} is claimed by {meta["claimed_by"]} since {meta.get("claimed_at")}. '
-                          'Release it first (only after checking that session has stopped).')
-        if meta.get('status') == 'done':
-            raise WsError(f'{task_id} is done; reopen it with a checkpoint first.')
-        token = uuid.uuid4().hex
-        atomic_write(path, set_meta(text, {'claimed_by': worker, 'claim_token': token, 'claimed_at': now()}))
-        local = {'worker': worker, 'token': token}
-        head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
-        if re.fullmatch(r'[0-9a-f]{40,64}', head):
-            local.update(git_head=head, repo=meta.get('repo', ''))
-        atomic_write(_local_claim_path(root, task_id), json.dumps(local) + '\n')
+        return _claim_locked(root, task_id, worker)
+
+
+def _claim_locked(root, task_id, worker):
+    """Claim with the workspace lock held; the local token is written first.
+
+    A crash before the task write leaves an orphan local token, which grants no
+    authority and can be replaced by a later claim. Release still compares the
+    observed worker and token under the same lock; age never releases a claim.
+    """
+    path = existing_task_path(root, task_id)
+    text = read_exact(path)
+    if conflicted(text): raise WsError(conflict_hint(task_id))
+    meta = parse_meta(text)
+    if meta.get('claimed_by'):
+        # The local claim file (gitignored) proves this workspace made the claim: a later session here resumes it.
+        try:
+            local = json.loads(_local_claim_path(root, task_id).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            local = {}
+        if local.get('token') and local.get('token') == meta.get('claim_token'):
+            return {'task': task_id, 'worker': meta['claimed_by'], 'token': local['token'], 'resumed': True}
+        raise WsError(f'{task_id} is claimed by {meta["claimed_by"]} since {meta.get("claimed_at")}. '
+                      'Release it first (only after checking that session has stopped).')
+    if meta.get('status') == 'done':
+        raise WsError(f'{task_id} is done; reopen it with a checkpoint first.')
+    token = uuid.uuid4().hex
+    local = {'worker': worker, 'token': token}
+    head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
+    if re.fullmatch(r'[0-9a-f]{40,64}', head):
+        local.update(git_head=head, repo=meta.get('repo', ''))
+    atomic_write(_local_claim_path(root, task_id), json.dumps(local) + '\n')
+    atomic_write(path, set_meta(text, {'claimed_by': worker, 'claim_token': token, 'claimed_at': now()}))
     return {'task': task_id, 'worker': worker, 'token': token}
+
+
+def claim_next(root, worker):
+    """Select and claim the first eligible task as one locked operation."""
+    if not isinstance(worker, str) or not re.fullmatch(r'[A-Za-z0-9._-]{1,80}', worker):
+        raise WsError('Worker is a short label such as claude-main or codex-1.')
+    with lock(root):
+        # A write decision must use canonical filenames, not task_list's
+        # display IDs: stray frontmatter must not shadow another task.
+        tasks = {}
+        directory = inside(vault(root) / 'Tasks', [root])
+        for path in sorted(directory.glob('*.md')):
+            if not ID_RE.fullmatch(path.stem): continue
+            try: text = read_text(path, [root])
+            except WsError: continue
+            meta = parse_meta(text)
+            if (conflicted(text) or task_format(meta) > TASK_FORMAT or meta.get('id', path.stem) != path.stem):
+                continue
+            tasks[path.stem] = meta
+        rank = {'in_progress': 0, 'review': 1, 'ready': 2, 'backlog': 3}
+        candidates = sorted((rank[meta['status']], task_id) for task_id, meta in tasks.items()
+                            if meta.get('status') in rank and not meta.get('claimed_by'))
+        for _, task_id in candidates:
+            if any(tasks.get(d, {}).get('status') != 'done' for d in _deps(tasks[task_id])):
+                continue
+            return _claim_locked(root, task_id, worker)
+        raise WsError('No eligible unclaimed tasks.')
 
 
 def release(root, task_id, worker=None, token=None):
