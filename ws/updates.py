@@ -60,10 +60,11 @@ def kit_preflight():
         elif behind:
             report['choices'] = ['A fast-forward is possible against local refs; review, then run ws update.']
         else:
-            report['choices'] = ['Checkout matches its local upstream ref; nothing was changed.']
+            report['choices'] = ['HEAD matches its local upstream ref; nothing was changed.']
         if state == 'detached':
             report['choices'].insert(0, 'Detached HEAD: choose a branch manually before updating.')
         if report['dirty_files']:
+            if state == 'clean': report['state'] = 'dirty'
             report['choices'].insert(0, 'Commit or stash dirty files before attempting any update.')
     except (OSError, subprocess.TimeoutExpired, core.WsError, ValueError) as exc:
         report.update(state='unavailable', error=str(exc), choices=['Inspect the installation with Git; nothing was changed.'])

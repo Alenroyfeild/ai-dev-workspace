@@ -118,6 +118,7 @@ class UpdatePreflightTests(unittest.TestCase):
         (self.kit / 'space name.txt').write_text('untracked', encoding='utf-8')
         report = self.check()
         self.assertEqual(set(report['dirty_files']), {'tracked.txt', 'space name.txt'})
+        self.assertEqual(report['state'], 'dirty')
         self.assertIn('stash', ' '.join(report['choices']).lower())
         self.assertEqual((self.kit / 'tracked.txt').read_text(), 'uncommitted')
 
