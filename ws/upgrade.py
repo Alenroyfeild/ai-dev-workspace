@@ -259,8 +259,11 @@ def migration_result(root, result):
         f'Files changed: {len(changes)} ({changed_count} updated, {new_count} new), kept: {kept_count}',
     ]
     if pending:
+        missing_desc = ', '.join(f"{p} (version {cli_v})" for p in pending)
+        lines.append(f'Managed blocks missing: {missing_desc}')
         lines.append(f'Pending proposals (.ws-new): {", ".join(pending)}')
     else:
+        lines.append(f'Managed blocks: all present (version {cli_v})')
         lines.append('Pending proposals (.ws-new): none')
 
     if backups:

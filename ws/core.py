@@ -3174,6 +3174,7 @@ def doctor(root=None, mcp=False):
         report['delegate_selftests'] = json.loads(selftests.read_text(encoding='utf-8')) if selftests.exists() else {}
         report['valid'] = validate(root)['valid']
         report['upgrade_due'] = upgrade_due(root)
+        report['half_migrated'] = bool(cfg.get('upgrade_pending') or any(p.is_file() for p in root.rglob('*.ws-new*')))
         report['conflicted'] = [conflict_hint(t['id']) for t in task_list(root) if t['status'] == 'conflicted']
         team = _team_checks(root)
         if team is not None: report['team'] = team

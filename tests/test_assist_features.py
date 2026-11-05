@@ -61,6 +61,7 @@ class FeatureTests(Base):
         self.assertIn('Repo wiring kit_version: 0.0.1', err_text)
         self.assertIn('Files changed:', err_text)
         self.assertIn('kept:', err_text)
+        self.assertIn(f"Managed blocks missing: AGENTS.md (version {core.kit_meta()['version']})", err_text)
         self.assertIn('Pending proposals (.ws-new):', err_text)
         self.assertIn('AGENTS.md', err_text)
         self.assertIn('Backup directory:', err_text)
@@ -69,6 +70,10 @@ class FeatureTests(Base):
         self.assertNotIn('--rollback', err_text)
         self.assertIn('configuration check, not live health', err_text)
         self.assertIn('Offline config check:', err_text)
+
+        doc = core.doctor(self.root)
+        self.assertTrue(doc['half_migrated'])
+        self.assertIn('Half-migrated store:', cli.text_doctor(doc))
 
     def test_upgrade_migration_result_suppressed_in_json_mode(self):
         cfg = core.config(self.root)

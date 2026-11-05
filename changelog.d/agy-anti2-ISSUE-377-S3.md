@@ -1,1 +1,1 @@
-Added: `ws upgrade` prints a migration result block to stderr after applying changes, reporting CLI and template versions, repo wiring kit_version, files changed/kept, pending proposals, backup directory, copy-back rollback guidance, and an offline config check.
+Added: `ws upgrade` prints a migration result block to stderr after applying changes with versions, repo wiring kit_version, files changed/kept, version-stamped managed-block report, backup directory, copy-back rollback text, and offline check, and `ws doctor` flags half-migrated stores.
