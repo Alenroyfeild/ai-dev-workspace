@@ -221,3 +221,61 @@ def upgrade(root, dry_run=False, expected=None):
         if not dry_run:
             claims.mkdir(parents=True, exist_ok=True)  # local, gitignored state: created silently, not reported as an upgrade
         return dict(dry_run=dry_run, changes=changes, pending=pending, backups=backups)
+
+
+def migration_result(root, result):
+    root = Path(root).resolve()
+    cli_v = core.kit_meta()['version']
+    try: tmpl_v = core.config(root).get('kit_version') or 'none'
+    except Exception: tmpl_v = 'none'
+    from . import repo
+    try: repos = core.read_roots(root)[1:]
+    except Exception: repos = []
+    if repos:
+        repo_states = []
+        for r in repos:
+            st = repo.load(r) if hasattr(repo, 'load') else {}
+            if not st and (r / '.ws-start.json').is_file():
+                try: st = json.loads((r / '.ws-start.json').read_text(encoding='utf-8'))
+                except (ValueError, OSError): st = {}
+            kv = st.get('kit_version') or 'none'
+            repo_states.append(f"{r.name}: {kv}" if len(repos) > 1 else kv)
+        repo_v = ', '.join(repo_states)
+    else:
+        repo_v = 'none (no repos linked)'
+
+    changes = result.get('changes', [])
+    pending = result.get('pending', [])
+    backups = result.get('backups', [])
+    changed_count = sum(1 for c in changes if not c.get('new'))
+    new_count = sum(1 for c in changes if c.get('new'))
+    kept_count = len(pending)
+
+    lines = [
+        'Migration result:',
+        f'CLI version: {cli_v}',
+        f'Template version: {tmpl_v}',
+        f'Repo wiring kit_version: {repo_v}',
+        f'Files changed: {len(changes)} ({changed_count} updated, {new_count} new), kept: {kept_count}',
+    ]
+    if pending:
+        lines.append(f'Pending proposals (.ws-new): {", ".join(pending)}')
+    else:
+        lines.append('Pending proposals (.ws-new): none')
+
+    if backups:
+        parts = Path(backups[0]).parts
+        backup_dir = Path(*parts[:3]).as_posix() if len(parts) >= 3 else Path(backups[0]).parent.as_posix()
+        lines.append(f'Backup directory: {backup_dir}')
+        lines.append(f'Rollback: copy files back from {backup_dir} to restore previous state')
+    else:
+        lines.append('Backup directory: none')
+        lines.append('Rollback: none (no existing files modified)')
+
+    try:
+        val = core.validate(root)
+        status = 'valid' if val.get('valid') else 'invalid'
+    except Exception:
+        status = 'not checked'
+    lines.append(f'Offline config check: {status} (configuration check, not live health)')
+    return '\n'.join(lines)

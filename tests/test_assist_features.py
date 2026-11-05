@@ -1,7 +1,11 @@
 import json
+import os
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
+from pathlib import Path
 from unittest import mock
 from test_ws import Base
-from ws import assist, core, orchestration
+from ws import assist, cli, core, orchestration, upgrade
 
 
 class FeatureTests(Base):
@@ -27,6 +31,60 @@ class FeatureTests(Base):
         self.assertNotIn('upgrade', self.items())
         (self.root / 'AGENTS.md.ws-new.1').write_text('Synthetic pending rules')
         self.assertIn('upgrade', self.items())
+
+    def test_upgrade_applies_migration_result_block_to_stderr(self):
+        cfg = core.config(self.root)
+        cfg['kit_version'] = '0.0.1'
+        repo_dir = Path(self.tmp.name) / 'repo'
+        repo_dir.mkdir(parents=True, exist_ok=True)
+        (repo_dir / '.git').mkdir(parents=True, exist_ok=True)
+        repo_state = {'kit_version': '0.0.1', 'files': {}, 'workspace': str(self.root)}
+        (repo_dir / '.ws-start.json').write_text(json.dumps(repo_state))
+        cfg['repos'] = [str(repo_dir)]
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        (self.root / 'AGENTS.md').write_text('Custom unmarked user rules without markers\n')
+        (self.root / 'routing.json').write_text('{"preset": "mixed"}\n')
+
+        with mock.patch('urllib.request.urlopen', side_effect=OSError('network disabled')):
+            with redirect_stdout(StringIO()) as out_buf, redirect_stderr(StringIO()) as err_buf:
+                code = cli.main(['--workspace-root', str(self.root), 'upgrade', '--yes'])
+
+        self.assertEqual(code, 0)
+        out_text = out_buf.getvalue()
+        self.assertIn('"pending_review"', out_text)
+        self.assertIn('"backups"', out_text)
+
+        err_text = err_buf.getvalue()
+        self.assertIn('Migration result:', err_text)
+        self.assertIn(f"CLI version: {core.kit_meta()['version']}", err_text)
+        self.assertIn(f"Template version: {core.kit_meta()['version']}", err_text)
+        self.assertIn('Repo wiring kit_version: 0.0.1', err_text)
+        self.assertIn('Files changed:', err_text)
+        self.assertIn('kept:', err_text)
+        self.assertIn('Pending proposals (.ws-new):', err_text)
+        self.assertIn('AGENTS.md', err_text)
+        self.assertIn('Backup directory:', err_text)
+        self.assertIn('.ws/backups/', err_text)
+        self.assertIn('Rollback: copy files back from', err_text)
+        self.assertNotIn('--rollback', err_text)
+        self.assertIn('configuration check, not live health', err_text)
+        self.assertIn('Offline config check:', err_text)
+
+    def test_upgrade_migration_result_suppressed_in_json_mode(self):
+        cfg = core.config(self.root)
+        cfg['kit_version'] = '0.0.1'
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        (self.root / 'routing.json').write_text('{"preset": "mixed"}\n')
+
+        with mock.patch.dict(os.environ, {'WS_JSON': '1'}):
+            with redirect_stdout(StringIO()) as out_buf, redirect_stderr(StringIO()) as err_buf:
+                code = cli.main(['--workspace-root', str(self.root), 'upgrade', '--yes'])
+
+        self.assertEqual(code, 0)
+        self.assertNotIn('Migration result:', err_buf.getvalue())
+        data = json.loads(out_buf.getvalue())
+        self.assertIn('pending_review', data)
+        self.assertIn('backups', data)
 
     def test_routed_readonly_provider_selftests_are_deduplicated(self):
         binding = dict(available=True, provider='codex')
