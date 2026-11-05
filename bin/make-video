@@ -69,15 +69,22 @@ def vhs_string(text):
     return quote + text + quote
 
 
+def setup_script(python, repo):
+    # The prompt is a bare "$ " after a success and "FAILED $ " after a failure, so the tape can wait on it.
+    wrapper = f'ws() {{ {shlex.quote(str(python))} -I -c "from ws.cli import main; main()" "$@"; }}\n'
+    prompt = "PROMPT_COMMAND='if [ $? = 0 ]; then PS1=\"$ \"; else PS1=\"FAILED $ \"; fi'\n"
+    return wrapper + f'cd {shlex.quote(str(repo))}\n' + prompt
+
+
 def tape(data, session, raw):
     style = '\n'.join(s for s in (ROOT / 'docs/demo.tape').read_text().splitlines() if s.startswith('Set '))
-    lines = [f'Output {json.dumps(str(raw))}', 'Require bash', style, 'Hide',
+    lines = [f'Output {json.dumps(str(raw))}', 'Require bash', style, 'Set WaitTimeout 60s', 'Hide',
              'Type ' + vhs_string('source ' + shlex.quote(str(session / 'setup.sh')) + '; clear'),
              'Enter', 'Sleep 500 ms', 'Show']
-    for index, command in enumerate(data['commands']):
-        marker = f'VIDEO_STEP_{index}_OK'
-        lines += ['Type ' + vhs_string(command + f" && printf '\\nVIDEO_STEP_%s_OK\\n' {index}"), 'Enter',
-                  f'Wait+Screen /{marker}/', 'Sleep 2 s']
+    for command in data['commands']:
+        # Viewers see only the lesson command. Wait+Line on the bare success prompt (setup_script) proves it passed;
+        # Wait+Screen is not used because VHS reads the top of the buffer, so scrolled output never matches.
+        lines += ['Type ' + vhs_string(command), 'Enter', 'Wait+Line /^\\$$/', 'Sleep 2 s']
     return '\n'.join(lines) + '\n'
 
 
@@ -104,8 +111,7 @@ def render(path, data, clip, python):
             raise ValueError(f'{path.name}: requires released ws {data["ws_version"]}, got {version}')
         run(['git', 'init', '-q', repo], env=env)
         run(['git', '-C', repo, 'switch', '-c', 'memory-demo'], env=env)
-        wrapper = f'ws() {{ {shlex.quote(str(python))} -I -c "from ws.cli import main; main()" "$@"; }}\n'
-        (session / 'setup.sh').write_text(wrapper + f'cd {shlex.quote(str(repo))}\nPS1="$ "\n')
+        (session / 'setup.sh').write_text(setup_script(python, repo))
         raw, card = session / 'raw.mp4', session / 'card.png'
         source = session / 'lesson.tape'; source.write_text(tape(data, session, raw))
         run(['vhs', source], cwd=session, env=env)

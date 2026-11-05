@@ -77,6 +77,8 @@ class VideoTests(unittest.TestCase):
             self.assertNotIn('bin/ws', tape)
             typed = [line for line in tape.splitlines() if line.startswith('Type ')]
             self.assertFalse(any('VIDEO_STEP_0_OK' in line for line in typed))
+            # Typed lines show only the lesson command: no internal check text on screen.
+            self.assertEqual(typed[1:], ['Type ' + self.video.vhs_string(c) for c in data['commands']])
 
     def test_typed_commands_with_quotes_use_a_vhs_string_without_escapes(self):
         # VHS strings have no escape sequences, so a JSON-style \" breaks the tape parser.
@@ -93,6 +95,19 @@ class VideoTests(unittest.TestCase):
             self.assertTrue(text[1:-1].startswith(command))
         with self.assertRaises(ValueError):
             self.video.vhs_string('a " b \' c ` d')
+
+    def test_steps_wait_on_the_prompt_because_vhs_screen_match_ignores_scrolled_output(self):
+        # Wait+Screen reads the top of the buffer, so a long `ws start` output never matched its marker.
+        with tempfile.TemporaryDirectory() as temp:
+            data = self.video.parse(self.lesson(temp))
+            tape = self.video.tape(data, Path(temp), Path(temp) / 'raw.mp4')
+            self.assertNotIn('Wait+Screen', tape)
+            self.assertIn('Wait+Line /^\\$$/', tape)
+            self.assertIn('Set WaitTimeout', tape)
+            setup = self.video.setup_script(Path('/x/python'), Path('/x/repo'))
+            self.assertIn('PROMPT_COMMAND=', setup)
+            self.assertIn('FAILED $ ', setup)
+            self.assertNotIn('\nPS1="$ "\n', setup)
 
     def test_failed_render_never_replaces_clip_or_commits_hash(self):
         with tempfile.TemporaryDirectory() as temp:
