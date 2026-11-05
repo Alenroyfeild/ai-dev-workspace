@@ -1,0 +1,1 @@
+Fixed: Feedback issue previews and submissions filter checksum-valid cards and IBANs, account-like numbers and more bare tokens; local notes stay unchanged, and names and amounts still require manual review.
