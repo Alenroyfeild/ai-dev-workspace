@@ -159,8 +159,12 @@ def write_links(data, root=ROOT):
         path.write_text(head + START + '\n' + block + END + tail, encoding='utf-8')
 
 
-def release_check(data, version):
-    """Video rules for a release: an edition for this version, the explainer uploaded, README in sync."""
+def release_check(data, version, read=None):
+    """Video rules for a release: an edition for this version, the explainer uploaded, README in sync.
+
+    `read(name)` returns a linked file's text; it defaults to the local checkout.
+    """
+    read = read or (lambda name: (ROOT / name).read_text(encoding='utf-8'))
     problems = []
     entry = data['releases'].get(version)
     if data['latest'] != version or entry is None:
@@ -169,7 +173,7 @@ def release_check(data, version):
         problems.append(f'{version}: explainer not uploaded (paste its YouTube URL)')
     block = links_block(data)
     for name in LINKED:
-        text = (ROOT / name).read_text(encoding='utf-8')
+        text = read(name)
         if START + '\n' + block + END not in text:
             problems.append(f'{name}: video links are stale; run bin/make-video --links')
     return problems

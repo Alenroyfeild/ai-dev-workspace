@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Read-only check that public release surfaces agree on one version."""
 import argparse
+import importlib.machinery
+import importlib.util
 import json
 from pathlib import Path
 import re
-import subprocess
 import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -75,7 +76,8 @@ def verify(version, fetch_json=fetch_json, fetch_text=fetch_text,
     if fetch_manifest is None:
         fetch_manifest = lambda path: fetch_json(RAW + path)
     if video_check is None:
-        video_check = run_video_check
+        video_check = lambda version: run_video_check(
+            version, lambda path: fetch_manifest(path), lambda path: fetch_text(RAW + path))
 
     stale, notices = [], []
 
@@ -122,6 +124,8 @@ def verify(version, fetch_json=fetch_json, fetch_text=fetch_text,
                 expected = [version] * len(actual)
             else:
                 expected = [tag_version] * len(actual)
+            if kind == 'pypi-and-packages' and data.get('name') != registry_name:
+                stale.append(path + ': name is ' + str(data.get('name')) + ', expected ' + registry_name)
             if actual != expected:
                 stale.append(path + ': version fields are ' + ', '.join(map(str, actual)) +
                              ', expected ' + ', '.join(expected))
@@ -144,10 +148,14 @@ def verify(version, fetch_json=fetch_json, fetch_text=fetch_text,
     return stale, notices
 
 
-def run_video_check(version):
-    result = subprocess.run([sys.executable, str(ROOT / 'bin/make-video'), '--release-check', version],
-                            cwd=ROOT, text=True, capture_output=True)
-    return result.returncode, result.stdout or result.stderr
+def run_video_check(version, fetch_data, fetch_file):
+    """Run bin/make-video's release_check on main's videos.json and linked files."""
+    loader = importlib.machinery.SourceFileLoader('make_video', str(ROOT / 'bin/make-video'))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    problems = module.release_check(fetch_data('docs/video/videos.json'), version, fetch_file)
+    return (1 if problems else 0), '\n'.join(problems)
 
 
 def main(argv=None):
