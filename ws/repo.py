@@ -534,7 +534,25 @@ def shrink_exclude(repo, state, names):
 WITHOUT_PLUGIN = ('.claude/settings.local.json', '.mcp.json')  # Claude files the plugin replaces; render() stops producing them in plugin mode
 
 
-def refresh(repo, root, state, yes, dry_run, keep=()):
+def codex_block_current(root, raw):
+    """True when the Codex config bytes hold, byte for byte, the one ai-dev-workspace server table this version writes, with no other ws entry."""
+    try: text = raw.decode('utf-8').replace('\r\n', '\n')  # only the comparison normalizes; the file is never rewritten
+    except UnicodeDecodeError: return False
+    block = core.codex_mcp_config(root)
+    at = text.find(block)
+    if at < 0 or text.count(block) != 1 or (at and text[at - 1] != '\n') or core.toml_mask_multiline_strings(text)[at:at + len(block)] != block: return False
+    rest = text[at + len(block):]
+    follow = next((l.lstrip() for l in rest.splitlines() if l.strip() and not l.lstrip().startswith('#')), '[')
+    if not follow.startswith('['): return False  # more keys after the block mean the table is not this block
+    if core._toml_has_workspace_entry(text[:at] + rest): return False  # a second or extended ws entry is not this block
+    try: import tomllib
+    except ImportError: return True
+    try: tomllib.loads(text)
+    except ValueError: return False
+    return True
+
+
+def refresh(repo, root, state, yes, dry_run, keep=(), current=()):
     """Bring ws-written files in line with this kit version, packs and Claude plugin: rewrite those still unchanged since ws wrote them, create ones now needed, restore ones no longer needed."""
     plugin = claude_plugin_enabled(repo, state.get('claude_config_dir', ''))
     basis = {}  # the exact bytes (None: no file) each merged JSON file was built from
@@ -564,7 +582,8 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
     new = {n: before(n) for n in desired if n not in state['files']}  # what render() saw, to catch an edit while confirming
     changes = {n: data for n, data in desired.items() if n not in keep and (n in new or path(repo, n).read_bytes() != data)}
     gone = [n for n in WITHOUT_PLUGIN if n in state['files'] and n not in desired and n not in keep]
-    for name in keep: print('Kept your edits, not refreshed: ' + str(repo / name), file=sys.stderr)
+    for name in keep:
+        if name not in current: print('Kept your edits, not refreshed: ' + str(repo / name), file=sys.stderr)
     if changes or gone:
         print('Refresh repo setup for this ai-dev-workspace version (saved memory is kept):', file=sys.stderr)
         for name in changes: print('  ' + str(repo / name) + (' (new)' if name in new else ''), file=sys.stderr)
@@ -581,9 +600,9 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
             core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
         if gone: shrink_exclude(repo, state, gone)
     if dry_run: return sorted({*changes, *gone})
-    # Kept (user-edited) files stay pending: the version moves only once every recorded file is current. Packs and plugin describe the hook/MCP files only,
+    # Kept (user-edited) files stay pending unless customized-but-current: the version moves only once every recorded file is current. Packs and plugin describe the hook/MCP files only,
     # so they move as soon as none of those is kept; otherwise a stale value would hide a later flip back (the rest was already rewritten).
-    if not keep: state['kit_version'] = core.kit_meta()['version']
+    if not set(keep) - set(current): state['kit_version'] = core.kit_meta()['version']
     if not {*HOOK_FILES, '.mcp.json'} & set(keep): state['hook_packs'] = hook_packs(root); state['plugin'] = plugin
     if claude_dir(): state['claude_config_dir'] = claude_dir()  # kept when a later shell lacks CLAUDE_CONFIG_DIR
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
@@ -613,14 +632,20 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         incomplete = state.get('complete') is False or any(not path(repo, n).is_file() for n in state['files'])
         edited = [n for n, e in state['files'].items() if path(repo, n).is_file() and hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha']
                   and not (n in JSON_FILES and stripped(n, path(repo, n).read_bytes()) is not None)]  # valid JSON is merged, not kept
-        partial = incomplete or bool(edited)
-        if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
+        intact = [n for n in edited if n == '.codex/config.toml' and codex_block_current(root, path(repo, n).read_bytes())]  # customized, but ws's own entry is intact
+        customized = [n for n in edited if n not in intact]
+        partial = incomplete or bool(customized)
+        if incomplete: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
+        for n in intact: print(f'{n}: kept your customization; its ai-dev-workspace entry is current; nothing to do.', file=sys.stderr)
+        for n in customized:
+            if n == '.codex/config.toml': print(f'{n}: kept your edits, but its ai-dev-workspace entry differs from this version (or the file cannot be read as TOML), so it was not changed and the repo setup stays pending. Run ws connect codex to print the expected block, then fix that entry by hand.', file=sys.stderr)
+            elif not incomplete: print(f'Kept your edits: local files changed since ws wrote them, review: {n}', file=sys.stderr)
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         if state.get('plugin') and state.get('claude_config_dir') and not claude_dir() and claude_plugin_enabled(repo, state['claude_config_dir']):
             print('Plugin mode kept: checked the Claude config dir saved at the last ws start (' + state['claude_config_dir'] + ') because CLAUDE_CONFIG_DIR is unset here. To leave plugin mode, disable the plugin there.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo, state.get('claude_config_dir', '')) or (claude_dir() and state.get('claude_config_dir', '') != claude_dir()) or edited or _stale_here(root, repo)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited, current=intact) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo, state.get('claude_config_dir', '')) or (claude_dir() and state.get('claude_config_dir', '') != claude_dir()) or customized or _stale_here(root, repo)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
