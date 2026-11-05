@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""Read-only check that public release surfaces agree on one version."""
+import argparse
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+from urllib.request import Request, urlopen
+
+ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY = 'Alenroyfeild/ai-dev-workspace'
+PYPI_URL = 'https://pypi.org/pypi/ai-dev-workspace/json'
+RELEASE_URL = 'https://api.github.com/repos/' + REPOSITORY + '/releases/latest'
+REGISTRY_URL = ('https://registry.modelcontextprotocol.io/v0.1/servers/' +
+                quote('io.github.' + REPOSITORY, safe='') + '/versions/latest')
+RAW = 'https://raw.githubusercontent.com/' + REPOSITORY + '/main/'
+
+MANIFESTS = {
+    'kit.json': 'tag',
+    'server.json': 'pypi-and-packages',
+    '.claude-plugin/plugin.json': 'tag',
+    '.claude-plugin/marketplace.json': 'tag-plugin',
+    '.codex-plugin/plugin.json': 'tag',
+    '.cursor-plugin/plugin.json': 'tag',
+    '.cursor-plugin/marketplace.json': 'tag-plugin',
+}
+DOCS = ('README.md', 'llms.txt', 'llms-full.txt')
+LIVE_LABEL = re.compile(r'Live-checked on (beta\.\d+(?: \([^\n)]*\))?)', re.I)
+
+
+def fetch_json(url):
+    request = Request(url, headers={'User-Agent': 'ai-dev-workspace-release-verify/1'})
+    with urlopen(request, timeout=15) as response:
+        return json.loads(response.read().decode('utf-8'))
+
+
+def fetch_text(url):
+    request = Request(url, headers={'User-Agent': 'ai-dev-workspace-release-verify/1'})
+    with urlopen(request, timeout=15) as response:
+        return response.read().decode('utf-8')
+
+
+def pypi_to_tag_version(version):
+    match = re.fullmatch(r'(\d+\.\d+\.\d+)b(\d+)', version)
+    if not match:
+        raise ValueError('version must use the PyPI beta form, for example 0.1.0b7')
+    return match.group(1) + '-beta.' + match.group(2)
+
+
+def manifest_versions(data, kind):
+    if kind == 'pypi-and-packages':
+        packages = data.get('packages')
+        if not isinstance(packages, list) or not packages:
+            raise ValueError('server.json has no packages list')
+        if not all(isinstance(item, dict) for item in packages):
+            raise ValueError('server.json packages must be objects')
+        return [data.get('version')] + [item.get('version') for item in packages]
+    if kind == 'tag-plugin':
+        plugins = data.get('plugins')
+        if not isinstance(plugins, list) or not plugins:
+            raise ValueError('marketplace has no plugins list')
+        if not all(isinstance(item, dict) for item in plugins):
+            raise ValueError('marketplace plugins must be objects')
+        return [item.get('version') for item in plugins]
+    return [data.get('version')]
+
+
+def verify(version, fetch_json=fetch_json, fetch_text=fetch_text,
+           fetch_manifest=None, video_check=None):
+    """Return (stale_lines, informational_lines); fetchers are injectable for tests."""
+    tag_version = pypi_to_tag_version(version)
+    if fetch_manifest is None:
+        fetch_manifest = lambda path: fetch_json(RAW + path)
+    if video_check is None:
+        video_check = run_video_check
+
+    stale, notices = [], []
+
+    def json_surface(label, url, check):
+        try:
+            data = fetch_json(url)
+            detail = check(data)
+            if detail:
+                stale.append(label + ': ' + detail)
+        except Exception as error:
+            stale.append(label + ': unable to verify (' + str(error).replace('\n', ' ') + ')')
+
+    def text_surface(label, url, check):
+        try:
+            text = fetch_text(url)
+            detail = check(text)
+            if detail:
+                stale.append(label + ': ' + detail)
+            labels = sorted(set(LIVE_LABEL.findall(text)), key=str.lower)
+            if labels:
+                notices.append(label + ' plugin live-check label: ' + ', '.join(labels))
+        except Exception as error:
+            stale.append(label + ': unable to verify (' + str(error).replace('\n', ' ') + ')')
+
+    json_surface('PyPI', PYPI_URL,
+                 lambda data: '' if data.get('info', {}).get('version') == version
+                 else 'latest version is ' + str(data.get('info', {}).get('version')) + ', expected ' + version)
+    json_surface('GitHub Release', RELEASE_URL,
+                 lambda data: '' if data.get('tag_name') == 'v' + tag_version and data.get('draft') is False
+                 else 'latest must be v' + tag_version + ' and not draft (found ' +
+                 str(data.get('tag_name')) + ', draft=' + str(data.get('draft')) + ')')
+    registry_name = 'io.github.' + REPOSITORY
+    json_surface('MCP Registry', REGISTRY_URL,
+                 lambda data: '' if data.get('server', {}).get('name') == registry_name and
+                 data.get('server', {}).get('version') == version else
+                 'latest version/name is ' + str(data.get('server', {}).get('version')) + '/' +
+                 str(data.get('server', {}).get('name')) + ', expected ' + version + '/' + registry_name)
+
+    for path, kind in MANIFESTS.items():
+        try:
+            data = fetch_manifest(path)
+            actual = manifest_versions(data, kind)
+            if kind == 'pypi-and-packages':
+                expected = [version] * len(actual)
+            else:
+                expected = [tag_version] * len(actual)
+            if actual != expected:
+                stale.append(path + ': version fields are ' + ', '.join(map(str, actual)) +
+                             ', expected ' + ', '.join(expected))
+        except Exception as error:
+            stale.append(path + ': unable to verify (' + str(error).replace('\n', ' ') + ')')
+
+    for path in DOCS:
+        expected = ('v' + tag_version + ' on PyPI') if path == 'README.md' else ('published ' + version)
+        text_surface(path, RAW + path,
+                     lambda text, expected=expected: '' if expected in text else
+                     'does not name ' + expected)
+
+    try:
+        status, output = video_check(version)
+        if status:
+            detail = ' '.join(output.split())
+            stale.append('Videos: ' + (detail or 'bin/make-video --release-check failed'))
+    except Exception as error:
+        stale.append('Videos: unable to verify (' + str(error).replace('\n', ' ') + ')')
+    return stale, notices
+
+
+def run_video_check(version):
+    result = subprocess.run([sys.executable, str(ROOT / 'bin/make-video'), '--release-check', version],
+                            cwd=ROOT, text=True, capture_output=True)
+    return result.returncode, result.stdout or result.stderr
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('version', help='PyPI version, e.g. 0.1.0b7')
+    args = parser.parse_args(argv)
+    try:
+        stale, notices = verify(args.version)
+    except ValueError as error:
+        parser.error(str(error))
+    for line in stale:
+        print('stale: ' + line)
+    for line in notices:
+        print('info: ' + line)
+    if not stale:
+        print('release surfaces are current for ' + args.version)
+    return 1 if stale else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

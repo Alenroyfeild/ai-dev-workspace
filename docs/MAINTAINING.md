@@ -76,14 +76,19 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - Verify: `curl -s "https://registry.modelcontextprotocol.io/v0.1/servers/io.github.Alenroyfeild%2Fai-dev-workspace/versions/latest"` shows the new version.
    - The namespace is case-sensitive and each version can be published only once; a 400 duplicate-version means it is already published.
 
-8. **Videos after PyPI:**
+8. **Release-surface verification:**
+   - Run `bin/release-verify <canonical-version>` after publication surfaces have been updated. This read-only check compares the latest PyPI release, latest non-draft GitHub Release, latest MCP Registry version, all package/plugin manifests on `main`, and README/LLMS version text on `main`.
+   - A stale surface exits nonzero and prints one line naming each mismatch. Plugin `Live-checked on beta.N` labels are informational; do not change them without a live plugin check.
+   - The video release check is included. Run this step again after step 9 if videos were not ready yet.
+
+9. **Videos after PyPI:**
    - Record and upload a short per `### New` feature (scripts in `docs/video/`, written in the RC PR), add the edition to `docs/video/videos.json`, then run `bin/make-video --links`.
    - `bin/make-video --release-check <canonical-version>` must exit 0.
 
-9. **Plugin live check:**
+10. **Plugin live check:**
    - Live-install the Claude Code plugin from the marketplace on the released version, then update the `Live-checked on beta.N (date)` labels (README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md`). If this was not done, leave the labels as they are.
 
-10. **If PyPI failed or was delayed:** revert the published-version lines moved in step 2 (README, `llms.txt`, `llms-full.txt`, `docs/DISCOVERY.md`, `PUBLISHED_VERSION`) until the upload succeeds.
+11. **If PyPI failed or was delayed:** revert the published-version lines moved in step 2 (README, `llms.txt`, `llms-full.txt`, `docs/DISCOVERY.md`, `PUBLISHED_VERSION`) until the upload succeeds.
 
 **Landing:** merge a PR only at 7/7 checks, with `gh pr merge <n> --merge --match-head-commit <reviewed sha>`. Land one PR at a time and wait for each post-merge CI before the next.
 
@@ -112,8 +117,8 @@ Run `bin/release-smoke` (stdlib, offline, throwaway HOME) on the final candidate
 | `docs/DISCOVERY.md` | Update PyPI link to release version | Dating PR | `tests/test_published_docs.py` |
 | `tests/test_published_docs.py` | Bump `PUBLISHED_VERSION` constant | Dating PR | `tests/test_release_sync.py` (release mode) |
 | `server.json` | Publish to MCP registry (`io.github.Alenroyfeild/ai-dev-workspace`) | After PyPI publish (step 7) | `tests/test_packaging.py` |
-| `docs/video/videos.json` | Add the release edition after recording | After PyPI publish (step 8) | `tests/test_make_video.py`, `bin/make-video --release-check` |
-| README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md` | `Live-checked on beta.N (date)` labels | After plugin live check (step 9) | none; leave unchanged if not checked |
+| `docs/video/videos.json` | Add the release edition after recording | After PyPI publish (step 9) | `tests/test_make_video.py`, `bin/make-video --release-check` |
+| README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md` | `Live-checked on beta.N (date)` labels | After plugin live check (step 10) | none; leave unchanged if not checked |
 
 ## Repository setting
 
