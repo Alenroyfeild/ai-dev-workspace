@@ -1,5 +1,5 @@
 {
-  "latest": "0.1.0b6",
+  "latest": "0.1.0b7",
   "releases": {
     "0.1.0b5": {
       "explainer": "https://youtu.be/w5EwQNO8Lz0",
@@ -26,6 +26,22 @@
         "Guards": "https://youtu.be/_jmPEb2wSj4",
         "Assistants": "https://youtu.be/R6-hfqvz1YA",
         "Install as a plugin (Preview)": "https://youtu.be/BnbVLSl1vVs"
+      }
+    },
+    "0.1.0b7": {
+      "explainer": "https://youtu.be/sfcBNSELq-8",
+      "tour": "https://youtu.be/ZmwwgYzZUJY",
+      "shorts": {
+        "Switch assistants": "https://youtu.be/GAX8Jbl4KqY",
+        "Resume the next step": "https://youtu.be/d4iicMtNq0o",
+        "Dead ends": "https://youtu.be/Pf5JuXsKz98",
+        "Skills": "https://youtu.be/NI69JfxGR_s",
+        "Team workspace (Preview)": "https://youtu.be/-BlKcnaS6yM",
+        "Guards": "https://youtu.be/_jmPEb2wSj4",
+        "Assistants": "https://youtu.be/R6-hfqvz1YA",
+        "Install as a plugin (Preview)": "https://youtu.be/BnbVLSl1vVs",
+        "Review old lessons": "https://youtu.be/y9ww8yjbzqg",
+        "Guards read git's grammar": "https://youtu.be/sFIIkSt2Bmg"
       }
     }
   }
