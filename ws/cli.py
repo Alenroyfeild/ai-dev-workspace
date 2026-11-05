@@ -730,8 +730,10 @@ def main(argv=None):
             result = orchestration.delegate(root, a.task, a.role, a.run, a.diff); out(result); return 0 if result.get('exit_code', 0) == 0 else 2
         if a.cmd == 'upgrade':
             from . import upgrade
+            if getattr(a, 'json', False) and not a.yes and not a.dry_run:
+                raise core.WsError('ws upgrade --json requires --yes or --dry-run.')
             def show_upgrade(result):
-                if getattr(a, 'json', False) or os.environ.get('WS_JSON'): return
+                if getattr(a, 'json', False): return
                 out(('\n'.join(c['diff'] for c in result['changes']) if a.diff else upgrade.summary(result['changes'])) if result['changes'] else 'No changes.')
             result = core.upgrade_workspace(root, True)  # preview first; applying re-plans under the lock
             show_upgrade(result)
@@ -743,7 +745,7 @@ def main(argv=None):
                     if not go: out('Not applied.'); return 0
                 applied = bool(result['changes'])
                 result = core.upgrade_workspace(root, False, result['changes'])  # refuses if the plan changed since the preview
-                if applied and not getattr(a, 'json', False) and not os.environ.get('WS_JSON'):
+                if applied and not getattr(a, 'json', False):
                     print(upgrade.migration_result(root, result), file=sys.stderr)
             out({'pending_review': result['pending'], 'backups': result['backups']})
             if not a.dry_run and result['changes']: print(RELOAD_NOTE, file=sys.stderr)  # only when files were written

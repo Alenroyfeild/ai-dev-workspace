@@ -61,7 +61,7 @@ class FeatureTests(Base):
         self.assertIn('Repo wiring kit_version: 0.0.1', err_text)
         self.assertIn('Files changed:', err_text)
         self.assertIn('kept:', err_text)
-        self.assertIn(f"Managed blocks missing: AGENTS.md (version {core.kit_meta()['version']})", err_text)
+        self.assertNotIn('Managed blocks', err_text)
         self.assertIn('Pending proposals (.ws-new):', err_text)
         self.assertIn('AGENTS.md', err_text)
         self.assertIn('Backup directory:', err_text)
@@ -75,7 +75,19 @@ class FeatureTests(Base):
         self.assertTrue(doc['half_migrated'])
         self.assertIn('Half-migrated store:', cli.text_doctor(doc))
 
-    def test_upgrade_migration_result_suppressed_in_json_mode(self):
+    def test_upgrade_json_without_yes_or_dry_run_refuses(self):
+        cfg = core.config(self.root)
+        cfg['kit_version'] = '0.0.1'
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        (self.root / 'routing.json').write_text('{"preset": "mixed"}\n')
+
+        with redirect_stderr(StringIO()) as err_buf, redirect_stdout(StringIO()) as out_buf:
+            code = cli.main(['--workspace-root', str(self.root), 'upgrade', '--json'])
+
+        self.assertEqual(code, 2)
+        self.assertIn('ws upgrade --json requires --yes or --dry-run', err_buf.getvalue())
+
+    def test_upgrade_retains_preview_summary_under_ws_json(self):
         cfg = core.config(self.root)
         cfg['kit_version'] = '0.0.1'
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
@@ -84,6 +96,20 @@ class FeatureTests(Base):
         with mock.patch.dict(os.environ, {'WS_JSON': '1'}):
             with redirect_stdout(StringIO()) as out_buf, redirect_stderr(StringIO()) as err_buf:
                 code = cli.main(['--workspace-root', str(self.root), 'upgrade', '--yes'])
+
+        self.assertEqual(code, 0)
+        out_text = out_buf.getvalue()
+        self.assertIn('+ routing.json', out_text)
+        self.assertIn('ws upgrade --dry-run --diff', out_text)
+
+    def test_upgrade_migration_result_suppressed_in_json_mode(self):
+        cfg = core.config(self.root)
+        cfg['kit_version'] = '0.0.1'
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        (self.root / 'routing.json').write_text('{"preset": "mixed"}\n')
+
+        with redirect_stdout(StringIO()) as out_buf, redirect_stderr(StringIO()) as err_buf:
+            code = cli.main(['--workspace-root', str(self.root), 'upgrade', '--json', '--yes'])
 
         self.assertEqual(code, 0)
         self.assertNotIn('Migration result:', err_buf.getvalue())
