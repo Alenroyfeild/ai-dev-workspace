@@ -8,7 +8,8 @@ def kit_preflight():
     report = {'installation': 'package' if core.PACKAGED else 'source',
               'branch': None, 'upstream': None, 'ahead': None, 'behind': None,
               'dirty_files': [], 'local_commits': [], 'choices': [],
-              'notes': ['Local refs only; no fetch performed. Ahead/behind may be stale.']}
+              'notes': ['Check only: no installation or Git changes made. Release lookup may refresh its cache.',
+                        'Local refs only; no fetch performed. Ahead/behind may be stale.']}
     if core.PACKAGED:
         report.update(state='package', choices=[
             'For pipx, run pipx upgrade ai-dev-workspace outside ws.',

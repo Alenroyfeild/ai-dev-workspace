@@ -1,5 +1,6 @@
 """Update checks inspect disposable installations without changing Git state."""
 import contextlib
+import errno
 import hashlib
 import io
 import json
@@ -180,4 +181,21 @@ class UpdatePreflightTests(unittest.TestCase):
         self.assertEqual(result['latest'], '9.9.9')
         self.assertEqual(result['preflight']['branch'], 'main')
         request.assert_called_once()
+        self.assertEqual(self.snapshot(), before)
+
+    def test_check_note_distinguishes_installation_from_release_cache(self):
+        notes = ' '.join(self.check()['notes']).lower()
+        self.assertIn('no installation or git changes made', notes)
+        self.assertIn('cache', notes)
+
+    def test_release_cache_write_failure_is_loud_not_reported_as_success(self):
+        before = self.snapshot()
+        with mock.patch.dict(os.environ, {'WS_OFFLINE': '0'}), \
+                mock.patch.object(core, '_get_json', return_value=[{'tag_name': 'v9.9.9'}]), \
+                mock.patch.object(Path, 'write_text', side_effect=PermissionError(errno.EACCES, 'cache write denied', 'update.json')), \
+                contextlib.redirect_stdout(io.StringIO()) as stdout, \
+                contextlib.redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(cli.main(['update', '--check']), 2)
+        self.assertEqual(stdout.getvalue(), '')
+        self.assertIn('cache write denied', stderr.getvalue())
         self.assertEqual(self.snapshot(), before)
