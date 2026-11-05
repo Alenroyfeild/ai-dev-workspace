@@ -61,14 +61,22 @@ def cached(path, record, clip, recipe):
     return record == fingerprint(path, recipe) and clip.is_file() and clip.stat().st_size > 0
 
 
+def vhs_string(text):
+    """VHS strings have no escapes: wrap in the first of " ' ` that the text does not contain."""
+    quote = next((q for q in '"\'`' if q not in text), None)
+    if quote is None:
+        raise ValueError('a typed command cannot contain all of " \' ` (VHS has no string escapes)')
+    return quote + text + quote
+
+
 def tape(data, session, raw):
     style = '\n'.join(s for s in (ROOT / 'docs/demo.tape').read_text().splitlines() if s.startswith('Set '))
     lines = [f'Output {json.dumps(str(raw))}', 'Require bash', style, 'Hide',
-             'Type ' + json.dumps('source ' + shlex.quote(str(session / 'setup.sh')) + '; clear'),
+             'Type ' + vhs_string('source ' + shlex.quote(str(session / 'setup.sh')) + '; clear'),
              'Enter', 'Sleep 500 ms', 'Show']
     for index, command in enumerate(data['commands']):
         marker = f'VIDEO_STEP_{index}_OK'
-        lines += ['Type ' + json.dumps(command + f" && printf '\\nVIDEO_STEP_%s_OK\\n' {index}"), 'Enter',
+        lines += ['Type ' + vhs_string(command + f" && printf '\\nVIDEO_STEP_%s_OK\\n' {index}"), 'Enter',
                   f'Wait+Screen /{marker}/', 'Sleep 2 s']
     return '\n'.join(lines) + '\n'
 
