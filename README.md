@@ -25,7 +25,7 @@ Prefer a Claude Code plugin? Preview. Not yet listed in Anthropic's official plu
 /plugin marketplace add Alenroyfeild/ai-dev-workspace
 /plugin install ai-dev-workspace@ai-dev-workspace
 ```
-Live-checked on beta.5 (2026-10-22). See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview).
+Live-checked on beta.7 (2026-11-05). See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview).
 
 `ws start` previews every file and writes nothing until you confirm. Generated assistant hooks and configs stay local (`.git/info/exclude`), task memory lives outside the repo in `~/.ai-dev-workspace/<repo-name>`, and `ws start --undo` cleanly removes repo wiring.
 
