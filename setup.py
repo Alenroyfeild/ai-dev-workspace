@@ -49,7 +49,7 @@ setup(name='ai-dev-workspace', version=package_version(json.loads((ROOT / 'kit.j
                     'Client verification': REPO + '/blob/main/docs/CLIENT-VERIFICATION.md'},
       keywords='ai coding assistant memory claude-code codex cursor copilot gemini-cli mcp agents context handoff ai-memory agent-skills antigravity session-memory decisions dead-ends markdown guards',
       classifiers=['Development Status :: 4 - Beta', 'Environment :: Console', 'Intended Audience :: Developers',
-                   'License :: OSI Approved :: MIT License', 'Operating System :: OS Independent',
+                   'Operating System :: OS Independent',
                    'Programming Language :: Python :: 3', 'Programming Language :: Python :: 3.9', 'Programming Language :: Python :: 3.12',
                    'Topic :: Software Development'],
       packages=['ws'], python_requires='>=3.9',

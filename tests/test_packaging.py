@@ -120,6 +120,8 @@ class PackagingTests(unittest.TestCase):
                 self.assertIn('](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/', metadata)
                 self.assertIn('Project-URL: Changelog, ', metadata)
                 self.assertIn('Classifier: Programming Language :: Python :: 3.12', metadata)
+                self.assertIn('License: MIT\n', metadata)
+                self.assertNotIn('Classifier: License :: OSI Approved :: MIT License', metadata)
                 self.assertIn('ws/cli.py', names)
                 self.assertIn('ws/template/AGENTS.md', names)
             with tarfile.open(source, 'r:gz') as archive:
@@ -129,6 +131,8 @@ class PackagingTests(unittest.TestCase):
                 metadata = next(item for item in archive.getmembers() if item.name.endswith('/PKG-INFO'))
                 body = archive.extractfile(metadata).read().decode()
                 self.assertIn('Version: 0.1.0b7\n', body)
+                self.assertIn('License: MIT\n', body)
+                self.assertNotIn('Classifier: License :: OSI Approved :: MIT License', body)
                 self.assertTrue(any(item.name.endswith('/ws/cli.py') for item in archive.getmembers()))
 
 
