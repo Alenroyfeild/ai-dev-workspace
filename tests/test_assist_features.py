@@ -91,6 +91,28 @@ class FeatureTests(Base):
         self.assertIn('pending_review', data)
         self.assertIn('backups', data)
 
+    def test_upgrade_handles_unstarted_or_corrupt_linked_repo_gracefully(self):
+        cfg = core.config(self.root)
+        cfg['kit_version'] = '0.0.1'
+        unstarted = Path(self.tmp.name) / 'unstarted_repo'
+        unstarted.mkdir(parents=True, exist_ok=True)
+        corrupt = Path(self.tmp.name) / 'corrupt_repo'
+        corrupt.mkdir(parents=True, exist_ok=True)
+        (corrupt / '.ws-start.json').write_text('{bad json')
+        cfg['repos'] = [str(unstarted), str(corrupt)]
+        (self.root / 'workspace.json').write_text(json.dumps(cfg))
+        (self.root / 'routing.json').write_text('{"preset": "mixed"}\n')
+
+        with redirect_stdout(StringIO()) as out_buf, redirect_stderr(StringIO()) as err_buf:
+            code = cli.main(['--workspace-root', str(self.root), 'upgrade', '--yes'])
+
+        self.assertEqual(code, 0)
+        err = err_buf.getvalue()
+        self.assertIn('Migration result:', err)
+        self.assertIn('Repo wiring kit_version:', err)
+        self.assertIn('unstarted_repo: none', err)
+        self.assertIn('corrupt_repo: none', err)
+
     def test_routed_readonly_provider_selftests_are_deduplicated(self):
         binding = dict(available=True, provider='codex')
         with mock.patch.object(orchestration, 'route', return_value=binding), mock.patch.object(core, '_detected', side_effect=lambda n: n == 'codex'):

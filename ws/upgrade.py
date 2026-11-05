@@ -234,11 +234,13 @@ def migration_result(root, result):
     if repos:
         repo_states = []
         for r in repos:
-            st = repo.load(r) if hasattr(repo, 'load') else {}
-            if not st and (r / '.ws-start.json').is_file():
-                try: st = json.loads((r / '.ws-start.json').read_text(encoding='utf-8'))
-                except (ValueError, OSError): st = {}
-            kv = st.get('kit_version') or 'none'
+            st = {}
+            if (r / '.ws-start.json').is_file():
+                try: st = repo.load(r) if hasattr(repo, 'load') else {}
+                except (core.WsError, OSError, ValueError):
+                    try: st = json.loads((r / '.ws-start.json').read_text(encoding='utf-8', errors='replace'))
+                    except (ValueError, OSError): st = {}
+            kv = (st.get('kit_version') if isinstance(st, dict) else None) or 'none'
             repo_states.append(f"{r.name}: {kv}" if len(repos) > 1 else kv)
         repo_v = ', '.join(repo_states)
     else:
