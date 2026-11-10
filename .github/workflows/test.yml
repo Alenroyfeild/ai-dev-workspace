@@ -29,7 +29,8 @@ jobs:
           fi
   test:
     needs: changes
-    runs-on: ${{ matrix.os }}
+    # ubuntu-latest became 26.04, which has no Python 3.9; run that one leg on 24.04 and keep the required check name
+    runs-on: ${{ (matrix.os == 'ubuntu-latest' && matrix.python == '3.9') && 'ubuntu-24.04' || matrix.os }}
     env:  # the six required checks still report; on a docs-only PR the macOS/Windows ones pass without running tests
       RUN_TESTS: ${{ needs.changes.outputs.full == 'true' || matrix.os == 'ubuntu-latest' }}
     strategy:
