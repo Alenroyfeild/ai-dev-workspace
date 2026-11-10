@@ -96,6 +96,8 @@ TOOLS = {
     'claim_task': ('Claim before edits; returns checkpoint/release token.',
                    S(id=string(''), worker=string('')),
                    lambda r, a: core.claim(r, a['id'], a['worker'])),
+    'claim_next_task': ('Select and claim the next eligible task; returns a token.',
+                        S(worker=string('')), lambda r, a: core.claim_next(r, a['worker'])),
     'release_task': ('Release a claim.', S(id=string(''), worker=string(''), token=string('')),
                      lambda r, a: core.release(r, a['id'], a['worker'], a['token'])),
     'checkpoint': ('Save status, exact next action and section updates.',

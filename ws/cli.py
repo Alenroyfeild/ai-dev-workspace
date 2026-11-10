@@ -380,6 +380,11 @@ def main(argv=None):
     s = t.add_parser('new', help='create a task record'); s.add_argument('id', help='short ID such as JIRA-123 or fix-login'); s.add_argument('title')
     s.add_argument('--objective', default='', help='one-line goal'); s.add_argument('--branch', default='', help='Git branch the task belongs to'); s.add_argument('--repo', default='', help='repo path the task belongs to')
     t.add_parser('list', help='list tasks with status, claim and next action')
+    s = t.add_parser('next', help='select and claim the next eligible task',
+                     description='Select and claim under the workspace lock. Claims do not expire automatically. '
+                     'After confirming an owner has stopped, recover with ws release ID --worker OWNER --token OBSERVED_TOKEN; '
+                     'a changed token refuses the release. A token left locally before the task write grants no claim.')
+    s.add_argument('--worker', help='label for this session (default: $USER)')
     s = t.add_parser('find', help='find tasks by ID, branch or title'); s.add_argument('ref', help='ID, branch or title text')
     s = t.add_parser('show', help='print one task record'); s.add_argument('id'); s.add_argument('--section', action='append', help='print only this section; repeat for several')
     s = t.add_parser('depend', help='make a task wait for another'); s.add_argument('id'); s.add_argument('--on', required=True, metavar='OTHER')
@@ -849,6 +854,10 @@ def main(argv=None):
         elif a.cmd == 'task':
             if a.action == 'new': out(core.task_new(root, a.id, a.title, a.objective, a.branch, a.repo))
             elif a.action == 'list': out(core.task_list(root))
+            elif a.action == 'next':
+                worker = a.worker or os.environ.get('USER') or os.environ.get('USERNAME')
+                if not worker: raise core.WsError('Set USER (USERNAME on Windows) or pass --worker.')
+                out(core.claim_next(root, worker))
             elif a.action == 'find': out(core.task_find(root, a.ref))
             elif a.action == 'depend': out(core.task_depend(root, a.id, a.on))
             elif a.action == 'import':
