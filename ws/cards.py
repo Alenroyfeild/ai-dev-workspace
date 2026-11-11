@@ -24,9 +24,11 @@ def managed(root, path, body, public=False):
 
 
 def load(root, path, layer, team_id):
-    card = sharing._safe(root, path.with_suffix('.index.md'))
-    if not card.exists() or card.stat().st_size > 16384 or card.stat().st_mtime_ns < path.stat().st_mtime_ns: return None
     try:
+        # Cache failures must not hide the independently validated source.
+        card = sharing._safe(root, path.with_suffix('.index.md'))
+        info = card.stat()
+        if info.st_size > 16384 or info.st_mtime_ns < path.stat().st_mtime_ns: return None
         raw = sharing._text(card)
         if raw.count(HEAD) != 1 or raw.count(TAIL) != 1 or raw.index(HEAD) > raw.index(TAIL): return None
         data = json.loads(raw.split(HEAD)[1].split(TAIL)[0]); row = data['row']; counts = data['counts']
@@ -41,7 +43,7 @@ def load(root, path, layer, team_id):
         clean = {k: sharing.portable(root, row[k])[:caps.get(k,2048)] for k in FIELDS}
         return {**clean, 'key': layer + ':' + path.stem, 'path': path.relative_to(root).as_posix(),
                 'untrusted': layer == 'team', 'summary_snapshot': True, '_counts': counts}
-    except (KeyError, ValueError, TypeError, RecursionError, core.WsError): return None
+    except (KeyError, ValueError, TypeError, RecursionError, OSError, core.WsError): return None
 
 
 def index_body(rows, public, prefix=None):
