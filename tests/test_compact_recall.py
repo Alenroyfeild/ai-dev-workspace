@@ -48,6 +48,39 @@ class CompactRecallTests(Base):
         rows = json.loads(self.call({'query': 'lateuniqueword'})['result']['content'][0]['text'])
         self.assertTrue(any(row['id'].endswith('long.md') for row in rows))
 
+    def test_case_variants_of_local_notes_and_run_logs_never_reach_recall(self):
+        vault = core.vault(self.root)
+        run_dir = vault / 'rUnS'
+        run_dir.mkdir(exist_ok=True)
+        canary = 'recall exclusion fixture'
+        for path in (vault / 'Project/work.LoCaL.md', run_dir / 'event.md'):
+            path.write_text(canary, encoding='utf-8')
+            identifier = path.relative_to(self.root).as_posix()
+            with self.subTest(id=identifier):
+                result = self.call({'detail': identifier})['result']
+                self.assertTrue(result['isError'])
+                self.assertNotIn(canary, str(result))
+        ordinary = vault / 'Project/work.locale.md'
+        ordinary.write_text('ordinary recall fixture', encoding='utf-8')
+        rows = json.loads(self.call({'query': 'recall fixture'})['result']['content'][0]['text'])
+        self.assertEqual([row['id'] for row in rows], [ordinary.relative_to(self.root).as_posix()])
+
+    def test_team_local_only_id_is_refused_regardless_of_case(self):
+        team_id = 'a' * 32
+        clone = self.root / '.ws/team'
+        entries = clone / 'entries'
+        entries.mkdir(parents=True)
+        (clone / 'team.json').write_text(json.dumps(dict(kind='ai-dev-workspace-team', schema_version=1, id=team_id)))
+        config = core.config(self.root)
+        config['team_workspace'] = {'path': '.ws/team', 'id': team_id}
+        (self.root / 'workspace.json').write_text(json.dumps(config))
+        (entries / 'fixture.LOCAL.md').write_text(
+            f'---\nid: fixture.LOCAL\nteam: {team_id}\nsource: knowledge:fixture\ncategory: repo\n---\n\nlocal team canary\n',
+            encoding='utf-8')
+        result = self.call({'detail': 'team:fixture.LOCAL'})['result']
+        self.assertTrue(result['isError'])
+        self.assertNotIn('local team canary', str(result))
+
     def test_real_stdio_metadata_then_detail(self):
         path = core.vault(self.root) / 'Project/stdio.md'; path.write_text('# Receipt policy\nReceipt checksum.\n')
         messages = [{'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-11-25', 'capabilities': {}, 'clientInfo': {'name': 'fixture', 'version': '1'}}},
