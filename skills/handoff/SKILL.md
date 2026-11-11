@@ -1,6 +1,6 @@
 ---
 name: handoff
-description: Save verified task progress and an exact next action.
+description: Use when saving verified task progress, checkpointing or handing off an exact next action.
 compatibility: Requires ws on PATH (pipx install ai-dev-workspace --pip-args='--pre') and a Git repository initialized with ws start.
 ---
 
