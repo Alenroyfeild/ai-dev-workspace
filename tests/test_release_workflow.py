@@ -42,9 +42,10 @@ exit 2
 ''')
         fake.chmod(0o755)
 
-    def publish(self, view_status, recheck_status=1, create_status=0):
+    def publish(self, view_status, recheck_status=1, create_status=0, draft_status='true'):
         env = {**os.environ, 'GH_LOG': str(self.log), 'GH_VIEW_STATUS': str(view_status),
                'GH_VIEW_RECHECK_STATUS': str(recheck_status), 'GH_CREATE_STATUS': str(create_status),
+               'GH_DRAFT_STATUS': draft_status,
                'PATH': os.pathsep.join((str(self.bin), os.environ.get('PATH', '')))}
         bash = shutil.which('bash')
         if not bash:
@@ -109,30 +110,21 @@ exit 2
         self.assertNotIn(' --latest', create)
 
     def test_published_release_is_not_edited_or_demoted(self):
-        env = {**os.environ, 'GH_LOG': str(self.log), 'GH_VIEW_STATUS': '0',
-               'GH_VIEW_RECHECK_STATUS': '0', 'GH_CREATE_STATUS': '0', 'GH_DRAFT_STATUS': 'false',
-               'PATH': os.pathsep.join((str(self.bin), os.environ.get('PATH', '')))}
-        result = subprocess.run(['bash', str(ROOT / 'bin' / 'publish-release'), 'v0.1.0-beta.3', str(self.notes)],
-                                env=env, text=True, capture_output=True)
+        result = self.publish(0, draft_status='false')
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn('refusing to edit', result.stderr)
         self.assertNotIn('release edit ', self.log.read_text())
 
     def test_concurrent_published_release_is_not_edited_or_demoted(self):
-        env = {**os.environ, 'GH_LOG': str(self.log), 'GH_VIEW_STATUS': '1',
-               'GH_VIEW_RECHECK_STATUS': '0', 'GH_CREATE_STATUS': '1', 'GH_DRAFT_STATUS': 'false',
-               'PATH': os.pathsep.join((str(self.bin), os.environ.get('PATH', '')))}
-        result = subprocess.run(['bash', str(ROOT / 'bin' / 'publish-release'), 'v0.1.0-beta.3', str(self.notes)],
-                                env=env, text=True, capture_output=True)
+        result = self.publish(1, recheck_status=0, create_status=1, draft_status='false')
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn('refusing to edit', result.stderr)
         self.assertNotIn('release edit ', self.log.read_text())
 
     def test_unknown_draft_state_does_not_modify_release(self):
-        env = {**os.environ, 'GH_LOG': str(self.log), 'GH_VIEW_STATUS': '0',
-               'GH_VIEW_RECHECK_STATUS': '0', 'GH_CREATE_STATUS': '0', 'GH_DRAFT_STATUS': 'null',
-               'PATH': os.pathsep.join((str(self.bin), os.environ.get('PATH', '')))}
-        result = subprocess.run(['bash', str(ROOT / 'bin' / 'publish-release'), 'v0.1.0-beta.3', str(self.notes)],
-                                env=env, text=True, capture_output=True)
+        result = self.publish(0, draft_status='null')
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn('refusing to edit', result.stderr)
         self.assertNotIn('release edit ', self.log.read_text())
 
     def test_release_documentation_publishes_only_after_hash_comparison(self):
