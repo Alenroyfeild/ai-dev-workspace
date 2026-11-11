@@ -163,5 +163,140 @@ class SupportDoctorTests(unittest.TestCase):
                 self.assertNotIn('sensitive-name', json.dumps(card))
 
 
+class FeedbackReleaseSyncTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name) / 'workspace'
+        core.init(self.root, 'fixture', clients=[])
+        core.feedback_add(self.root, 'The fixture issue', 'bug')
+        self.url = f'https://github.com/{REPO}/issues/37'
+        core.feedback_link(self.root, 1, self.url)
+        self.sidecar = self.root / '.ws' / 'feedback-closures.json'
+        offline = patch.dict(os.environ, {'WS_OFFLINE': '0'})
+        offline.start()
+        self.addCleanup(offline.stop)
+
+    def test_sync_records_bounded_evidence_and_clears_it_on_reopen(self):
+        calls = []
+        sha = 'a' * 40
+
+        def closed(url):
+            calls.append(url)
+            if '/releases?' in url:
+                return [release(10, 'v1.2.1', 'Mention #37 plus arbitrary issue text')]
+            if '/timeline?' in url:
+                return [{'event': 'closed', 'created_at': CLOSED, 'actor': {'login': 'fixture-bot'},
+                         'commit_id': sha, 'commit_url': f'https://api.github.com/repos/{REPO}/commits/{sha}'}]
+            return {'state': 'closed', 'closed_at': CLOSED, 'body': 'arbitrary issue text'}
+
+        first = support.sync_feedback(self.root, closed)
+        self.assertEqual(first['closed'], [self.url])
+        self.assertTrue(core.feedback_items(self.root)[0]['done'])
+        record = json.loads(self.sidecar.read_text(encoding='utf-8'))['issues'][self.url]
+        self.assertEqual(record['closing_actor'], 'fixture-bot')
+        self.assertEqual(record['closing_reference'], f'https://github.com/{REPO}/commit/{sha}')
+        self.assertEqual(record['release']['version'], '1.2.1')
+        self.assertNotIn('arbitrary issue text', self.sidecar.read_text(encoding='utf-8'))
+        self.assertEqual(support.sync_feedback(self.root, closed)['closed'], [])
+        self.assertEqual(len(calls), 4)
+
+        result = support.sync_feedback(self.root, lambda _: {'state': 'open'})
+        self.assertEqual(result['reopened'], [self.url])
+        self.assertFalse(core.feedback_items(self.root)[0]['done'])
+        reopened = json.loads(self.sidecar.read_text(encoding='utf-8'))['issues'][self.url]
+        self.assertEqual(reopened['state'], 'open')
+        self.assertNotIn('release', reopened)
+
+    def test_expired_release_cache_reports_unknown_when_refresh_fails(self):
+        start = support.time.time_ns()
+
+        def closed(url):
+            if '/releases?' in url:
+                return [release(10, 'v1.2.1', '#37')]
+            if '/timeline?' in url:
+                return []
+            return {'state': 'closed', 'closed_at': CLOSED}
+
+        with patch.object(support.time, 'time_ns', return_value=start):
+            first = support.sync_feedback(self.root, closed)
+        self.assertEqual(first['release_mentions'], [self.url])
+
+        def rate_limit(url):
+            if '/releases?' in url:
+                raise OSError('rate limited')
+            return closed(url)
+
+        with patch.object(support.time, 'time_ns', return_value=start + 2 * 86400 * 10**9):
+            next_result = support.sync_feedback(self.root, rate_limit)
+        self.assertIsNone(next_result['closures'][self.url]['release'])
+        self.assertEqual(next_result['release_mentions'], [])
+        self.assertTrue(core.feedback_items(self.root)[0]['done'])
+
+    def test_sidecar_permission_error_keeps_unverified_status_private(self):
+        with patch.object(core, 'atomic_write', side_effect=PermissionError('fixture private path')):
+            result = support.sync_feedback(self.root, lambda _: {'state': 'closed'})
+        self.assertEqual(result['status'], 'unknown')
+        self.assertEqual(result['closed'], [])
+        self.assertNotIn('fixture private path', json.dumps(result))
+        self.assertFalse(core.feedback_items(self.root)[0]['done'])
+
+    def test_offline_does_not_read_or_create_a_sidecar(self):
+        with patch.dict(os.environ, {'WS_OFFLINE': '1'}):
+            result = support.sync_feedback(self.root, lambda _: self.fail('unexpected GitHub request'))
+        self.assertTrue(result['offline'])
+        self.assertFalse(self.sidecar.exists())
+
+    def test_slow_sync_cannot_overwrite_newer_observation(self):
+        def slow(url):
+            if '/timeline?' in url or '/releases?' in url:
+                return []
+            support.sync_feedback(self.root, lambda _: {'state': 'open'})
+            return {'state': 'closed', 'closed_at': CLOSED}
+
+        self.assertEqual(support.sync_feedback(self.root, slow)['closed'], [])
+        self.assertFalse(core.feedback_items(self.root)[0]['done'])
+        current = json.loads(self.sidecar.read_text(encoding='utf-8'))['issues'][self.url]
+        self.assertEqual(current['state'], 'open')
+
+
+class ReleaseNoticeTests(unittest.TestCase):
+    def test_notice_uses_release_evidence_and_installation_specific_commands(self):
+        url = f'https://github.com/{REPO}/issues/37'
+        evidence = {'version': '9.1.0', 'url': f'https://github.com/{REPO}/releases/tag/v9.1.0'}
+        with patch.object(core, 'PACKAGED', False):
+            checkout = support.feedback_notice(url, evidence)
+        with patch.object(core, 'PACKAGED', True):
+            packaged = support.feedback_notice(url, evidence)
+        self.assertIn('Release 9.1.0 notes mention it', checkout['message'])
+        self.assertIn(evidence['url'], checkout['message'])
+        self.assertIn('ws update', checkout['message'])
+        self.assertIn('ws upgrade --yes', checkout['message'])
+        self.assertIn('pipx upgrade ai-dev-workspace', packaged['message'])
+        self.assertIn('venv', packaged['message'])
+        for notice in (checkout, packaged):
+            self.assertEqual(notice['suggest'], 'ws update --check')
+            self.assertNotIn('shipped', notice['message'])
+        unknown = support.feedback_notice(url, None)
+        self.assertIn('release not confirmed', unknown['message'])
+        self.assertNotIn('ws upgrade', unknown['message'])
+
+
+class AttachmentPreviewTests(unittest.TestCase):
+    def test_digest_binds_exact_title_and_submitted_body(self):
+        card = {'counts': {'packs': 1}}
+        preview = support.attachment_preview('Title', 'Text', card)
+        self.assertIn('\n  "counts": {', preview['body'])
+        self.assertEqual(preview['support'], card)
+        self.assertEqual(preview, support.attachment_preview('Title', 'Text', card))
+        changed = (
+            support.attachment_preview('Title!', 'Text', card),
+            support.attachment_preview('Title', 'Text\n', card),
+            support.attachment_preview('Title', 'Text', {'counts': {'packs': 2}}),
+        )
+        for other in changed:
+            self.assertNotEqual(preview['preview_sha'], other['preview_sha'])
+
+
 if __name__ == '__main__':
     unittest.main()
