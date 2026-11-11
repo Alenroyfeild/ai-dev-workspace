@@ -274,13 +274,20 @@ def review_diff(repo, revision):
 
 
 def _brief_paths(root, text):
-    text = core.localize_paths(text, root)
-    home = Path(os.path.expanduser('~'))
-    if home.is_absolute() and home != home.parent:
-        homes = {str(home), home.as_posix(), str(home.resolve()), home.resolve().as_posix()}
-        for path in sorted(homes, key=len, reverse=True):
-            text = re.sub(re.escape(path) + r'(?![\w.-])', '~', text, flags=re.I if core.WINDOWS else 0)
-    return text
+    # On Windows expanduser reads USERPROFILE even when HOME is set.
+    homes = {Path(os.environ.get('HOME', '')), Path(os.path.expanduser('~'))}
+    homes = {home for home in homes if home.is_absolute() and home != home.parent}
+    flags = re.I if core.WINDOWS else 0
+    # Exact homes must match before the generic user-directory filter shortens
+    # them. Localize the workspace first in case it is inside one of those homes.
+    for bases, replacement in (((Path(root),), '.'), (homes, '~')):
+        paths = {spelling for base in bases for path in (base, base.resolve())
+                 for spelling in (str(path), path.as_posix())}
+        for path in sorted(paths, key=len, reverse=True):
+            text = re.sub(re.escape(path) + r'(?![\w.-])', replacement, text, flags=flags)
+    # Consume the drive even for paths written with forward slashes.
+    text = re.sub(r'(?<![\w.~-])[A-Za-z]:[/\\](?i:Users)[/\\][^/\\\s]+', '~', text)
+    return core.localize_paths(text, root)
 
 
 def brief_task(root, task_id):

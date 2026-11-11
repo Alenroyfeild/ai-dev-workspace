@@ -1,11 +1,40 @@
 """Legacy task text and Git hunks must be filtered before reaching workers."""
 import json
-from pathlib import Path
-from unittest import mock
+import ntpath
+import os
+from pathlib import Path, PureWindowsPath
+from unittest import TestCase, mock
 
 from test_ws import Base
 from testutil import seeded_repo
 from ws import core, orchestration, workers
+
+
+class BriefPathTests(TestCase):
+    def test_windows_paths_use_explicit_home_and_native_profile(self):
+        class WindowsPath(PureWindowsPath):
+            def resolve(self):
+                return self
+
+        profile = WindowsPath('C:/Users/fixture-runner')
+        home = profile / 'AppData/Local/Temp/fixture-home'
+        root = home / 'workspace'
+        env = {'HOME': str(home), 'USERPROFILE': str(profile)}
+        with mock.patch.dict(os.environ, env), \
+                mock.patch.object(orchestration, 'Path', WindowsPath), \
+                mock.patch.object(orchestration.os.path, 'expanduser', ntpath.expanduser), \
+                mock.patch.object(core, 'WINDOWS', True):
+            cases = (
+                (str(home / 'memo'), '~/memo'),
+                ((home / 'memo').as_posix(), '~/memo'),
+                ((profile / 'profile.md').as_posix(), '~/profile.md'),
+                ('D:/Users/other-fixture/legacy.md', '~/legacy.md'),
+                ((root / 'task.md').as_posix(), './task.md'),
+            )
+            for path, expected in cases:
+                with self.subTest(path=path):
+                    self.assertEqual(orchestration._brief_paths(root, 'Inspect ' + path),
+                                     'Inspect ' + expected)
 
 
 class PrivateBriefTests(Base):
