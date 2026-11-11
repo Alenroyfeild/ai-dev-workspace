@@ -4,7 +4,7 @@ import re
 from . import core
 
 _TOKEN = re.compile(r'(?<!\w)(?:(?:lin_api_|ntn_|secret_)[A-Za-z0-9_-]{40,}|(?:ya29\.|pypi-)[A-Za-z0-9._-]{20,})')
-_CARD = re.compile(r'(?<![\w.])(?=((?:[0-9][ -]?){12,18}[0-9](?!\w)(?!\.[0-9])))')
+_CARD = re.compile(r'(?<![\w.])(?=((?:[0-9][ -]*){12,18}[0-9](?!\w)(?!\.[0-9])))')
 _IBAN = re.compile(r'(?<!\w)[A-Za-z]{2}[0-9]{2}')
 _ACCOUNT = re.compile(r'(?<![\w.+-])[0-9]{9,18}(?!\w)(?![.-]\w)')
 _URL = re.compile(r'\b[A-Za-z][A-Za-z0-9+.-]*://[^\s<>]+')
@@ -32,7 +32,7 @@ def _cards(text):
             end = max(value.rfind(' '), value.rfind('-'))
             if end < 0:
                 break
-            value = value[:end]
+            value = value[:end].rstrip(' -')
     return ''.join(parts) + text[cursor:]
 
 

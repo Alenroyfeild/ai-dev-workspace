@@ -27,7 +27,7 @@ class FeedbackPrivacyTests(Base):
         cards = ('4532015112830366', '5425233430109903', '378282246310005', '6011000990139424',
                  '4222222222222', '4000000000000000006')
         for card in cards:
-            for separator in ('', ' ', '-'):
+            for separator in ('', ' ', '-', '  ', ' - '):
                 value = separator.join(card[i:i+4] for i in range(0, len(card), 4))
                 with self.subTest(value=value): self.hidden(value)
 
