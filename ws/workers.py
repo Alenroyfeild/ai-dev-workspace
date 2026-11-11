@@ -73,7 +73,7 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
         git(directory / 'source.git', 'worktree', 'add', '--detach', str(directory / 'checkout'), commit)
         body = '# Implementation task (UNVERIFIED)\nEdit only allowed paths. Do not commit, push, merge or change task memory.\n'
         for section, limit in zip(('Objective', 'Next action', 'Blockers', 'Evidence'), (80, 60, 30, 100)):
-            body += '\n## ' + section + '\n' + ' '.join(core.redact(task['sections'][section]).split()[:limit]) + '\n'
+            body += '\n## ' + section + '\n' + orchestration.brief_section(root, task['sections'][section], limit) + '\n'
         body += '\n## Allowed paths\n' + '\n'.join(scope) + '\n\nReport changed paths, checks actually run and blockers. Lead reviews before acceptance.\n'
         if len(body.split()) > 400: raise core.WsError('Worker brief exceeds 400 words; shorten the scope.')
         core.atomic_write(directory / 'brief.md', body)
