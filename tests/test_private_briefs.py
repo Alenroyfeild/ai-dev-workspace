@@ -24,10 +24,11 @@ class PrivateBriefTests(Base):
         self.task = core.task_path(self.root, 'P-1')
         self.task.write_text(self.task.read_text().replace(
             'Replace me', f'Inspect {self.home}/notes and {Path.home().as_posix()}/memo\n'
-            f'<private>{self.private}\nsecond private line</private>\nKeep this.'))
+            f'<private>{self.private}\nsecond private line\n## Evidence\nprivate across heading</private>\nKeep this.'))
 
     def assert_filtered(self, brief):
-        for value in (self.private, 'second private line', self.home, Path.home().as_posix(), '<private>'):
+        for value in (self.private, 'second private line', 'private across heading',
+                      self.home, Path.home().as_posix(), '<private>'):
             self.assertNotIn(value, brief)
         self.assertIn('Inspect ~/notes', brief)
         self.assertIn('~/memo', brief)
