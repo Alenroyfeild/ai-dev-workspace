@@ -40,7 +40,7 @@ Live-checked on beta.7 (2026-11-05). See the [plugin preview](docs/ADVANCED.md#c
 
 ## Use cases
 
-- **Switch Claude Code ↔ Codex mid-task:** Start in Claude Code, save a checkpoint, and continue in Codex with the exact same brief and task memory ([guide](docs/guides/share-memory-claude-code-codex.md)).
+- **Switch Claude Code ↔ Codex mid-task:** Start in Claude Code, save a checkpoint, and continue in Codex with a bounded brief from the saved task memory; client context can differ ([guide](docs/guides/share-memory-claude-code-codex.md)).
 - **Resume tomorrow without re-explaining:** Inject active tasks, recent decisions, and blockers directly into context at session start ([tutorial](docs/TUTORIAL.md)).
 - **Stop retrying failed approaches:** Dead ends appear under `Do not redo:` in every fresh session brief ([guide](docs/guides/stop-retrying-failed-approaches.md)).
 - **Keep verified corrections:** Record decisions or constraints with `ws remember` so fresh sessions follow earlier rulings ([commands](docs/COMMANDS.md#save-a-correction)).
@@ -63,15 +63,15 @@ You: “Yes, continue.”
 
 | Feature | Status | What it does | Docs link |
 |---|---|---|---|
-| Session brief | Stable | Injects bounded task memory, decisions, and blockers at session start | [Overview](docs/OVERVIEW.md) |
-| Decisions & handoffs | Stable | Saves status, next action, and explicit rulings (`ws checkpoint`, `ws remember`) | [Commands](docs/COMMANDS.md) |
-| Dead ends | Stable | Records failed approaches and displays them as `Do not redo:` | [Concepts](docs/CONCEPTS.md) |
-| Lessons | Stable | Captures reusable cross-task takeaways and guidance (`ws lesson`) | [Commands](docs/COMMANDS.md) |
+| Session brief | Stable | Injects bounded task memory at session start; transcript captures are unverified | [Overview](docs/OVERVIEW.md) |
+| Decisions & handoffs | Stable | Saves status, next action, and explicit rulings (`ws checkpoint`, `ws remember`); automatic capture is best-effort | [Commands](docs/COMMANDS.md) |
+| Dead ends | Stable | Records failed approaches and displays a bounded `Do not redo:` in the brief | [Concepts](docs/CONCEPTS.md) |
+| Lessons | Stable | Records cross-task guidance with `ws lesson`; tools should save only when the user asks or approves | [Commands](docs/COMMANDS.md) |
 | `ws lesson review` | Stable | Read-only list of lessons with old date stamps (`--days N`); changes or deletes nothing | [Commands](docs/COMMANDS.md#search-and-lessons) |
 | MCP server | Stable | Exposes 7 core tools by default; others by name on request via stdio | [MCP](docs/MCP.md) |
 | Guards pack | Stable | PreToolUse hook denies risky commands and secrets before execution; beta.7 reads git push option grammar (abbreviations, `--prune`, `--mirror`); a safety net, not a security boundary | [Packs](docs/PACKS.md) |
 | Discipline pack | Stable | Advisory nudge when the same command fails repeatedly in a session | [Packs](docs/PACKS.md) |
-| `ws digest` | Stable | Compresses verbose terminal output into focused markdown notes | [Commands](docs/COMMANDS.md#search-and-lessons) |
+| `ws digest` | Stable | Summarizes logs or JSON; focus scans the first 4096 characters per line | [Commands](docs/COMMANDS.md#search-and-lessons) |
 | Native imports | Stable | Reads existing Claude and Codex memory files (`ws import native`) | [Commands](docs/COMMANDS.md#import-existing-memory) |
 | `ws import claude-mem` | Preview | Fixture-tested SQLite copy import; newer upstream schemas may not import | [Advanced](docs/ADVANCED.md#import-a-claude-mem-copy) |
 | `ws audit` | Stable | Read-only stack/wiring suggestions from bounded local manifests; no login or live-client proof | [Commands](docs/COMMANDS.md#daily-use) |
@@ -150,7 +150,8 @@ Testers on Cursor, Copilot (VS Code), Gemini CLI, or Antigravity: please share p
 ## Privacy & safety
 
 - **Private by default:** Memory is stored outside checkout paths in `~/.ai-dev-workspace/<repo-name>`. Team sharing requires an explicit private repo (`ws team init`) with manual confirmation.
-- **Redaction is best-effort:** `ws` masks known API keys, tokens, and private spans (`<private>...</private>`), but regex redaction is best-effort and does not replace operational secret hygiene.
+- **Redaction is best-effort:** `ws` masks known API keys, tokens, and private spans (`<private>...</private>`), but does not reliably catch names or amounts. Review previews before sharing; regex redaction does not replace secret hygiene.
+- **Network checks:** Session-start notices can check GitHub releases and linked issues about once a day; set `WS_OFFLINE=1` to disable these checks.
 - **Guards are a safety net:** The `guards` PreToolUse hook blocks known risky shell patterns and secrets in commands or written files, but it is a safety net, not an unbypassable security boundary.
 
 ## Coming next

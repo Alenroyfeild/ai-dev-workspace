@@ -22,6 +22,21 @@ def code_block(path, heading):
 
 @unittest.skipIf(os.name == 'nt', 'The documented quick-start shell blocks use POSIX syntax.')
 class DocsSmokeTests(unittest.TestCase):
+    def test_readme_places_limits_next_to_memory_and_privacy_claims(self):
+        text = (KIT / 'README.md').read_text(encoding='utf-8')
+        lines = text.splitlines()
+        line = lambda marker: next(value for value in lines if marker in value)
+        self.assertIn('bounded', line('**Switch Claude Code ↔ Codex'))
+        self.assertIn('unverified', line('| Session brief |'))
+        self.assertIn('explicit', line('| Decisions & handoffs |'))
+        self.assertIn('bounded', line('| Dead ends |'))
+        self.assertIn('user asks or approves', line('| Lessons |'))
+        self.assertIn('4096', line('| `ws digest` |'))
+        privacy = text.split('## Privacy & safety', 1)[1].split('## ', 1)[0]
+        self.assertIn('names or amounts', privacy)
+        self.assertIn('WS_OFFLINE=1', privacy)
+        self.assertIn('once a day', privacy)
+
     def test_pack_docs_explain_private_pack_removal(self):
         docs = (KIT / 'docs/COMMANDS.md').read_text(encoding='utf-8')
         self.assertIn('`ws pack remove <name>`', docs)
