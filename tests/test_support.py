@@ -53,6 +53,13 @@ class ReleaseMentionTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(len(seen), 1)
 
+    def test_full_boundary_page_cannot_prove_unseen_publication_order(self):
+        first = [release(25, f'v1.2.{index}', '#37') for index in range(29)]
+        first.append(release(3, 'v1.1.0'))
+        result, seen = self.scan(iter([first]))
+        self.assertIsNone(result)
+        self.assertEqual(len(seen), 1)
+
     def test_accepts_issue_url_in_same_repo(self):
         result, _ = self.scan(iter([[release(20, 'v1.2.0', 'https://github.com/EXAMPLE/PROJECT/issues/37')]]))
         self.assertEqual(result['version'], '1.2.0')

@@ -60,8 +60,11 @@ def release_mention(repository, number, closed_at, fetch):
                         'version': tag.removeprefix('v'),
                         'url': f'https://github.com/{repository}/releases/tag/{tag}',
                     }
-            if boundary or len(releases) < _RELEASE_PAGE_SIZE:
+            if len(releases) < _RELEASE_PAGE_SIZE:
                 return earliest
+            if boundary:
+                # GitHub does not promise publication order for unobserved pages.
+                return None
     except (OSError, ValueError, RecursionError):
         return None
     return None
