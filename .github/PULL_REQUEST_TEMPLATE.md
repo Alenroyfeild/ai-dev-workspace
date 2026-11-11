@@ -5,6 +5,8 @@
 ## Checklist
 
 - [ ] Focused tests for this change pass locally (name the command); full CI is green
+- [ ] Reviewed the final diff and checked for unrelated changes
+- [ ] Exercised the changed flow, or explained why a real-flow check was not applicable or possible
 - [ ] Standard library only in `ws/` and `mcp/`
 - [ ] CHANGELOG line added for user-visible changes
 - [ ] No private details (paths, company or customer names, secrets)
