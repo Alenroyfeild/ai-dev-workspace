@@ -116,7 +116,7 @@ TOOLS = {
                      lambda r, a: recall.search(r, a.get('query', ''), a.get('category', ''), a.get('detail', ''))),
     'search_lessons': ('Find matching lessons; check before risky work.',
                        S(query=string('', True)), lambda r, a: core.lesson_search(r, a.get('query', ''))),
-    'add_lesson': ('Record a lesson with optional repo globs/area.',
+    'add_lesson': ('Save a lesson only when the user asks or approves; optional repo globs/area.',
                    S(text=string(''), paths={'type': 'array', 'items': {'type': 'string'}, 'optional': True}, area=string('', True)),
                    lambda r, a: core.lesson_add(r, a['text'], paths=a.get('paths', []), area=a.get('area', ''))),
     'add_feedback': ('Record idea, bug, friction or praise.',

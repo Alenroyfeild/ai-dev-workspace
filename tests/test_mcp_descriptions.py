@@ -18,6 +18,10 @@ class McpDescriptionTests(Base):
         cfg = core.config(self.root); cfg['mcp_tools'] = 'all'
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
 
+    def test_lesson_tool_description_requires_user_request_or_approval(self):
+        description = server.TOOLS['add_lesson'][0].lower()
+        self.assertIn('only when the user asks or approves', description)
+
     def test_cost_counts_full_tool_descriptors(self):
         result = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})['result']['tools']
         expected = sum(len(json.dumps({key: item[key] for key in ('name', 'description', 'inputSchema')},
