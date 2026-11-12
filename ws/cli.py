@@ -945,7 +945,9 @@ def main(argv=None):
             if a.action == 'add': out(core.feedback_add(root, a.text, a.kind, a.source))
             elif a.action == 'submit': out(core.feedback_submit(root, a.n, a.yes))
             elif a.action == 'link': out(core.feedback_link(root, a.n, a.url))
-            elif a.action == 'sync': out(core.feedback_sync(root))
+            elif a.action == 'sync':
+                from . import support
+                out(support.sync_feedback(root))
             else: out([f"{i['n']}. {'[x]' if i['done'] else '[ ]'} {i['kind']}: {i['text']}" + (f" ({i['issue']})" if i['issue'] else '')
                        for i in core.feedback_items(root) if a.all or not i['done']] or 'No open feedback.')
         elif a.cmd == 'digest':

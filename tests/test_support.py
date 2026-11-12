@@ -208,6 +208,24 @@ class FeedbackReleaseSyncTests(unittest.TestCase):
         self.assertEqual(reopened['state'], 'open')
         self.assertNotIn('release', reopened)
 
+    def test_cli_sync_prints_release_evidence_and_update_check(self):
+        def response(url):
+            if '/releases?' in url:
+                return [release(12, 'v9.1.0', 'Release notes for #37')]
+            if '/timeline?' in url:
+                return []
+            return {'state': 'closed', 'closed_at': CLOSED}
+
+        with patch.object(core, '_get_json', side_effect=response), patch.dict(os.environ, {'WS_REPO': REPO}):
+            with redirect_stdout(StringIO()) as output:
+                code = cli.main(['--workspace-root', str(self.root), 'feedback', 'sync'])
+        self.assertEqual(code, 0)
+        report = json.loads(output.getvalue())
+        self.assertEqual(report['closed'], [self.url])
+        notice = report['notices'][0]
+        self.assertIn('Release 9.1.0 notes mention it', notice['message'])
+        self.assertEqual(notice['suggest'], 'ws update --check')
+
     def test_expired_release_cache_reports_unknown_when_refresh_fails(self):
         start = support.time.time_ns()
 
@@ -264,10 +282,11 @@ class ReleaseNoticeTests(unittest.TestCase):
     def test_notice_uses_release_evidence_and_installation_specific_commands(self):
         url = f'https://github.com/{REPO}/issues/37'
         evidence = {'version': '9.1.0', 'url': f'https://github.com/{REPO}/releases/tag/v9.1.0'}
-        with patch.object(core, 'PACKAGED', False):
-            checkout = support.feedback_notice(url, evidence)
-        with patch.object(core, 'PACKAGED', True):
-            packaged = support.feedback_notice(url, evidence)
+        with patch.dict(os.environ, {'WS_REPO': REPO}):
+            with patch.object(core, 'PACKAGED', False):
+                checkout = support.feedback_notice(url, evidence)
+            with patch.object(core, 'PACKAGED', True):
+                packaged = support.feedback_notice(url, evidence)
         self.assertIn('Release 9.1.0 notes mention it', checkout['message'])
         self.assertIn(evidence['url'], checkout['message'])
         self.assertIn('ws update', checkout['message'])
@@ -280,6 +299,15 @@ class ReleaseNoticeTests(unittest.TestCase):
         unknown = support.feedback_notice(url, None)
         self.assertIn('release not confirmed', unknown['message'])
         self.assertNotIn('ws upgrade', unknown['message'])
+
+    def test_third_party_issue_does_not_suggest_updating_this_kit(self):
+        url = f'https://github.com/{REPO}/issues/37'
+        evidence = {'version': '9.1.0', 'url': f'https://github.com/{REPO}/releases/tag/v9.1.0'}
+        with patch.dict(os.environ, {'WS_REPO': 'different/kit'}):
+            notice = support.feedback_notice(url, evidence)
+        self.assertIn('Release 9.1.0 notes mention it', notice['message'])
+        self.assertNotIn('ws update', notice['message'])
+        self.assertEqual(notice['suggest'], url)
 
 
 class AttachmentPreviewTests(unittest.TestCase):

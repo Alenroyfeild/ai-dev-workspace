@@ -303,13 +303,15 @@ def sync_feedback(root, fetch=None):
     """Refresh linked issues and save closure evidence with the workspace lock."""
     from . import core
 
-    empty = {'closed': [], 'reopened': [], 'closures': {}, 'release_mentions': [], 'unknown': []}
+    empty = {'closed': [], 'reopened': [], 'closures': {}, 'release_mentions': [], 'unknown': [], 'notices': []}
     if os.environ.get('WS_OFFLINE') == '1':
         return dict(core._offline('feedback sync'), **empty)
     try:
-        return _sync_feedback(root, fetch or core._get_json)
+        result = _sync_feedback(root, fetch or core._get_json)
     except (core.WsError, OSError, ValueError, RecursionError):
         return dict(empty, status='unknown')
+    result['notices'] = [feedback_notice(url, record['release']) for url, record in result['closures'].items()]
+    return result
 
 
 def _sync_feedback(root, fetch):
@@ -414,15 +416,19 @@ def feedback_notice(url, release):
     issue = _issue_match(url)
     if not issue:
         return None
+    try:
+        kit_issue = issue[1].casefold() == core._repo().casefold()
+    except core.WsError:
+        kit_issue = False
     message = f'Issue #{issue[2]} closed, release not confirmed.'
     if release:
         version = release['version']
         message = f'Issue #{issue[2]} closed. Release {version} notes mention it ({release["url"]}).'
-        if core._vtuple(version) > core._vtuple(core.kit_meta()['version']):
+        if kit_issue and core._vtuple(version) > core._vtuple(core.kit_meta()['version']):
             if core.PACKAGED:
                 message += (' For pipx, run `pipx upgrade ai-dev-workspace`. '
                             'For a venv, reinstall from the original source with its pip. '
                             'Then use `ws upgrade --yes` to apply workspace updates.')
             else:
                 message += ' Run `ws update`, then `ws upgrade --yes` to apply workspace updates.'
-    return {'kind': 'fixed', 'message': message, 'suggest': 'ws update --check'}
+    return {'kind': 'fixed', 'message': message, 'suggest': 'ws update --check' if kit_issue else url}
