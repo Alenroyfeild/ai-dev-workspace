@@ -61,8 +61,8 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - The maintainer tags and pushes: `git tag -a v<version> -m "v<version>" <main-merge-sha> && git push origin v<version>`. Do not create the GitHub Release by hand.
 
 5. **Automated GitHub Release (with fallback):**
-   - `.github/workflows/release.yml` checks that the tag matches `kit.json`, runs the tests, and publishes the GitHub Release as Latest with that CHANGELOG section plus upgrade steps. Users see the summary on their next `ws doctor` / `ws update --check`.
-   - Within 10 minutes of pushing the tag, `gh run list --workflow release.yml --limit 1` must show a run for the tag; if not, use the fallback. Then `gh release view v<version>` must show Latest, not draft.
+   - `.github/workflows/release.yml` checks that the tag matches `kit.json`, runs the tests, and creates a draft GitHub Release with that CHANGELOG section plus upgrade steps. The draft is not visible to update checks.
+   - Within 10 minutes of pushing the tag, `gh run list --workflow release.yml --limit 1` must show a run for the tag; if not, use the fallback. Then `gh release view v<version> --json isDraft` must show `true`.
    - *Fallback:* If `release.yml` does not start (e.g. GitHub Actions outage), run `bin/publish-release v<version> notes.md` with notes built by `release.yml`'s own awk and printf commands; the script is idempotent with a late workflow run.
 
 6. **PyPI publication:**
@@ -70,6 +70,7 @@ The release workflow uses two promotion steps and tags the merge commit on `main
      `git archive v<version> | tar -x -C <tmp>`, then run `python -m build --no-isolation` in the release venv (a maintainer checkout may be on another branch or contain untracked files).
    - Run `~/.venvs/release/bin/twine check dist/*`, then `~/.venvs/release/bin/twine upload dist/*` with username `__token__` and a project-scoped token typed in the terminal. Keep credentials outside the repository.
    - Compare the sha256 values in the PyPI JSON (`https://pypi.org/pypi/ai-dev-workspace/<canonical-version>/json`) with `shasum -a 256 dist/*`.
+   - Only after the PyPI hashes match, the maintainer publishes the GitHub Release: `gh release edit v<version> --draft=false --prerelease=false --latest`. Check `gh release view v<version>` shows Latest, not draft. Update checks can now point to the published version.
 
 7. **MCP registry publication:**
    - `server.json` already carries the version (step 1). Run `mcp-publisher login github`, `mcp-publisher validate`, then `mcp-publisher publish` (name `io.github.Alenroyfeild/ai-dev-workspace`).
