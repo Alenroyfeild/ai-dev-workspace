@@ -4,7 +4,7 @@ import urllib.parse
 from unittest import mock
 
 from test_ws import Base
-from ws import core
+from ws import core, feedback_privacy
 
 
 class FeedbackPrivacyTests(Base):
@@ -36,6 +36,28 @@ class FeedbackPrivacyTests(Base):
                      'FR1420041010050500013M02606', 'NL91ABNA0417164300'):
             for value in (iban, ' '.join(iban[i:i+4] for i in range(0, len(iban), 4))):
                 with self.subTest(value=value): self.hidden(value)
+
+    def test_checksum_valid_cards_and_ibans_with_group_separators(self):
+        for separator in ('.', '\t', '\u00a0', '/', '_', '-'):
+            for groups in (('4532', '0151', '1283', '0366'),
+                           ('DE89', '3704', '0044', '0532', '0130', '00')):
+                value = separator.join(groups)
+                with self.subTest(separator=separator, groups=groups):
+                    self.assertEqual(feedback_privacy.issue_text(value), '[REDACTED]')
+                    self.hidden(value)
+
+    def test_overlapping_valid_card_spans_hide_the_entire_match(self):
+        value = 'Terminal 1000 4532 0151 1283 0366 completed'
+        expected = 'Terminal [REDACTED] completed'
+        self.assertEqual(feedback_privacy.issue_text(value), expected)
+        preview = self.preview(value)
+        self.assertIn(expected, preview['title'])
+        self.assertIn(expected, preview['body'])
+
+    def test_dotted_versions_addresses_and_dates_beside_grouped_identifiers_stay(self):
+        controls = 'v1.123456789.3, IP 192.168.1.1, date 2026-11-12'
+        value = '4532.0151.1283.0366; ' + controls
+        self.assertEqual(feedback_privacy.issue_text(value), '[REDACTED]; ' + controls)
 
     def test_spaced_card_next_to_another_numeric_field(self):
         card = '4532 0151 1283 0366'

@@ -4,7 +4,9 @@ import re
 from . import core
 
 _TOKEN = re.compile(r'(?<!\w)(?:(?:lin_api_|ntn_|secret_)[A-Za-z0-9_-]{40,}|(?:ya29\.|pypi-)[A-Za-z0-9._-]{20,})')
-_CARD = re.compile(r'(?<![\w.])(?=((?:[0-9][ -]*){12,18}[0-9](?!\w)(?!\.[0-9])))')
+_GROUP_SEPARATORS = ' -.\t\u00a0/_'
+_GROUP_GAP = re.compile('[' + re.escape(_GROUP_SEPARATORS) + ']+')
+_DIGITS = re.compile(r'[0-9]+')
 _IBAN = re.compile(r'(?<!\w)[A-Za-z]{2}[0-9]{2}')
 _ACCOUNT = re.compile(r'(?<![\w.+-])[0-9]{9,18}(?!\w)(?![.-]\w)')
 _URL = re.compile(r'\b[A-Za-z][A-Za-z0-9+.-]*://[^\s<>]+')
@@ -16,23 +18,42 @@ def _luhn(value):
                for i, d in enumerate(reversed(digits))) % 10 == 0
 
 
-def _cards(text):
-    parts, cursor = [], 0
-    for match in _CARD.finditer(text):
-        if match.start() < cursor:
+def _card_spans(text):
+    groups = list(_DIGITS.finditer(text))
+    for index, first in enumerate(groups):
+        start = first.start()
+        if start and text[start - 1].isalnum():
             continue
-        value = match[1]
-        # A neighboring number can look like an extra group. Try shorter
-        # candidates at separators, and let the scan try later group starts.
-        while sum(c.isdigit() for c in value) >= 13:
-            if _luhn(value):
-                parts.extend((text[cursor:match.start()], '[REDACTED]'))
-                cursor = match.start() + len(value)
+        digits, end, candidate = '', start, None
+        # A card has at most 19 digits, so each group starts a bounded scan.
+        for group in groups[index:index + 19]:
+            if len(digits) + group.end() - group.start() > 19:
                 break
-            end = max(value.rfind(' '), value.rfind('-'))
-            if end < 0:
+            if group.start() != end and not _GROUP_GAP.fullmatch(text, end, group.start()):
                 break
-            value = value[:end].rstrip(' -')
+            digits += group[0]
+            end = group.end()
+            if len(digits) >= 13 and (end == len(text) or not text[end].isalnum()) and _luhn(digits):
+                candidate = start, end, len(digits)
+        if candidate is not None:
+            yield candidate
+
+
+def _cards(text):
+    spans = []
+    for start, end, length in _card_spans(text):
+        if spans and start < spans[-1][1]:
+            first, last, longest = spans[-1]
+            # A shorter window through the same card can include an adjacent
+            # numeric field. Equal or longer overlaps extend the redaction.
+            if length >= longest:
+                spans[-1] = (first, max(last, end), length)
+        else:
+            spans.append((start, end, length))
+    parts, cursor = [], 0
+    for start, end, _ in spans:
+        parts.extend((text[cursor:start], '[REDACTED]'))
+        cursor = end
     return ''.join(parts) + text[cursor:]
 
 
@@ -49,10 +70,10 @@ def _ibans(text):
     for match in _IBAN.finditer(text):
         if match.start() < cursor: continue
         value, end, pos = '', None, match.start()
-        # At most 34 alphanumeric characters; spaces do not count toward IBAN length.
+        # At most 34 alphanumeric characters; separators do not count toward IBAN length.
         while pos < len(text) and len(value) < 34:
             char = text[pos]
-            if char == ' ': pos += 1; continue
+            if char in _GROUP_SEPARATORS: pos += 1; continue
             if not (char.isascii() and char.isalnum()): break
             value += char.upper()
             pos += 1
