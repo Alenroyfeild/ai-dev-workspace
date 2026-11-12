@@ -35,7 +35,9 @@ class PublishedDocsTests(unittest.TestCase):
                 self.assertIn('unavailable', line)
 
     def test_readme_plugins_keep_preview_and_their_distinct_limits(self):
-        text = (ROOT / 'README.md').read_text()
+        # Claude Code plugin stays in the README; Codex and Cursor plugins are Experimental (docs/EXPERIMENTAL.md).
+        readme = (ROOT / 'README.md').read_text()
+        text = readme + '\n' + (ROOT / 'docs/EXPERIMENTAL.md').read_text()
         expected = {'Claude Code plugin': ('ws start', 'directory', 'Windows'),
                     'Codex plugin': ('trusted', 'desktop', 'no MCP'),
                     'Cursor plugin': ('fixture-tested', 'not submitted')}
@@ -45,7 +47,7 @@ class PublishedDocsTests(unittest.TestCase):
                 self.assertIn('| Preview |', row)
                 for limit in limits:
                     self.assertIn(limit.casefold(), row.casefold())
-        coming = text.split('## Coming next', 1)[1].split('\n## ', 1)[0]
+        coming = readme.split('## Coming next', 1)[1].split('\n## ', 1)[0]
         self.assertIn('PLG3', coming)
         self.assertIn('PLG5', coming)
         for released in ('Gateway provider', 'Behavior pack', 'Digest MCP', 'Skills packaging'):
@@ -71,7 +73,8 @@ class PublishedDocsTests(unittest.TestCase):
                 self.assertNotIn('/blob/dev/docs/guides/', text)
 
     def test_release_labels_follow_the_candidate_changelog(self):
-        text = (ROOT / 'README.md').read_text()
+        # Each row may sit in the README (1.0 promise) or docs/EXPERIMENTAL.md, with the same label.
+        text = (ROOT / 'README.md').read_text() + '\n' + (ROOT / 'docs/EXPERIMENTAL.md').read_text()
         for name, label in (('Lesson promotion', 'Stable'), ('Skills packaging', 'Stable'),
                             ('`digest_file` MCP tool', 'Preview')):
             with self.subTest(feature=name):
