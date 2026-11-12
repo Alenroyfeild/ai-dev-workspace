@@ -54,6 +54,7 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - Open a PR from `dev` to `main`.
    - The diff against `main` should reflect only the tested release commits.
    - Run TAG-CHECK verification: confirm byte-equal wheel members against candidate and verify `bin/release-smoke` passes.
+   - On the exact promotion PR head, run `WS_RELEASE_CHECK=1 python3 -m unittest discover -s tests -p test_release_sync.py`. Require it to pass before the tag, and rerun it if the head changes.
    - Maintainer reviews and merges `dev` → `main`.
 
 4. **Tag on the `main` merge commit:**
@@ -83,10 +84,12 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - The video release check is included. Run this step again after step 9 if videos were not ready yet.
 
 9. **Videos after PyPI:**
+   - Owner: maintainer. Complete this post-tag follow-up within 3 days of the tag.
    - Record and upload a short per `### New` feature (scripts in `docs/video/`, written in the RC PR), add the edition to `docs/video/videos.json`, then run `bin/make-video --links`.
    - `bin/make-video --release-check <canonical-version>` must exit 0.
 
 10. **Plugin live check:**
+   - Owner: maintainer. Complete this post-tag follow-up within 3 days of the tag.
    - Live-install the Claude Code plugin from the marketplace on the released version, then update the `Live-checked on beta.N (date)` labels (README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md`). If this was not done, leave the labels as they are.
 
 11. **If PyPI failed or was delayed:** revert the published-version lines moved in step 2 (README, `llms.txt`, `llms-full.txt`, `docs/DISCOVERY.md`, `PUBLISHED_VERSION`) until the upload succeeds.
