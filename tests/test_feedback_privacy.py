@@ -24,11 +24,13 @@ class FeedbackPrivacyTests(Base):
         self.assertIn('[REDACTED]', result['body'])
 
     def test_luhn_cards_raw_spaced_and_dashed(self):
-        cards = ('4532015112830366', '5425233430109903', '378282246310005', '6011000990139424',
-                 '4222222222222', '4000000000000000006')
-        for card in cards:
+        cards = (('4532', '0151', '1283', '0366'), ('5425', '2334', '3010', '9903'),
+                 ('3782', '822463', '10005'), ('6011', '0009', '9013', '9424'),
+                 ('4000', '0000', '0000', '0000', '006'))
+        self.hidden('4222222222222')
+        for groups in cards:
             for separator in ('', ' ', '-', '  ', ' - '):
-                value = separator.join(card[i:i+4] for i in range(0, len(card), 4))
+                value = separator.join(groups)
                 with self.subTest(value=value): self.hidden(value)
 
     def test_valid_ibans_raw_and_spaced(self):
@@ -45,6 +47,32 @@ class FeedbackPrivacyTests(Base):
                 with self.subTest(separator=separator, groups=groups):
                     self.assertEqual(feedback_privacy.issue_text(value), '[REDACTED]')
                     self.hidden(value)
+
+    def test_numeric_lists_versions_and_measurements_are_preserved(self):
+        addresses = ('65.252.14.71', '6.43.141.99', '22.99.55.184', '143.198.191.78')
+        for value in (
+            '2026/11/12 2026/11/13 2026/11/14',
+            '192.168.100.200 10.0.0.1 172.16.254.1',
+            ' '.join(addresses),
+            '\t'.join(addresses),
+            '8.61.6220.808.3440.97',
+            '2026-11-12 2026-11-13 2026-11-14',
+            'ran 12 tests 345 ms 6789 bytes 1011 lines',
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(feedback_privacy.issue_text(value), value)
+                self.assertIn(' '.join(value.split()), self.preview(value)['body'])
+
+    def test_checksum_valid_card_requires_approved_shape_and_consistent_separator(self):
+        for value in ('4532.0151/1283.0366', '4532 0151 1283  0366',
+                      '453 2015 1128 30366', '3782 8224 6310 005', '4222 2222 2222 2'):
+            with self.subTest(value=value):
+                self.assertEqual(feedback_privacy.issue_text(value), value)
+
+    def test_grouped_fourteen_digit_card(self):
+        for separator in ('.', '\t', '\u00a0', '/', '_', ' ', '-'):
+            with self.subTest(separator=separator):
+                self.hidden(separator.join(('3056', '930902', '5904')))
 
     def test_overlapping_valid_card_spans_hide_the_entire_match(self):
         value = 'Terminal 1000 4532 0151 1283 0366 completed'

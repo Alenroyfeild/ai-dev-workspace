@@ -7,6 +7,7 @@ _TOKEN = re.compile(r'(?<!\w)(?:(?:lin_api_|ntn_|secret_)[A-Za-z0-9_-]{40,}|(?:y
 _GROUP_SEPARATORS = ' -.\t\u00a0/_'
 _GROUP_GAP = re.compile('[' + re.escape(_GROUP_SEPARATORS) + ']+')
 _DIGITS = re.compile(r'[0-9]+')
+_CARD_SHAPES = {(4, 4, 4, 4), (4, 4, 4, 4, 3), (4, 6, 5), (4, 6, 4)}
 _IBAN = re.compile(r'(?<!\w)[A-Za-z]{2}[0-9]{2}')
 _ACCOUNT = re.compile(r'(?<![\w.+-])[0-9]{9,18}(?!\w)(?![.-]\w)')
 _URL = re.compile(r'\b[A-Za-z][A-Za-z0-9+.-]*://[^\s<>]+')
@@ -24,16 +25,26 @@ def _card_spans(text):
         start = first.start()
         if start and text[start - 1].isalnum():
             continue
-        digits, end, candidate = '', start, None
-        # A card has at most 19 digits, so each group starts a bounded scan.
-        for group in groups[index:index + 19]:
-            if len(digits) + group.end() - group.start() > 19:
+        digits, end = first[0], first.end()
+        if 13 <= len(digits) <= 19 and (end == len(text) or not text[end].isalnum()) and _luhn(digits):
+            yield start, end, len(digits)
+        if len(digits) != 4:
+            continue
+        lengths, separator, candidate = (4,), None, None
+        for group in groups[index + 1:index + 5]:
+            if group.start() == end or not _GROUP_GAP.fullmatch(text, end, group.start()):
                 break
-            if group.start() != end and not _GROUP_GAP.fullmatch(text, end, group.start()):
+            gap = text[end:group.start()]
+            if separator is not None and gap != separator:
                 break
+            separator = gap
+            group_length = group.end() - group.start()
+            if group_length > 6:
+                break
+            lengths += (group_length,)
             digits += group[0]
             end = group.end()
-            if len(digits) >= 13 and (end == len(text) or not text[end].isalnum()) and _luhn(digits):
+            if lengths in _CARD_SHAPES and (end == len(text) or not text[end].isalnum()) and _luhn(digits):
                 candidate = start, end, len(digits)
         if candidate is not None:
             yield candidate
