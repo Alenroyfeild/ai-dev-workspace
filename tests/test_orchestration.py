@@ -228,7 +228,8 @@ class OrchestrationTests(Base):
         self.assertEqual([(a['provider'], a['status']) for a in result['provider_attempts']], [('cursor', 'skipped'), ('claude', 'ok')])
 
     def test_timeout_is_a_failed_attempt_and_falls_back(self):
-        self.set_routing(timeout_seconds=1)
+        # The sleeping fake still times out; the margin keeps the first exec of the fresh fallback script (seconds when cold) inside the limit.
+        self.set_routing(timeout_seconds=5)
         directory = self.root / 'timeout-bin'; directory.mkdir(exist_ok=True)
         self.executable(directory, 'codex', 'import time; time.sleep(30)')
         self.executable(directory, 'claude', 'import json; print(json.dumps({"result":"fallback result","usage":{"input_tokens":1,"output_tokens":1}}))')
