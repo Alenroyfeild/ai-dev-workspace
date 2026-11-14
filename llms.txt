@@ -13,12 +13,23 @@
 
 ## Preview
 
-- Private team sharing needs preview/review before sharing; no hosted team check yet.
 - The Claude Code plugin is live-checked on beta.7 but not yet listed in
   Anthropic's official plugin directory. Install from our GitHub marketplace;
   the CLI and `ws start` in the target repo are still required.
 
+## Experimental — outside the 1.0 promise
+
+Experimental means: ships, but outside the 1.0 promise; the test level shown is today's. Full list with limits: [Experimental features](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/EXPERIMENTAL.md).
+
+- Delegation, workers, routing and orchestration; worker fallback chain (Preview) and gateway provider (Preview, local fake-server tests only).
+- `ws audit` (Stable), `ws import claude-mem` (Preview), `ws digest` and the advisory behavior pack (Stable), `digest_file` (Preview), lesson promotion (Stable), Discipline pack (Stable), MCP Registry entry (Preview).
+- Private team sharing (Preview): no hosted team check yet.
+- Codex plugin and Cursor plugin (Preview), MCP plugin roots discovery (Preview), Codex SessionStart catch-up (Preview).
+- Cursor, Copilot (VS Code), Gemini CLI and Antigravity: fixture-tested only.
+
 ## Released in beta.7
+
+Labels in the release sections below are as published in that release; the current split between the 1.0 promise and Experimental is in the sections above.
 
 - Stable: `ws lesson review [--days N]` lists old lesson date stamps for manual
   review; it is read-only and never changes or deletes saved lessons.

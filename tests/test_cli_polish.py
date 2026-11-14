@@ -41,25 +41,36 @@ class CliPolishTests(unittest.TestCase):
 
     def test_readme_is_short_and_points_to_extended_docs(self):
         readme = (ROOT / 'README.md').read_text()
-        self.assertLessEqual(len(readme.splitlines()), 180)
-        first_12 = '\n'.join(readme.splitlines()[:12])
-        self.assertIn('Your assistant remembers work between sessions in Markdown you own.', first_12)
+        experimental = (ROOT / 'docs/EXPERIMENTAL.md').read_text()
+        lines = readme.splitlines()
+        self.assertLessEqual(len(lines), 180)
+        first_12 = '\n'.join(lines[:12])
+        self.assertIn('**Handoffs you can verify.** When an assistant stops, the next one (any vendor, any day) starts from a handoff '
+                      'with what was done, what was decided, the evidence you recorded and what not to retry. '
+                      'No background AI; plain Markdown you own.', first_12)
         self.assertIn('## Quick start', first_12)
         self.assertIn('<!-- Demo GIF -->', readme)
-        sections = ('## Quick start', '## Use cases', '## Example', '## Features', '## How it works',
-                    '## Results', '## Compared with', '## Compatibility', '## Privacy & safety',
-                    '## Documentation', '## Status & contributing')
+        sections = ('## Quick start', '## The 5 commands', '## Results', '## Compatibility', '## Example', '## Features',
+                    '## How it works', '## Compared with', '## Privacy & safety', '## Documentation',
+                    '## Status & contributing')
         self.assertEqual(sorted(readme.index(section) for section in sections),
                          [readme.index(section) for section in sections])
+        self.assertLessEqual(readme.index('## Results'), len('\n'.join(lines[:45])))  # the first screen ends at Results
         self.assertIn('docs/OVERVIEW.md', readme)
         self.assertIn('cd ~/code/myapp && ws start', readme)
+        compatibility = readme.split('## Compatibility', 1)[1].split('\n## ', 1)[0]
         for status in ('Claude Code | supported, tested live on macOS | CI-tested',
-                       'Codex | supported, tested live on macOS | CI-tested',
-                       'Cursor | supported, fixture-tested; live reports welcome | CI-tested',
+                       'Codex | supported, tested live on macOS | CI-tested'):
+            self.assertIn(status, compatibility)
+        for other in ('Cursor', 'Copilot (VS Code)', 'Gemini CLI', 'Antigravity'):
+            self.assertNotIn('| ' + other + ' |', compatibility)  # no table row: not live-tested
+        self.assertIn('docs/EXPERIMENTAL.md', compatibility)
+        for status in ('Cursor | supported, fixture-tested; live reports welcome | CI-tested',
                        'Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested',
                        'Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested',
                        'Antigravity | Preview, fixture-tested; rules, MCP, SessionStart/PreToolUse hooks; no automatic capture | CI-tested'):
-            self.assertIn(status, readme)
+            self.assertIn(status, experimental)
+        self.assertIn('docs/EXPERIMENTAL.md', readme.split('## Features', 1)[1].split('\n## ', 1)[0])
         self.assertIn('[Something broke]', readme)
         self.assertIn('https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml', readme)
         self.assertNotIn('## FAQ', readme)
