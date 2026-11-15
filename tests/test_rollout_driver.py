@@ -68,6 +68,104 @@ class RolloutDriverTests(unittest.TestCase):
             self.assertIn('use cobalt', result['prepared_memory']['handoff'])
             self.assertNotIn('Completion note', result['prepared_memory']['handoff'])
 
+    def test_fourth_arm_uses_same_seeds_and_persists_all_40_trials(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
+                                      verbatim_kit=Path(d) / 'candidate')
+            seen = []
+            def normal(root, expected, arm, auth):
+                seen.append((arm, expected))
+                return {'arm': arm, 'result': 'pass', 'calls': [{'completed': True}]}
+            def candidate(kit, root, expected, auth, benchmark):
+                seen.append(('verbatim', expected))
+                return {'arm': 'verbatim', 'result': 'pass', 'calls': [{'completed': True}]}
+            benchmark = SimpleNamespace(seed=lambda n: n, trial=normal,
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench',
+                                    command=lambda command, path: SimpleNamespace(stdout='' if command[-1] == '--porcelain' else 'fixture')))
+            with mock.patch.object(rollout_run, 'candidate_trial', side_effect=candidate), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                completed = rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            self.assertTrue(completed)
+            result = json.loads(args.output.read_text())
+            self.assertEqual(len(result['runs']), 40)
+            for index in range(10):
+                self.assertEqual(seen[index * 4:index * 4 + 4],
+                                 [(arm, 42 + index) for arm in ('baseline', 'workspace', 'markdown', 'verbatim')])
+                self.assertEqual([run['seed_index'] for run in result['runs'][index * 4:index * 4 + 4]], [index] * 4)
+
+    def test_fourth_arm_refuses_dirty_candidate_before_running_models(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
+                                      verbatim_kit=Path(d) / 'candidate')
+            benchmark = SimpleNamespace(seed=lambda n: n, trial=mock.Mock(),
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench',
+                    command=lambda command, path: SimpleNamespace(stdout=' M ws/core.py' if command[-1] == '--porcelain' else 'fixture')))
+            with self.assertRaisesRegex(RuntimeError, 'candidate checkout must be clean'):
+                rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            benchmark.trial.assert_not_called()
+
+    def test_changed_candidate_invalidates_the_trial_and_keeps_prior_results(self):
+        with tempfile.TemporaryDirectory() as d:
+            candidate = Path(d) / 'candidate'
+            args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
+                                      verbatim_kit=candidate)
+            status_checks = 0
+            def command(argv, path):
+                nonlocal status_checks
+                if path == candidate and argv[-1] == '--porcelain':
+                    status_checks += 1
+                    return SimpleNamespace(stdout=' M ws/core.py' if status_checks >= 3 else '')
+                return SimpleNamespace(stdout='fixture' if argv[-1] == 'HEAD' else '')
+            benchmark = SimpleNamespace(seed=lambda n: n,
+                trial=lambda root, expected, arm, auth: {'arm': arm, 'result': 'pass', 'calls': [{'completed': True}]},
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench', command=command))
+            with mock.patch.object(rollout_run, 'candidate_trial', return_value={'arm': 'verbatim', 'result': 'pass', 'calls': [{'completed': True, 'input_tokens': 10}]}), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                completed = rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            self.assertFalse(completed)
+            result = json.loads(args.output.read_text())
+            self.assertEqual([run['result'] for run in result['runs']], ['pass', 'pass', 'pass', 'inconclusive'])
+            self.assertEqual(result['runs'][-1]['seed_index'], 0)
+            self.assertEqual(result['runs'][-1]['calls'][0]['input_tokens'], 10)
+
+    def test_candidate_failure_saves_the_failed_attempt_and_stops(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
+                                      verbatim_kit=Path(d) / 'candidate')
+            benchmark = SimpleNamespace(seed=lambda n: n,
+                trial=lambda root, expected, arm, auth: {'arm': arm, 'result': 'pass', 'calls': [{'completed': True}]},
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench',
+                                    command=lambda command, path: SimpleNamespace(stdout='' if command[-1] == '--porcelain' else 'fixture')))
+            with mock.patch.object(rollout_run, 'candidate_trial', side_effect=RuntimeError('fixture failure')), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                completed = rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            self.assertFalse(completed)
+            result = json.loads(args.output.read_text())
+            self.assertEqual(result['seed'], 42)
+            self.assertEqual(len(result['runs']), 4)
+            self.assertEqual(result['runs'][-1]['arm'], 'verbatim')
+            self.assertEqual(result['runs'][-1]['result'], 'inconclusive')
+            self.assertIn('candidate arm', result['stopped'])
+
+    def test_candidate_trial_imports_candidate_ws_and_existing_benchmark_fixture(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            kit, harness = base / 'candidate', base / 'harness'
+            (kit / 'ws').mkdir(parents=True)
+            (kit / 'ws/__init__.py').write_text('')
+            (kit / 'ws/core.py').write_text('MARKER = "candidate"\n')
+            (harness / 'bench').mkdir(parents=True)
+            (harness / 'bench/run.py').write_text('KIT = None\n')
+            (harness / 'bench/rollout.py').write_text(
+                'from bench import run\nfrom ws import core\n'
+                'def trial(root, expected, arm, auth):\n'
+                '    return {"arm": arm, "marker": core.MARKER, "kit": str(run.KIT), "expected": expected}\n')
+            benchmark = SimpleNamespace(run=SimpleNamespace(HERE=harness / 'bench'))
+            result = rollout_run.candidate_trial(kit, base / 'trial', {'fixture': 42},
+                                                  base / 'absent-auth', benchmark)
+            self.assertEqual(result, {'arm': 'verbatim', 'marker': 'candidate',
+                                      'kit': str(kit.resolve()), 'expected': {'fixture': 42}})
+
     def test_interruption_keeps_completed_runs_without_seed_hints(self):
         with tempfile.TemporaryDirectory() as d:
             args = argparse.Namespace(n=5, seed=42, output=Path(d) / 'result.json')

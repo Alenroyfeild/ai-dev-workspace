@@ -18,6 +18,16 @@ An earlier [partial budget cohort](results/2026-10-10-R9-B1-budget-rollout-codex
 
 Early proofs record their base plus patch fingerprint, now materialized as `c0d7d49`; the fresh cohort records that clean source commit directly. Codeburn did not price Luna: USD is unpriced, not zero. Runs use disposable homes/workspaces, with no Claude sessions. These cooperative fixtures do not confine filesystem reads; the historical contamination concern below remains a limitation.
 
+## Four-arm handoff comparison
+
+After the verbatim-handoff candidate is available in a local checkout, run the same rollout fixture for all four arms:
+
+```sh
+python3 -m bench.rollout_run --verbatim-kit <candidate-checkout> -n 10 --output bench/results/<run-name>.json
+```
+
+The first three arms use this checkout. The fourth runs the existing workspace trial with the candidate's ws code in a separate Python process. Each group uses the same generated fixture seed. The candidate checkout must be clean and stay on the same commit throughout the run. The result records both checkout commits and whether either checkout was dirty. The raw JSON retains each scheduled attempt. If a candidate process fails mid-trial, partial token usage may be unavailable. A complete scorecard requires all 40 trials. Model calls start only when this command is run.
+
 ## Corrected rollout: independent paired investigations
 
 Historical post-#77 [2026-10-10 R9-B1 n=5 run](results/2026-10-10-R9-B1-rollout-codex.json), unmodified dev `cbe3f68`, Codex CLI 0.155.1, `gpt-6-luna`/high:
