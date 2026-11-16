@@ -24,7 +24,7 @@ def git(repo, *args, env_extra=None, binary=False, stdin=None):
 
 def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
     root = Path(root).resolve()
-    task = core.task_read(root, task_id, ['Objective', 'Next action', 'Blockers', 'Evidence'])
+    task = orchestration.brief_task(root, task_id)
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if task.get('conflicted') or meta.get('status') == 'done' or not token or meta.get('claimed_by') != worker or meta.get('claim_token') != token:
         raise core.WsError('Worker preparation needs a current local task claim; claim the task first.')
@@ -72,8 +72,8 @@ def prepare(root, task_id, scope, base='HEAD', apply=False, confirm=None):
         git(directory / 'source.git', 'fetch', '--depth=1', '--no-tags', '--', str(source), commit)
         git(directory / 'source.git', 'worktree', 'add', '--detach', str(directory / 'checkout'), commit)
         body = '# Implementation task (UNVERIFIED)\nEdit only allowed paths. Do not commit, push, merge or change task memory.\n'
-        for section, limit in zip(('Objective', 'Next action', 'Blockers', 'Evidence'), (80, 60, 30, 100)):
-            body += '\n## ' + section + '\n' + ' '.join(core.redact(task['sections'][section]).split()[:limit]) + '\n'
+        for (section, text), limit in zip(task['sections'].items(), (80, 60, 30, 100)):
+            body += '\n## ' + section + '\n' + ' '.join(text.split()[:limit]) + '\n'
         body += '\n## Allowed paths\n' + '\n'.join(scope) + '\n\nReport changed paths, checks actually run and blockers. Lead reviews before acceptance.\n'
         if len(body.split()) > 400: raise core.WsError('Worker brief exceeds 400 words; shorten the scope.')
         core.atomic_write(directory / 'brief.md', body)
