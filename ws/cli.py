@@ -322,6 +322,7 @@ def main(argv=None):
         s = w.add_parser(action); s.add_argument('id'); s.add_argument('--dry-run', action='store_true'); s.add_argument('--yes', action='store_true')
     sub.add_parser('validate', help='check task records, links and secrets')
     s = sub.add_parser('doctor', help='check which tools are installed'); s.add_argument('--mcp', action='store_true', help='run project MCP connection checks'); s.add_argument('--text', action='store_true', help='show a human-readable summary (default in a terminal)'); s.add_argument('--json', action='store_true', help='print JSON even in a terminal')
+    s.add_argument('--support', action='store_true', help='preview a local counts-only support card as JSON')
     s = sub.add_parser('audit', help="score this repo's AI assistant setup and list the top fixes (read-only)"); s.add_argument('repo', nargs='?'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('guard', help='guards pack: PreToolUse check that denies destructive commands, secrets and muted tests'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
     s = sub.add_parser('digest-hint', help='digest pack: advisory hint for large tool output'); s.add_argument('--hook', action='store_true'); s.add_argument('--client', default='claude')
@@ -562,6 +563,13 @@ def main(argv=None):
                 out(res); return 0
             done = core.update_kit(); out(done); return installed(done)
         if a.cmd == 'doctor':
+            if a.support:
+                from . import support
+                if a.mcp or a.text:
+                    raise core.WsError('Use ws doctor --support without --mcp or --text for a local JSON card.')
+                card, status = support.snapshot(a.workspace_root)
+                print(json.dumps(card, indent=2))
+                return status
             problem = ''
             try:
                 root = core.find_root(a.workspace_root)
@@ -937,7 +945,9 @@ def main(argv=None):
             if a.action == 'add': out(core.feedback_add(root, a.text, a.kind, a.source))
             elif a.action == 'submit': out(core.feedback_submit(root, a.n, a.yes))
             elif a.action == 'link': out(core.feedback_link(root, a.n, a.url))
-            elif a.action == 'sync': out(core.feedback_sync(root))
+            elif a.action == 'sync':
+                from . import support
+                out(support.sync_feedback(root))
             else: out([f"{i['n']}. {'[x]' if i['done'] else '[ ]'} {i['kind']}: {i['text']}" + (f" ({i['issue']})" if i['issue'] else '')
                        for i in core.feedback_items(root) if a.all or not i['done']] or 'No open feedback.')
         elif a.cmd == 'digest':
