@@ -1,0 +1,1 @@
+Fixed: Feedback issue previews and submissions filter checksum-valid cards in common groupings, checksum-valid IBANs, account-like numbers and more bare tokens. Names and amounts still require manual review.

@@ -3359,16 +3359,18 @@ def feedback_items(root):
 
 def feedback_submit(root, n, yes=False, use_gh=None):
     """Turn feedback item n into a GitHub issue. Without yes, only returns the preview."""
+    from .feedback_privacy import issue_text
     items = feedback_items(root)
     item = next((i for i in items if i['n'] == n), None)
     if not item:
         raise WsError(f'No feedback item {n}; see `ws feedback list --all`.')
     if item['issue']:
         raise WsError(f'Already submitted: {item["issue"]}')
-    title = f'[{item["kind"]}] {localize_paths(redact(item["text"]), root)[:70]}'
-    body = localize_paths(redact(f'{item["text"]}\n\n- kind: {item["kind"]}\n- recorded: {item["date"]}\n'
+    title = f'[{item["kind"]}] {localize_paths(issue_text(item["text"]), root)[:70]}'
+    body = localize_paths(issue_text(f'{item["text"]}\n\n- kind: {item["kind"]}\n- recorded: {item["date"]}\n'
                   f'- kit version: {kit_meta()["version"]}\n- packs: {", ".join(config(root).get("packs", []))}\n'), root)
-    preview = {'title': title, 'body': body, 'note': 'Check it contains nothing private, then re-run with --yes.'}
+    preview = {'title': title, 'body': body, 'note': 'Check it contains nothing private, then re-run with --yes.\n'
+               'Check for names, amounts and account details before submitting'}
     if not yes:
         return preview
     if os.environ.get('WS_OFFLINE') == '1':
