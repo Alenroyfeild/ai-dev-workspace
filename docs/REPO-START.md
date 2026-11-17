@@ -20,13 +20,11 @@ copy: setup explains this and never commits or silently shares instructions.
 files and removes only its Git exclude block. Edited local files are kept and
 reported; private memory outside the repo is retained. Nothing is committed.
 
-If this repo used the default private workspace, run the following command from
-inside the repo after undo to delete that workspace. This permanently deletes its
-saved tasks and memory.
-
-```sh
-python -c "import pathlib, shutil, subprocess; repo = pathlib.Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], encoding='utf-8').strip()).resolve(); shutil.rmtree(pathlib.Path.home() / '.ai-dev-workspace' / repo.name)"
-```
+To also delete the recorded private workspace, run `ws start --undo --delete-memory`
+from the repo and confirm the displayed path and task count. Use `--yes` to confirm
+in scripts. This permanently deletes its saved tasks and memory.
+Deletion refuses symlinks or junctions in the workspace, and stops if another
+listed repo is wired to it or cannot be inspected.
 
 Codex MCP: if global Codex config already connects this workspace, start reports
 "connected". Otherwise start creates `.codex/config.toml` only when it is absent

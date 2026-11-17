@@ -337,7 +337,8 @@ def main(argv=None):
     s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
-    s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep private memory')
+    s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep memory unless --delete-memory is also set')
+    s.add_argument('--delete-memory', action='store_true', help='with --undo, delete the recorded private workspace after confirmation')
     s.add_argument('--memory-dir', help='Claude auto-memory directory to preview for import')
     s.add_argument('--no-import', action='store_true', help='skip existing memory import')
     s = sub.add_parser('scope', help='read or change local record sharing eligibility; never publishes')
@@ -508,11 +509,13 @@ def main(argv=None):
         if a.cmd == 'start':
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
-            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import)
+            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import, delete_memory=a.delete_memory)
             except core.WsError: raise  # already says what to do; the prefix below is for unexpected file errors
             except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
             if result and result.get('undone'):
-                print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
+                message = ('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ')
+                message += ('private memory deleted at ' if result.get('memory_deleted') else 'private memory kept at ') + result['root']
+                print(message)
                 return 2 if result.get('partial') else 0
             if result:
                 print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected') + ('; Codex: ' + result.get('codex_status', 'connected')))
