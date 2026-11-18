@@ -8,7 +8,7 @@ Sections: [Daily use](#daily-use), [Tasks and checkpoints](#tasks-and-checkpoint
 
 | Command | What it does |
 |---|---|
-| `ws start [--dry-run] [--yes] [--workspace DIR] [--undo] [--memory-dir DIR] [--no-import]` | In a code repo, connect it to private memory outside the checkout (default `~/.ai-dev-workspace/<repo-name>`). Previews first; `--yes` applies without prompting. `--undo` removes unchanged repo wiring and keeps your private memory. `--memory-dir` and `--no-import` control the memory import (see Import existing memory). |
+| `ws start [--dry-run] [--yes] [--workspace DIR] [--undo] [--delete-memory] [--memory-dir DIR] [--no-import]` | In a code repo, connect it to private memory outside the checkout (default `~/.ai-dev-workspace/<repo-name>`). Previews first; `--yes` applies without prompting. `--undo` removes unchanged repo wiring and keeps your private memory. With `--undo`, `--delete-memory` previews the recorded workspace and task count, then permanently deletes it after confirmation unless another repo is still wired to it. `--memory-dir` and `--no-import` control the memory import (see Import existing memory). |
 | `ws demo` | Try remembered decisions in a throwaway workspace, from any folder, with no assistant or network: saves a sample decision, reads its brief in a fresh process, then removes the demo files. Your own workspace and assistant settings are not touched. |
 | `ws brief` | Print task memory in under 200 words: decisions, next action, blockers, matching lessons. The session-start hook runs it for you. |
 | `ws remember "<decision>" [--task ID]` | Save one decision (for example `"use Postgres, not SQLite"`) in your claimed task. The next brief lists it first. Secrets and `<private>` text are removed. |
