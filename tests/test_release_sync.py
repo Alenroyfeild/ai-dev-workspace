@@ -188,13 +188,18 @@ def verify_preview_and_coverage_labels(docs_dir, client_verification_file, versi
                         f"Stale coverage label '{m.group(0)}' in {path}: older than previous release beta.{min_allowed_beta}"
                     )
         else:
-            # A final release keeps the labels of the last beta as its previous release; older beta labels
-            # are stale, and a label naming a newer final version than this one is wrong.
+            # A final release keeps the labels of exactly the last beta as its previous release; older beta
+            # labels are stale, newer ones name a beta that does not exist, and a label naming a newer final
+            # version than this one is wrong.
             for m in re.finditer(r'(?i)Preview in beta\.(\d+)|beta\.(\d+)\s+release\s+coverage', text):
                 n = int(m.group(1) or m.group(2))
                 if n < previous_beta:
                     raise AssertionError(
                         f"Stale label '{m.group(0)}' in {path}: older than previous release beta.{previous_beta}"
+                    )
+                if n > previous_beta:
+                    raise AssertionError(
+                        f"Label '{m.group(0)}' in {path} names beta.{n}, but the last beta is beta.{previous_beta}"
                     )
             for m in re.finditer(r'(?i)(?:Preview in (\d+\.\d+\.\d+)|(\d+\.\d+\.\d+)\s+release\s+coverage)', text):
                 named = tuple(int(part) for part in (m.group(1) or m.group(2)).split('.'))
@@ -471,6 +476,23 @@ class ReleaseSyncTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             docs = Path(tmpdir)
             (docs / 'SAMPLE.md').write_text('Preview in beta.7', encoding='utf-8')
+            cv_file = docs / 'CLIENT-VERIFICATION.md'
+            cv_file.write_text('## 0.2.0 release coverage', encoding='utf-8')
+            verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', self.CHANGELOG_WITH_BETA7)
+
+    def test_final_version_rejects_beta_labels_newer_than_the_last_beta(self):
+        for newer in ('Preview in beta.8', 'Preview in beta.99', 'The beta.8 release coverage.', 'beta.99 release coverage'):
+            with self.subTest(newer=newer), tempfile.TemporaryDirectory() as tmpdir:
+                docs = Path(tmpdir)
+                (docs / 'SAMPLE.md').write_text(newer, encoding='utf-8')
+                cv_file = docs / 'CLIENT-VERIFICATION.md'
+                cv_file.write_text('## 0.2.0 release coverage', encoding='utf-8')
+                with self.assertRaises(AssertionError) as ctx:
+                    verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', self.CHANGELOG_WITH_BETA7)
+                self.assertIn('but the last beta is beta.7', str(ctx.exception))
+        with tempfile.TemporaryDirectory() as tmpdir:  # exactly the last beta stays accepted, in both label forms
+            docs = Path(tmpdir)
+            (docs / 'SAMPLE.md').write_text('Preview in beta.7 and the beta.7 release coverage.', encoding='utf-8')
             cv_file = docs / 'CLIENT-VERIFICATION.md'
             cv_file.write_text('## 0.2.0 release coverage', encoding='utf-8')
             verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', self.CHANGELOG_WITH_BETA7)
