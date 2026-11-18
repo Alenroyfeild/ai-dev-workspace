@@ -153,10 +153,23 @@ def verify_coming_next_excludes_released(changelog_text, readme_text, version):
                 )
 
 
-def verify_preview_and_coverage_labels(docs_dir, client_verification_file, version):
+def last_beta_number(changelog_text):
+    """Beta number of the highest `## X.Y.Z-beta.N` heading: the last beta before a final release."""
+    found = [tuple(int(part) for part in match.groups())
+             for match in re.finditer(r'(?m)^## (\d+)\.(\d+)\.(\d+)-beta\.(\d+)\b', changelog_text)]
+    if not found:
+        raise AssertionError('CHANGELOG.md has no "## X.Y.Z-beta.N" heading to name the previous beta release')
+    return max(found)[3]
+
+
+def verify_preview_and_coverage_labels(docs_dir, client_verification_file, version, changelog_text=None):
     label = release_label(version)
     current_beta = parse_beta_number(version)
     current_final = tuple(int(part) for part in version.split('.')) if current_beta is None else None
+    if current_final is not None:
+        if changelog_text is None:
+            changelog_text = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
+        previous_beta = last_beta_number(changelog_text)
 
     for path in docs_dir.rglob('*.md'):
         text = path.read_text(encoding='utf-8')
@@ -175,8 +188,14 @@ def verify_preview_and_coverage_labels(docs_dir, client_verification_file, versi
                         f"Stale coverage label '{m.group(0)}' in {path}: older than previous release beta.{min_allowed_beta}"
                     )
         else:
-            # A final release keeps the earlier beta labels as its previous release; only a label naming a
-            # newer final version than this one is wrong.
+            # A final release keeps the labels of the last beta as its previous release; older beta labels
+            # are stale, and a label naming a newer final version than this one is wrong.
+            for m in re.finditer(r'(?i)Preview in beta\.(\d+)|beta\.(\d+)\s+release\s+coverage', text):
+                n = int(m.group(1) or m.group(2))
+                if n < previous_beta:
+                    raise AssertionError(
+                        f"Stale label '{m.group(0)}' in {path}: older than previous release beta.{previous_beta}"
+                    )
             for m in re.finditer(r'(?i)(?:Preview in (\d+\.\d+\.\d+)|(\d+\.\d+\.\d+)\s+release\s+coverage)', text):
                 named = tuple(int(part) for part in (m.group(1) or m.group(2)).split('.'))
                 if named > current_final:
@@ -420,22 +439,48 @@ class ReleaseSyncTests(unittest.TestCase):
                 with self.subTest(version=bad), self.assertRaises(AssertionError):
                     verify_llms_released_sections(root, bad)
 
+    CHANGELOG_WITH_BETA7 = '## 0.2.0 (Unreleased)\n\n## 0.1.0-beta.7 (2026-11-04)\n\n## 0.1.0-beta.6 (2026-10-26)\n'
+
     def test_preview_and_coverage_labels_for_a_final_version(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             docs = Path(tmpdir)
-            (docs / 'SAMPLE.md').write_text('Preview in 0.2.0 and the earlier Preview in beta.7.', encoding='utf-8')
+            (docs / 'SAMPLE.md').write_text('Preview in 0.2.0 and the last beta, Preview in beta.7.', encoding='utf-8')
             cv_file = docs / 'CLIENT-VERIFICATION.md'
             cv_file.write_text('## 0.2.0 release coverage\n\n## beta.7 release coverage', encoding='utf-8')
-            verify_preview_and_coverage_labels(docs, cv_file, '0.2.0')  # beta labels are the previous release
+            verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', self.CHANGELOG_WITH_BETA7)  # beta.7 is the previous release
             cv_file.write_text('## beta.7 release coverage', encoding='utf-8')
             with self.assertRaises(AssertionError) as ctx:
-                verify_preview_and_coverage_labels(docs, cv_file, '0.2.0')
+                verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', self.CHANGELOG_WITH_BETA7)
             self.assertIn('## 0.2.0 release coverage', str(ctx.exception))
             cv_file.write_text('## 0.2.0 release coverage', encoding='utf-8')
             (docs / 'FUTURE.md').write_text('Preview in 0.3.0', encoding='utf-8')
             with self.assertRaises(AssertionError) as ctx:
-                verify_preview_and_coverage_labels(docs, cv_file, '0.2.0')
+                verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', self.CHANGELOG_WITH_BETA7)
             self.assertIn('0.3.0', str(ctx.exception))
+
+    def test_final_version_rejects_beta_labels_older_than_the_last_beta(self):
+        for stale in ('Preview in beta.6', 'Preview in beta.3', 'The beta.5 release coverage was verified.'):
+            with self.subTest(stale=stale), tempfile.TemporaryDirectory() as tmpdir:
+                docs = Path(tmpdir)
+                (docs / 'SAMPLE.md').write_text(stale, encoding='utf-8')
+                cv_file = docs / 'CLIENT-VERIFICATION.md'
+                cv_file.write_text('## 0.2.0 release coverage', encoding='utf-8')
+                with self.assertRaises(AssertionError) as ctx:
+                    verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', self.CHANGELOG_WITH_BETA7)
+                self.assertIn('older than previous release beta.7', str(ctx.exception))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs = Path(tmpdir)
+            (docs / 'SAMPLE.md').write_text('Preview in beta.7', encoding='utf-8')
+            cv_file = docs / 'CLIENT-VERIFICATION.md'
+            cv_file.write_text('## 0.2.0 release coverage', encoding='utf-8')
+            verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', self.CHANGELOG_WITH_BETA7)
+
+    def test_last_beta_is_the_highest_beta_heading_in_the_changelog(self):
+        self.assertEqual(last_beta_number(self.CHANGELOG_WITH_BETA7), 7)
+        self.assertEqual(last_beta_number('## 0.1.0-beta.2\n## 0.1.0-beta.10\n## 0.1.0-beta.9\n'), 10)
+        self.assertEqual(last_beta_number('## 0.2.0-beta.1\n## 0.1.0-beta.7\n'), 1)
+        with self.assertRaises(AssertionError):
+            last_beta_number('## 0.2.0 (Unreleased)\n')
 
     def test_preview_and_coverage_labels_do_not_skip_an_unrecognised_version(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -444,7 +489,7 @@ class ReleaseSyncTests(unittest.TestCase):
             cv_file.write_text('## 0.2.0 release coverage', encoding='utf-8')
             for bad in (None, '', 'latest', '0.2.0-rc.1'):
                 with self.subTest(version=bad), self.assertRaises(AssertionError):
-                    verify_preview_and_coverage_labels(docs, cv_file, bad)
+                    verify_preview_and_coverage_labels(docs, cv_file, bad, self.CHANGELOG_WITH_BETA7)
 
     def test_roadmap_contains_new_features_on_repo(self):
         changelog_text = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
