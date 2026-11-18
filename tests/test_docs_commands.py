@@ -35,7 +35,7 @@ def core_command_paths(text):
         if experimental_level is None:
             kept.extend([line] if fenced else re.findall(tick + '([^' + tick + ']+)' + tick, line))
     commands = set()
-    groups = {'task', 'lesson', 'know', 'sessions', 'import', 'team', 'pack', 'worker', 'run', 'help'}
+    groups = {'task', 'lesson', 'know', 'sessions', 'import', 'team', 'pack', 'worker', 'run', 'help', 'feedback'}
     code = '\n'.join(kept)
     for match in re.finditer(r'\bws[ \t]+([a-z][a-z-]*)(?:[ \t]+([a-z][a-z-]*))?(?:[ \t]+([a-z][a-z-]*))?', code):
         path = ['ws', match[1]]
