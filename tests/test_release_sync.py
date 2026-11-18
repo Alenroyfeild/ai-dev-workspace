@@ -153,10 +153,22 @@ def verify_coming_next_excludes_released(changelog_text, readme_text, version):
                 )
 
 
-def last_beta_number(changelog_text):
-    """Beta number of the highest `## X.Y.Z-beta.N` heading: the last beta before a final release."""
+def last_beta_number(changelog_text, final_version=None):
+    """Beta number of the highest `## X.Y.Z-beta.N` heading: the last beta before a final release.
+
+    With final_version, only betas whose X.Y.Z base is at or below it count, and a beta heading
+    for a higher base means the changelog is inconsistent, so it raises."""
     found = [tuple(int(part) for part in match.groups())
              for match in re.finditer(r'(?m)^## (\d+)\.(\d+)\.(\d+)-beta\.(\d+)\b', changelog_text)]
+    if final_version is not None:
+        final = tuple(int(part) for part in final_version.split('.'))
+        above = [item for item in found if item[:3] > final]
+        if above:
+            top = max(above)
+            raise AssertionError(
+                'CHANGELOG.md has a beta heading "## %d.%d.%d-beta.%d" above the final version %s'
+                % (top + (final_version,)))
+        found = [item for item in found if item[:3] <= final]
     if not found:
         raise AssertionError('CHANGELOG.md has no "## X.Y.Z-beta.N" heading to name the previous beta release')
     return max(found)[3]
@@ -169,7 +181,7 @@ def verify_preview_and_coverage_labels(docs_dir, client_verification_file, versi
     if current_final is not None:
         if changelog_text is None:
             changelog_text = (ROOT / 'CHANGELOG.md').read_text(encoding='utf-8')
-        previous_beta = last_beta_number(changelog_text)
+        previous_beta = last_beta_number(changelog_text, version)
 
     for path in docs_dir.rglob('*.md'):
         text = path.read_text(encoding='utf-8')
@@ -501,6 +513,21 @@ class ReleaseSyncTests(unittest.TestCase):
         self.assertEqual(last_beta_number(self.CHANGELOG_WITH_BETA7), 7)
         self.assertEqual(last_beta_number('## 0.1.0-beta.2\n## 0.1.0-beta.10\n## 0.1.0-beta.9\n'), 10)
         self.assertEqual(last_beta_number('## 0.2.0-beta.1\n## 0.1.0-beta.7\n'), 1)
+        self.assertEqual(last_beta_number('## 0.2.0-beta.1\n## 0.1.0-beta.7\n', '0.2.0'), 1)
+        self.assertEqual(last_beta_number('## 0.1.0-beta.2\n## 0.1.0-beta.10\n## 0.1.0-beta.9\n', '0.2.0'), 10)
+
+    def test_a_beta_heading_above_the_final_version_is_an_inconsistent_changelog(self):
+        changelog = '## 0.3.0-beta.1\n## 0.1.0-beta.7\n'
+        with self.assertRaises(AssertionError) as ctx:
+            last_beta_number(changelog, '0.2.0')
+        self.assertIn('0.3.0-beta.1', str(ctx.exception))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs = Path(tmpdir)
+            (docs / 'SAMPLE.md').write_text('Preview in beta.7', encoding='utf-8')
+            cv_file = docs / 'CLIENT-VERIFICATION.md'
+            cv_file.write_text('## 0.2.0 release coverage', encoding='utf-8')
+            with self.assertRaises(AssertionError):
+                verify_preview_and_coverage_labels(docs, cv_file, '0.2.0', changelog)
         with self.assertRaises(AssertionError):
             last_beta_number('## 0.2.0 (Unreleased)\n')
 
