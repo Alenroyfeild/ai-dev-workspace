@@ -32,7 +32,7 @@ CLAUDE_CODEX_LONG_DESC = (
 )
 
 CURSOR_LONG_DESC = (
-    'Local Markdown memory that Claude Code, Codex and Cursor (preview) share: a short brief at session start, '
+    'Local Markdown memory that Claude Code and Codex share; Cursor is fixture-tested (CI) in preview: a short brief at session start, '
     'saved decisions and dead ends, checkpoints, search and opt-in safety guards. '
     'Inactive until you run ws start in a repo.'
 )

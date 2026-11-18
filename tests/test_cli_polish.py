@@ -45,7 +45,7 @@ class CliPolishTests(unittest.TestCase):
         lines = readme.splitlines()
         self.assertLessEqual(len(lines), 180)
         first_12 = '\n'.join(lines[:12])
-        self.assertIn('**Handoffs you can verify.** When an assistant stops, the next one (any vendor, any day) starts from a handoff '
+        self.assertIn('**Handoffs you can verify.** When an assistant stops, a configured client can start from a handoff '
                       'with what was done, what was decided, the evidence you recorded and what not to retry. '
                       'No background AI; plain Markdown you own.', first_12)
         self.assertIn('## Quick start', first_12)
@@ -65,9 +65,9 @@ class CliPolishTests(unittest.TestCase):
         for other in ('Cursor', 'Copilot (VS Code)', 'Gemini CLI', 'Antigravity'):
             self.assertNotIn('| ' + other + ' |', compatibility)  # no table row: not live-tested
         self.assertIn('docs/EXPERIMENTAL.md', compatibility)
-        for status in ('Cursor | supported, fixture-tested; live reports welcome | CI-tested',
-                       'Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested',
-                       'Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested',
+        for status in ('Cursor | fixture-tested (CI); live reports welcome | CI-tested',
+                       'Copilot (VS Code) | fixture-tested (CI); live reports welcome | CI-tested',
+                       'Gemini CLI | fixture-tested (CI); live reports welcome | CI-tested',
                        'Antigravity | Preview, fixture-tested; rules, MCP, SessionStart/PreToolUse hooks; no automatic capture | CI-tested'):
             self.assertIn(status, experimental)
         self.assertIn('docs/EXPERIMENTAL.md', readme.split('## Features', 1)[1].split('\n## ', 1)[0])
