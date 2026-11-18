@@ -29,7 +29,7 @@ MANIFESTS = {
     '.cursor-plugin/marketplace.json': 'tag-plugin',
 }
 DOCS = ('README.md', 'llms.txt', 'llms-full.txt')
-LIVE_LABEL = re.compile(r'Live-checked on (beta\.\d+(?: \([^\n)]*\))?)', re.I)
+LIVE_LABEL = re.compile(r'Live-checked on ((?:beta\.\d+|\d+\.\d+\.\d+)(?: \([^\n)]*\))?)', re.I)
 
 
 def fetch_json(url):
@@ -45,9 +45,12 @@ def fetch_text(url):
 
 
 def pypi_to_tag_version(version):
+    """PyPI version to the GitHub tag version: 0.1.0b7 -> 0.1.0-beta.7; a final 0.2.0 stays 0.2.0."""
+    if re.fullmatch(r'\d+\.\d+\.\d+', version):
+        return version
     match = re.fullmatch(r'(\d+\.\d+\.\d+)b(\d+)', version)
     if not match:
-        raise ValueError('version must use the PyPI beta form, for example 0.1.0b7')
+        raise ValueError('version must use the PyPI form, for example 0.1.0b7 or 0.2.0')
     return match.group(1) + '-beta.' + match.group(2)
 
 
@@ -160,7 +163,7 @@ def run_video_check(version, fetch_data, fetch_file):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('version', help='PyPI version, e.g. 0.1.0b7')
+    parser.add_argument('version', help='PyPI version, e.g. 0.1.0b7 or 0.2.0')
     args = parser.parse_args(argv)
     try:
         stale, notices = verify(args.version)
