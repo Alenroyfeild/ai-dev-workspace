@@ -39,8 +39,8 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - Fold [changelog fragments](../changelog.d/README.md) into `CHANGELOG.md` under `## <version> (Unreleased)`. Turn each fragment into a bullet: `Added:` goes under New, `Changed:` under Improved and `Fixed:` under Fixed. Allowed subsections are `New`, `Improved`, `Fixed`, `Previews`, `Known limits`, and `Measured`. Preserve existing entries and combine duplicate bullets. Write a one-sentence summary first (the update notice shows it), and retain Measured and Known limits where applicable. Use absolute links in release notes; relative ones break on the release page. Delete the folded fragment files; keep `changelog.d/README.md`.
    - Bump version in `kit.json`, `server.json` (2 fields), the five plugin manifests (`.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.cursor-plugin/marketplace.json`), and `tests/test_packaging.py`.
    - Save this release's record corpus under `tests/fixtures/records/v<version>/` (see `docs/UPGRADE-CHECK.md`).
-   - Add a video script per `### New` feature under `docs/video/`; make README and `llms.txt`/`llms-full.txt` name each new feature (a `## Released in beta.N` section, and every backticked `ws` command from New in README), enforced by `tests/test_release_sync.py`.
-   - Update documentation: add new capabilities to `docs/ROADMAP.md` under "Available in the beta", update `docs/CLIENT-VERIFICATION.md` to `## beta.N release coverage`, and update preview labels in `docs/SETUP.md` and `docs/DISCOVERY.md` to `Preview in beta.N`.
+   - Add a video script per `### New` feature under `docs/video/`; make README and `llms.txt`/`llms-full.txt` name each new feature (a `## Released in beta.N` section, or `## Released in X.Y.Z` for a final release, and every backticked `ws` command from New in README), enforced by `tests/test_release_sync.py`.
+   - Update documentation: add new capabilities to `docs/ROADMAP.md` under "Available in the beta", update `docs/CLIENT-VERIFICATION.md` to `## beta.N release coverage` (`## X.Y.Z release coverage` for a final release), and update preview labels in `docs/SETUP.md` and `docs/DISCOVERY.md` to `Preview in beta.N` (`Preview in X.Y.Z`). Earlier beta labels stay valid as the previous release of a final version.
    - Run the full test suite in a temp HOME and `bin/release-smoke` on the built wheel. Open the RC PR to `dev` and merge once peer-reviewed and CI is green.
 
 2. **Dating PR to `dev`:**
@@ -79,8 +79,8 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - The namespace is case-sensitive and each version can be published only once; a 400 duplicate-version means it is already published.
 
 8. **Release-surface verification:**
-   - Run `bin/release-verify <canonical-version>` after publication surfaces have been updated. This read-only check compares the latest PyPI release, latest non-draft GitHub Release, latest MCP Registry version, all package/plugin manifests on `main`, and README/LLMS version text on `main`.
-   - A stale surface exits nonzero and prints one line naming each mismatch. Plugin `Live-checked on beta.N` labels are informational; do not change them without a live plugin check.
+   - Run `bin/release-verify <canonical-version>` (`0.1.0b7` for a beta, `0.2.0` for a final release) after publication surfaces have been updated. This read-only check compares the latest PyPI release, latest non-draft GitHub Release, latest MCP Registry version, all package/plugin manifests on `main`, and README/LLMS version text on `main`.
+   - A stale surface exits nonzero and prints one line naming each mismatch. Plugin `Live-checked on beta.N` (or `X.Y.Z`) labels are informational; do not change them without a live plugin check.
    - The video release check is included. Run this step again after step 9 if videos were not ready yet.
 
 9. **Videos after PyPI:**
@@ -90,7 +90,7 @@ The release workflow uses two promotion steps and tags the merge commit on `main
 
 10. **Plugin live check:**
    - Owner: maintainer. Complete this post-tag follow-up within 3 days of the tag.
-   - Live-install the Claude Code plugin from the marketplace on the released version, then update the `Live-checked on beta.N (date)` labels (README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md`). If this was not done, leave the labels as they are.
+   - Live-install the Claude Code plugin from the marketplace on the released version, then update the `Live-checked on beta.N (date)` (or `X.Y.Z (date)`) labels (README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md`). If this was not done, leave the labels as they are.
 
 11. **If PyPI failed or was delayed:** revert the published-version lines moved in step 2 (README, `llms.txt`, `llms-full.txt`, `docs/DISCOVERY.md`, `PUBLISHED_VERSION`) until the upload succeeds.
 
@@ -114,15 +114,15 @@ Run `bin/release-smoke` (stdlib, offline, throwaway HOME) on the final candidate
 | `changelog.d/*` | Fragment files deleted, keeping only `README.md` | RC PR / Dating PR | `tests/test_release_sync.py` |
 | `tests/fixtures/records/v<version>/` | Record corpus generated for release version | RC PR | `tests/test_release_sync.py`, `tests/test_record_corpus.py` |
 | `docs/ROADMAP.md` | New features added under "Available in the beta" | RC PR | `tests/test_release_sync.py` |
-| `docs/CLIENT-VERIFICATION.md` | Release coverage heading updated to `beta.N release coverage` | RC PR | `tests/test_release_sync.py` |
-| `docs/SETUP.md`, `docs/DISCOVERY.md` | Preview labels updated to `Preview in beta.N` | RC PR | `tests/test_release_sync.py` |
+| `docs/CLIENT-VERIFICATION.md` | Release coverage heading updated to `beta.N release coverage` (`X.Y.Z release coverage` for a final release) | RC PR | `tests/test_release_sync.py` |
+| `docs/SETUP.md`, `docs/DISCOVERY.md` | Preview labels updated to `Preview in beta.N` (`Preview in X.Y.Z`) | RC PR | `tests/test_release_sync.py` |
 | `README.md` | Update PyPI version string `v<version> on PyPI`; name each new `ws` command and feature | Dating PR (features: RC PR) | `tests/test_published_docs.py`, `tests/test_release_sync.py` |
-| `llms.txt`, `llms-full.txt` | Update `published <canonical-version>`; add `## Released in beta.N` | Dating PR (section: RC PR) | `tests/test_published_docs.py`, `tests/test_release_sync.py` |
+| `llms.txt`, `llms-full.txt` | Update `published <canonical-version>`; add `## Released in beta.N` (`## Released in X.Y.Z` for a final release) | Dating PR (section: RC PR) | `tests/test_published_docs.py`, `tests/test_release_sync.py` |
 | `docs/DISCOVERY.md` | Update PyPI link to release version | Dating PR | `tests/test_published_docs.py` |
 | `tests/test_published_docs.py` | Bump `PUBLISHED_VERSION` constant | Dating PR | `tests/test_release_sync.py` (release mode) |
 | `server.json` | Publish to MCP registry (`io.github.Alenroyfeild/ai-dev-workspace`) | After PyPI publish (step 7) | `tests/test_packaging.py` |
 | `docs/video/videos.json` | Add the release edition after recording | After PyPI publish (step 9) | `tests/test_make_video.py`, `bin/make-video --release-check` |
-| README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md` | `Live-checked on beta.N (date)` labels | After plugin live check (step 10) | none; leave unchanged if not checked |
+| README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md` | `Live-checked on beta.N (date)` (`X.Y.Z (date)`) labels | After plugin live check (step 10) | none; leave unchanged if not checked |
 
 ## Repository setting
 

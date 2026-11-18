@@ -166,5 +166,45 @@ class ReleaseVerifyTests(unittest.TestCase):
         self.assertTrue(any('video links are stale' in item for item in problems), problems)
 
 
+class FinalReleaseVerifyTests(ReleaseVerifyTests):
+    """The same surface checks hold for a non-beta version such as 0.2.0 (tag v0.2.0, PyPI 0.2.0)."""
+
+    def setUp(self):
+        super().setUp()
+        import json
+        old_tag, old_pypi, new = '0.1.0-beta.7', '0.1.0b7', '0.2.0'
+        swap = lambda value: json.loads(json.dumps(value).replace(old_tag, new).replace(old_pypi, new))
+        self.version = new
+        self.pypi, self.release, self.registry = swap(self.pypi), swap(self.release), swap(self.registry)
+        self.manifests = swap(self.manifests)
+        self.files = {name: text.replace(old_tag, new).replace(old_pypi, new) for name, text in self.files.items()}
+        self.assertEqual(self.release['tag_name'], 'v0.2.0')
+
+    def test_tag_versions_for_final_and_beta_forms(self):
+        convert = verify_script.pypi_to_tag_version
+        self.assertEqual(convert('0.2.0'), '0.2.0')
+        self.assertEqual(convert('1.10.3'), '1.10.3')
+        self.assertEqual(convert('0.1.0b7'), '0.1.0-beta.7')
+        self.assertEqual(convert('0.2.0b1'), '0.2.0-beta.1')
+        for bad in ('0.2', '0.2.0rc1', '0.2.0.dev1', 'v0.2.0', '0.2.0-beta.1', '0.2.0.post1', '', 'latest'):
+            with self.subTest(version=bad), self.assertRaises(ValueError):
+                convert(bad)
+
+    def test_final_version_live_check_labels_are_informational(self):
+        self.files['README.md'] += '\nLive-checked on 0.2.0 (2026-11-20)'
+        problems, notices = self.verify()
+        self.assertEqual(problems, [])
+        self.assertTrue(any('0.2.0 (2026-11-20)' in item for item in notices), notices)
+
+    def test_beta_tag_does_not_satisfy_a_final_release(self):
+        self.release.update(tag_name='v0.1.0-beta.7')
+        problems, _ = self.verify()
+        self.assertTrue(any('GitHub Release' in item for item in problems), problems)
+        self.setUp()
+        self.files['README.md'] = 'ai-dev-workspace (v0.1.0-beta.7 on PyPI)'
+        problems, _ = self.verify()
+        self.assertTrue(any('README.md' in item for item in problems), problems)
+
+
 if __name__ == '__main__':
     unittest.main()
