@@ -65,9 +65,9 @@ class CliPolishTests(unittest.TestCase):
         for other in ('Cursor', 'Copilot (VS Code)', 'Gemini CLI', 'Antigravity'):
             self.assertNotIn('| ' + other + ' |', compatibility)  # no table row: not live-tested
         self.assertIn('docs/EXPERIMENTAL.md', compatibility)
-        for status in ('Cursor | supported, fixture-tested; live reports welcome | CI-tested',
-                       'Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested',
-                       'Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested',
+        for status in ('Cursor | fixture-tested (CI); live reports welcome | CI-tested',
+                       'Copilot (VS Code) | fixture-tested (CI); live reports welcome | CI-tested',
+                       'Gemini CLI | fixture-tested (CI); live reports welcome | CI-tested',
                        'Antigravity | Preview, fixture-tested; rules, MCP, SessionStart/PreToolUse hooks; no automatic capture | CI-tested'):
             self.assertIn(status, experimental)
         self.assertIn('docs/EXPERIMENTAL.md', readme.split('## Features', 1)[1].split('\n## ', 1)[0])

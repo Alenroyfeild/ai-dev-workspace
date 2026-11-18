@@ -41,9 +41,9 @@ No live session is on record for these, so they are fixture-tested only. Reports
 
 | Assistant | Status until now | Test proof |
 |---|---|---|
-| Cursor | supported, fixture-tested; live reports welcome | CI-tested |
-| Copilot (VS Code) | supported, fixture-tested; live reports welcome | CI-tested |
-| Gemini CLI | supported, fixture-tested; live reports welcome | CI-tested |
+| Cursor | fixture-tested (CI); live reports welcome | CI-tested |
+| Copilot (VS Code) | fixture-tested (CI); live reports welcome | CI-tested |
+| Gemini CLI | fixture-tested (CI); live reports welcome | CI-tested |
 | Antigravity | Preview, fixture-tested; rules, MCP, SessionStart/PreToolUse hooks; no automatic capture | CI-tested |
 
 See also [client verification](CLIENT-VERIFICATION.md).
