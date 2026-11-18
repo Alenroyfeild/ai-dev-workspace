@@ -1,17 +1,39 @@
 # Commands
 
-Most commands run from inside a workspace folder, or with `WS_ROOT` set. `ws demo`, `ws start`, `ws init`, `ws audit` and `ws doctor` work without one. In a terminal, commands print plain lines. Piped output is JSON; `WS_JSON=1` forces JSON. `ws --workspace-root DIR <command>` points one command at a workspace explicitly (hooks use it), `ws --version` prints the version, and `ws help` or `ws help all` lists the daily or every command.
+## Core
 
-Sections: [Daily use](#daily-use), [Tasks and checkpoints](#tasks-and-checkpoints), [Search and lessons](#search-and-lessons), [Team sharing](#team-sharing), [Setup and assistants](#setup-and-assistants), [Packs](#packs), [Maintenance and upgrades](#maintenance-and-upgrades), [Advanced and experimental](#advanced-and-experimental).
-
-## Daily use
+These ten core invocations cover nine command paths in the handoff loop. Flag variations, including `ws start --undo`, use the same command path. Most commands run inside a workspace or a repo connected by `ws start`.
 
 | Command | What it does |
 |---|---|
 | `ws start [--dry-run] [--yes] [--workspace DIR] [--undo] [--delete-memory] [--memory-dir DIR] [--no-import]` | In a code repo, connect it to private memory outside the checkout (default `~/.ai-dev-workspace/<repo-name>`). Previews first; `--yes` applies without prompting. `--undo` removes unchanged repo wiring and keeps your private memory. With `--undo`, `--delete-memory` previews the recorded workspace and task count, then permanently deletes it after confirmation unless another repo is still wired to it. `--memory-dir` and `--no-import` control the memory import (see Import existing memory). |
-| `ws demo` | Try remembered decisions in a throwaway workspace, from any folder, with no assistant or network: saves a sample decision, reads its brief in a fresh process, then removes the demo files. Your own workspace and assistant settings are not touched. |
-| `ws brief` | Print task memory in under 200 words: decisions, next action, blockers, matching lessons. The session-start hook runs it for you. |
+| `ws start --undo` | Remove unchanged repo wiring when leaving the handoff workflow; keeps private memory. |
 | `ws remember "<decision>" [--task ID]` | Save one decision (for example `"use Postgres, not SQLite"`) in your claimed task. The next brief lists it first. Secrets and `<private>` text are removed. |
+| `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Section=text"]` | Save status and the exact next step. Status: `backlog`, `ready`, `in_progress`, `review`, `blocked`, `done`. `--note` is repeatable; `ws checkpoint --help` lists valid sections. |
+| `ws brief` | Print task memory in under 200 words: decisions, next action, blockers, matching lessons. The session-start hook runs it for you. |
+| `ws task new <ID> "<title>" [--objective T] [--branch B] [--repo R]` | Create a task record. |
+| `ws task list` | List task IDs and their saved state before choosing work. |
+| `ws task show <ID> --section "Next action"` | Read saved task text. Repeat `--section` for the evidence, blockers or full handoff. |
+| `ws claim <ID> [--worker W]` | Take a task as `$USER`, or as `--worker`. |
+| `ws release <ID>` | Give the task back. |
+
+The README keeps five common invocations in its quick reference. Use `ws task list` to locate work, `ws claim <ID>` to resume it, and `ws task show <ID>` to read the complete record when the brief points to truncated context.
+
+### Core MCP tools
+
+The default MCP profile lists seven tools: `brief`, `find_task`, `read_task`, `checkpoint`, `remember`, `search_vault`, `add_lesson`. See [MCP](MCP.md) for their schemas and client setup.
+
+## Experimental
+
+The remaining command reference is [Experimental](EXPERIMENTAL.md) and may change or be removed.
+
+Most commands run from inside a workspace folder, or with `WS_ROOT` set. `ws demo`, `ws start`, `ws init`, `ws audit` and `ws doctor` work without one. In a terminal, commands print plain lines. Piped output is JSON; `WS_JSON=1` forces JSON. `ws --workspace-root DIR <command>` points one command at a workspace explicitly (hooks use it), `ws --version` prints the version, and `ws help` or `ws help all` lists the daily or every command.
+
+### Daily use
+
+| Command | What it does |
+|---|---|
+| `ws demo` | Try remembered decisions in a throwaway workspace, from any folder, with no assistant or network: saves a sample decision, reads its brief in a fresh process, then removes the demo files. Your own workspace and assistant settings are not touched. |
 | `ws nudge` | Print the checkpoint reminder for unrecorded work. The Stop and pre-compact hooks run it (`--hook`, `--client` as for `ws brief`). |
 | `ws status` | Workspace overview. `--text` gives a readable summary. |
 | `ws audit [repo] [--text]` | Score a repo's AI assistant setup (instruction files and size, references to missing files, memory, hooks, MCP server count, stale tasks) and list the top 3 fixes. Read-only, offline, safe to paste. `--text` forces the readable summary. |
@@ -30,7 +52,7 @@ Details:
 
 A newly linked teammate's brief includes one recent product, domain and repo knowledge card, labelled untrusted, until their selected task has a saved next action or task memory. These summaries fit the existing 200-word budget; saved private decisions still take precedence. Use `ws know list --layer team` for the catalog.
 
-### Save a correction
+#### Save a correction
 
 After `ws start` has created and claimed your branch task, save a correction before you close the session:
 
@@ -45,18 +67,14 @@ Check that the corrected decision appears in the brief. You can also ask your as
 - The decision survives a checkpoint. Use `/handoff` or `ws checkpoint` to record the next action too.
 - With several claimed tasks, pass `--task <ID>`.
 
-## Tasks and checkpoints
+### Tasks and checkpoints
 
 | Command | What it does |
 |---|---|
-| `ws task new <ID> "<title>" [--objective T] [--branch B] [--repo R]` | Create a task record. |
-| `ws task find <ref>` / `ws task list` / `ws task show <ID> --section "Next action"` | Find, list or read tasks. `--section` (repeatable) reads only what you need. |
+| `ws task find <ref>` | Find a task by branch, ID or another reference. |
 | `ws task depend <ID> --on <OTHER>` | Make `<ID>` wait for `<OTHER>`. |
 | `ws task import <file> [--prefix SPEC] [--yes]` | Create tasks from a Task Master `tasks.json` or a Spec Kit style `tasks.md`. Previews unless you pass `--yes`. |
 | `ws next [--json]` | List open tasks that are ready to work on. |
-| `ws claim <ID> [--worker W]` | Take a task as `$USER`, or as `--worker`. |
-| `ws checkpoint <ID> --status <s> --next "<exact next step>" [--note "Section=text"]` | Save status and the exact next step. Status: `backlog`, `ready`, `in_progress`, `review`, `blocked`, `done`. `--note` is repeatable; `ws checkpoint --help` lists valid sections. |
-| `ws release <ID>` | Give the task back. |
 | `ws pr-notes [ID] [--no-link] [--json]` | Print the task as Markdown for a pull request, for example `gh pr create --body "$(ws pr-notes)"`. |
 | `ws recap [--since 7d\|YYYY-MM-DD] [--json]` | Summarise tasks changed in a period (default `7d`), for standups and handoffs. |
 | `ws validate` | Check task records, links and secrets. |
@@ -71,7 +89,7 @@ Details:
 - `ws pr-notes` includes goal, saved decisions with reasons, tried-and-rejected approaches (`Failures`, `Do not redo`), acceptance criteria, checks and open items. It leaves out unverified captures, template placeholders, secrets, `<private>` text and home paths, and adds a one-line credit link unless `--no-link`. It only prints; it never edits the task or calls GitHub.
 - `ws recap` lists done tasks first, then review, in progress and blocked, with saved decisions and next action, plus teammates' shared notes and status when a team is linked. It is read-only and leaves out unverified captures, secrets, `<private>` text and home paths.
 
-## Search and lessons
+### Search and lessons
 
 | Command | What it does |
 |---|---|
@@ -98,7 +116,7 @@ Details:
 - `ws digest` scans the first 4096 characters per line with a bounded regex. `--local-summary` needs the `local-llm` pack.
 - Prompt-size guard: `ws connect` installs a hook for Claude Code (`UserPromptSubmit`), Codex (`UserPromptSubmit`), Cursor (`beforeSubmitPrompt`) and Gemini CLI (`BeforeAgent`). Prompts over 150 lines or 12 KB are saved redacted in `.ws/inbox/` and blocked. Send a short question with the excerpt, or put `!raw` alone on the first line to bypass. Hook docs: [Claude Code](https://code.claude.com/docs/en/hooks), [Codex](https://learn.chatgpt.com/docs/hooks), [Cursor](https://cursor.com/docs/hooks), [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md).
 
-## Team sharing
+### Team sharing
 
 Nothing is shared automatically. Every step previews first. Only a confirmed `ws sync` pushes, and only records you approved for sharing.
 
@@ -118,7 +136,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 
 `<item>` is `task:<ID>`, `decision:<ID>`, `lesson:<ID>` or `knowledge:<ID>`.
 
-### Link a private team repo
+#### Link a private team repo
 
 - Create the empty private remote yourself. `ws team init <private-remote> --dry-run` previews; repeat without `--dry-run` to confirm. Init prepares an uncommitted `team.json` in `.ws/team` and never pushes. Run `ws sync` to publish it (it shows what it will push first); teammates can link only after that. At a terminal, team previews print a short summary (`+ <category> <text>` per note, the full text up to 600 characters, the destination, then `[y/N]`); piped or scripted runs get the full JSON, and `WS_JSON=1` forces it.
 - Teammates run `ws team link <private-remote>`.
@@ -126,7 +144,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 - `--yes` confirms the printed preview. `--auto-pull` or `--no-auto-pull` records the pull preference without prompting. Pull consent never authorizes publishing.
 - `ws team unlink` keeps the clone; move it yourself before a new link.
 
-### Link a shared folder
+#### Link a shared folder
 
 - `ws team link /path/to/shared-folder --folder --attest-private` previews an existing folder, then copies a validated snapshot into `.ws/team`. It never writes to the source folder. Symlinks inside it are refused, and sync and OS metadata (`Icon\r`, `.DS_Store`, `.dropbox`, `.dropbox.attr`, `desktop.ini`, `Thumbs.db`, `._*`, `.localized`, `.Spotlight-V100`, `.fseventsd`, `.Trashes`, `.TemporaryItems`, `~$*`) is skipped and never published. iCloud placeholders stop with a Finder "Keep Downloaded" hint.
 - The folder must contain `team.json` plus complete entry/card pairs. Unexpected or conflict-copy files and partial cards stop the pull and keep the previous snapshot.
@@ -138,7 +156,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 - `ws` never configures, installs or contacts a sync client, so cloud delivery and cross-device atomicity are not guaranteed. Unlink keeps the local mirror and source folder.
 - On Windows, another local process replacing the team folder is outside the trust boundary.
 
-### Choose what can be shared
+#### Choose what can be shared
 
 - `ws scope task:<ID>` reads the scope; `ws scope task:<ID> team` (or `private`) changes only that record's frontmatter. `decision:`, `lesson:` and `knowledge:` select standalone files in `vault/Decisions`, `vault/Lessons` and `vault/Knowledge`; their flat frontmatter must include `id: <ID>`.
 - Missing scope means private; new tasks start private. Inline Handoff decisions and legacy `Learnings.md` lines stay private and are not converted.
@@ -147,7 +165,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 - `share: ask` is the only supported policy; automatic publishing rules are not supported.
 - Team scope means eligible, never consent to copy, commit or push. `ws scope` does no Git or remote access.
 
-### Share and unshare
+#### Share and unshare
 
 - `ws share` previews the redacted content, omissions, destination and diff, then asks once; `--yes` confirms that preview. Set `scope: team` first; scope alone never copies.
 - Task copies include Objective, Next action and Blockers. Inline Handoff decisions and automatic captures stay private.
@@ -156,7 +174,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 - These commands never commit, push or sync; copies stay local until you publish through Git. Saved privacy consent must still match the linked team, and remote visibility is not re-checked. Redaction is heuristic: read the preview.
 - `--author <alias>` sets the shared author. The default is Git `user.name` with non-portable characters replaced by `-`, capped at 40 characters (`local` if unavailable). Check it in the preview, and override it to avoid sharing your Git name. Briefs show a compact, untrusted author and date label; `ws know show team:<ID>` shows full provenance.
 
-#### Share a finished task as a runbook
+##### Share a finished task as a runbook
 
 `ws share <task-ID> --as runbook` needs `status: done` and `scope: team`, and uses the same preview, redaction and source checks.
 
@@ -166,7 +184,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 - The private task is never changed. Runbooks and ordinary task copies have separate receipts; `ws unshare <task-ID> --as runbook` removes only the runbook copy.
 - Command examples stay inert text. Sharing never runs them.
 
-### Sync and status
+#### Sync and status
 
 - `ws sync` pulls the linked team branch (fast-forward only) and prints a one-line count of notes pulled and published (to stderr), then previews one commit built only from share-approved file bytes. `--dry-run` may pull but never commits or pushes. `--yes` confirms the exact preview and rechecks privacy, remote head, approvals and files. No force-push, reset or clean ever runs.
 - Unapproved files, staged edits or unpublished local commits stop the sync with a hint and stay intact. An empty remote receives only the bootstrap manifest plus approved copies.
@@ -176,7 +194,7 @@ Nothing is shared automatically. Every step previews first. Only a confirmed `ws
 - `ws team status` saves only alias, task title, a bounded one-line text and the date, for a task you have claimed. `publish_status` defaults to off, and nothing is broadcast on claim or checkpoint. Confirm once, or use `--dry-run` / `--yes`. The brief shows the two newest snapshots, labelled untrusted and last reported, never live availability.
 - `--disable-status` previews removing that alias's approved copy. Git history and other copies keep it, and copies changed by others are not overwritten. Use `ws sync` to move approved records.
 
-## Setup and assistants
+### Setup and assistants
 
 | Command | What it does |
 |---|---|
@@ -194,7 +212,7 @@ Details:
 - `ws tools --cost` reports MCP schema bytes, skill and plugin metadata size, and cached Codeburn use over 30 days.
 - `ws tools` levels: recommended (most workspaces), optional (specific capabilities) and caution (can change routing or configuration). Nothing is installed automatically.
 
-### Select assistants
+#### Select assistants
 
 After `ws init`, run `ws setup` to choose assistants interactively, or use `ws setup --assistants codex`, `ws setup --assistants claude,codex` or `ws setup --preset cursor-only`.
 
@@ -205,7 +223,7 @@ After `ws init`, run `ws setup` to choose assistants interactively, or use `ws s
 - Codex global MCP stays a preview; `ws connect codex --write` is a separate choice.
 - Setup never links user-level skills. Restart or trust the project and approve MCP and hooks in each client. Doctor shows the chosen preset, not verified login or model access.
 
-### Import existing memory
+#### Import existing memory
 
 On first `ws start`, the setup preview includes private copies of `CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.cursor/rules/*.mdc`, and Markdown from the standard repo-specific Claude auto-memory directory. The preview shows each source label, redacted UTF-8 byte size and first line (at most 80 characters); `--dry-run` shows the full redacted text without writing. One confirmation approves the displayed setup and source copies; `--yes` approves the same preview for scripts. Use `--no-import` to connect without copying memory. For custom Claude storage or a Git worktree, pass `--memory-dir <directory>` (find it with Claude's `/memory`).
 
@@ -213,7 +231,7 @@ Import reads bounded regular files only (16 KiB each, 64 KiB total, at most 16 C
 
 Claude's [memory documentation](https://code.claude.com/docs/en/memory#storage-location) describes the standard per-repository auto-memory directory and custom storage. This importer does not parse Claude settings or recursively follow its memory index.
 
-## Packs
+### Packs
 
 | Command | What it does |
 |---|---|
@@ -229,7 +247,7 @@ Details:
 - `ws guard --hook` and `ws discipline --hook [--client C]` are the hook entry points the opt-in `guards` and `discipline` packs install. They read hook JSON on stdin and are not meant to be run by hand.
 - Bundled packs with vault files (`ios`, `obsidian`) are not removed by this command: it reports "No private pack".
 
-## Maintenance and upgrades
+### Maintenance and upgrades
 
 | Command | What it does |
 |---|---|
@@ -250,7 +268,7 @@ Details:
 - No tools or global skills are installed. Clients ask you to review and trust changed hooks again.
 - Symlink targets and newer schemas are refused. There is no MCP upgrade tool. Each write is atomic, but a multi-file upgrade is not one transaction.
 
-## Advanced and experimental
+### Advanced and experimental
 
 | Command | What it does |
 |---|---|
@@ -274,7 +292,7 @@ Details:
 
 Routing, permission and cost settings: [ADVANCED.md](ADVANCED.md). `ws route` availability does not verify login or account access.
 
-### Delegate
+#### Delegate
 
 - `ws delegate` prepares a redacted brief of at most 400 words and prints the exact command. Only `explorer` and `reviewer` support `--run` (routing timeout, default 600 seconds); other roles are preparation-only.
 - Workers are read-only. Codex runs with a read-only sandbox, no approvals, hooks, apps or plugins, and user config ignored. Claude uses project-only settings and only Read, Glob and Grep. Ollama is preparation-only. Allowed paths define prompt scope; they are not a read-access jail.
@@ -285,7 +303,7 @@ Routing, permission and cost settings: [ADVANCED.md](ADVANCED.md). `ws route` av
 - `--selftest` runs the explorer in a new throwaway Git tree. Codex runs; Claude only prepares unless you pass `--run`. It reads a random token, then tries hostile writes (patch, shell, Python, absolute path, symlink, parent path, Git commit) and compares disk contents, modes, directory entries and times.
 - Selftest exit codes: `SELFTEST OK` (0) needs a successful read and unchanged disk; `FAIL` (1) means something changed; `INCONCLUSIVE` (2) means the read or worker failed, or the run was preparation-only. Executed fixtures are removed; prepared ones stay for manual use. `.ws/delegate-selftests.json` keeps each provider's latest result for doctor. It is history, not a security guarantee or an execution gate.
 
-### Workers
+#### Workers
 
 `ws worker launch` is disabled until a live Codex isolation check passes (Codex 0.155.1 still allows /tmp writes). Prepared runs can be reviewed, accepted or discarded.
 
@@ -295,13 +313,13 @@ Routing, permission and cost settings: [ADVANCED.md](ADVANCED.md). `ws route` av
 - `ws worker discard <id>` confirms, then removes only that run's artifacts and keeps its record and all other runs. Running and accepted runs cannot be discarded.
 - No push or PR is created.
 
-### Run logs
+#### Run logs
 
 - `ws run log` takes `--result ok|failed|rejected|accepted|skipped` (default `ok`), `--model`, `--tokens-in N`, `--tokens-out N`, `--seconds N`, `--note`, `--worker-role`, `--effort`, `--files N`, `--verdict accepted|changes|rejected` and `--findings N`. Repeat `--check "<command>=<exit code>"` per check. Counts must not be negative.
 - Checks are reported by you; commands are never executed. Records append to `vault/Runs/<task>.jsonl`. Log real token counts only when you have them; omitted counts stay zero.
 - Two consecutive steps on one task with failed or rejected results, `changes` or `rejected` verdicts, or nonzero check codes make `ws brief` and `ws nudge` warn: "stop: two failed attempts, re-diagnose before trying again". A later nonfailing step on that task clears it. The guard is advisory.
 
-### MCP tools
+#### MCP tools
 
 `mcp/server.py` lists 7 core tools by default (about 500 tokens instead of about 1,900): `brief`, `find_task`, `read_task`, `checkpoint`, `remember`, `search_vault` and `add_lesson`.
 
