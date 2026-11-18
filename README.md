@@ -1,6 +1,6 @@
 # AI Dev Workspace
 
-**Handoffs you can verify.** When an assistant stops, the next one (any vendor, any day) starts from a handoff with what was done, what was decided, the evidence you recorded and what not to retry. No background AI; plain Markdown you own.
+**Handoffs you can verify.** When an assistant stops, a configured client can start from a handoff with what was done, what was decided, the evidence you recorded and what not to retry. No background AI; plain Markdown you own.
 
 [![PyPI version](https://img.shields.io/pypi/v/ai-dev-workspace)](https://pypi.org/project/ai-dev-workspace/) [![CI](https://github.com/Alenroyfeild/ai-dev-workspace/actions/workflows/test.yml/badge.svg)](https://github.com/Alenroyfeild/ai-dev-workspace/actions) [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -47,10 +47,10 @@ The latest controlled runs show the plain Markdown handoff beating the workspace
 
 | Assistant | Status | Test proof |
 |---|---|---|
-| Claude Code | supported, tested live on macOS | CI-tested |
-| Codex | supported, tested live on macOS | CI-tested |
+| Claude Code | supported, tested live on macOS | CI-tested; [live sessions](docs/MEASUREMENTS.md#claude-and-cross-assistant-runs-2026-10-09) |
+| Codex | supported, tested live on macOS | CI-tested; [live sessions](docs/MEASUREMENTS.md#claude-and-cross-assistant-runs-2026-10-09) |
 
-Everything else is untested live: Cursor, Copilot (VS Code), Gemini CLI and Antigravity have fixture tests only; Linux and Windows are CI-tested only. Reports welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml). Details: [Experimental features](docs/EXPERIMENTAL.md) and [client verification](docs/CLIENT-VERIFICATION.md).
+Cursor, Copilot (VS Code), Gemini CLI and Antigravity are fixture-tested (CI); no live session is on record. Linux: CI only; no live session on record. Windows: CI only. Reports welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml). Details: [Experimental features](docs/EXPERIMENTAL.md) and [client verification](docs/CLIENT-VERIFICATION.md).
 
 ## Plugin and videos
 
@@ -101,9 +101,9 @@ Not in the 1.0 promise: see [Experimental features](docs/EXPERIMENTAL.md).
 ## How it works
 
 ```text
-Claude Code / Codex / Cursor / Copilot / Gemini / Antigravity
-        │ (session startup & capture hooks)
-        ▼
+Claude Code / Codex / Cursor / Copilot / Gemini ── startup & capture hooks ──┐
+Antigravity ── startup hook only; no automatic capture ─────────────────────┤
+        (Cursor, Copilot, Gemini and Antigravity are fixture-tested)          ▼
 ~/.ai-dev-workspace/<repo-name>/           (private, outside repo)
   ├── workspace.json                       (settings, active task, packs)
   └── vault/

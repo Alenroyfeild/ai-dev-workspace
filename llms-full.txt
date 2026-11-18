@@ -10,8 +10,9 @@ Nine core CLI paths (ten invocations with cleanup): `ws start`, `ws remember`, `
 
 - Local Markdown task records, explicit `ws remember`, `ws checkpoint` and `ws brief`.
 - Seven core MCP tools by default; other tools remain callable by name.
-- Claude Code and Codex have live checks on macOS. Cursor, Copilot and Gemini
-  integrations are fixture-tested; Linux/Windows have CI, not live-client proof.
+- Claude Code and Codex have historical [live sessions](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MEASUREMENTS.md#claude-and-cross-assistant-runs-2026-10-09).
+  Cursor, Copilot, Gemini CLI and Antigravity are fixture-tested (CI).
+  Linux: CI only; no live session on record. Windows: CI only.
 - Only saved information is remembered; automatic transcript capture is best-effort.
 - The optional guards pack is a safety net, not a security boundary.
 
@@ -58,7 +59,7 @@ Commands beyond the core list are Experimental and may change or be removed. Exp
 - `ws audit` (Stable), `ws import claude-mem` (Preview), `ws digest` and the advisory behavior pack (Stable), `digest_file` (Preview), lesson promotion (Stable), Discipline pack (Stable), MCP Registry entry (Preview).
 - Private team sharing (Preview): no hosted team check yet.
 - Codex plugin and Cursor plugin (Preview), MCP plugin roots discovery (Preview), Codex SessionStart catch-up (Preview).
-- Cursor, Copilot (VS Code), Gemini CLI and Antigravity: fixture-tested only.
+- Cursor, Copilot (VS Code), Gemini CLI and Antigravity: fixture-tested (CI); [live reports welcome](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
 
 ## Released in beta.7
 
@@ -104,7 +105,7 @@ plugin MCP paths, so use `ws start` for MCP. Clients that offer roots get the be
 - [Keep decisions without a background AI](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/keep-decisions-without-background-ai.md)
 - [Stop retrying failed approaches](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/stop-retrying-failed-approaches.md)
 
-- [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): install, supported clients and results with limits
+- [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): install, client verification and results with limits
 - [Setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/SETUP.md) and [Tutorial](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TUTORIAL.md)
 - [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md) and [MCP](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MCP.md)
 - [Client verification](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/CLIENT-VERIFICATION.md): fixture and live limits
