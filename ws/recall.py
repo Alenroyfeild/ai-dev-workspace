@@ -19,7 +19,7 @@ def _note(root, identifier, terms=()):
         raw = core.read_text(path, core.read_roots(root))
     elif identifier.startswith(('private:', 'team:')):
         layer, item = identifier.split(':', 1)
-        if not core.ID_RE.fullmatch(item) or item.endswith('.local'): raise core.WsError('Invalid knowledge ID.')
+        if not core.ID_RE.fullmatch(item) or item.casefold().endswith('.local'): raise core.WsError('Invalid knowledge ID.')
         for name, base, team_id in knowledge._bases(root, layer):
             path = base / (item + '.md')
             if path.exists():
@@ -29,10 +29,10 @@ def _note(root, identifier, terms=()):
         else: raise core.WsError('No knowledge entry with that ID.')
     else:
         relative = Path(identifier)
-        if relative.is_absolute() or '\\' in identifier or ':' in identifier or relative.suffix != '.md' or relative.stem.endswith('.local') or any(p.startswith('.') for p in relative.parts):
+        if relative.is_absolute() or '\\' in identifier or ':' in identifier or relative.suffix != '.md' or relative.stem.casefold().endswith('.local') or any(p.startswith('.') for p in relative.parts):
             raise core.WsError('Use a note ID returned by search_vault.')
         path = core.inside(root / relative, [core.vault(root)])
-        if 'Runs' in relative.parts or any(core.is_link(p) for p in (path, *path.parents) if p == root or root in p.parents):
+        if any(part.casefold() == 'runs' for part in relative.parts) or any(core.is_link(p) for p in (path, *path.parents) if p == root or root in p.parents):
             raise core.WsError('Hidden, run-log or symlinked notes are not recall details.')
         raw = core.read_text(path, [core.vault(root)])
     if re.search(r'#private\b', raw, re.I): raise core.WsError('Note is marked private; no recall details returned.')

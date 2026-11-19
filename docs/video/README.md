@@ -2,9 +2,9 @@
 
 ## Rendering
 
-Before recording, the maintainer supplies an isolated released-package venv:
+Before recording, the maintainer supplies an isolated venv with the released version being recorded (currently 0.1.0b7):
 `python3 -m venv /tmp/video-venv`, then
-`/tmp/video-venv/bin/python -m pip install ai-dev-workspace==0.1.0b5`.
+`/tmp/video-venv/bin/python -m pip install ai-dev-workspace==0.1.0b7`.
 The renderer never installs anything. Use `--ws-python /tmp/video-venv/bin/python`:
 
 ```sh

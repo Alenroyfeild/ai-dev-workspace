@@ -58,7 +58,7 @@ class VideoTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(ROOT / 'bin/make-video'), '--check'],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('8 lessons OK', result.stdout)
+        self.assertIn('14 lessons OK', result.stdout)
 
     def test_missing_tools_exit_two_without_executing_lessons(self):
         with patch.object(self.video.shutil, 'which', return_value=None), \
@@ -77,6 +77,37 @@ class VideoTests(unittest.TestCase):
             self.assertNotIn('bin/ws', tape)
             typed = [line for line in tape.splitlines() if line.startswith('Type ')]
             self.assertFalse(any('VIDEO_STEP_0_OK' in line for line in typed))
+            # Typed lines show only the lesson command: no internal check text on screen.
+            self.assertEqual(typed[1:], ['Type ' + self.video.vhs_string(c) for c in data['commands']])
+
+    def test_typed_commands_with_quotes_use_a_vhs_string_without_escapes(self):
+        # VHS strings have no escape sequences, so a JSON-style \" breaks the tape parser.
+        data = {'commands': ['ws lesson add "Mocked DB hid a bad migration" --tag testing', "echo 'single' \"double\""]}
+        with tempfile.TemporaryDirectory() as temp:
+            tape = self.video.tape(data, Path(temp), Path(temp) / 'raw.mp4')
+        typed = [line[len('Type '):] for line in tape.splitlines() if line.startswith('Type ')][1:]
+        self.assertEqual(len(typed), 2)
+        for text, command in zip(typed, data['commands']):
+            quote = text[0]
+            self.assertIn(quote, '"\'`')
+            self.assertEqual(text[-1], quote)
+            self.assertNotIn(quote, text[1:-1])
+            self.assertTrue(text[1:-1].startswith(command))
+        with self.assertRaises(ValueError):
+            self.video.vhs_string('a " b \' c ` d')
+
+    def test_steps_wait_on_the_prompt_because_vhs_screen_match_ignores_scrolled_output(self):
+        # Wait+Screen reads the top of the buffer, so a long `ws start` output never matched its marker.
+        with tempfile.TemporaryDirectory() as temp:
+            data = self.video.parse(self.lesson(temp))
+            tape = self.video.tape(data, Path(temp), Path(temp) / 'raw.mp4')
+            self.assertNotIn('Wait+Screen', tape)
+            self.assertIn('Wait+Line /^\\$$/', tape)
+            self.assertIn('Set WaitTimeout', tape)
+            setup = self.video.setup_script(Path('/x/python'), Path('/x/repo'))
+            self.assertIn('PROMPT_COMMAND=', setup)
+            self.assertIn('FAILED $ ', setup)
+            self.assertNotIn('\nPS1="$ "\n', setup)
 
     def test_failed_render_never_replaces_clip_or_commits_hash(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -142,3 +173,21 @@ class VideoTests(unittest.TestCase):
             problems = self.video.release_check(data, '9.9')
             self.assertTrue(any('explainer not uploaded' in p for p in problems))
             self.assertTrue(any('latest is 9.9' in p for p in self.video.release_check(data, '10.0')))
+
+    def test_release_check_requires_explicit_earlier_explainer_reuse(self):
+        previous = 'https://youtu.be/aaaaaaaaaaa'
+        current = 'https://www.youtube.com/watch?v=aaaaaaaaaaa'
+        entry = {'explainer': current}
+        data = {'latest': '9.9', 'releases': {'9.8': {'explainer': previous}, '9.9': entry}}
+        block = self.video.START + '\n' + self.video.links_block(data) + self.video.END
+        check = lambda: self.video.release_check(data, '9.9', read=lambda name: block)
+        self.assertTrue(any('explainer_reused_from' in problem for problem in check()))
+        entry['explainer_reused_from'] = '9.9'
+        self.assertTrue(check())
+        entry['explainer_reused_from'] = '9.8'
+        self.assertEqual(check(), [])
+        entry['explainer'] = 'https://youtu.be/bbbbbbbbbbb'
+        block = self.video.START + '\n' + self.video.links_block(data) + self.video.END
+        self.assertTrue(any('explainer_reused_from' in problem for problem in check()))
+        del entry['explainer_reused_from']
+        self.assertEqual(check(), [])

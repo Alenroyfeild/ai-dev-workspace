@@ -157,6 +157,7 @@ def text_doctor(report):
             lines.append(f"Hooks point to a missing kit or workspace — {item['repo']}/{item['file']}: {item['missing']}; run ws start again in that repo (if you edited that file, ws start --undo then ws start)")
     for path in report.get('claude_plugin_duplicates', []): lines.append('Claude: plugin and ws start hooks both active (two briefs per session) — ' + path + '; disable one')
     for path in report.get('claude_plugin_missing', []): lines.append('Claude: the plugin was enabled when ws start ran but is not now, so Claude has no memory hooks — ' + path + '; run ws start to restore Claude hooks')
+    if report.get('half_migrated'): lines.append('Half-migrated store: pending .ws-new proposals await review; review them and run ws upgrade')
     clients = report.get('configured_clients', {})
     if clients:
         lines.append('Workspace-level connections: ' + (', '.join(name for name, configured in clients.items() if configured) or 'none'))
@@ -282,12 +283,17 @@ class WsParser(argparse.ArgumentParser):
         self.exit(2, f"{self.prog}: unknown {'command' if top else 'choice'} '{bad[1]}'{hint}" + (' Run ws --help' if top and near else '') + '\n')
 
 
+RELOAD_NOTE = 'Note: running assistant sessions and MCP servers keep the old code until you start a new session or reload MCP connections.'
+
+
 def main(argv=None):
     if core.WINDOWS:  # the pip/pipx `ws` script skips bin/ws, whose cp1252 pipes cannot carry non-ASCII text
         for stream in (sys.stdin, sys.stdout, sys.stderr): getattr(stream, 'reconfigure', lambda **_: None)(encoding='utf-8')
     p = WsParser(prog='ws', description='AI Dev Workspace: shared memory and coordination for AI-assisted development.',
                  formatter_class=GroupedHelpFormatter,
-                 epilog='More: `ws help all` lists every command; `ws <command> --help` shows its options.')
+                 epilog='Updating? `ws update` updates the ws software; then `ws upgrade --dry-run` previews and `ws upgrade --yes` applies managed '
+                       'private-workspace updates; then `ws start` in each repo refreshes its wiring.\n'
+                       'More: `ws help all` lists every command; `ws <command> --help` shows its options.')
     p.add_argument('--version', action='version', version=f"%(prog)s {core.kit_meta()['version']}")
     p.add_argument('--workspace-root', help='explicit workspace directory (also used by generated hooks)')
     sub = p.add_subparsers(dest='cmd', required=True, title='Commands', metavar='COMMAND')
@@ -331,7 +337,8 @@ def main(argv=None):
     s.add_argument('--yes', action='store_true', help='apply the printed preview without prompting')
     s.add_argument('--dry-run', action='store_true', help='preview without writing anything')
     s.add_argument('--workspace', help='private workspace folder (default ~/.ai-dev-workspace/<repo-name>)')
-    s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep private memory')
+    s.add_argument('--undo', action='store_true', help='remove unchanged repo wiring; keep memory unless --delete-memory is also set')
+    s.add_argument('--delete-memory', action='store_true', help='with --undo, delete the recorded private workspace after confirmation')
     s.add_argument('--memory-dir', help='Claude auto-memory directory to preview for import')
     s.add_argument('--no-import', action='store_true', help='skip existing memory import')
     s = sub.add_parser('scope', help='read or change local record sharing eligibility; never publishes')
@@ -375,6 +382,11 @@ def main(argv=None):
     s = t.add_parser('new', help='create a task record'); s.add_argument('id', help='short ID such as JIRA-123 or fix-login'); s.add_argument('title')
     s.add_argument('--objective', default='', help='one-line goal'); s.add_argument('--branch', default='', help='Git branch the task belongs to'); s.add_argument('--repo', default='', help='repo path the task belongs to')
     t.add_parser('list', help='list tasks with status, claim and next action')
+    s = t.add_parser('next', help='select and claim the next eligible task',
+                     description='Select and claim under the workspace lock. Claims do not expire automatically. '
+                     'After confirming an owner has stopped, recover with ws release ID --worker OWNER --token OBSERVED_TOKEN; '
+                     'a changed token refuses the release. A token left locally before the task write grants no claim.')
+    s.add_argument('--worker', help='label for this session (default: $USER)')
     s = t.add_parser('find', help='find tasks by ID, branch or title'); s.add_argument('ref', help='ID, branch or title text')
     s = t.add_parser('show', help='print one task record'); s.add_argument('id'); s.add_argument('--section', action='append', help='print only this section; repeat for several')
     s = t.add_parser('depend', help='make a task wait for another'); s.add_argument('id'); s.add_argument('--on', required=True, metavar='OTHER')
@@ -441,6 +453,7 @@ def main(argv=None):
     s = sub.add_parser('update', help='check for or install a new kit release'); s.add_argument('--check', action='store_true')
     sub.add_parser('version', help='print the installed kit version')
     s = sub.add_parser('upgrade', help='preview or apply managed workspace updates'); s.add_argument('--dry-run', action='store_true', help='print the changes without writing them'); s.add_argument('--diff', action='store_true', help='show the full diff of every file, not the summary'); s.add_argument('--yes', action='store_true', help='apply without asking (needed in scripts: closed input is no answer and refuses)')
+    s.add_argument('--json', action='store_true', help='print JSON instead of human-readable text')
     sub.add_parser('notices', help='updates, fixed issues and unshared feedback worth mentioning')
     s = sub.add_parser('assist', help='suggest improvements; apply only after explicit permission')
     s.add_argument('action', nargs='?', choices=('apply', 'decide')); s.add_argument('id', nargs='?')
@@ -496,11 +509,13 @@ def main(argv=None):
         if a.cmd == 'start':
             from . import repo
             if a.workspace_root: raise core.WsError('Run ws start inside the code repo; no --workspace-root is needed.')
-            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import)
+            try: result = repo.start(a.yes, a.dry_run, a.workspace, a.undo, a.memory_dir, a.no_import, delete_memory=a.delete_memory)
             except core.WsError: raise  # already says what to do; the prefix below is for unexpected file errors
             except (OSError, ValueError) as exc: raise core.WsError('Repo setup stopped; review local files before retrying: ' + str(exc))
             if result and result.get('undone'):
-                print(('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ') + 'private memory kept at ' + result['root'])
+                message = ('Kept edited repo wiring; ' if result.get('partial') else 'Removed repo wiring; ')
+                message += ('private memory deleted at ' if result.get('memory_deleted') else 'private memory kept at ') + result['root']
+                print(message)
                 return 2 if result.get('partial') else 0
             if result:
                 print(('Partial setup: ' if result.get('partial') else 'Already set up: ' if result['already'] else 'Set up: ') + result['root'] + '; assistants: ' + (', '.join(result['assistants']) or 'none detected') + ('; Codex: ' + result.get('codex_status', 'connected')))
@@ -537,12 +552,18 @@ def main(argv=None):
         if a.cmd == 'version':
             out(core.kit_meta()['version']); return 0
         if a.cmd == 'update':
+            def installed(done):  # a real source update only; the package route just prints a command, and a pull can be a no-op
+                if 'updated_to' in done and 'up to date' not in done.get('git', '').lower().replace('-', ' '): print(RELOAD_NOTE, file=sys.stderr)
+                return 0
             if core.PACKAGED and not a.check:
                 out(core.update_kit()); return 0
             res = core.check_update(force=True)
+            if a.check:
+                from .updates import kit_preflight
+                res['preflight'] = kit_preflight()
             if a.check or not res.get('update_available'):
                 out(res); return 0
-            out(core.update_kit()); return 0
+            done = core.update_kit(); out(done); return installed(done)
         if a.cmd == 'doctor':
             problem = ''
             try:
@@ -720,7 +741,11 @@ def main(argv=None):
             result = orchestration.delegate(root, a.task, a.role, a.run, a.diff); out(result); return 0 if result.get('exit_code', 0) == 0 else 2
         if a.cmd == 'upgrade':
             from . import upgrade
-            def show_upgrade(result): out(('\n'.join(c['diff'] for c in result['changes']) if a.diff else upgrade.summary(result['changes'])) if result['changes'] else 'No changes.')
+            if getattr(a, 'json', False) and not a.yes and not a.dry_run:
+                raise core.WsError('ws upgrade --json requires --yes or --dry-run.')
+            def show_upgrade(result):
+                if getattr(a, 'json', False): return
+                out(('\n'.join(c['diff'] for c in result['changes']) if a.diff else upgrade.summary(result['changes'])) if result['changes'] else 'No changes.')
             result = core.upgrade_workspace(root, True)  # preview first; applying re-plans under the lock
             show_upgrade(result)
             if not a.dry_run:
@@ -729,8 +754,13 @@ def main(argv=None):
                     try: go = input().strip().lower() in ('y', 'yes')
                     except EOFError: print(file=sys.stderr); raise core.WsError('No confirmation; use ws upgrade --yes or --dry-run.')
                     if not go: out('Not applied.'); return 0
+                applied = bool(result['changes'])
                 result = core.upgrade_workspace(root, False, result['changes'])  # refuses if the plan changed since the preview
-            out({'pending_review': result['pending'], 'backups': result['backups']}); return 0
+                if applied and not getattr(a, 'json', False):
+                    print(upgrade.migration_result(root, result), file=sys.stderr)
+            out({'pending_review': result['pending'], 'backups': result['backups']})
+            if not a.dry_run and result['changes']: print(RELOAD_NOTE, file=sys.stderr)  # only when files were written
+            return 0
         if a.cmd == 'assist':
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
         if a.cmd == 'status':
@@ -836,6 +866,10 @@ def main(argv=None):
         elif a.cmd == 'task':
             if a.action == 'new': out(core.task_new(root, a.id, a.title, a.objective, a.branch, a.repo))
             elif a.action == 'list': out(core.task_list(root))
+            elif a.action == 'next':
+                worker = a.worker or os.environ.get('USER') or os.environ.get('USERNAME')
+                if not worker: raise core.WsError('Set USER (USERNAME on Windows) or pass --worker.')
+                out(core.claim_next(root, worker))
             elif a.action == 'find': out(core.task_find(root, a.ref))
             elif a.action == 'depend': out(core.task_depend(root, a.id, a.on))
             elif a.action == 'import':

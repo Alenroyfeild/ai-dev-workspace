@@ -15,7 +15,7 @@ def load(path):
 
 
 CURSOR_DESC = (
-    'Local Markdown memory that Claude Code, Codex and Cursor (preview) share: a short brief at session start, '
+    'Local Markdown memory that Claude Code and Codex share; Cursor is fixture-tested (CI) in preview: a short brief at session start, '
     'saved decisions and dead ends, checkpoints, search and opt-in safety guards. '
     'Inactive until you run ws start in a repo.'
 )
@@ -30,7 +30,7 @@ class CursorPluginTests(Base):
         for key in ('name', 'homepage', 'repository', 'license', 'author'):
             self.assertEqual(manifest[key], claude[key], key)
         self.assertEqual(manifest['description'], CURSOR_DESC)
-        self.assertEqual(manifest['description'], claude['description'].replace('Claude Code and Codex share', 'Claude Code, Codex and Cursor (preview) share'))
+        self.assertEqual(manifest['description'], claude['description'].replace('Claude Code and Codex share', 'Claude Code and Codex share; Cursor is fixture-tested (CI) in preview'))
         self.assertEqual((manifest['rules'], manifest['skills'], manifest['hooks']), ('./rules/', './skills/', './hooks/cursor-hooks.json'))
         self.assertEqual(manifest['mcpServers']['ai-dev-workspace']['args'], ['${CURSOR_PLUGIN_ROOT}/mcp/server.py', '--plugin'])
         entry = load('.cursor-plugin/marketplace.json')['plugins'][0]
