@@ -32,15 +32,18 @@ Full list: [CLI commands](docs/COMMANDS.md).
 
 ## Results
 
-Measured in [`bench/README.md`](bench/README.md) across independent paired investigations (Codex `gpt-6-luna`, n=5 per cohort):
+Measured in [`bench/README.md`](bench/README.md) across independent paired investigations (Codex `gpt-6-luna`/high). In the workspace arms the assistant was told not to write notes, so they measure automatic capture; the Markdown arm was told to write `HANDOFF.md`.
 
-| Arm | Pass (October 11) | Pass (October 10) |
-|---|---|---|
-| Fresh baseline (no memory) | 0/5 | 0/5 |
-| Workspace (automatic brief) | 2/5 | 1/5 |
-| Plain Markdown handoff | 5/5 | 4/5 |
+| Arm | Pass (November 18) | Pass (October 11) | Pass (October 10) |
+|---|---|---|---|
+| Fresh baseline (no memory) | 0/8 | 0/5 | 0/5 |
+| Workspace (automatic brief) | 2/7 | 2/5 | 1/5 |
+| Workspace, handoff injected as written | 0/7 | – | – |
+| Plain Markdown handoff | 6/7 | 5/5 | 4/5 |
 
-The latest controlled runs show the plain Markdown handoff beating the workspace (5/5 and 4/5 against 2/5 and 1/5), with the automatic-capture release gate still unmet. The win for the workspace is structure, cross-assistant handoff, and avoiding manual file management. Details and earlier runs: [bench/README.md](bench/README.md) and [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
+On November 18 the handoff-as-written arm also used 1.6x the plain Markdown arm's input tokens (339,168 against 208,720 per trial). That cohort stopped after 29 of 40 scheduled trials (two consecutive transport failures at a usage limit); the remaining trials cannot change the order. [Raw results](bench/results/2026-11-18-ARM4-n10-codex.json).
+
+**Automatic capture does not yet produce a reliable handoff.** Save the handoff explicitly with `ws checkpoint` and `ws remember`; those are deterministic. The win for the workspace is structure, cross-assistant handoff, and avoiding manual file management, not automatic memory. Details and earlier runs: [bench/README.md](bench/README.md) and [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
 
 
 ## Compatibility
@@ -120,7 +123,7 @@ Memory storage makes no background model calls. Task memory is plain Markdown yo
 ## Compared with
 
 - **Built-in memory files (CLAUDE.md, AGENTS.md):** Plain instructions per assistant; `ai-dev-workspace` adds cross-assistant handoffs, active task state, and `Do not redo:` constraints.
-- **A plain HANDOFF.md:** Works well for manual notes (and beat automatic workspace capture in latest benchmark cohorts: 5/5 vs 2/5); `ai-dev-workspace` adds cross-assistant automation, structured brief injection, and staleness warnings.
+- **A plain HANDOFF.md:** Works well for manual notes (and beat automatic workspace capture in the last three benchmark cohorts, 6/7 vs 2/7 on November 18); `ai-dev-workspace` adds cross-assistant automation, structured brief injection, and staleness warnings.
 - **claude-mem:** Captures tool use through hooks and compresses it with AI into SQLite + vector search ([upstream docs](https://github.com/thedotmack/claude-mem)), providing automatic memory capture without explicit commands; `ai-dev-workspace` keeps explicit Markdown you own, makes no background model calls for memory (explicit delegation can call declared CLIs or a configured gateway), and focuses on durable handoffs with next steps and dead ends ([guide](docs/guides/keep-decisions-without-background-ai.md)).
 
 ## Known limits
