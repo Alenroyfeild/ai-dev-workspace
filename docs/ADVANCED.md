@@ -4,7 +4,7 @@ Most workspaces need only `ws tools`, `ws assist` and the defaults. These settin
 
 ## Codex SessionStart catch-up
 
-**Preview in beta.7; fixture-tested, not live-tested with Codex resume.**
+**Preview in 0.2.0; fixture-tested, not live-tested with Codex resume.**
 When the Codex `SessionStart` hook requests a brief, it can catch up the last
 captured session for the single locally claimed task. This covers appended turns
 from a resumed session that received no capture callback. It saves bounded user
@@ -27,7 +27,7 @@ synthetic transcripts; they do not establish live hook delivery or capture rates
 
 `ws route [role]` resolves a binding from `routing.json` (default role: lead). Availability means the CLI is on `PATH` and a model is configured; it does not verify login or account access. Ordered preferences choose an available provider and report every skipped provider; an explicit provider override pins one provider and stops if it is unavailable. There is no silent fallback. Root `role_overrides` can set provider/preference, tier, family, model or effort. Managed defaults may change on upgrade; root overrides are preserved. Claude family aliases and explicit Codex model IDs are supported. Ollama requires an already-installed local model; the kit never pulls models.
 
-Preview in beta.7: `ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Fallback tries only the declared providers; a timeout counts as a failed attempt. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#delegate).
+Preview in 0.2.0: `ws delegate <task> --role <role>` prepares a bounded, redacted brief and prints the exact command. Only explorer and reviewer support `--run`; all other roles are preparation-only. Codex uses read-only controls, Claude uses project-only settings and read tools, and Ollama is preparation-only. Fallback tries only the declared providers; a timeout counts as a failed attempt. Output is unverified and lead-reviewed. Allowed paths describe prompt scope, not an operating-system read boundary. See [command details](COMMANDS.md#delegate).
 
 ### OpenAI-compatible gateway (Preview)
 
@@ -170,7 +170,7 @@ Idea credit: [Anthropic's claude-code-setup](https://github.com/anthropics/claud
 
 ### Import a claude-mem copy
 
-Preview in beta.7 (fixture-tested schema; newer upstream schemas may not import): `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields are excluded. See the privacy rules below before importing. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
+Preview in 0.2.0 (fixture-tested schema; newer upstream schemas may not import): `ws import claude-mem --db <checkpointed-copy.db> --project <exact-name>` previews at most 50 observations. Add `--apply` to review and confirm private, unverified decision/lesson records; repeated imports reuse identical records. It never modifies the source, follows no instructions in imported text, and refuses active WAL/journal files. Oversized fields are excluded. See the privacy rules below before importing. Review the saved records before relying on or sharing them. Compatibility is fixture-tested against columns verified in [claude-mem's SQLite source](https://github.com/thedotmack/claude-mem/blob/bbb337902271db56849b7645fee0f3b77b9aabf6/src/services/sqlite/SessionStore.ts); no background worker or model call is used.
 
 Privacy rules (case-insensitive): `#private` anywhere in the selected text fields excludes the whole observation; `#privately` does not match. In beta.6, an observation was excluded only when its combined text began with `/private`, ignoring leading whitespace. Since beta.7, the `/private` prefix is checked separately in each supported field (`title`, `subtitle`, `narrative`, `facts`, `text`), so a public title cannot hide a private narrative. Mentioning `/private` in the middle of a field does not trigger this prefix rule.
 

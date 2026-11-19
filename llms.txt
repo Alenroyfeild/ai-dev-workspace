@@ -32,6 +32,25 @@ Commands beyond the core list are Experimental and may change or be removed. Exp
 - Codex plugin and Cursor plugin (Preview), MCP plugin roots discovery (Preview), Codex SessionStart catch-up (Preview).
 - Cursor, Copilot (VS Code), Gemini CLI and Antigravity: fixture-tested (CI); [live reports welcome](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
 
+## Released in 0.2.0
+
+Labels in the release sections below are as published in that release; the current split between the 1.0 promise and Experimental is in the sections above.
+
+- Experimental: `ws update --check` reports the installation type, local Git state and manual
+  choices without pulling or changing branches. To upgrade: `ws update` (a package install
+  prints `pipx upgrade ai-dev-workspace`), then `ws upgrade --dry-run`, `ws upgrade --yes`
+  and `ws start` in each repo; running assistant sessions and MCP servers need a new
+  session or a reload.
+- Experimental: `ws upgrade` prints a migration result block, and `ws doctor` flags half-migrated stores.
+- Stable: `ws start --undo --delete-memory` previews and, after confirmation, removes the
+  recorded private workspace; plain `ws start --undo` still keeps memory.
+- Experimental: `ws task next` selects and claims the next eligible task atomically.
+- Measured (November 18, Codex `gpt-6-luna`, n=7 to 8 per arm): automatic capture is not
+  reliable; the workspace arm passed 2/7 against 6/7 for a plain Markdown handoff, so
+  save handoffs explicitly with `ws checkpoint` and `ws remember`.
+- Stable: guards deny more git bypasses (config-env, `GIT_CONFIG_*`, aliases, abbreviated
+  flags); they remain a safety net, not a security boundary.
+
 ## Released in beta.7
 
 Labels in the release sections below are as published in that release; the current split between the 1.0 promise and Experimental is in the sections above.

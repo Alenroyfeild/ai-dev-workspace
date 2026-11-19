@@ -1,1 +1,0 @@
-Fixed: the guards now deny git `--config-env`, `GIT_CONFIG_*` environment settings and same-command `-c alias.*` aliases that hide `clean`, `reset --hard` or force/delete pushes, and `git clean -e` patterns no longer count as `-n`.

@@ -1166,12 +1166,12 @@ class ReleaseFeedbackTests(Base):
         core.feedback_link(self.root, 2, 'https://github.com/acme/kit/issues/3')
         def fake(url):
             if 'releases' in url:
-                return [{'tag_name': 'v0.2.0', 'body': '### New\n- Faster search', 'html_url': 'u'}]
+                return [{'tag_name': 'v9.0.0', 'body': '### New\n- Faster search', 'html_url': 'u'}]
             return {'state': 'closed'}
         with mock.patch.object(core, '_get_json', side_effect=fake) as net:
             kinds = {n['kind']: n for n in core.notices(self.root)}
             again = core.notices(self.root)
-        self.assertIn('0.2.0', kinds['update']['message'])
+        self.assertIn('9.0.0', kinds['update']['message'])
         self.assertIn('Faster search', kinds['update']['message'])
         self.assertEqual(kinds['update']['suggest'], 'ws update')
         self.assertEqual(kinds['fixed']['suggest'], 'ws update --check')

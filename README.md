@@ -41,7 +41,7 @@ Measured in [`bench/README.md`](bench/README.md) across independent paired inves
 | Workspace, handoff injected as written | 0/7 | – | – |
 | Plain Markdown handoff | 6/7 | 5/5 | 4/5 |
 
-On November 18 the handoff-as-written arm also used 1.6x the plain Markdown arm's input tokens (339,168 against 208,720 per trial). That cohort stopped after 29 of 40 scheduled trials (two consecutive transport failures at a usage limit); the remaining trials cannot change the order. [Raw results](bench/results/2026-11-18-ARM4-n10-codex.json).
+On November 18 the handoff-as-written arm also used 1.6x the plain Markdown arm's input tokens (339,168 against 208,720 per trial). That cohort stopped after 29 of 40 scheduled trials (two consecutive transport failures at a usage limit); the remaining trials cannot change the order against plain Markdown. [Raw results](bench/results/2026-11-18-ARM4-n10-codex.json).
 
 **Automatic capture does not yet produce a reliable handoff.** Save the handoff explicitly with `ws checkpoint` and `ws remember`; those are deterministic. The win for the workspace is structure, cross-assistant handoff, and avoiding manual file management, not automatic memory. Details and earlier runs: [bench/README.md](bench/README.md) and [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md).
 
@@ -149,6 +149,7 @@ For an isolated offline walkthrough, run `ws demo`.
 | Feature | Release status | What it does | Docs link |
 |---|---|---|---|
 | `ws demo` | Stable | Creates an isolated sandbox repo to test commands safely | [Tutorial](docs/TUTORIAL.md) |
+| `ws task next` | Experimental | Selects and claims the next eligible task atomically (also over MCP) | [Commands](docs/COMMANDS.md#tasks-and-checkpoints) |
 | `ws lesson review` | Stable | Read-only list of lessons with old date stamps (`--days N`); changes or deletes nothing | [Commands](docs/COMMANDS.md#search-and-lessons) |
 | Native imports | Stable | Reads existing Claude and Codex memory files (`ws import native`) | [Commands](docs/COMMANDS.md#import-existing-memory) |
 
