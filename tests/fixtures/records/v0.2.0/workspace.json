@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "kit_version": "0.2.0",
+  "content_version": "fbcc91e506681696cdfdcb97160880221e31ead9703771f5a3de253ea41774c8",
+  "upgrade_pending": [],
+  "name": "repo",
+  "vault": "vault",
+  "packs": [],
+  "repos": [
+    "__REPO__"
+  ],
+  "created": "2026-10-16T17:10:16+00:00",
+  "share": "ask"
+}

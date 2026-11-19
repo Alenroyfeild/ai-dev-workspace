@@ -43,7 +43,7 @@ packs/android/
 
 ## Optional digest advice
 
-Preview in beta.6 (opt-in, size-only advice): In a started repo, run `ws pack add digest`, then `ws start` to review and apply
+Preview in 0.2.0 (opt-in, size-only advice): In a started repo, run `ws pack add digest`, then `ws start` to review and apply
 local hook changes. Restart Claude Code or Codex to refresh its MCP catalog.
 The core profile then lists `digest_file` alongside the seven memory tools;
 explicit custom tool lists stay unchanged. The existing tool accepts `path` and
