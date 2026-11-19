@@ -170,6 +170,6 @@ Memory storage makes no background model calls. `ws delegate --run` starts only 
 
 ## Status & contributing
 
-`ai-dev-workspace` is in public beta (v0.1.0-beta.7 on PyPI). Planned improvements are tracked in the [Roadmap](docs/ROADMAP.md). Bug reports and feedback are welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
+`ai-dev-workspace` is in public beta (v0.2.0 on PyPI). Planned improvements are tracked in the [Roadmap](docs/ROADMAP.md). Bug reports and feedback are welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
 
 Released under the [MIT License](LICENSE). <!-- mcp-name: io.github.Alenroyfeild/ai-dev-workspace mcp-name: io.github.alenroyfeild/ai-dev-workspace -->

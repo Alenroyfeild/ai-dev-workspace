@@ -6,7 +6,7 @@
 
 Nine core CLI paths (ten invocations with cleanup): `ws start`, `ws remember`, `ws checkpoint`, `ws brief`, `ws task new`, `ws task list`, `ws task show`, `ws claim`, `ws release`. Flag variations, including `ws start --undo`, use the same path. The default MCP profile lists seven tools: `brief`, `find_task`, `read_task`, `checkpoint`, `remember`, `search_vault`, `add_lesson`. [Core reference](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md#core).
 
-## Stable — published 0.1.0b7
+## Stable — published 0.2.0
 
 - Local Markdown task records, explicit `ws remember`, `ws checkpoint` and `ws brief`.
 - Seven core MCP tools by default; other tools remain callable by name.
@@ -16,7 +16,7 @@ Nine core CLI paths (ten invocations with cleanup): `ws start`, `ws remember`, `
 - Only saved information is remembered; automatic transcript capture is best-effort.
 - The optional guards pack is a safety net, not a security boundary.
 
-## Stable workflow — published 0.1.0b7
+## Stable workflow — published 0.2.0
 
 ```sh
 pipx install ai-dev-workspace --pip-args='--pre'

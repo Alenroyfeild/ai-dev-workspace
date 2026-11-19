@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (Unreleased)
+## 0.2.0 (2026-11-20)
 
 0.2.0 adds a guided update and upgrade route, lets you remove a repo's private workspace on request, hardens guards and redaction, and states plainly that automatic capture is not yet a reliable handoff, so save one with `ws checkpoint` and `ws remember`.
 
