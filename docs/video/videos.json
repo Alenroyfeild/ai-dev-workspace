@@ -30,6 +30,7 @@
     },
     "0.1.0b7": {
       "explainer": "https://youtu.be/sfcBNSELq-8",
+      "explainer_reused_from": "0.1.0b6",
       "tour": "https://youtu.be/ZmwwgYzZUJY",
       "shorts": {
         "Switch assistants": "https://youtu.be/GAX8Jbl4KqY",

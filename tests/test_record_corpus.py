@@ -68,7 +68,7 @@ class RecordCorpusTests(Base):
                 self.assertIn(core.section(before['text'], name), core.section(after['text'], name), name)
         self.assertIn('Synthetic finding.', core.section(after['text'], 'Findings'))
         self.assertEqual(core.task_format(core.parse_meta(after['text'])), 1)  # a released file reads as format 1 ...
-        self.assertNotIn('format', core.parse_meta(after['text']))  # ... and a checkpoint does not rewrite it to say so
+        self.assertEqual('format' in core.parse_meta(before['text']), 'format' in core.parse_meta(after['text']))  # ... and a checkpoint neither adds nor drops the marker
         self.assertEqual(core.lesson_search(root, 'cents')[0][:12], '- 2026-10-16')
 
     def test_default_recap_includes_fixture_at_its_recorded_date(self):

@@ -19,7 +19,7 @@ Stable: Claude Code and Codex share the exact same local Markdown task record ou
 Explicit decisions saved with `ws remember` and next actions saved with `ws checkpoint` appear in the next session's brief.
 Limits:
 Automatic cue-word capture from session transcripts is best-effort; explicit CLI commands are deterministic.
-Both Claude Code and Codex are live-tested on macOS and CI-tested on Linux and Windows in released beta.5.
+Both Claude Code and Codex have historical [live session results](../MEASUREMENTS.md). Linux: CI only; no live session on record. Windows: CI only.
 Task memory provides prompt context; an assistant can still ignore brief advice if instructed otherwise.
 This lesson shows the brief Codex receives from the CLI; it is not a recording of a live Codex session.
 ## Narration

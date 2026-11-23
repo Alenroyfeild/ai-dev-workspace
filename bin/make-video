@@ -131,7 +131,7 @@ def render(path, data, clip, python):
              f'[0:v]{scale}[t];[1:v]{scale}[s];[t][s]concat=n=2:v=1:a=0[v]', '-map', '[v]', '-an', clip], env=env)
 
 
-YOUTUBE = re.compile(r'https://(?:www\.youtube\.com/watch\?v=|youtu\.be/)[A-Za-z0-9_-]{11}')
+YOUTUBE = re.compile(r'https://(?:www\.youtube\.com/watch\?v=|youtu\.be/)([A-Za-z0-9_-]{11})')
 LINKED = ('README.md', 'docs/TUTORIAL.md')
 START, END = '<!-- videos:start -->', '<!-- videos:end -->'
 
@@ -185,6 +185,21 @@ def release_check(data, version, read=None):
         problems.append(f'videos.json latest is {data["latest"]}, release is {version}')
     elif not entry.get('explainer'):
         problems.append(f'{version}: explainer not uploaded (paste its YouTube URL)')
+    else:
+        explainer = YOUTUBE.fullmatch(entry['explainer'])
+        reused = []
+        for older, release in data['releases'].items():
+            if older == version or not release.get('explainer'):
+                continue
+            candidate = YOUTUBE.fullmatch(release['explainer'])
+            if explainer and candidate and explainer[1] == candidate[1]:
+                reused.append(older)
+        source = entry.get('explainer_reused_from')
+        if reused and source not in reused:
+            problems.append(f'{version}: explainer matches {", ".join(reused)}. '
+                            'Set explainer_reused_from to the matching edition if reuse is intentional.')
+        elif not reused and 'explainer_reused_from' in entry:
+            problems.append(f'{version}: explainer_reused_from must name an edition with the same video.')
     block = links_block(data)
     for name in LINKED:
         text = read(name)

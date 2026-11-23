@@ -9,7 +9,7 @@
 
 **Your AI assistant picks up where it left off: tasks, decisions and lessons in Markdown you own.**
 
-One shared memory for **Claude Code, Codex, Cursor, GitHub Copilot and Gemini CLI**. Decide something with Claude today, finish it with Codex tomorrow, and the decision is still followed. Plain files in a folder you own, a small CLI (`ws`) and an MCP server. No account, no telemetry, nothing to install beyond Python 3.9+ and git.
+Shared memory for **Claude Code and Codex**, with historical [live session results](MEASUREMENTS.md); Cursor, GitHub Copilot and Gemini CLI are fixture-tested (CI). In the recorded Claude-to-Codex runs, decisions carried across sessions. Plain files in a folder you own, a small CLI (`ws`) and an MCP server. No account, no telemetry, nothing to install beyond Python 3.9+ and git.
 
 ## Measured, not claimed
 
@@ -61,14 +61,14 @@ Hands-on walkthrough with a throwaway repo: [TUTORIAL.md](TUTORIAL.md).
 ## What you get
 
 **Memory that follows the work**
-- One Markdown record per task: objective, evidence, blockers, next action, handoff. Hooks for Claude, Codex, Cursor, Gemini CLI and VS Code Copilot capture conversation decisions automatically (see Client compatibility for what is proven); a short brief (under 200 words) is injected at every session start.
+- One Markdown record per task: objective, evidence, blockers, next action, handoff. Hooks are configured to capture conversation decisions and inject a short brief (under 200 words) at session start. Historical Claude and Codex sessions exercised some hooks; Cursor, Gemini CLI and VS Code Copilot are fixture-tested (CI). See Client compatibility for limits.
 - **Stale-memory check**: the brief warns when files named in the next action changed since it was written, or when the code was rolled back past the checkpoint. It also names files deleted or renamed since the checkpoint and uncommitted edits that were reset away.
 - **Dead ends**: tried-and-failed approaches from the task's Do not redo and Failures sections appear in the brief as `Do not redo:`, so a new session does not retry them.
 - **Lessons** ("what happened → rule"), ranked by the files you are changing, so a mistake made once is not repeated.
 - Search vault notes, lessons and past Claude, Codex, Cursor and Gemini sessions (`ws sessions search`).
 
 **Works with your assistant's own features**
-- Copilot and Cursor get the current task in their own instruction files (`.github/copilot-instructions.md`, a Cursor rule), so decisions reach them even without hooks.
+- Copilot and Cursor get the current task in their own instruction files (`.github/copilot-instructions.md`, a Cursor rule), making decisions available without hooks (fixture-tested in CI; no live session recorded).
 - `ws import native` brings existing Claude, Codex and Gemini built-in memories into the task (read-only, preview first); `ws status` shows Codex goal status beside your task.
 - Route roles to the models you prefer (`routing.json`), delegate read-only work to a second assistant (`ws delegate`), and see what your tools cost in context (`ws tools --cost`).
 
@@ -108,13 +108,13 @@ Already writing a HANDOFF.md by hand? `ws checkpoint` saves the same state and n
 
 | Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI | Antigravity |
 |---|---|---|---|---|---|---|
-| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
+| Rules | fixture-tested | fixture-tested | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
 | MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
 | Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | fixture-tested; SessionStart/PreToolUse |
-| Skills | proven | proven | Preview plugin only; fixture-tested | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
+| Skills | fixture-tested | fixture-tested | Preview plugin only; fixture-tested | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
 | Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested | not wired |
 
-"Proven" means exercised in real sessions of that client. "Fixture-tested" means automated tests check the generated config and hook input/output against saved fixtures and the client's docs; no live session was run. Copilot hooks target the VS Code Local harness ([details](SETUP.md)).
+"Proven" means exercised in historical real sessions of that client, not every event or version; see [live session measurements](MEASUREMENTS.md). "Fixture-tested" means automated tests check the generated config and hook input/output against saved fixtures and the client's docs; no live session for that capability is on record. Copilot hooks target the VS Code Local harness ([details](SETUP.md)).
 
 The table describes repo wiring from `ws start`. All three native plugins are
 **Preview**: Claude Code needs the CLI and `ws start`, is not in Anthropic's official
@@ -124,7 +124,7 @@ not submitted, with no verified install command. See [plugin limits](ADVANCED.md
 
 ## FAQ
 
-**Claude Code and Codex already have memory. Why this?** Built-in memory belongs to one assistant on one machine, and the model decides what to keep. This keeps task state and decisions in files every assistant reads at session start, and it is measured: decisions given in Claude were followed by Codex in 5 of 5 runs.
+**Claude Code and Codex already have memory. Why this?** Built-in memory belongs to one assistant on one machine, and the model decides what to keep. This keeps task state and decisions in files configured clients can read at session start, and it is measured: decisions given in Claude were followed by Codex in 5 of 5 runs.
 
 **Is it another CLAUDE.md?** No. Rules files say how to work; this records what is happening: the current task, its next action, decisions, blockers and lessons, updated as you work and kept short.
 
@@ -151,7 +151,7 @@ not submitted, with no verified install command. See [plugin limits](ADVANCED.md
 
 ## Privacy and status
 
-Task notes stay in your workspace; delegation and feedback send data only when you run them, and feedback is previewed first. Beta: tested on macOS, Linux and Windows (`python3 -m unittest discover -s tests`) and released often; see [CHANGELOG.md](../CHANGELOG.md) and [docs/ROADMAP.md](ROADMAP.md). How we build it: [docs/PRINCIPLES.md](PRINCIPLES.md). Architecture: [docs/ARCHITECTURE.md](ARCHITECTURE.md). Contributing and packs: [CONTRIBUTING.md](../CONTRIBUTING.md).
+Task notes stay in your workspace; delegation and feedback send data only when you run them, and feedback is previewed first. Beta: tested on macOS, Linux and Windows (`python3 -m unittest discover -s tests`) and released often. Linux: CI only; no live session on record. Windows: CI only; see [CHANGELOG.md](../CHANGELOG.md) and [docs/ROADMAP.md](ROADMAP.md). How we build it: [docs/PRINCIPLES.md](PRINCIPLES.md). Architecture: [docs/ARCHITECTURE.md](ARCHITECTURE.md). Contributing and packs: [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## License
 

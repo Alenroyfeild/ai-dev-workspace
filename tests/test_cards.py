@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+from pathlib import Path
 from testutil import needs_symlinks
 from unittest import mock
 import test_sharing
@@ -92,6 +93,46 @@ class CardTests(unittest.TestCase):
         payload=card.read_text().split(cards.HEAD)[1].split(cards.TAIL)[0]
         card.write_text(cards.TAIL+'\n'+cards.HEAD+payload)
         self.assertFalse(knowledge.list_entries(self.root,'repo')['entries'][0].get('summary_snapshot',False))
+
+    @needs_symlinks
+    def test_unsafe_card_does_not_hide_valid_source(self):
+        item = knowledge.add(self.root, 'Bounded queues preserve receipts.', 'repo')
+        path = core.vault(self.root) / 'Knowledge' / (item.split(':')[1] + '.md')
+        key = 'private:' + path.stem
+        card = path.with_suffix('.index.md')
+        target = self.root.parent / 'unrelated.md'
+        target.write_text('Unrelated fixture text.', encoding='utf-8')
+        card.unlink()
+        card.symlink_to(target)
+        reader = core.read_text
+
+        def guarded(p, *args, **kwargs):
+            if p in (card, target):
+                raise AssertionError('Unsafe cache path must not be read')
+            return reader(p, *args, **kwargs)
+
+        with mock.patch('ws.core.read_text', side_effect=guarded):
+            listing = knowledge.list_entries(self.root, 'repo')
+            self.assertEqual([row['key'] for row in listing['entries']], [key])
+            self.assertIn('Bounded queues', listing['entries'][0]['summary'])
+            self.assertEqual([hit['key'] for hit in knowledge.search(self.root, 'receipts', 'repo')], [key])
+        self.assertTrue(card.is_symlink())
+        self.assertEqual(target.read_text(encoding='utf-8'), 'Unrelated fixture text.')
+
+    def test_unreadable_card_metadata_falls_back_to_source(self):
+        item = knowledge.add(self.root, 'Bounded queues preserve receipts.', 'repo')
+        identifier = item.split(':')[1]
+        card = core.vault(self.root) / 'Knowledge' / (identifier + '.index.md')
+        original_stat = Path.stat
+
+        def inaccessible(path, *args, **kwargs):
+            if path == card:
+                raise PermissionError('Synthetic cache stat failure')
+            return original_stat(path, *args, **kwargs)
+
+        with mock.patch.object(Path, 'stat', autospec=True, side_effect=inaccessible):
+            entries = knowledge.list_entries(self.root, 'repo')['entries']
+        self.assertEqual([row['key'] for row in entries], ['private:' + identifier])
 
     def test_default_search_omits_managed_metadata_but_keeps_user_index_text(self):
         before=len(core.search(self.root,'bounded'))

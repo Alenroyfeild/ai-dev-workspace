@@ -18,9 +18,9 @@ An earlier [partial budget cohort](results/2026-10-10-R9-B1-budget-rollout-codex
 
 Early proofs record their base plus patch fingerprint, now materialized as `c0d7d49`; the fresh cohort records that clean source commit directly. Codeburn did not price Luna: USD is unpriced, not zero. Runs use disposable homes/workspaces, with no Claude sessions. These cooperative fixtures do not confine filesystem reads; the historical contamination concern below remains a limitation.
 
-## Four-arm handoff comparison
+## Five-arm handoff comparison
 
-After the verbatim-handoff candidate is available in a local checkout, run the same rollout fixture for all four arms:
+After the verbatim-handoff candidate is available in a local checkout, run the same rollout fixture for all five arms:
 
 ```sh
 python3 -m bench.rollout_run --verbatim-kit <candidate-checkout> -n 10 --output bench/results/<run-name>.json

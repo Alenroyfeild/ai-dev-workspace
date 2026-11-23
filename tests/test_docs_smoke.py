@@ -31,7 +31,8 @@ class DocsSmokeTests(unittest.TestCase):
         self.assertIn('explicit', line('| Decisions & handoffs |'))
         self.assertIn('bounded', line('| Dead ends |'))
         self.assertIn('user asks or approves', line('| Lessons |'))
-        self.assertIn('4096', line('| `ws digest` |'))
+        experimental = (KIT / 'docs/EXPERIMENTAL.md').read_text(encoding='utf-8').splitlines()
+        self.assertIn('4096', next(value for value in experimental if '| `ws digest`' in value))  # Experimental, not in the README
         privacy = text.split('## Privacy & safety', 1)[1].split('## ', 1)[0]
         self.assertIn('names or amounts', privacy)
         self.assertIn('WS_OFFLINE=1', privacy)

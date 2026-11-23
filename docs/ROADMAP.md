@@ -35,6 +35,11 @@ Compatibility claims stay limited to tested behavior; see the [client table](CLI
 - [x] **claude-mem Import** (Preview): `ws import claude-mem --db <file> --project <name>` previews checkpointed claude-mem SQLite copies read-only with safety allowlists and caps (see [Advanced](ADVANCED.md#import-a-claude-mem-copy)).
 - [x] **MCP Client Roots Discovery** (Preview): MCP plugin servers can discover a ws-started repository from client roots while remaining inactive for unlinked or invalid roots (see [Advanced](ADVANCED.md#plugin-runtime-packaging-preview)).
 - [x] **Codex SessionStart Catch-up** (Preview): recovers changed transcript content for the locally claimed task, including resumed turns without a callback; unsafe and ambiguous transcript sources are skipped (see [Advanced](ADVANCED.md#codex-sessionstart-catch-up)).
+- [x] **Update and Upgrade Route**: `ws update --check` reports the installation type, local Git state and manual choices without changing anything; `ws upgrade` prints a migration result block; `ws doctor` flags half-migrated stores; `ws update` and `ws upgrade --yes` say that running sessions need a reload (see [Setup](SETUP.md)).
+- [x] **Delete Private Memory**: `ws start --undo --delete-memory` previews and, after confirmation, removes the recorded private workspace; plain undo still keeps memory (see [Repo start](REPO-START.md)).
+- [x] **Next Task Claim** (Experimental): `ws task next` selects and claims the next eligible task atomically, also over MCP.
+- [x] **Plugin listing metadata**: marketplace metadata and logos for the Claude Code, Codex and Cursor plugins and `server.json`.
+- [x] **Release Surface Check**: `bin/release-verify` compares the published release surfaces for one version and reports stale entries.
 
 ## Next
 

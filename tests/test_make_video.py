@@ -58,7 +58,7 @@ class VideoTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(ROOT / 'bin/make-video'), '--check'],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn('10 lessons OK', result.stdout)
+        self.assertIn('14 lessons OK', result.stdout)
 
     def test_missing_tools_exit_two_without_executing_lessons(self):
         with patch.object(self.video.shutil, 'which', return_value=None), \
@@ -173,3 +173,21 @@ class VideoTests(unittest.TestCase):
             problems = self.video.release_check(data, '9.9')
             self.assertTrue(any('explainer not uploaded' in p for p in problems))
             self.assertTrue(any('latest is 9.9' in p for p in self.video.release_check(data, '10.0')))
+
+    def test_release_check_requires_explicit_earlier_explainer_reuse(self):
+        previous = 'https://youtu.be/aaaaaaaaaaa'
+        current = 'https://www.youtube.com/watch?v=aaaaaaaaaaa'
+        entry = {'explainer': current}
+        data = {'latest': '9.9', 'releases': {'9.8': {'explainer': previous}, '9.9': entry}}
+        block = self.video.START + '\n' + self.video.links_block(data) + self.video.END
+        check = lambda: self.video.release_check(data, '9.9', read=lambda name: block)
+        self.assertTrue(any('explainer_reused_from' in problem for problem in check()))
+        entry['explainer_reused_from'] = '9.9'
+        self.assertTrue(check())
+        entry['explainer_reused_from'] = '9.8'
+        self.assertEqual(check(), [])
+        entry['explainer'] = 'https://youtu.be/bbbbbbbbbbb'
+        block = self.video.START + '\n' + self.video.links_block(data) + self.video.END
+        self.assertTrue(any('explainer_reused_from' in problem for problem in check()))
+        del entry['explainer_reused_from']
+        self.assertEqual(check(), [])

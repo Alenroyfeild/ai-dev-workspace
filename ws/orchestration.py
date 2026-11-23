@@ -267,10 +267,39 @@ def review_diff(repo, revision):
         parts = {}
         for label, flag, limit in (('Diff stat', '--stat', 2000), ('Changed files', '--name-only', 2000), ('Bounded hunks', '--unified=3', 8000)):
             output = workers.git(repo, 'diff', '--no-ext-diff', '--no-textconv', flag, revision, '--', binary=True).decode('utf-8', errors='replace')
-            parts[label] = core.redact(output[:limit])
+            parts[label] = core.plain_text(output[:limit])
         return parts
     except (OSError, subprocess.SubprocessError, core.WsError):
         raise core.WsError('Review range unavailable; run git log --oneline in the task repository.')
+
+
+def _brief_paths(root, text):
+    # On Windows expanduser reads USERPROFILE even when HOME is set.
+    homes = {Path(os.environ.get('HOME', '')), Path(os.path.expanduser('~'))}
+    homes = {home for home in homes if home.is_absolute() and home != home.parent}
+    flags = re.I if core.WINDOWS else 0
+    # Exact homes must match before the generic user-directory filter shortens
+    # them. Localize the workspace first in case it is inside one of those homes.
+    for bases, replacement in (((Path(root),), '.'), (homes, '~')):
+        paths = {spelling for base in bases for path in (base, base.resolve())
+                 for spelling in (str(path), path.as_posix())}
+        for path in sorted(paths, key=len, reverse=True):
+            text = re.sub(re.escape(path) + r'(?![\w.-])', replacement, text, flags=flags)
+    # Consume the drive even for paths written with forward slashes.
+    text = re.sub(r'(?<![\w.~-])[A-Za-z]:[/\\](?i:Users)[/\\][^/\\\s]+', '~', text)
+    return core.localize_paths(text, root)
+
+
+def brief_task(root, task_id):
+    task = core.task_read(root, task_id)
+    raw = task.pop('text')
+    if task.get('conflicted'):
+        raw = core.keep_ours(raw)
+    # Strip private spans before parsing sections: a heading inside a span
+    # must not turn the rest of the span into a new, unprotected section.
+    safe = _brief_paths(root, core.plain_text(raw))
+    return dict(task, meta=core.parse_meta(raw), sections={
+        name: core.section(safe, name) for name in ('Objective', 'Next action', 'Blockers', 'Evidence')})
 
 
 def delegate(root, task_id, role, run=False, diff=None):
@@ -284,7 +313,7 @@ def delegate(root, task_id, role, run=False, diff=None):
         raise core.WsError('Selected providers are preparation-only; worker execution requires delegation_mode read-only.')
     if run and not binding['can_run'] and binding['preference'] == [binding['provider']]:
         raise core.WsError('Selected provider is preparation-only; this preset or provider has no automatic worker execution.')
-    task = core.task_read(root, task_id, ['Objective', 'Next action', 'Blockers', 'Evidence'])
+    task = brief_task(root, task_id)
     meta = task['meta']; worker, token = core._claim_defaults(root, task_id, None, None)
     if run and meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
         raise core.WsError('Task claimed elsewhere; cannot append worker evidence.')
@@ -296,9 +325,9 @@ def delegate(root, task_id, role, run=False, diff=None):
             raise core.WsError('Review repository is outside declared roots; add it to workspace.json repos, then run ws delegate again.')
     body = '# Bounded delegation (UNVERIFIED)\nLead decides and reviews; workers do bounded work. Read only allowed paths; no credentials or external services.\n'
     limits = (40, 30, 15, 40) if diff is not None else (80, 60, 30, 100)
-    for section, limit in zip(('Objective', 'Next action', 'Blockers', 'Evidence'), limits):
-        body += f'\n## {section}\n' + ' '.join(core.redact(task['sections'][section]).split()[:limit]) + '\n'
-    body += '\n## Allowed paths\n' + '\n'.join(map(str, paths)) + '\n\n## Output contract\nUNVERIFIED findings with file:line and checks actually performed; report blockers. Do not implement, commit, accept or change task memory.\n'
+    for (section, text), limit in zip(task['sections'].items(), limits):
+        body += f'\n## {section}\n' + ' '.join(text.split()[:limit]) + '\n'
+    body += '\n## Allowed paths\n. (task repository)\n\n## Output contract\nUNVERIFIED findings with file:line and checks actually performed; report blockers. Do not implement, commit, accept or change task memory.\n'
     if role == 'reviewer': body += 'Each finding must be one plain line: UNVERIFIED file:line: problem. fix. No Markdown headings or bullets. Review regressions only; never claim acceptance.\n'
     if diff is not None:
         budget = max(0, (385 - len(body.split())) // 3)
@@ -308,7 +337,7 @@ def delegate(root, task_id, role, run=False, diff=None):
                 words = len(line.split())
                 if words > remaining: body += '[truncated]\n'; break
                 body += line + '\n'; remaining -= words
-    body = core.redact(body)
+    body = _brief_paths(root, core.redact(body))
     if len(body.split()) > 400: raise core.WsError('Brief scope exceeds 400 words; shorten repository paths.')
     identifier = task_id + '-' + role + '-' + core.uuid.uuid4().hex[:8]
     if (root / '.ws').is_symlink() or (root / '.ws/briefs').is_symlink(): raise core.WsError('Delegation refuses symlinked brief directories.')
@@ -319,7 +348,7 @@ def delegate(root, task_id, role, run=False, diff=None):
         # A preparation-only first choice that cannot be shown (Windows .cmd shim) must not stop the fallback run below.
         if not run or binding['headless']: raise
         command = ''
-    with core.lock(root): core.atomic_write(brief, core.redact(body))
+    with core.lock(root): core.atomic_write(brief, body)
     result = dict(binding=binding, brief=str(brief), output=str(output), command=command)
     if binding.get('gateway') and binding['gateway']['warning']: result['warning'] = binding['gateway']['warning']
     if not binding['headless'] and not binding.get('gateway'): result['note'] = 'Preparation only; review the brief and command before launching manually. Interactive clients need the brief pasted.'
