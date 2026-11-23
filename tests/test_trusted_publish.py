@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -49,6 +50,55 @@ class TrustedPublishWorkflowTests(unittest.TestCase):
         self.assertIn('bin/normalize-sdist', build)
         for action in re.findall(r'(?m)^\s*(?:-\s*)?uses:\s*([^\s#]+)', text):
             self.assertRegex(action, r'@[0-9a-f]{40}$')
+
+
+class MainAncestryTests(unittest.TestCase):
+    def test_workflow_guards_ancestry_before_archive(self):
+        text = WORKFLOW.read_text(encoding='utf-8')
+        guard = 'git merge-base --is-ancestor "$commit" origin/main'
+        self.assertIn(guard, text)
+        self.assertLess(text.index('commit=$(git rev-parse'), text.index(guard))
+        self.assertLess(text.index(guard), text.index('git archive'))
+        line = next(line for line in text.splitlines() if guard in line)
+        self.assertIn('exit 1', line)
+
+    @unittest.skipUnless(shutil.which('git') and shutil.which('bash'), 'git and bash required')
+    def test_workflow_guard_rejects_off_main_commit(self):
+        text = WORKFLOW.read_text(encoding='utf-8')
+        guard = next((line.strip() for line in text.splitlines()
+                      if 'git merge-base --is-ancestor "$commit" origin/main' in line), None)
+        self.assertIsNotNone(guard, 'workflow ancestry guard missing')
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            env = dict(os.environ, HOME=d, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+            def git(*args):
+                result = subprocess.run(['git', *args], cwd=root, env=env, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                return result.stdout.strip()
+            git('init', '-q')
+            git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'main')
+            main = git('rev-parse', 'HEAD')
+            git('update-ref', 'refs/remotes/origin/main', main)
+            git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-qm', 'off-main')
+            other = git('rev-parse', 'HEAD')
+            for commit, accepted in ((main, True), (other, False), ('0' * 40, False)):
+                with self.subTest(commit=commit):
+                    result = subprocess.run([shutil.which('bash'), '-c', guard], cwd=root,
+                                            env=dict(env, commit=commit), text=True, capture_output=True)
+                    self.assertEqual(result.returncode == 0, accepted, result.stdout + result.stderr)
+
+
+class EmergencyFallbackTests(unittest.TestCase):
+    def test_manual_upload_is_emergency_only_and_token_is_not_stored(self):
+        doc = (ROOT / 'docs/MAINTAINING.md').read_text(encoding='utf-8')
+        section = doc.split('6. **PyPI publication:**', 1)[1].split('7. **MCP registry publication:**', 1)[0]
+        self.assertLess(section.index('gh workflow run pypi-publish.yml'), section.index('Emergency-only fallback'))
+        self.assertIn('project-scoped token', section)
+        self.assertIn('typed into the terminal', section)
+        self.assertIn('never stored', section)
+        self.assertIn('revoke', section.lower())
+        self.assertIn('twine upload', section)
+        self.assertIn('--config-file /dev/null', section)
 
 
 class TagValidationTests(unittest.TestCase):
