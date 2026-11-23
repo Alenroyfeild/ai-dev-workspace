@@ -68,7 +68,60 @@ class RolloutDriverTests(unittest.TestCase):
             self.assertIn('use cobalt', result['prepared_memory']['handoff'])
             self.assertNotIn('Completion note', result['prepared_memory']['handoff'])
 
-    def test_fourth_arm_uses_same_seeds_and_persists_all_40_trials(self):
+    @unittest.skipIf(os.name == 'nt', 'Rollout fixtures require POSIX')
+    def test_explicit_workspace_prompt_and_original_arm_prompts(self):
+        from bench import rollout
+        expected = rollout.seed(42)
+        for arm in ('baseline', 'workspace', 'markdown', 'verbatim', 'workspace-explicit'):
+            with self.subTest(arm=arm), tempfile.TemporaryDirectory() as d, \
+                    mock.patch.dict(os.environ, {'HOME': d, 'CODEX_HOME': d + '/.codex'}):
+                calls = []
+                def worker(root, home, prompt, workspace, auth, *args):
+                    calls.append((prompt, workspace))
+                    if len(calls) == 1:
+                        (root / 'repo/.step-log').write_text('prepare\n')
+                    return {'completed': True}, '', 'synthetic-session'
+                # The existing verbatim candidate invokes the workspace trial unchanged.
+                trial_arm = 'workspace' if arm == 'verbatim' else arm
+                with mock.patch.object(rollout, 'session', side_effect=worker):
+                    result = rollout.trial(Path(d) / 'fixture', expected, trial_arm, Path(d) / 'no-auth')
+                correction = rollout.DATA['correct'].format(**expected)
+                if arm == 'markdown':
+                    suffix = ' Save these facts and the next step in HANDOFF.md outside repo.'
+                elif arm == 'workspace-explicit':
+                    suffix = (' Save the corrected facts and the next step with `ws checkpoint BENCH-1 '
+                              '--status in_progress --next "<exact next step>" --note "Handoff=<corrected facts>"`; '
+                              'never write a hand-written file.')
+                else:
+                    suffix = ' Do not write notes manually; stop now.'
+                self.assertEqual(calls[0][0].encode(), rollout.DATA['investigate'].format(**expected).encode())
+                self.assertEqual(calls[1][0].encode(), (correction + suffix).encode())
+                self.assertEqual(calls[2][0].encode(), rollout.DATA['complete'].encode())
+                self.assertEqual(calls[1][1], arm in ('workspace', 'verbatim', 'workspace-explicit'))
+                self.assertEqual(result['arm'], trial_arm)
+
+    def test_fifth_arm_is_appended_with_the_same_seeds_and_recorded_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=5, seed=42, output=Path(d) / 'result.json', verbatim_kit=Path(d) / 'candidate')
+            seen = []
+            def trial(root, expected, arm, auth):
+                seen.append((arm, expected))
+                return {'arm': arm, 'result': 'pass', 'calls': [{'completed': True}]}
+            def candidate(kit, root, expected, auth, benchmark):
+                return trial(root, expected, 'verbatim', auth)
+            benchmark = SimpleNamespace(seed=lambda n: n, trial=trial,
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench',
+                    command=lambda command, path: SimpleNamespace(stdout='' if command[-1] == '--porcelain' else 'fixture')))
+            with mock.patch.object(rollout_run, 'candidate_trial', side_effect=candidate), contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(rollout_run.run_trials(benchmark, args, Path(d) / 'no-auth'))
+            result = json.loads(args.output.read_text())
+            order = ('baseline', 'workspace', 'markdown', 'verbatim', 'workspace-explicit')
+            for i in range(5):
+                self.assertEqual(seen[i*5:i*5+5], [(arm, 42+i) for arm in order])
+                self.assertEqual([row['arm'] for row in result['runs'][i*5:i*5+5]], list(order))
+                self.assertEqual([row['seed_index'] for row in result['runs'][i*5:i*5+5]], [i]*5)
+
+    def test_five_arms_use_same_seeds_and_persist_all_50_trials(self):
         with tempfile.TemporaryDirectory() as d:
             args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
                                       verbatim_kit=Path(d) / 'candidate')
@@ -87,11 +140,11 @@ class RolloutDriverTests(unittest.TestCase):
                 completed = rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
             self.assertTrue(completed)
             result = json.loads(args.output.read_text())
-            self.assertEqual(len(result['runs']), 40)
+            self.assertEqual(len(result['runs']), 50)
             for index in range(10):
-                self.assertEqual(seen[index * 4:index * 4 + 4],
-                                 [(arm, 42 + index) for arm in ('baseline', 'workspace', 'markdown', 'verbatim')])
-                self.assertEqual([run['seed_index'] for run in result['runs'][index * 4:index * 4 + 4]], [index] * 4)
+                self.assertEqual(seen[index * 5:index * 5 + 5],
+                                 [(arm, 42 + index) for arm in ('baseline', 'workspace', 'markdown', 'verbatim', 'workspace-explicit')])
+                self.assertEqual([run['seed_index'] for run in result['runs'][index * 5:index * 5 + 5]], [index] * 5)
 
     def test_fourth_arm_refuses_dirty_candidate_before_running_models(self):
         with tempfile.TemporaryDirectory() as d:
@@ -178,7 +231,7 @@ class RolloutDriverTests(unittest.TestCase):
             benchmark.trial.side_effect = None; benchmark.trial.return_value = {'result': 'pass'}
             with contextlib.redirect_stdout(io.StringIO()): rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
             result = json.loads(args.output.read_text())
-            self.assertEqual(result['seed'], 42); self.assertEqual(len(result['runs']), 15)
+            self.assertEqual(result['seed'], 42); self.assertEqual(len(result['runs']), 20)
 
 
 @unittest.skipIf(os.name == "nt", "Owned process cleanup uses POSIX process groups.")

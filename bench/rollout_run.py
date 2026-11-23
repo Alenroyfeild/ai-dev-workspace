@@ -79,7 +79,8 @@ def run_trials(benchmark, args, auth):
         result['verbatim_kit_dirty'] = bool(benchmark.run.command(['git', 'status', '--porcelain'], candidate).stdout.strip())
         if result['verbatim_kit_dirty']:
             raise RuntimeError('The candidate checkout must be clean to identify the tested code.')
-    arms = ('baseline', 'workspace', 'markdown', 'verbatim') if candidate else ('baseline', 'workspace', 'markdown')
+    arms = (('baseline', 'workspace', 'markdown', 'verbatim', 'workspace-explicit') if candidate
+            else ('baseline', 'workspace', 'markdown', 'workspace-explicit'))
     failures = 0
     with tempfile.TemporaryDirectory(prefix='ws-rollout-') as d:
         for number in range(args.n):

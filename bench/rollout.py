@@ -1,4 +1,4 @@
-"""Corrected-rollout retention benchmark: independent investigations, three arms."""
+"""Corrected-rollout retention benchmark: independent investigations and paired memory arms."""
 import contextlib
 import json
 import os
@@ -138,7 +138,7 @@ def trial(root, expected, arm, auth):
         run.create(root, DATA)
     fixture(root / 'repo')
     canonical = root.resolve()
-    workspace = arm == 'workspace'
+    workspace = arm in ('workspace', 'workspace-explicit')
     if workspace:
         with tempfile.TemporaryDirectory(prefix='ws-rollout-setup-') as d:
             with environment(HOME=d, CODEX_HOME=str(Path(d) / '.codex')):
@@ -153,6 +153,10 @@ def trial(root, expected, arm, auth):
         observed = audit.count
         prompt = DATA['correct'].format(**expected)
         if arm == 'markdown': prompt += ' Save these facts and the next step in HANDOFF.md outside repo.'
+        elif arm == 'workspace-explicit':
+            prompt += (' Save the corrected facts and the next step with `ws checkpoint BENCH-1 '
+                       '--status in_progress --next "<exact next step>" --note "Handoff=<corrected facts>"`; '
+                       'never write a hand-written file.')
         else: prompt += ' Do not write notes manually; stop now.'
         if first['completed'] and thread:
             corrected, _, _ = session(root, home / 'investigate', prompt, workspace, auth, thread, first); calls.append(corrected)
