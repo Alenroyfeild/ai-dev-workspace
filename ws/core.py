@@ -1234,7 +1234,7 @@ def _local_claim_matches(root, task_id, meta):
         local = json.loads(_local_claim_path(root, task_id).read_text(encoding='utf-8'))
     except (OSError, ValueError, WsError):
         local = {}
-    return bool(local.get('token')) and local.get('token') == meta.get('claim_token')
+    return isinstance(local, dict) and bool(local.get('token')) and local.get('token') == meta.get('claim_token')
 
 
 def claim_note(root, task_id, meta):
@@ -1935,9 +1935,26 @@ def session_task(root, cwd=None):
     repo = inside(Path(result.stdout.strip()), read_roots(root))
     current = current_branch(repo)  # not setup.branch: importing setup is slow on the hook path
     if not current: return None
-    matches = [t for t in task_list(root) if t['branch'] == current and
+    tasks = task_list(root)
+    matches = [t for t in tasks if t['branch'] == current and
                (root / task_read(root, t['id'], ['Next action'])['meta'].get('repo', '')).resolve() == repo]
     if len(matches) > 1: raise WsError('Multiple tasks match this branch; choose one explicitly before continuing.')
+    if not matches:
+        eligible = []
+        for candidate in tasks:
+            if candidate['branch'] or candidate['status'] in ('done', 'conflicted') or not candidate['claimed_by']:
+                continue
+            try:
+                meta = task_read(root, candidate['id'], ['Next action'])['meta']
+                declared_repo = meta.get('repo', '')
+                worker, token = _claim_defaults(root, candidate['id'], None, None)
+                if (declared_repo and repo_path(root, declared_repo) == repo and worker == meta.get('claimed_by')
+                        and token and token == meta.get('claim_token')):
+                    eligible.append(candidate['id'])
+            except (WsError, OSError, ValueError, TypeError, RuntimeError, RecursionError):
+                continue  # A bad optional candidate must not block SessionStart.
+        if len(eligible) == 1:
+            return eligible[0]  # Preserve the branchless task and its saved next action unchanged.
     created = not matches
     task = matches[0]['id'] if matches else 'BR-' + digest_text(str(repo) + '\0' + current)[:10]
     if created:
