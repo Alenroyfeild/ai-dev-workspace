@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.2.0 (2026-11-20)
+
+0.2.0 adds a guided update and upgrade route, lets you remove a repo's private workspace on request, hardens guards and redaction, and states plainly that automatic capture is not yet a reliable handoff, so save one with `ws checkpoint` and `ws remember`.
+
+### New
+
+- `ws update --check` (Experimental) reports the installation type, local Git state and manual choices without pulling or changing branches; offline checks use local refs only. To upgrade from beta.7, run `ws update` (a package install prints `pipx upgrade ai-dev-workspace` instead), then `ws upgrade --dry-run`, then `ws upgrade --yes`, then `ws start` in each repo to refresh its wiring.
+- `ws upgrade` (Experimental) prints a migration result block on stderr after applying changes (versions, the repo wiring `kit_version`, files changed or kept, pending proposals, backup directory, rollback text and an offline config check), and `ws doctor` flags half-migrated stores. `ws update` and `ws upgrade --yes` also say that running assistant sessions and MCP servers need a new session or a reload after a real change, and `ws --help`, the README and the setup guide show an "Updating?" route.
+- `ws start --undo --delete-memory` previews and, after confirmation, removes the private workspace recorded for the repo. It refuses workspaces that another repo still uses or that contain symlinks, and a plain `ws start --undo` still keeps memory.
+- `ws task next` selects and claims the next eligible unclaimed task atomically, also as the MCP tool `claim_next_task`. It is Experimental; see [the Experimental page](https://github.com/Alenroyfeild/ai-dev-workspace/blob/v0.2.0/docs/EXPERIMENTAL.md).
+
+### Improved
+
+- Session briefs preserve saved handoff Markdown, next actions and retry notes within the brief budget, and show the saved task status.
+- The core handoff commands are documented first, and the remaining command reference is labelled Experimental.
+- The README results add the November 18 four-arm cohort and no longer present automatic capture as reliable memory.
+- Lesson consent, memory limits and optional GitHub checks are described more clearly, and the docs say which clients and operating systems have live-session evidence.
+- Maintainers: `bin/release-verify <version>` checks the published release surfaces for one version and reports stale entries, including the case-sensitive MCP registry name and the main branch's video list. Video release checks require an explicit source edition when an explainer is reused. GitHub releases are prepared as drafts until the PyPI artifact hashes are verified.
+- `setup.py` drops the deprecated `License :: OSI Approved :: MIT License` classifier and keeps `license='MIT'`.
+
+### Fixed
+
+- Guards deny `git reset --h`, `git clean` force abbreviations, `clean.requireForce` and `remote.*` config bypasses, GNU `rm -r` abbreviations, and `git push` opposing flags or dry-run cancellations.
+- Guards deny git `--config-env`, `GIT_CONFIG_*` environment settings and same-command `-c alias.*` aliases that hide `clean`, `reset --hard` or force/delete pushes, and `git clean -e` patterns no longer count as `-n`.
+- `ws start` no longer reports a partial setup (exit 2) when your customized `.codex/config.toml` still holds the current ai-dev-workspace entry, and the recorded repo version now advances; a changed entry gets a file-specific message instead of the generic undo advice.
+- Delegate and worker briefs omit private spans and shorten home paths before sharing task context.
+- Feedback issue previews and submissions filter checksum-valid cards in common groupings, checksum-valid IBANs, account-like numbers and more bare tokens. Names and amounts still require manual review.
+- Knowledge list and search fall back to the original note when its index card is unsafe or unreadable.
+- MCP recall excludes local-only notes and run logs regardless of filename or directory casing.
+
+### Previews
+
+- **Plugin listing metadata**: marketplace metadata and logos for the Claude Code, Codex and Cursor plugins and `server.json`. *Limit:* the plugins remain previews and are not listed in Anthropic's official directory; see the beta.7 section for install and verification limits.
+
+### Measured
+
+- November 18 paired cohort (Codex `gpt-6-luna`, high effort; 29 of 40 scheduled trials, stopped after two consecutive transport failures): fresh baseline 0/8, workspace with the automatic brief 2/7, workspace with the handoff injected as written 0/7, plain Markdown `HANDOFF.md` 6/7. The handoff-as-written arm used 1.6x the plain Markdown arm's input tokens (339,168 against 208,720 per trial, inconclusive trials excluded). Small samples, no significance claim. [Raw results](https://github.com/Alenroyfeild/ai-dev-workspace/blob/v0.2.0/bench/results/2026-11-18-ARM4-n10-codex.json).
+
+### Known limits
+
+- Automatic transcript capture is not reliable: the workspace arm passed 2 of 7 on November 18. Explicit `ws checkpoint` and `ws remember` remain deterministic.
+- Guards are a regex-based safety net, not an unbypassable security boundary.
+- Claude Code and Codex have live macOS checks; Linux and Windows are CI-tested. Cursor, Copilot, Gemini CLI and Antigravity are fixture-tested.
+- `ws start --undo --delete-memory` deletes the whole workspace folder, including any notes you added to its vault; the Windows path is tested only in CI.
+- Memory remains plain Markdown outside git at `~/.ai-dev-workspace/<repo-name>`; there is no centralized database or daemon.
+
 ## 0.1.0-beta.7 (2026-11-04)
 
 Beta.7 improves session continuity, error resilience and memory privacy, and adds read-only lesson date review.
@@ -12,7 +58,7 @@ Beta.7 improves session continuity, error resilience and memory privacy, and add
 ### Improved
 
 - Expand handoff and pickup skills with working-tree, process, check, and drift checklists inspired by steipete/agent-scripts (MIT).
-- Document exact claude-mem privacy exclusions and distinguish released beta.6 from the upcoming per-field prefix check.
+- Document exact claude-mem privacy exclusions; since beta.7 the `/private` prefix is checked in each field.
 - Discipline retry nudges keep commands with different shell quoting, escapes or line breaks in separate counters.
 - Expand `thinkbeforeact` planning checks for verified evidence, outward effects, failure paths and adversarial review.
 

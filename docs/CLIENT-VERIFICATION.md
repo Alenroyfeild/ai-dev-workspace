@@ -33,14 +33,14 @@ Status: **matches** (code agrees with docs), **fixed**, **unclear** (docs silent
 | Codex hook output | SessionStart `additionalContext`; prompt guard `{"decision": "block", "reason": ...}` | SessionStart `hookSpecificOutput.additionalContext` (plain stdout also context); UserPromptSubmit `decision: "block"` or exit 2 (same page) | matches |
 | Codex memories / goals (report only) | Reads `memories_1.sqlite` `stage1_outputs` | Memories are off by default, enabled with `[features] memories = true`; files under `~/.codex/memories/`, "generated state" (https://developers.openai.com/codex/memories). Goals: `/goal`, `features.goals` (https://developers.openai.com/codex/use-cases/follow-goals/). Upstream feature table: `memories` stable and off by default, `goals` stable and on by default (openai/codex `codex-rs/features/src/lib.rs`). The docs do not describe the `memories_1.sqlite` schema we read | unclear for the sqlite reader; not changed |
 
-## beta.7 release coverage
+## 0.2.0 release coverage
 
-These labels describe the released integrations, not new live-session evidence.
+These labels describe the released integrations, not new live-session evidence. The Claude Code live check below dates from beta.7 and was not repeated for 0.2.0.
 All plugin paths require the CLI and `ws start` in the target repo.
 
 | Integration | Release label and verification limit |
 |---|---|
-| Claude Code plugin | Preview; beta.5 live check, not in Anthropic's official directory; Windows untested. See [plugin setup](ADVANCED.md#claude-code-plugin-preview). |
+| Claude Code plugin | Preview; beta.7 live check (2026-11-05: marketplace install, session-start brief, MCP tools, guard after `ws start`), not in Anthropic's official directory; Windows untested. See [plugin setup](ADVANCED.md#claude-code-plugin-preview). |
 | Codex plugin | Preview; hooks need a trusted manual desktop install; hook output not live-tested; no MCP server in the plugin (use `ws start`). See [limits](ADVANCED.md#codex-plugin-preview). |
 | Cursor plugin | Preview; fixture-tested only, not submitted, no verified install command. Hook cwd and MCP startup assumptions need native proof. See [limits](ADVANCED.md#cursor-plugin-preview). |
 | Antigravity hooks | Preview; SessionStart brief and PreToolUse guard output fixture-tested; no signed-in live session, automatic capture or plugin import. See [setup](SETUP.md). |

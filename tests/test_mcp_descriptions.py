@@ -18,6 +18,10 @@ class McpDescriptionTests(Base):
         cfg = core.config(self.root); cfg['mcp_tools'] = 'all'
         (self.root / 'workspace.json').write_text(json.dumps(cfg))
 
+    def test_lesson_tool_description_requires_user_request_or_approval(self):
+        description = server.TOOLS['add_lesson'][0].lower()
+        self.assertIn('only when the user asks or approves', description)
+
     def test_cost_counts_full_tool_descriptors(self):
         result = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})['result']['tools']
         expected = sum(len(json.dumps({key: item[key] for key in ('name', 'description', 'inputSchema')},
@@ -35,10 +39,12 @@ class McpDescriptionTests(Base):
         result = server.handle(self.root, {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'})['result']['tools']
         names = {item['name'] for item in result}
         self.assertEqual(names, set(server.TOOLS))
-        self.assertEqual(len(names), 28)
-        size = sum(len(json.dumps({key: item[key] for key in ('name', 'description', 'inputSchema')},
-                                  separators=(',', ':')).encode()) for item in result)
-        self.assertLessEqual(size, 7500)  # Includes three knowledge tools and optional category search; measured 7434 bytes.
+        self.assertEqual(len(names), 29)
+        self.assertIn('claim_next_task', names)
+        sizes = {item['name']: len(json.dumps({key: item[key] for key in ('name', 'description', 'inputSchema')},
+                                             separators=(',', ':')).encode()) for item in result}
+        self.assertLessEqual(sum(sizes.values()) - sizes['claim_next_task'], 7500)  # Existing catalog budget remains unchanged.
+        self.assertLessEqual(sizes['claim_next_task'], 225)  # Additional tool budget; measured 225 bytes.
         descriptions = ' '.join(item['description'] for item in result).lower()
         for intent in ('never execute', 'ask before', 'redacted', 'preview-only', 'skip ambiguous'):
             self.assertIn(intent, descriptions)

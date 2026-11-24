@@ -5,11 +5,12 @@ import json
 import os
 import re
 import shlex
+import stat
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from . import core, setup, upgrade, memory_import
+from . import core, setup, upgrade, memory_import, safe_delete
 
 LINK = '.ws-start.json'
 FILES = ('CLAUDE.local.md', 'AGENTS.override.md', '.claude/settings.local.json', '.codex/hooks.json', '.mcp.json', '.codex/config.toml', '.codex/config.toml.ws-backup', '.cursor/hooks.json', '.cursor/mcp.json', '.cursor/rules/ws-current-task.mdc', '.github/hooks/ws.json', '.github/copilot-instructions.md', '.vscode/mcp.json', '.gemini/settings.json', 'GEMINI.md', '.agents/mcp_config.json', '.agents/hooks.json')
@@ -139,6 +140,113 @@ def undo(repo, state):
             directory = path(repo, name)
             if directory.exists() and not any(directory.iterdir()): directory.rmdir()
     return dict(root=state['workspace'], already=True, assistants=[], task='', branch=setup.branch(repo), partial=bool(kept), undone=True)
+
+
+def _memory_deletion_details(repo, state):
+    """Validate the recorded workspace and count its task files without following links."""
+    value = state.get('workspace')
+    if not isinstance(value, str) or not value or not Path(value).is_absolute():
+        raise core.WsError('The repo setup record has no absolute workspace path; restore the record before deleting memory.')
+    root = Path(value)
+    if '..' in root.parts:
+        raise core.WsError('The recorded workspace path is not canonical; restore it before deleting memory.')
+    home = Path.home().resolve()
+    kit = core.KIT.resolve()
+    if (root == home or root in home.parents or root == Path(root.anchor) or root == repo
+            or root in repo.parents or repo in root.parents or root == kit or root in kit.parents):
+        raise core.WsError('The recorded workspace is not a dedicated memory directory.')
+    contents, identity, entries = safe_delete.inspect(root)
+    try:
+        config = core.json_loads(contents.decode('utf-8'))
+    except (ValueError, UnicodeError, RecursionError):
+        raise core.WsError('The workspace manifest is unreadable; restore it before deleting memory.') from None
+    repos = config.get('repos') if isinstance(config, dict) else None
+    if not isinstance(repos, list) or any(not isinstance(item, str) or not item for item in repos):
+        raise core.WsError('The workspace repo list is invalid; restore it before deleting memory.')
+    roots = [core.repo_path(root, item) for item in repos]
+    if repo not in roots:
+        raise core.WsError('This repo is not listed in the recorded workspace; memory was kept.')
+    blocker = None
+    for other in roots:
+        if other == repo:
+            continue
+        if other == root or root in other.parents:
+            blocker = 'Another listed repo is inside this workspace; memory was kept.'
+            break
+        if not other.is_dir():
+            blocker = 'Another listed repo cannot be inspected; memory was kept.'
+            break
+        link = other / LINK
+        if core.is_link(link):
+            blocker = 'Another repo has a symlinked setup record; memory was kept.'
+            break
+        if link.exists():
+            try:
+                other_state = load(other)
+                other_root = other_state.get('workspace')
+                if not isinstance(other_root, str) or not Path(other_root).is_absolute():
+                    raise ValueError('Invalid workspace')
+                other_root = Path(other_root).resolve()
+            except (OSError, ValueError, KeyError, RecursionError):
+                blocker = 'Another repo setup cannot be verified; memory was kept.'
+                break
+            if other_root == root:
+                blocker = 'Another repo is still wired to this workspace; memory was kept.'
+                break
+    vault = config.get('vault', 'vault')
+    if not isinstance(vault, str) or Path(vault).is_absolute() or '..' in Path(vault).parts:
+        raise core.WsError('The workspace vault path is invalid; memory was kept.')
+    tasks = (Path(vault) / 'Tasks').as_posix()
+    task_directory = next((item for item in entries if item[0] == tasks), None)
+    if task_directory and not stat.S_ISDIR(task_directory[3]):
+        raise core.WsError('The task directory cannot be inspected; memory was kept.')
+    count = sum(1 for item in entries
+                if Path(item[0]).parent.as_posix() == tasks and item[0].endswith('.md') and stat.S_ISREG(item[3]))
+    return root, count, contents, identity, entries, blocker
+
+
+def _undo_and_delete_memory(repo, state, yes):
+    record_path = path(repo, LINK)
+    recorded = record_path.read_bytes()
+    preview = _memory_deletion_details(repo, state)
+    root, count, _, identity, entries, blocker = preview
+    print(f'Private workspace to delete: {root} ({count} task(s)).', file=sys.stderr)
+    if blocker:
+        raise core.WsError(blocker)
+    if not yes:
+        print('Undo repo wiring and permanently delete this workspace? [y/N] ', end='', file=sys.stderr)
+        try:
+            answer = input().strip().lower()
+        except EOFError:
+            print(file=sys.stderr)
+            answer = ''
+        if answer not in ('y', 'yes'):
+            raise core.WsError('No confirmation; repo wiring and private memory were kept.')
+
+    def checked_undo():
+        if _memory_deletion_details(repo, state) != preview or record_path.read_bytes() != recorded:
+            raise core.WsError('Repo wiring or workspace changed during confirmation; nothing was undone.')
+        return undo(repo, state)
+
+    with safe_delete.guard(root, protect_lock=True) as pinned:
+        if os.name == 'nt':
+            with core.lock(root):
+                result = checked_undo()
+        else:
+            result = checked_undo()
+        if result.get('partial'):
+            return result
+        try:
+            if os.name == 'nt':
+                if _memory_deletion_details(repo, state) != preview:
+                    raise core.WsError(f'Repo wiring was removed; workspace changed and was kept at {root}.')
+                pinned.close()  # The mutex remains held while deletion reopens and pins the path.
+            safe_delete.remove(root, identity, entries)
+        except OSError as exc:
+            reason = exc.strerror or str(exc) or type(exc).__name__
+            raise core.WsError(f'Repo wiring was removed; workspace deletion was incomplete at {root}: {reason}.') from None
+    result['memory_deleted'] = True
+    return result
 
 
 def confirm(yes, dry_run, imports=False):
@@ -534,7 +642,25 @@ def shrink_exclude(repo, state, names):
 WITHOUT_PLUGIN = ('.claude/settings.local.json', '.mcp.json')  # Claude files the plugin replaces; render() stops producing them in plugin mode
 
 
-def refresh(repo, root, state, yes, dry_run, keep=()):
+def codex_block_current(root, raw):
+    """True when the Codex config bytes hold, byte for byte, the one ai-dev-workspace server table this version writes, with no other ws entry."""
+    try: text = raw.decode('utf-8').replace('\r\n', '\n')  # only the comparison normalizes; the file is never rewritten
+    except UnicodeDecodeError: return False
+    block = core.codex_mcp_config(root)
+    at = text.find(block)
+    if at < 0 or text.count(block) != 1 or (at and text[at - 1] != '\n') or core.toml_mask_multiline_strings(text)[at:at + len(block)] != block: return False
+    rest = text[at + len(block):]
+    follow = next((l.lstrip() for l in rest.splitlines() if l.strip() and not l.lstrip().startswith('#')), '[')
+    if not follow.startswith('['): return False  # more keys after the block mean the table is not this block
+    if core._toml_has_workspace_entry(text[:at] + rest): return False  # a second or extended ws entry is not this block
+    try: import tomllib
+    except ImportError: return True
+    try: tomllib.loads(text)
+    except ValueError: return False
+    return True
+
+
+def refresh(repo, root, state, yes, dry_run, keep=(), current=()):
     """Bring ws-written files in line with this kit version, packs and Claude plugin: rewrite those still unchanged since ws wrote them, create ones now needed, restore ones no longer needed."""
     plugin = claude_plugin_enabled(repo, state.get('claude_config_dir', ''))
     basis = {}  # the exact bytes (None: no file) each merged JSON file was built from
@@ -564,7 +690,8 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
     new = {n: before(n) for n in desired if n not in state['files']}  # what render() saw, to catch an edit while confirming
     changes = {n: data for n, data in desired.items() if n not in keep and (n in new or path(repo, n).read_bytes() != data)}
     gone = [n for n in WITHOUT_PLUGIN if n in state['files'] and n not in desired and n not in keep]
-    for name in keep: print('Kept your edits, not refreshed: ' + str(repo / name), file=sys.stderr)
+    for name in keep:
+        if name not in current: print('Kept your edits, not refreshed: ' + str(repo / name), file=sys.stderr)
     if changes or gone:
         print('Refresh repo setup for this ai-dev-workspace version (saved memory is kept):', file=sys.stderr)
         for name in changes: print('  ' + str(repo / name) + (' (new)' if name in new else ''), file=sys.stderr)
@@ -581,16 +708,17 @@ def refresh(repo, root, state, yes, dry_run, keep=()):
             core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
         if gone: shrink_exclude(repo, state, gone)
     if dry_run: return sorted({*changes, *gone})
-    # Kept (user-edited) files stay pending: the version moves only once every recorded file is current. Packs and plugin describe the hook/MCP files only,
+    # Kept (user-edited) files stay pending unless customized-but-current: the version moves only once every recorded file is current. Packs and plugin describe the hook/MCP files only,
     # so they move as soon as none of those is kept; otherwise a stale value would hide a later flip back (the rest was already rewritten).
-    if not keep: state['kit_version'] = core.kit_meta()['version']
+    if not set(keep) - set(current): state['kit_version'] = core.kit_meta()['version']
     if not {*HOOK_FILES, '.mcp.json'} & set(keep): state['hook_packs'] = hook_packs(root); state['plugin'] = plugin
     if claude_dir(): state['claude_config_dir'] = claude_dir()  # kept when a later shell lacks CLAUDE_CONFIG_DIR
     core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     return sorted({*changes, *gone})
 
 
-def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=None, no_import=False):
+def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=None, no_import=False, delete_memory=False):
+    if delete_memory and not remove: raise core.WsError('Use --delete-memory only with --undo.')
     if remove and dry_run: raise core.WsError('Use --undo or --dry-run separately.')
     try: result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, encoding='utf-8', errors='replace', timeout=10)
     except (OSError, subprocess.SubprocessError) as exc: raise core.WsError('Cannot inspect this Git repo; check git and retry ws start: ' + str(exc))
@@ -600,7 +728,8 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     if core.LINE_BREAK_RE.search(current) and not remove: raise core.WsError('This branch name has a line break or control character, so ws cannot name its task; rename the branch (git branch -m) and run ws start again.')
     if path(repo, LINK).exists():
         state = load(repo)
-        if remove: return undo(repo, state)
+        if remove:
+            return _undo_and_delete_memory(repo, state, yes) if delete_memory else undo(repo, state)
         root = Path(state['workspace'])
         listed = str(repo) in core.config(root).get('repos', [])
         # Listed but the record still names another exclude file: an interrupted relink; finish it (rehome only ever writes this repo's own path).
@@ -613,14 +742,20 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
         incomplete = state.get('complete') is False or any(not path(repo, n).is_file() for n in state['files'])
         edited = [n for n, e in state['files'].items() if path(repo, n).is_file() and hashlib.sha256(path(repo, n).read_bytes()).hexdigest() != e['sha']
                   and not (n in JSON_FILES and stripped(n, path(repo, n).read_bytes()) is not None)]  # valid JSON is merged, not kept
-        partial = incomplete or bool(edited)
-        if partial: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
+        intact = [n for n in edited if n == '.codex/config.toml' and codex_block_current(root, path(repo, n).read_bytes())]  # customized, but ws's own entry is intact
+        customized = [n for n in edited if n not in intact]
+        partial = incomplete or bool(customized)
+        if incomplete: print('Setup is incomplete or local files changed; review them, then ws start --undo before retrying.', file=sys.stderr)
+        for n in intact: print(f'{n}: kept your customization; its ai-dev-workspace entry is current; nothing to do.', file=sys.stderr)
+        for n in customized:
+            if n == '.codex/config.toml': print(f'{n}: kept your edits, but its ai-dev-workspace entry differs from this version (or the file cannot be read as TOML), so it was not changed and the repo setup stays pending. Run ws connect codex to print the expected block, then fix that entry by hand.', file=sys.stderr)
+            elif not incomplete: print(f'Kept your edits: local files changed since ws wrote them, review: {n}', file=sys.stderr)
         newer = core._vtuple(state.get('kit_version') or '0.0.0') > core._vtuple(core.kit_meta()['version'])
         if not incomplete and newer: print('Repo setup is from a newer ai-dev-workspace version; update this kit (ws update or pipx upgrade) before changing it.', file=sys.stderr)
         if state.get('plugin') and state.get('claude_config_dir') and not claude_dir() and claude_plugin_enabled(repo, state['claude_config_dir']):
             print('Plugin mode kept: checked the Claude config dir saved at the last ws start (' + state['claude_config_dir'] + ') because CLAUDE_CONFIG_DIR is unset here. To leave plugin mode, disable the plugin there.', file=sys.stderr)
         # Files the user edited are kept; the rest still refresh, so one edited file does not leave hooks stale.
-        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo, state.get('claude_config_dir', '')) or (claude_dir() and state.get('claude_config_dir', '') != claude_dir()) or edited or _stale_here(root, repo)) else []
+        refreshed = refresh(repo, root, state, yes, dry_run, keep=edited, current=intact) if not incomplete and not newer and (state.get('kit_version') != core.kit_meta()['version'] or state.get('hook_packs', []) != hook_packs(root) or state.get('plugin', False) != claude_plugin_enabled(repo, state.get('claude_config_dir', '')) or (claude_dir() and state.get('claude_config_dir', '') != claude_dir()) or customized or _stale_here(root, repo)) else []
         if refreshed is None: return None
         if not partial and not newer and '.codex/config.toml' not in state['files']:  # a newer setup is never changed
             if not upgrade_codex(repo, root, state, yes, dry_run): return None
@@ -668,8 +803,12 @@ def start(yes=False, dry_run=False, workspace=None, remove=False, memory_dir=Non
     directories = {p.relative_to(repo).as_posix() for n in desired for p in (repo / n).parents if repo in p.parents and not p.exists()}
     if leftover != previous_exclude: core.atomic_write(exclude, leftover); previous_exclude = leftover
     state = dict(kit_version=core.kit_meta()['version'], hook_packs=hook_packs(root), plugin=plugin, claude_config_dir=claude_dir(), codex_status='connected' if '.codex/config.toml' in desired else 'connected via global config' if core.client_connected(root, 'codex', global_only=True) else 'manual step pending', workspace=str(root), files=owned, complete=False, exclude_previous='', exclude_before=base64.b64encode(previous_exclude).decode(), assistants=clients, directories=sorted(directories, key=lambda n: n.count('/'), reverse=True), exclude=str(exclude), exclude_block=base64.b64encode(block).decode())
-    if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
-    core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
+    registration = safe_delete.guard(root) if os.name == 'nt' else core.lock(root)
+    with registration:
+        if not (root / 'workspace.json').is_file() or str(repo) not in core.config(root).get('repos', []):
+            raise core.WsError('Workspace changed during setup; review it before retrying ws start.')
+        if path(repo, LINK).exists(): raise core.WsError('Setup record appeared during confirmation; keep it safe and review before ws start.')
+        core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     core.atomic_write(exclude, (exclude.read_bytes() if exclude.exists() else b'') + block)
     state.pop('exclude_previous'); state.pop('exclude_before'); core.atomic_write(path(repo, LINK), json.dumps(state, indent=2) + '\n')
     for name, data in desired.items(): record_file(repo, state, name, data)

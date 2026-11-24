@@ -14,7 +14,7 @@ echo 'export PATH="$HOME/ai-dev-workspace/bin:$PATH"' >> ~/.zshrc && source ~/.z
 ws --help
 ```
 
-macOS, Linux and Windows. Requires Python 3.9+ and git. No pip packages.
+macOS, Linux and Windows. Linux: CI only; no live session on record. Windows: CI only. Requires Python 3.9+ and git. No pip packages.
 
 ## 2. Create a workspace
 
@@ -33,7 +33,7 @@ Existing files are kept. Proposed kit content goes beside them as `.ws-new`; rev
 
 Run `ws connect claude`, `ws connect cursor`, `ws connect codex`, `ws connect vscode`, `ws connect gemini`, or `ws connect antigravity`. Project config collisions are staged as `.ws-new` and kept for review. Codex prints a global-config preview; it is not applied unless you run `ws connect codex --write`, which appends it with a backup and refuses conflicting entries. VS Code uses `.vscode/mcp.json`; Gemini CLI uses `.gemini/settings.json`. The managed `.github/copilot-instructions.md` and `GEMINI.md` pointers tell those clients to follow `AGENTS.md`; existing files are preserved and the proposed pointer is staged as `.ws-new`. `ws doctor` lists the connections and pointer files; `ws doctor --mcp` starts configured servers to check them. Approve the server in the client before using its tools.
 
-On `ws checkpoint` and `ws brief --refresh`, the current brief is also written into a managed `current-task` block in the existing `.github/copilot-instructions.md` and (when `.cursor/` exists) `.cursor/rules/ws-current-task.mdc`, so Copilot and Cursor see the task's decisions at session start; text outside the block is never touched. `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` are left alone because those clients get the brief from their session-start hooks. Set `"native_writeback": false` in `workspace.json` to turn this off.
+On `ws checkpoint` and `ws brief --refresh`, the current brief is also written into a managed `current-task` block in the existing `.github/copilot-instructions.md` and (when `.cursor/` exists) `.cursor/rules/ws-current-task.mdc`, so the task's decisions are available in their instruction files at session start (fixture-tested in CI; no live session recorded); text outside the block is never touched. `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` are left alone because those clients get the brief from their session-start hooks. Set `"native_writeback": false` in `workspace.json` to turn this off.
 
 On Windows, generated hooks containing `%` in a workspace, kit or interpreter path use the built-in Windows PowerShell encoded launcher with no profile. It starts the same Python executable directly, forwarding UTF-8 stdin and preserving stdout/stderr and exit status; paths are never interpreted as cmd variables. `ws upgrade` recognizes only this exact launcher and preserves other hooks. Ordinary paths keep the existing command form. References: [cmd variable substitution](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd), [PowerShell encoded commands](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_powershell_exe?view=powershell-5.1).
 
@@ -41,10 +41,10 @@ On Windows, generated hooks containing `%` in a workspace, kit or interpreter pa
 
 | Capability | Claude Code | Codex | Cursor | Copilot | Gemini CLI | Antigravity |
 |---|---|---|---|---|---|---|
-| Rules | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
+| Rules | fixture-tested | fixture-tested | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
 | MCP tools | proven | proven | fixture-tested | fixture-tested | fixture-tested | fixture-tested |
 | Hooks | proven | proven | fixture-tested | fixture-tested, Local only | fixture-tested | fixture-tested; SessionStart/PreToolUse |
-| Skills | proven | proven | Preview plugin only; fixture-tested | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
+| Skills | fixture-tested | fixture-tested | Preview plugin only; fixture-tested | not wired yet (client supports skills) | not wired yet (client supports skills) | not wired |
 | Automatic capture | proven | proven | fixture-tested | fixture-tested, v1 transcript only | fixture-tested | not wired |
 
 The table describes repo wiring from `ws start`. All three native plugins are
@@ -54,11 +54,11 @@ install, have no live hook proof, and provide no MCP; Cursor is fixture-tested o
 not submitted, with no verified install command. MCP plugin server roots discovery (Preview)
 activates only from a client root that is an already started workspace and refuses others. See [plugin limits](ADVANCED.md#plugin-runtime-packaging-preview).
 
-**Antigravity (agy):** `ws connect antigravity` writes project `.agents/mcp_config.json`; rules use the existing `AGENTS.md`/`GEMINI.md`. `ws start` detects `agy` or the Antigravity app, previews repo-local MCP, `.agents/hooks.json` and `GEMINI.md` wiring, and restores previous files on undo. Existing project config is preserved or staged as `.ws-new`; no global Gemini/Antigravity state is changed. Restart/trust the project, approve MCP access, then request `brief` and save decisions with `remember`/`checkpoint`. **Preview in beta.7:** rules, MCP, SessionStart brief and PreToolUse guard hooks via `.agents/hooks.json` are fixture-tested; MCP and hooks are not verified live, and a signed-in native session is not yet proved. Automatic capture and plugin import are not wired. Antigravity has a different hook dialect from Gemini CLI. References: [rules](https://antigravity.google/docs/rules/), [MCP config](https://antigravity.google/docs/mcp?tab=cli), [hooks](https://antigravity.google/docs/hooks/), [plugins](https://antigravity.google/docs/plugins?tab=cli).
+**Antigravity (agy):** `ws connect antigravity` writes project `.agents/mcp_config.json`; rules use the existing `AGENTS.md`/`GEMINI.md`. `ws start` detects `agy` or the Antigravity app, previews repo-local MCP, `.agents/hooks.json` and `GEMINI.md` wiring, and restores previous files on undo. Existing project config is preserved or staged as `.ws-new`; no global Gemini/Antigravity state is changed. Restart/trust the project, approve MCP access, then request `brief` and save decisions with `remember`/`checkpoint`. **Preview in 0.2.0:** rules, MCP, SessionStart brief and PreToolUse guard hooks via `.agents/hooks.json` are fixture-tested; MCP and hooks are not verified live, and a signed-in native session is not yet proved. Automatic capture and plugin import are not wired. Antigravity has a different hook dialect from Gemini CLI. References: [rules](https://antigravity.google/docs/rules/), [MCP config](https://antigravity.google/docs/mcp?tab=cli), [hooks](https://antigravity.google/docs/hooks/), [plugins](https://antigravity.google/docs/plugins?tab=cli).
 
 **VS Code Local hooks:** `ws connect vscode` installs `.github/hooks/ai-dev-workspace.json` with SessionStart brief context and non-blocking Stop/PreCompact capture. `ws upgrade` updates managed commands and keeps other settings/hooks. Approve hooks in the client and select the Local harness; no user configuration is modified. The [Local reference](https://code.visualstudio.com/docs/agents/reference/hooks-reference) documents optional `transcript_path`, but not a stable transcript format. Capture accepts only the observed `copilot-agent` version-1 JSONL [Microsoft implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/chat/vscode-node/sessionTranscriptService.ts): conversational content and tool-use presence, excluding attachments, reasoning and tool arguments/results. Missing/unknown transcripts do nothing. This is fixture-tested, not editor-session proof. Agent Host Copilot uses the [different Copilot SDK protocol](https://code.visualstudio.com/docs/agent-customization/hooks) and is **rules plus MCP only** here.
 
-“Proven” means exercised with that client. “Fixture-tested” means the generated config and hook input/output are checked by automated tests against saved fixtures and the client's docs, but not run in a live client session. “Not wired yet” means the client supports the feature but the workspace does not install it for that client yet. Captured text is always unverified and should be reviewed.
+“Proven” means exercised in a historical client session, not every event or version; see the [live session measurements](MEASUREMENTS.md). “Fixture-tested” means the generated config and hook input/output are checked by automated tests against saved fixtures and the client's docs, with no live session for that capability on record. “Not wired yet” means the client supports the feature but the workspace does not install it for that client yet. Captured text is always unverified and should be reviewed.
 
 **Claude Code** – open the workspace folder. `CLAUDE.md` loads `AGENTS.md`; `.mcp.json` registers the MCP server. Claude Code asks once to approve the project MCP server; approve it (or check with `claude mcp list`). To work on code in another folder, add that folder as an additional working directory.
 
@@ -111,6 +111,8 @@ The model only sees the deterministic digest, and its answer is checked against 
 The assistant can check `ws notices` at session start. `ws tools` lists optional tools; nothing installs automatically. `ws assist` offers local workspace suggestions and asks before applying. Optional routing, tool profiles and cost controls are in [Advanced settings](ADVANCED.md).
 
 ## Upgrading
+
+Short route: `ws update` (the ws software), `ws upgrade --dry-run` then `ws upgrade --yes` (managed private-workspace files), `ws start` in each repo (repo wiring). Running assistant sessions and MCP servers keep the old code until you start a new session or reload MCP connections; `ws update` and `ws upgrade --yes` print this once when they really changed something.
 
 1. `pipx upgrade ai-dev-workspace` (or `pip install -U ai-dev-workspace` in a venv install).
 2. `ws upgrade` in the workspace; `ws upgrade --dry-run` previews it.

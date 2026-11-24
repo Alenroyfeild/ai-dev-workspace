@@ -383,18 +383,31 @@ _GIT_VALUE = ('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-e
 _GIT_PUSH_OPTIONS = (
     'all', 'atomic', 'branches', 'delete', 'dry-run', 'exec',
     'follow-tags', 'force', 'force-if-includes', 'force-with-lease',
-    'ipv4', 'ipv6', 'mirror', 'no-verify', 'porcelain', 'progress',
-    'prune', 'push-option', 'quiet', 'receive-pack', 'recurse-submodules',
-    'repo', 'set-upstream', 'signed', 'tags', 'thin', 'verbose', 'verify',
+    'ipv4', 'ipv6', 'mirror', 'no-all', 'no-atomic', 'no-branches',
+    'no-delete', 'no-dry-run', 'no-follow-tags', 'no-force',
+    'no-force-if-includes', 'no-force-with-lease', 'no-mirror',
+    'no-porcelain', 'no-progress', 'no-prune', 'no-push-option',
+    'no-quiet', 'no-recurse-submodules', 'no-repo', 'no-signed',
+    'no-tags', 'no-thin', 'no-verbose', 'no-verify',
+    'porcelain', 'progress', 'prune', 'push-option', 'quiet',
+    'receive-pack', 'recurse-submodules', 'repo', 'set-upstream',
+    'signed', 'tags', 'thin', 'verbose', 'verify',
 )
+
+
+_GIT_PUSH_VAL_OPTS = ('push-option', 'repo', 'receive-pack', 'exec', 'force-with-lease', 'force-if-includes', 'signed', 'recurse-submodules')
 
 
 def _git_push_opt(arg):
     if not arg.startswith('--'): return ''
+    has_eq = '=' in arg
     name = arg[2:].split('=', 1)[0]
-    if name in _GIT_PUSH_OPTIONS: return name
-    matches = [o for o in _GIT_PUSH_OPTIONS if o.startswith(name)]
-    return matches[0] if len(matches) == 1 else ''
+    matched = name if name in _GIT_PUSH_OPTIONS else None
+    if matched is None:
+        matches = [o for o in _GIT_PUSH_OPTIONS if o.startswith(name)]
+        matched = matches[0] if len(matches) == 1 else ''
+    if has_eq and matched not in _GIT_PUSH_VAL_OPTS: return ''
+    return matched
 
 
 def _find_reason(args, cwd_bad):
@@ -427,7 +440,66 @@ def _find_reason(args, cwd_bad):
     return ''
 
 
-def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
+_UNKNOWN = object()  # a git config value that cannot be read from the command text
+_ASSIGN = re.compile(r'([A-Za-z_]\w*)(\+?)=(.*)', re.S)
+# Real git builtins only: an alias never overrides one. A name missing here is expanded (stricter), never skipped.
+_GIT_BUILTINS = frozenset((
+    'add am apply archive bisect blame branch bundle cat-file checkout cherry-pick clean clone commit config describe diff fetch format-patch gc '
+    'grep init log ls-files ls-tree merge mv notes pull push rebase reflog remote reset restore revert rev-parse rm shortlog show stash status switch tag worktree').split())
+_ENV_DENY = 'git config from the environment (--config-env, GIT_CONFIG_*) can change clean.requireForce, remote push settings or aliases; ws guards cannot prove it safe.'
+
+
+def _assigns(words, stripped):
+    """NAME=value words ahead of the command (also after env/sudo): _strip drops them, git needs them. $ or a backtick in a value makes it _UNKNOWN."""
+    cut = len(words) - len(stripped) if stripped == words[len(words) - len(stripped):] else len(words)
+    out = {}
+    for word in words[:cut]:
+        m = _ASSIGN.fullmatch(word)
+        if m: out[m[1]] = _UNKNOWN if m[2] or '$' in m[3] or '`' in m[3] else m[3]
+    return out
+
+
+def _env_config(envs):
+    """(key, value) pairs git reads from GIT_CONFIG_PARAMETERS and GIT_CONFIG_COUNT/KEY_n/VALUE_n; (None, _UNKNOWN) when a source cannot be read."""
+    out, params, count = [], envs.get('GIT_CONFIG_PARAMETERS'), envs.get('GIT_CONFIG_COUNT')
+    if params is _UNKNOWN: out.append((None, _UNKNOWN))
+    elif params:
+        try:
+            for item in shlex.split(params):
+                key, eq, value = item.partition('=')
+                out.append((key, value if eq else None))
+        except ValueError: out.append((None, _UNKNOWN))
+    if count is _UNKNOWN or count is not None and not re.fullmatch(r'\d{1,3}', count): out.append((None, _UNKNOWN)); count = 0
+    count = int(count or 0)
+    for i in sorted(set(range(count)) | {int(m[1]) for m in map(re.compile(r'GIT_CONFIG_(?:KEY|VALUE)_(\d+)').fullmatch, envs) if m}):
+        key, value = envs.get(f'GIT_CONFIG_KEY_{i}'), envs.get(f'GIT_CONFIG_VALUE_{i}', _UNKNOWN)
+        if key is None and i < count or key is _UNKNOWN: out.append((None, _UNKNOWN))
+        elif key is not None: out.append((key, value))
+    return out
+
+
+def _guarded_key(key):
+    key = key.lower()
+    return key == 'clean.requireforce' or key.startswith('alias.') or key.startswith('remote.') and key.rsplit('.', 1)[-1] in ('mirror', 'push')
+
+
+def _alias_reason(sub, aliases, args, cmd, xargs, cwd_bad, budget, depth, hops, envs, configs):
+    """Reason for `git <sub> ...` when sub is an alias defined on the command line, or None when it is not one. The expansion goes through the same checker."""
+    values = aliases.get(sub.lower())
+    if values is None or sub in _GIT_BUILTINS: return None
+    if len(values) != 1 or sub.lower() in hops or len(hops) >= 5: return 'This git alias is defined twice, loops or nests too deeply for ws guards to check.'
+    value = next(iter(values))
+    if not value: return 'This git alias is empty or has no value, so ws guards cannot check it.'
+    if value[:1] == '!':
+        if len(aliases) > 1: return 'This shell alias runs next to other aliases, so ws guards cannot check what it calls.'
+        return command_reason(value[1:] + ' ' + shlex.join(args[1:]), False, budget, depth + 1)
+    try: words = shlex.split(value)
+    except ValueError: return 'This git alias cannot be parsed, so ws guards cannot check it.'
+    if not words: return 'This git alias is empty or has no value, so ws guards cannot check it.'
+    return _simple(cmd, 'git', words + args[1:], xargs, cwd_bad, budget, depth, envs, configs, hops + (sub.lower(),))
+
+
+def _simple(cmd, name, args, xargs, cwd_bad, budget, depth, envs=None, inherited=(), hops=()):
     """Reason for one simple command (wrappers and NAME=value already stripped), or ''."""
     if name in SHELLS:  # bash -lc "<command>", bash <<EOF ... EOF, bash <<< "<command>", echo "<command>" | bash
         inner = _shell_command(args)
@@ -447,16 +519,73 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
         why = _find_reason(args, cwd_bad)
         if why: return why
     flags = ''.join(a[1:] for a in args if a.startswith('-') and not a.startswith('--'))
-    if name == 'rm' and ('r' in flags.lower() or '--recursive' in args):
+    if name == 'rm' and ('r' in flags.lower() or any(a.startswith('--r') for a in args)):
         targets = args if not xargs or any(a[:1] != '-' for a in args) else (cmd.pipe_in or [])[1:]
         hit = [a for a in targets if a in HOME_OR_ROOT or _is_home(a) or _is_root(a) or (cwd_bad and _WIPE_CWD.fullmatch(a))]
         if hit: return f'rm -r on {hit[0]} would delete your home folder or the filesystem root.'
+    parsed_configs, env_configs = list(inherited), []
     while name == 'git' and args and args[0].startswith('-'):  # global options: git -C dir, -c k=v, --no-pager ...
-        args = args[2:] if args[0] in _GIT_VALUE else args[1:]
+        opt = args[0]
+        if opt == '-c' and len(args) > 1:
+            key, eq, value = args[1].partition('=')
+            parsed_configs.append((key, value if eq else None)); args = args[2:]
+        elif opt == '--config-env' and len(args) > 1 or opt.startswith('--config-env='):
+            spec, args = (args[1], args[2:]) if opt == '--config-env' else (opt.split('=', 1)[1], args[1:])
+            key, eq, var = spec.partition('=')
+            env_configs.append((key, (envs or {}).get(var, _UNKNOWN) if eq else _UNKNOWN))
+        elif opt in _GIT_VALUE:
+            args = args[2:]
+        else:
+            args = args[1:]
+    if name == 'git':
+        for key, value in env_configs + _env_config(envs or {}):
+            if key is not None and not _guarded_key(key): continue
+            if key is None or not key.lower().startswith('alias.') or value is _UNKNOWN or value is None: return _ENV_DENY
+            parsed_configs.append((key, value))
+    aliases = {}
+    for key, value in parsed_configs:
+        if key.lower().startswith('alias.'): aliases.setdefault(key[6:].lower(), set()).add(value)
+    if name == 'git' and args:
+        why = _alias_reason(args[0], aliases, args, cmd, xargs, cwd_bad, budget, depth, hops, envs, parsed_configs)
+        if why is not None: return why
+        if hops and args[0] not in _GIT_BUILTINS: return 'This git alias expands to a command ws guards cannot check.'
     if name == 'git' and args:
         sub, rest = args[0], args[1:]
         flagged = rest[:rest.index('--')] if '--' in rest else rest  # after `--` come names, not options
+        short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
+        if sub == 'reset' and any(a in ('--hard', '--har', '--ha', '--h') for a in flagged):
+            return 'git reset --hard throws away uncommitted work.'
+        if sub == 'clean':
+            clean_dry = False
+            skip = False  # -e / --exclude take a value: -fenothing and -e -n are patterns, not -n
+            for a in flagged:
+                if skip: skip = False; continue
+                if a.startswith('--'):
+                    opt = a[2:].split('=', 1)[0]
+                    if 'dry-run'.startswith(opt) and opt.startswith('dr'): clean_dry = True
+                    elif 'no-dry-run'.startswith(opt) and opt.startswith('no-d'): clean_dry = False
+                    elif opt and 'exclude'.startswith(opt) and '=' not in a: skip = True  # unique prefixes work too: --e, --ex
+                elif a.startswith('-'):
+                    before, e, _ = a[1:].partition('e')
+                    if 'n' in before: clean_dry = True
+                    skip = e and a.endswith('e')
+            clean_require_force = True
+            for k, v in parsed_configs:
+                if k.lower() == 'clean.requireforce':
+                    clean_require_force = (v is None or v.lower() in ('true', 'yes', 'on', '1'))
+            has_force = any(a.startswith('--f') for a in flagged) or any('f' in a for a in short)
+            if not clean_dry and (not clean_require_force or has_force):
+                return 'git clean -f deletes untracked files for good.'
         if sub == 'push':
+            remote_target = None
+            i = 0
+            while i < len(flagged):
+                a = flagged[i]
+                if a.startswith('--repo='):
+                    remote_target = a.split('=', 1)[1]
+                elif a == '--repo' and i + 1 < len(flagged):
+                    remote_target = flagged[i + 1]
+                i += 1
             opts, i = [], 0
             while i < len(flagged):
                 a = flagged[i]
@@ -469,17 +598,61 @@ def _simple(cmd, name, args, xargs, cwd_bad, budget, depth):
                     i += 2 if a.endswith('o') else 1
                 else: opts.append(a); i += 1
             flagged = opts
-        short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
-        long_opts = [_git_push_opt(a) for a in flagged if a.startswith('--')]
-        dry = 'dry-run' in long_opts or any('n' in a for a in short)
-        if sub == 'reset' and any(a in ('--hard', '--har', '--ha') for a in flagged): return 'git reset --hard throws away uncommitted work.'
-        refspecs = flagged + (rest[rest.index('--') + 1:] if '--' in rest else [])
-        if sub == 'push' and not dry and (any(opt in ('delete', 'mirror', 'prune') for opt in long_opts) or any('d' in a for a in short) or any(re.match(r'\+?:.', a) for a in refspecs)):
-            return 'This remote branch will be deleted for everyone. Use gh pr merge --delete-branch, the GitHub UI, or WS_GUARDS=off for one session.'
-        if sub == 'push' and not dry and ('--force' in flagged or any('f' in a for a in short) or any(a.startswith('+') for a in rest)):
-            return 'Force push rewrites shared history; use --force-with-lease if you must.'
-        if sub == 'clean' and not dry and ('--force' in flagged or any('f' in a for a in short)):
-            return 'git clean -f deletes untracked files for good.'
+            if remote_target is None:
+                positional = [a for a in flagged if not a.startswith('-')]
+                if positional and not positional[0].startswith(':') and not positional[0].startswith('+:'):
+                    remote_target = positional[0]
+
+            short = [a for a in flagged if a[:1] == '-' and a[1:2] != '-']
+            long_opts = [_git_push_opt(a) for a in flagged if a.startswith('--')]
+
+            config_mirror = False
+            config_push_force = False
+            config_push_delete = False
+            for k, v in parsed_configs:
+                if k[:7].lower() == 'remote.' and '.' in k[7:]:
+                    r_name, var = k[7:].rsplit('.', 1)
+                    if remote_target is None or r_name == remote_target:
+                        v_var = var.lower()
+                        if v_var == 'mirror':
+                            if v is not None and v.lower() in ('false', 'no', 'off', '0', ''):
+                                config_mirror = False
+                            else:
+                                config_mirror = True
+                        elif v_var == 'push' and v is not None:
+                            for spec in v.split():
+                                if spec.startswith(':') or spec.startswith('+:'):
+                                    config_push_delete = True
+                                elif spec.startswith('+'):
+                                    config_push_force = True
+
+            dry, delete, mirror, prune, force = False, False, config_mirror, False, False
+            for a in flagged:
+                if a.startswith('--'):
+                    opt = _git_push_opt(a)
+                    if opt == 'dry-run': dry = True
+                    elif opt == 'no-dry-run': dry = False
+                    elif opt == 'delete': delete = True
+                    elif opt == 'no-delete': delete = False
+                    elif opt == 'mirror': mirror = True
+                    elif opt == 'no-mirror': mirror = False
+                    elif opt == 'prune': prune = True
+                    elif opt == 'no-prune': prune = False
+                    elif opt == 'force': force = True
+                    elif opt == 'no-force': force = False
+                elif a.startswith('-'):
+                    if 'n' in a[1:]: dry = True
+                    if 'd' in a[1:]: delete = True
+                    if 'f' in a[1:]: force = True
+
+            refspecs = flagged + (rest[rest.index('--') + 1:] if '--' in rest else [])
+            has_deletion_refspec = any(re.match(r'^\+?:.', a) for a in refspecs)
+            has_force_refspec = any(a.startswith('+') and not a.startswith('+:') for a in refspecs)
+
+            if not dry and (delete or mirror or prune or has_deletion_refspec or config_push_delete):
+                return 'This remote branch will be deleted for everyone. Use gh pr merge --delete-branch, the GitHub UI, or WS_GUARDS=off for one session.'
+            if not dry and (force or has_force_refspec or config_push_force):
+                return 'Force push rewrites shared history; use --force-with-lease if you must.'
     return ''
 
 
@@ -543,7 +716,7 @@ def command_reason(command, ps=False, _budget=None, _depth=0):
             target = args[0] if args and args[0][:1] != '-' else '~' if not args else ''
             cwd_bad = bool(target) and (target in HOME_OR_ROOT or _is_home(target) or _is_root(target))
             continue
-        why = _simple(cmd, name, args, xargs, cwd_bad, budget, _depth)
+        why = _simple(cmd, name, args, xargs, cwd_bad, budget, _depth, _assigns(cmd.words, words))
         if why: return why
     if looks_secret(command): return 'The command contains what looks like a secret (token, key or password).'
     return ''

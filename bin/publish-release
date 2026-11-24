@@ -4,19 +4,27 @@ set -euo pipefail
 tag=${1:?usage: publish-release TAG NOTES_FILE}
 notes=${2:?usage: publish-release TAG NOTES_FILE}
 
-if view_error=$(gh release view "$tag" 2>&1 >/dev/null); then
-  gh release edit "$tag" --notes-file "$notes" --prerelease=false --latest
-  echo "Release $tag already exists; updated notes."
+update_draft() {
+  if [ "$1" != true ]; then
+    echo "Release $tag is already published or its draft state is unknown; refusing to edit." >&2
+    return 1
+  fi
+  gh release edit "$tag" --notes-file "$notes"
+}
+
+if state=$(gh release view "$tag" --json isDraft --jq .isDraft 2>&1); then
+  update_draft "$state"
+  echo "Draft release $tag already exists; updated notes."
   exit 0
 fi
 
-case "$view_error" in
+case "$state" in
   *"HTTP 404:"*|*"release not found"*) ;;
-  *) echo "Could not check release $tag; refusing to create: $view_error" >&2; exit 1 ;;
+  *) echo "Could not check release $tag; refusing to create: $state" >&2; exit 1 ;;
 esac
 
 set +e
-create_error=$(gh release create "$tag" --title "$tag" --notes-file "$notes" --latest 2>&1)
+create_error=$(gh release create "$tag" --title "$tag" --notes-file "$notes" --draft 2>&1)
 create_status=$?
 set -e
 if [ "$create_status" -eq 0 ]; then
@@ -24,9 +32,9 @@ if [ "$create_status" -eq 0 ]; then
   exit 0
 fi
 
-if gh release view "$tag" >/dev/null 2>&1; then
-  gh release edit "$tag" --notes-file "$notes" --prerelease=false --latest
-  echo "Release $tag appeared during creation; updated notes."
+if state=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+  update_draft "$state"
+  echo "Draft release $tag appeared during creation; updated notes."
   exit 0
 fi
 

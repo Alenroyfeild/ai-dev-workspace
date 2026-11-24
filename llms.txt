@@ -2,23 +2,58 @@
 
 > Shared Markdown task memory for developers who switch between Claude Code and Codex. Save decisions, next actions and dead ends in files you own; configured local hooks provide a task brief at session start. Install `pipx install ai-dev-workspace --pip-args='--pre'`, then run `ws start` in a Git repo to preview setup. Python 3.9+ CLI (`ws`) and local stdio MCP server; MIT licensed.
 
-## Stable — published 0.1.0b7
+## Core command reference
+
+Nine core CLI paths (ten invocations with cleanup): `ws start`, `ws remember`, `ws checkpoint`, `ws brief`, `ws task new`, `ws task list`, `ws task show`, `ws claim`, `ws release`. Flag variations, including `ws start --undo`, use the same path. The default MCP profile lists seven tools: `brief`, `find_task`, `read_task`, `checkpoint`, `remember`, `search_vault`, `add_lesson`. [Core reference](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md#core).
+
+## Stable — published 0.2.0
 
 - Local Markdown task records, explicit `ws remember`, `ws checkpoint` and `ws brief`.
 - Seven core MCP tools by default; other tools remain callable by name.
-- Claude Code and Codex have live checks on macOS. Cursor, Copilot and Gemini
-  integrations are fixture-tested; Linux/Windows have CI, not live-client proof.
+- Claude Code and Codex have historical [live sessions](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MEASUREMENTS.md#claude-and-cross-assistant-runs-2026-10-09).
+  Cursor, Copilot, Gemini CLI and Antigravity are fixture-tested (CI).
+  Linux: CI only; no live session on record. Windows: CI only.
 - Only saved information is remembered; automatic transcript capture is best-effort.
 - The optional guards pack is a safety net, not a security boundary.
 
 ## Preview
 
-- Private team sharing needs preview/review before sharing; no hosted team check yet.
-- The Claude Code plugin is live-checked on beta.5 but not yet listed in
+- The Claude Code plugin is live-checked on beta.7 but not yet listed in
   Anthropic's official plugin directory. Install from our GitHub marketplace;
   the CLI and `ws start` in the target repo are still required.
 
+## Experimental — outside the 1.0 promise
+
+Commands beyond the core list are Experimental and may change or be removed. Experimental means: ships, but outside the 1.0 promise; the test level shown is today's. Full list with limits: [Experimental features](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/EXPERIMENTAL.md).
+
+- Delegation, workers, routing and orchestration; worker fallback chain (Preview) and gateway provider (Preview, local fake-server tests only).
+- `ws audit` (Stable), `ws import claude-mem` (Preview), `ws digest` and the advisory behavior pack (Stable), `digest_file` (Preview), lesson promotion (Stable), Discipline pack (Stable), MCP Registry entry (Preview).
+- Private team sharing (Preview): no hosted team check yet.
+- Codex plugin and Cursor plugin (Preview), MCP plugin roots discovery (Preview), Codex SessionStart catch-up (Preview).
+- Cursor, Copilot (VS Code), Gemini CLI and Antigravity: fixture-tested (CI); [live reports welcome](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
+
+## Released in 0.2.0
+
+Labels in the release sections below are as published in that release; the current split between the 1.0 promise and Experimental is in the sections above.
+
+- Experimental: `ws update --check` reports the installation type, local Git state and manual
+  choices without pulling or changing branches. To upgrade: `ws update` (a package install
+  prints `pipx upgrade ai-dev-workspace`), then `ws upgrade --dry-run`, `ws upgrade --yes`
+  and `ws start` in each repo; running assistant sessions and MCP servers need a new
+  session or a reload.
+- Experimental: `ws upgrade` prints a migration result block, and `ws doctor` flags half-migrated stores.
+- Stable: `ws start --undo --delete-memory` previews and, after confirmation, removes the
+  recorded private workspace; plain `ws start --undo` still keeps memory.
+- Experimental: `ws task next` selects and claims the next eligible task atomically.
+- Measured (November 18, Codex `gpt-6-luna`, n=7 to 8 per arm): automatic capture is not
+  reliable; the workspace arm passed 2/7 against 6/7 for a plain Markdown handoff, so
+  save handoffs explicitly with `ws checkpoint` and `ws remember`.
+- Stable: guards deny more git bypasses (config-env, `GIT_CONFIG_*`, aliases, abbreviated
+  flags); they remain a safety net, not a security boundary.
+
 ## Released in beta.7
+
+Labels in the release sections below are as published in that release; the current split between the 1.0 promise and Experimental is in the sections above.
 
 - Stable: `ws lesson review [--days N]` lists old lesson date stamps for manual
   review; it is read-only and never changes or deletes saved lessons.
@@ -60,7 +95,7 @@ plugin MCP paths, so use `ws start` for MCP. Clients that offer roots get the be
 - [Keep decisions without a background AI](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/keep-decisions-without-background-ai.md)
 - [Stop retrying failed approaches](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/guides/stop-retrying-failed-approaches.md)
 
-- [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): install, supported clients and results with limits
+- [README](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/README.md): install, client verification and results with limits
 - [Setup](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/SETUP.md) and [Tutorial](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/TUTORIAL.md)
 - [Commands](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/COMMANDS.md) and [MCP](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/MCP.md)
 - [Client verification](https://github.com/Alenroyfeild/ai-dev-workspace/blob/main/docs/CLIENT-VERIFICATION.md): fixture and live limits

@@ -88,4 +88,4 @@ Your saved notes remain intact in `~/.ai-dev-workspace/<repo-name>` until you de
 
 - **Local files, not a database:** Memory lives in plain Markdown files you control. There is no background AI daemon, vector database, or hosted sync service.
 - **Capture is best-effort:** Explicit CLI commands (`ws remember`, `ws task new`, `ws checkpoint`) are deterministic. Automatic capture of decisions from chat transcripts is best-effort.
-- **Client verification:** Claude Code and Codex are live-tested on macOS and CI-tested on Linux and Windows. Cursor, Copilot (VS Code), Gemini CLI, and Antigravity are supported via fixture-tested configuration.
+- **Client verification:** Claude Code and Codex have historical [live session results](../MEASUREMENTS.md). Linux: CI only; no live session on record. Windows: CI only. Cursor, Copilot (VS Code), Gemini CLI, and Antigravity are fixture-tested (CI); [live reports welcome](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
