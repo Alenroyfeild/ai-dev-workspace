@@ -1,11 +1,21 @@
 # Roadmap
 
-The beta is usable for personal session memory and consent-based team sharing.
+The pre-1.0 tool is usable for personal session memory and consent-based team sharing.
 Compatibility claims stay limited to tested behavior; see the [client table](CLIENT-VERIFICATION.md).
 
-## Available in the beta
+## 0.2.0 (released)
 
-- [x] Install from PyPI with `pipx install ai-dev-workspace --pip-args='--pre'` (see [Setup](SETUP.md)).
+See [the 0.2.0 changelog](../CHANGELOG.md#020-2026-11-20) for the full release and its limits.
+
+- Adds update checks and upgrade diagnostics (Experimental).
+- Adds confirmed deletion of a repo's private workspace, refusing shared workspaces and symlinks.
+- Preserves saved handoff Markdown within the brief budget and shows task status.
+- Hardens guards, feedback redaction and recall privacy checks.
+- Records that automatic transcript capture is not reliable; save important facts with `ws checkpoint` and `ws remember`.
+
+## Previously available
+
+- [x] Install from PyPI with `pipx install ai-dev-workspace` (see [Setup](SETUP.md)).
 - [x] Keep tasks, decisions, lessons and handoff notes in Markdown you control.
 - [x] Start, checkpoint, search and pick up work across sessions.
 - [x] Connect Claude Code and Codex in one step (`ws start`); capture decisions from both clients' transcripts as unverified notes.

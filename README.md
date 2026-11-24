@@ -10,11 +10,11 @@
 ## Quick start
 
 ```bash
-pipx install ai-dev-workspace --pip-args='--pre'  # beta; omit --pip-args after a stable release
+pipx install ai-dev-workspace
 cd ~/code/myapp && ws start
 ```
 
-`ws start` previews every file and writes nothing until you confirm. No pipx? `brew install pipx`, or `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace`; put its `bin` directory on `PATH` first. Follow the [5-minute tutorial](docs/TUTORIAL.md).
+`ws start` previews every file and writes nothing until you confirm. No pipx? `brew install pipx`, or `python3 -m venv ~/.ws && ~/.ws/bin/pip install ai-dev-workspace`; put its `bin` directory on `PATH` first. Follow the [5-minute tutorial](docs/TUTORIAL.md).
 
 ## The 5 commands
 
@@ -170,6 +170,6 @@ Memory storage makes no background model calls. `ws delegate --run` starts only 
 
 ## Status & contributing
 
-`ai-dev-workspace` is in public beta (v0.2.0 on PyPI). Planned improvements are tracked in the [Roadmap](docs/ROADMAP.md). Bug reports and feedback are welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
+`ai-dev-workspace` is pre-1.0 (v0.2.0 on PyPI). Planned improvements are tracked in the [Roadmap](docs/ROADMAP.md). Bug reports and feedback are welcome through [Something broke](https://github.com/Alenroyfeild/ai-dev-workspace/issues/new?template=bug.yml).
 
 Released under the [MIT License](LICENSE). <!-- mcp-name: io.github.Alenroyfeild/ai-dev-workspace mcp-name: io.github.alenroyfeild/ai-dev-workspace -->
