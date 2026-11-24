@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+"""Refuse publication unless a release tag matches archived release metadata."""
+import argparse
+import datetime
+import json
+import re
+import sys
+from pathlib import Path
+
+TAG = re.compile(r'v(\d+\.\d+\.\d+(?:-beta\.\d+)?)\Z')
+
+
+def verify(tag, root):
+    match = TAG.fullmatch(tag)
+    if not match:
+        raise ValueError('tag must be vX.Y.Z or vX.Y.Z-beta.N')
+    version = match.group(1)
+    root = Path(root)
+    try:
+        kit = json.loads((root / 'kit.json').read_text(encoding='utf-8'))
+        changelog = (root / 'CHANGELOG.md').read_text(encoding='utf-8')
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise ValueError('cannot read release metadata') from exc
+    if not isinstance(kit, dict) or kit.get('version') != version:
+        raise ValueError('tag and kit.json version do not match')
+    heading = re.search(r'^## ' + re.escape(version) + r' \((\d{4}-\d{2}-\d{2})\)\s*$', changelog, re.MULTILINE)
+    if not heading:
+        raise ValueError('CHANGELOG.md has no matching dated release heading')
+    try:
+        datetime.date.fromisoformat(heading.group(1))
+    except ValueError as exc:
+        raise ValueError('CHANGELOG.md has an invalid release date') from exc
+    return version
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('tag')
+    parser.add_argument('root', type=Path, help='extracted tag archive')
+    args = parser.parse_args()
+    try:
+        version = verify(args.tag, args.root)
+    except ValueError as exc:
+        print('Refusing publication: ' + str(exc), file=sys.stderr)
+        return 1
+    print('Verified archived release ' + version)
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
