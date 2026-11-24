@@ -52,6 +52,93 @@ class BranchTaskTests(unittest.TestCase):
         self.git('switch', '-q', 'feature/a'); self.assertIn('use amber', self.hook())
         self.assertEqual(before, core.task_path(self.root, first).read_bytes())
 
+    def branchless_task(self, task_id, repo=None, worker='fixture-worker', status='in_progress'):
+        core.task_new(self.root, task_id, 'Branchless fixture', repo=str(self.root) if repo is None else repo)
+        core.claim(self.root, task_id, worker)
+        core.checkpoint(self.root, task_id, status, 'Continue ' + task_id,
+                        notes={'Handoff': 'Saved facts for ' + task_id})
+        return core.task_path(self.root, task_id).read_bytes()
+
+    def test_one_locally_claimed_branchless_task_is_selected_without_writes(self):
+        before = self.branchless_task('BENCH-1', repo='.')
+        self.assertIn('Continue BENCH-1', self.hook())
+        self.assertEqual([t['id'] for t in core.task_list(self.root)], ['BENCH-1'])
+        self.assertEqual(core.task_path(self.root, 'BENCH-1').read_bytes(), before)
+        self.assertEqual(core.task_read(self.root, 'BENCH-1', ['Next action'])['meta'].get('branch', ''), '')
+
+    def test_multiple_locally_claimed_branchless_tasks_fall_back_without_hook_error(self):
+        first = self.branchless_task('T-1'); second = self.branchless_task('T-2')
+        self.hook()
+        tasks = core.task_list(self.root)
+        self.assertEqual(len([t for t in tasks if t['id'].startswith('BR-')]), 1)
+        self.assertEqual(core.task_path(self.root, 'T-1').read_bytes(), first)
+        self.assertEqual(core.task_path(self.root, 'T-2').read_bytes(), second)
+
+    def test_done_branchless_task_is_not_selected(self):
+        before = self.branchless_task('DONE', status='done')
+        self.assertNotIn('Continue DONE', self.hook())
+        self.assertTrue(any(t['id'].startswith('BR-') for t in core.task_list(self.root)))
+        self.assertEqual(core.task_path(self.root, 'DONE').read_bytes(), before)
+
+    def test_branchless_task_for_another_repo_is_not_selected(self):
+        other = self.root / 'other'; other.mkdir()
+        subprocess.run(['git', 'init', '-q', str(other)], check=True, capture_output=True)
+        before = self.branchless_task('OTHER', repo=str(other))
+        self.assertNotIn('Continue OTHER', self.hook())
+        self.assertTrue(any(t['id'].startswith('BR-') for t in core.task_list(self.root)))
+        self.assertEqual(core.task_path(self.root, 'OTHER').read_bytes(), before)
+
+    def test_unclaimed_branchless_task_is_not_selected(self):
+        core.task_new(self.root, 'FREE', 'Unclaimed', repo=str(self.root))
+        before = core.task_path(self.root, 'FREE').read_bytes()
+        self.hook()
+        self.assertTrue(any(t['id'].startswith('BR-') for t in core.task_list(self.root)))
+        self.assertEqual(core.task_path(self.root, 'FREE').read_bytes(), before)
+
+    def test_foreign_claim_without_local_token_is_not_selected(self):
+        before = self.branchless_task('FOREIGN', worker='another-worker')
+        core._local_claim_path(self.root, 'FOREIGN').unlink()
+        self.assertNotIn('Continue FOREIGN', self.hook())
+        self.assertTrue(any(t['id'].startswith('BR-') for t in core.task_list(self.root)))
+        self.assertEqual(core.task_path(self.root, 'FOREIGN').read_bytes(), before)
+
+    def test_local_claim_for_a_different_worker_is_not_selected(self):
+        before = self.branchless_task('FOREIGN', worker='another-worker')
+        path = core._local_claim_path(self.root, 'FOREIGN')
+        local = json.loads(path.read_text()); local['worker'] = 'local-worker'; path.write_text(json.dumps(local))
+        self.assertNotIn('Continue FOREIGN', self.hook())
+        self.assertTrue(any(t['id'].startswith('BR-') for t in core.task_list(self.root)))
+        self.assertEqual(core.task_path(self.root, 'FOREIGN').read_bytes(), before)
+
+    def test_ineligible_tasks_do_not_make_one_valid_claim_ambiguous(self):
+        before = self.branchless_task('ELIGIBLE')
+        self.branchless_task('DONE', status='done')
+        core.task_new(self.root, 'FREE', 'Unclaimed', repo=str(self.root))
+        other = self.root / 'other'; other.mkdir()
+        subprocess.run(['git', 'init', '-q', str(other)], check=True, capture_output=True)
+        self.branchless_task('OTHER', repo=str(other))
+        self.branchless_task('FOREIGN', worker='another-worker')
+        core._local_claim_path(self.root, 'FOREIGN').unlink()
+        self.assertIn('Continue ELIGIBLE', self.hook())
+        self.assertEqual(core.task_path(self.root, 'ELIGIBLE').read_bytes(), before)
+        self.assertFalse(any(t['id'].startswith('BR-') for t in core.task_list(self.root)))
+
+    def test_branch_match_wins_over_claimed_branchless_task(self):
+        before = self.branchless_task('GENERIC')
+        core.task_new(self.root, 'BRANCH', 'Branch task', branch='feature/a', repo=str(self.root))
+        core.claim(self.root, 'BRANCH', 'branch-worker')
+        core.checkpoint(self.root, 'BRANCH', 'in_progress', 'Continue BRANCH')
+        output = self.hook()
+        self.assertIn('Continue BRANCH', output)
+        self.assertEqual(core.task_path(self.root, 'GENERIC').read_bytes(), before)
+        self.assertFalse(any(t['id'].startswith('BR-') for t in core.task_list(self.root)))
+
+    def test_corrupt_local_claim_never_breaks_hook(self):
+        self.branchless_task('BROKEN')
+        core._local_claim_path(self.root, 'BROKEN').write_text('[]')
+        self.hook()
+        self.assertTrue(any(t['id'].startswith('BR-') for t in core.task_list(self.root)))
+
     def test_every_session_start_client_creates_only_one_local_task(self):
         for client in ('claude', 'codex', 'cursor', 'vscode', 'gemini'): self.hook(client)
         tasks = core.task_list(self.root); self.assertEqual(len(tasks), 1)
