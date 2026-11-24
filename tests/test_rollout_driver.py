@@ -236,6 +236,69 @@ class RolloutDriverTests(unittest.TestCase):
 
 @unittest.skipIf(os.name == "nt", "Owned process cleanup uses POSIX process groups.")
 class RolloutTransportTests(unittest.TestCase):
+    def test_codex_event_stream_records_ordered_names_without_payloads(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {'WS_BENCH_PROVIDER': 'codex'}):
+            root = Path(d); home = root / 'home'
+            secret = 'PRIVATE_CANARY_741'
+            def event(kind, ident, item_type, **fields):
+                return {'type': kind, 'item': dict(id=ident, type=item_type, **fields)}
+            events = [
+                {'type': 'thread.started', 'thread_id': 'fixture-thread'},
+                event('item.started', 'a', 'command_execution', command="/bin/zsh -lc 'ws brief --task PRIVATE_CANARY_741'"),
+                event('item.started', 'b', 'command_execution', command='cat /private/PRIVATE_CANARY_741'),
+                event('item.completed', 'b', 'command_execution', command='cat /private/PRIVATE_CANARY_741', aggregated_output=secret),
+                event('item.completed', 'a', 'command_execution', command="/bin/zsh -lc 'ws brief --task PRIVATE_CANARY_741'", aggregated_output=secret),
+                event('item.completed', 'c', 'mcp_tool_call', server=secret, tool='read_task', arguments={'path': secret}, result=secret),
+                event('item.completed', 'd', 'command_execution', command='python3 /private/PRIVATE_CANARY_741'),
+                event('item.completed', 'e', 'command_execution', command=secret + ' --arg'),
+                {'type': 'turn.completed', 'usage': {'input_tokens': 100, 'output_tokens': 10}},
+            ]
+            worker = mock.Mock(returncode=0)
+            worker.communicate.return_value = ('\n'.join(json.dumps(e) for e in events), '')
+            with mock.patch.object(rollout_transport.subprocess, 'Popen', return_value=worker):
+                call, _, _ = rollout_transport.session(root, home, 'fixture prompt', True, root / 'no-auth')
+            self.assertEqual(call['tool_names'], ['ws brief', 'cat', 'mcp:read_task', 'python3', 'other'])
+            self.assertNotIn(secret, json.dumps(call))
+            self.assertNotIn('/private/', json.dumps(call))
+            result_file = root / 'trial.json'
+            rollout_run.save(result_file, {'seed': 42, 'runs': [{'calls': [call]}]})
+            saved = json.loads(result_file.read_text())['runs'][0]['calls'][0]['tool_names']
+            self.assertEqual(saved, ['ws brief', 'cat', 'mcp:read_task', 'python3', 'other'])
+            self.assertNotIn(secret, result_file.read_text())
+
+    def test_shell_names_never_include_untrusted_arguments_or_paths(self):
+        cases = (
+            ('ws --workspace-root /private/SECRET_741 checkpoint --note SECRET_741', 'ws checkpoint'),
+            ('/usr/bin/python3 /private/SECRET_741', 'python3'),
+            ('ws SECRET_741 --arg', 'ws'),
+            ('/private/SECRET_741 --arg', 'other'),
+            ('SECRET_741=secret', 'other'),
+            ("bash -lc 'unterminated", 'other'),
+        )
+        for command, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(rollout_transport.shell_name(command), expected)
+
+    def test_claude_event_stream_records_names_without_inputs(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); worker = mock.Mock(returncode=0)
+            events = [
+                {'type': 'assistant', 'message': {'content': [
+                    {'type': 'tool_use', 'name': 'Read', 'input': {'file_path': '/private/SECRET_741'}},
+                    {'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'ws checkpoint BENCH-1 --note SECRET_741'}},
+                    {'type': 'tool_use', 'name': 'mcp__ai-dev-workspace__brief', 'input': {'text': 'SECRET_741'}},
+                    {'type': 'tool_use', 'name': 'SECRET_741', 'input': {}},
+                ]}},
+                {'type': 'result', 'session_id': 'fixture', 'result': '', 'usage': {}},
+            ]
+            worker.communicate.return_value = ('\n'.join(json.dumps(e) for e in events), '')
+            with mock.patch.object(rollout_transport.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='2.1.300')), \
+                    mock.patch.object(rollout_transport.subprocess, 'Popen', return_value=worker):
+                call, _, _ = rollout_transport.claude_session(root, root / 'home', 'fixture', False)
+            self.assertEqual(call['tool_names'], ['Read', 'ws checkpoint', 'mcp:brief', 'other'])
+            self.assertNotIn('SECRET_741', json.dumps(call))
+            self.assertNotIn('/private/', json.dumps(call))
+
     def test_claude_transport_does_not_inherit_secret_environment(self):
         allowed = {'PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'SHELL', 'TERM',
                    'WS_OFFLINE', 'WS_ROOT', 'PYTHONDONTWRITEBYTECODE'}
