@@ -30,6 +30,9 @@ The first three arms use this checkout. The fourth runs the existing workspace t
 
 ## Corrected rollout: independent paired investigations
 
+The workspace arms replay the real Codex SessionStart hook in the investigation home after the correction and before the prepared-memory snapshot. Codex resume did not run a Stop callback in the observed probe; SessionStart catch-up models the next session on the same machine. The hook exit and capture-health snapshot are recorded; `health_updated` distinguishes a fresh health write from an earlier snapshot. The investigation home is removed before completion starts in a fresh home. Earlier rows below did not include this step; they are not directly comparable to a rerun.
+
+
 Historical post-#77 [2026-10-10 R9-B1 n=5 run](results/2026-10-10-R9-B1-rollout-codex.json), unmodified dev `cbe3f68`, Codex CLI 0.155.1, `gpt-6-luna`/high:
 
 | Arm | Pass | Abstention | Guess or incomplete | Inconclusive | Mean wall seconds | Reported input / output tokens |
