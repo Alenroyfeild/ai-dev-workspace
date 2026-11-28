@@ -1,11 +1,21 @@
 # Roadmap
 
-The beta is usable for personal session memory and consent-based team sharing.
+The pre-1.0 tool is usable for personal session memory and consent-based team sharing.
 Compatibility claims stay limited to tested behavior; see the [client table](CLIENT-VERIFICATION.md).
 
-## Available in the beta
+## 0.2.0 (released)
 
-- [x] Install from PyPI with `pipx install ai-dev-workspace --pip-args='--pre'` (see [Setup](SETUP.md)).
+See [the 0.2.0 changelog](../CHANGELOG.md#020-2026-11-20) for the full release and its limits.
+
+- Adds update checks and upgrade diagnostics (Experimental).
+- Adds confirmed deletion of a repo's private workspace, refusing shared workspaces and symlinks.
+- Preserves saved handoff Markdown within the brief budget and shows task status.
+- Hardens guards, feedback redaction and recall privacy checks.
+- Records that automatic transcript capture is not reliable; save important facts with `ws checkpoint` and `ws remember`.
+
+## Previously available
+
+- [x] Install from PyPI with `pipx install ai-dev-workspace` (see [Setup](SETUP.md)).
 - [x] Keep tasks, decisions, lessons and handoff notes in Markdown you control.
 - [x] Start, checkpoint, search and pick up work across sessions.
 - [x] Connect Claude Code and Codex in one step (`ws start`); capture decisions from both clients' transcripts as unverified notes.
@@ -41,12 +51,18 @@ Compatibility claims stay limited to tested behavior; see the [client table](CLI
 - [x] **Plugin listing metadata**: marketplace metadata and logos for the Claude Code, Codex and Cursor plugins and `server.json`.
 - [x] **Release Surface Check**: `bin/release-verify` compares the published release surfaces for one version and reports stale entries.
 
-## Next
+## Next (toward 1.0)
 
-- [ ] List the MCP server in the official registry (server.json ready, the maintainer publishes).
+From the first weeks of real daily use (a long-lived non-code workspace and an imported vault):
+
+- [ ] Keep long-lived memory readable: the brief keeps whole sentences, newest first, with a count of what it left out and a way to open each older item.
+- [ ] Standing instructions that always reach the next session, separate from one task's log.
+- [ ] A human "start here" page generated from memory (standing rules, current facts, open questions, next actions).
+- [ ] Upgrades say which repos still run older wiring and the exact command to refresh them; `ws start` keeps hooks and config entries you changed, and previews the real diff.
+- [ ] Imported vaults: accept common status spellings and relative wikilinks.
+- [ ] Five outside users on their own repos for a week, and a recorded fresh install on Linux.
 - [ ] Test Cursor, Copilot and Gemini CLI in live client sessions.
 - [ ] Add automatic decision capture only where another client exposes a suitable transcript or equivalent.
-- [ ] Prepare the public v0.2 launch from beta feedback and test results.
 
 ## Later, if users need it
 

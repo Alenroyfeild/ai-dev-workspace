@@ -9,11 +9,11 @@ When you switch between Claude Code and Codex on the same project, each assistan
 Install the package and initialize your repository:
 
 ```sh
-pipx install ai-dev-workspace --pip-args='--pre'
+pipx install ai-dev-workspace
 cd ~/code/myproject && ws start
 ```
 
-*Without pipx:* `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace` and add `~/.ws/bin` to your `PATH`.
+*Without pipx:* `python3 -m venv ~/.ws && ~/.ws/bin/pip install ai-dev-workspace` and add `~/.ws/bin` to your `PATH`.
 
 `ws start` previews changes and prompts before writing. It creates a private memory vault outside your repo at `~/.ai-dev-workspace/<repo-name>` and configures non-invasive hooks for detected assistants. It modifies no git-tracked files in your repo.
 
