@@ -14,14 +14,14 @@ You will save a decision in one session, then see the next session start with it
 ## 1. Install and make a demo repo
 
 ```bash
-pipx install ai-dev-workspace --pip-args='--pre'
+pipx install ai-dev-workspace
 mkdir -p ~/code/demo-app && cd ~/code/demo-app
 git init -b main && echo "# demo-app" > README.md
 git add . && git commit -m "Initial commit"
 git switch -c fix-login
 ```
 
-*No pipx?* `brew install pipx` or `python3 -m venv ~/.ws && ~/.ws/bin/pip install --pre ai-dev-workspace` (and add `~/.ws/bin` to your `PATH`).
+*No pipx?* `brew install pipx` or `python3 -m venv ~/.ws && ~/.ws/bin/pip install ai-dev-workspace` (and add `~/.ws/bin` to your `PATH`).
 
 The branch name becomes the task name.
 

@@ -6,7 +6,7 @@ Every step after 2 is optional. `ws doctor` tells you what is missing and how to
 
 ## 1. Install the kit
 
-For an isolated CLI, install the beta from PyPI with `pipx install ai-dev-workspace --pip-args='--pre'` (omit `--pip-args='--pre'` after a stable release). This includes templates, packs, skills and the MCP server; generated client configs and hooks use the install's Python environment. `ws update` prints `pipx upgrade ai-dev-workspace` for this installation. It does not run pipx for you; `ws update --check` still checks release notes. A plain venv installation uses that venv's pip with the original source to update. The git-clone alternative follows:
+For an isolated CLI, install from PyPI with `pipx install ai-dev-workspace`. This includes templates, packs, skills and the MCP server; generated client configs and hooks use the install's Python environment. `ws update` prints `pipx upgrade ai-dev-workspace` for this installation. It does not run pipx for you; `ws update --check` still checks release notes. A plain venv installation uses that venv's pip with the original source to update. The git-clone alternative follows:
 
 ```bash
 git clone https://github.com/Alenroyfeild/ai-dev-workspace.git ~/ai-dev-workspace
