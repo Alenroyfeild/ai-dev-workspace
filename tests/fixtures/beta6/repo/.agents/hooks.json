@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "type": "command",
+        "timeout": 10,
+        "command": "python3 {{OLD_KIT}}/bin/ws --workspace-root {{WORKSPACE}} brief --hook --client antigravity"
+      }
+    ]
+  }
+}

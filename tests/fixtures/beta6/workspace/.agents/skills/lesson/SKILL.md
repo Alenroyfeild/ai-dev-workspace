@@ -1,0 +1,10 @@
+---
+name: lesson
+description: Record a requested mistake-to-rule lesson in workspace memory.
+compatibility: Requires ws on PATH (pipx install ai-dev-workspace --pip-args='--pre') and a Git repository initialized with ws start.
+---
+<!--ws:managed:skill-lesson:0.1.0-beta.6-->
+
+Use the user's requested lesson and verified session context to form one line: what happened → rule. Ask if either part is missing; omit secrets and private identifiers.
+When verified context identifies relevant files or an area, suggest optional `--path "<relative repo glob>"` (repeatable) and `--area "<area>"` tags; do not guess paths. Run `ws lesson add "<what happened → rule>"` with the agreed tags, then `ws lesson search "<distinctive words>"` to confirm it was recorded. Report the saved rule briefly. Briefs prefer lessons matching files changed from the claimed task's starting commit, then its title/area.
+<!--/ws:managed:skill-lesson-->

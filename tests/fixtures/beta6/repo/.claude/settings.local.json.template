@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 {{OLD_KIT}}/bin/ws --workspace-root {{WORKSPACE}} brief --hook"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 {{OLD_KIT}}/bin/ws --workspace-root {{WORKSPACE}} nudge --hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 {{OLD_KIT}}/bin/ws --workspace-root {{WORKSPACE}} nudge --hook"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 {{OLD_KIT}}/bin/ws --workspace-root {{WORKSPACE}} paste --hook --client claude"
+          }
+        ]
+      }
+    ]
+  }
+}
