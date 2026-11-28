@@ -25,6 +25,8 @@ class ReleaseVerifyTests(unittest.TestCase):
             'llms.txt': 'published 0.1.0b7\nLive-checked on beta.5 (2026-10-22)',
             'llms-full.txt': 'published 0.1.0b7',
         }
+        for path in verify_script.PRE_RELEASE_DOCS[len(verify_script.DOCS):]:  # clean docs for the final-version wording check
+            self.files[path] = self.files[path.rsplit('/', 1)[-1]] = 'pipx install ai-dev-workspace'
         self.manifests = {
             'kit.json': {'version': '0.1.0-beta.7'},
             'server.json': {'name': 'io.github.Alenroyfeild/ai-dev-workspace', 'version': self.version,
@@ -204,6 +206,50 @@ class FinalReleaseVerifyTests(ReleaseVerifyTests):
         self.files['README.md'] = 'ai-dev-workspace (v0.1.0-beta.7 on PyPI)'
         problems, _ = self.verify()
         self.assertTrue(any('README.md' in item for item in problems), problems)
+
+
+
+class FinalReleaseWordingTests(ReleaseVerifyTests):
+    """After 0.2.0, main still said 'public beta' and '--pre'; a final version must fail on that."""
+
+    def setUp(self):
+        super().setUp()
+        self.version = '0.2.0'
+        self.pypi = {'info': {'version': '0.2.0'}}
+        self.release = {'tag_name': 'v0.2.0', 'draft': False}
+        self.registry['server']['version'] = '0.2.0'
+        self.files = {
+            'README.md': 'ai-dev-workspace (v0.2.0 on PyPI)\npipx install ai-dev-workspace',
+            'llms.txt': 'published 0.2.0', 'llms-full.txt': 'published 0.2.0',
+            'ROADMAP.md': 'The pre-1.0 tool is usable.', 'SETUP.md': 'pipx install ai-dev-workspace',
+            'TUTORIAL.md': 'pipx install ai-dev-workspace', 'share-memory-claude-code-codex.md': 'pipx install ai-dev-workspace',
+        }
+        for path in verify_script.PRE_RELEASE_DOCS[len(verify_script.DOCS):]:
+            self.files[path] = 'pipx install ai-dev-workspace'
+        for path, data in self.manifests.items():
+            if 'plugins' in data: data['plugins'][0]['version'] = '0.2.0'
+            else: data['version'] = '0.2.0'
+        self.manifests['server.json']['packages'][0]['version'] = '0.2.0'
+
+    def test_all_release_surfaces_current_and_plugin_labels_informational(self):
+        problems, _ = self.verify()
+        self.assertEqual(problems, [])
+
+    def test_each_external_and_repository_surface_reports_stale(self):
+        pass  # covered for beta versions by the parent class
+
+    def test_pre_release_wording_on_main_is_stale_for_a_final_version(self):
+        self.files['ROADMAP.md'] = 'The beta is usable.\n## Available in the beta'
+        self.files['SETUP.md'] = "pipx install ai-dev-workspace --pip-args='--pre'"
+        problems, _ = self.verify()
+        self.assertTrue(any(p.startswith('docs/ROADMAP.md: still says "in the beta"') for p in problems), problems)
+        self.assertTrue(any(p.startswith('docs/SETUP.md: still says "--pip-args=\'--pre\'"') for p in problems), problems)
+
+    def test_beta_versions_skip_the_wording_check(self):
+        self.version = '0.3.0b1'
+        self.files['ROADMAP.md'] = 'public beta'
+        problems, _ = self.verify()
+        self.assertFalse(any('pre-release' in p or 'public beta' in p for p in problems))
 
 
 if __name__ == '__main__':

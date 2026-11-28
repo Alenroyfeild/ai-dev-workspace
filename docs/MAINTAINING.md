@@ -92,7 +92,12 @@ The release workflow uses two promotion steps and tags the merge commit on `main
    - Owner: maintainer. Complete this post-tag follow-up within 3 days of the tag.
    - Live-install the Claude Code plugin from the marketplace on the released version, then update the `Live-checked on beta.N (date)` (or `X.Y.Z (date)`) labels (README, `llms.txt`, `llms-full.txt`, `docs/CLIENT-VERIFICATION.md`). If this was not done, leave the labels as they are.
 
-11. **If PyPI failed or was delayed:** revert the published-version lines moved in step 2 (README, `llms.txt`, `llms-full.txt`, `docs/DISCOVERY.md`, `PUBLISHED_VERSION`) until the upload succeeds.
+11. **Post-tag docs on `dev` and `main`:**
+   - Owner: Claude, within 3 days of the tag. On `dev`: drop pre-release install flags and "beta" wording for a final version, move shipped items under the release heading in `docs/ROADMAP.md`, and make its "Next" list only open work.
+   - Copy those docs to `main` byte for byte (README, `llms.txt`, `llms-full.txt`, ROADMAP, SETUP, TUTORIAL, guides), since PyPI and GitHub visitors read `main`. `bin/release-verify` fails for a final version while `main` still reads as a pre-release.
+   - The full pre/release/post list lives in the coordination repo's release checklist; tick every item with evidence.
+
+12. **If PyPI failed or was delayed:** revert the published-version lines moved in step 2 (README, `llms.txt`, `llms-full.txt`, `docs/DISCOVERY.md`, `PUBLISHED_VERSION`) until the upload succeeds.
 
 **Landing:** merge a PR only at 7/7 checks, with `gh pr merge <n> --merge --match-head-commit <reviewed sha>`. Land one PR at a time and wait for each post-merge CI before the next.
 

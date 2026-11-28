@@ -29,6 +29,9 @@ MANIFESTS = {
     '.cursor-plugin/marketplace.json': 'tag-plugin',
 }
 DOCS = ('README.md', 'llms.txt', 'llms-full.txt')
+# For a final version, main must not still read as a pre-release (missed after 0.2.0; RELEASE-CHECKLIST section C).
+PRE_RELEASE_DOCS = DOCS + ('docs/ROADMAP.md', 'docs/SETUP.md', 'docs/TUTORIAL.md', 'docs/guides/share-memory-claude-code-codex.md')
+PRE_RELEASE_WORDING = re.compile(r"public beta|in the beta\b|--pip-args='--pre'|pip install --pre\b", re.I)
 LIVE_LABEL = re.compile(r'Live-checked on ((?:beta\.\d+|\d+\.\d+\.\d+)(?: \([^\n)]*\))?)', re.I)
 
 
@@ -140,6 +143,15 @@ def verify(version, fetch_json=fetch_json, fetch_text=fetch_text,
         text_surface(path, RAW + path,
                      lambda text, expected=expected: '' if expected in text else
                      'does not name ' + expected)
+
+    if not re.search(r'(a|b|rc)\d+$', version):  # a final release must not read as a pre-release on main
+        for path in PRE_RELEASE_DOCS:
+            try:
+                found = PRE_RELEASE_WORDING.search(fetch_text(RAW + path))
+                if found:
+                    stale.append(path + ': still says "' + found.group(0) + '" for a final release; copy the post-tag docs to main')
+            except Exception as error:
+                stale.append(path + ': unable to verify pre-release wording (' + str(error).replace('\n', ' ') + ')')
 
     try:
         status, output = video_check(version)
