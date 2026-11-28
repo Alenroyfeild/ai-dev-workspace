@@ -321,7 +321,11 @@ def wiring_status(root):
     """Inspect recorded repo versions and edited refresh blockers without writes."""
     result = []
     current_version = core.kit_meta()['version']
-    for project in core.read_roots(root)[1:]:
+    try:
+        projects = core.read_roots(root)[1:]
+    except (OSError, ValueError):
+        return result
+    for project in projects:
         version, blockers = None, []
         try:
             state = load(project)
