@@ -1,0 +1,59 @@
+{
+  "kit_version": "0.1.0-beta.6",
+  "hook_packs": [],
+  "plugin": false,
+  "claude_config_dir": "{{HOME}}/.claude",
+  "codex_status": "connected",
+  "workspace": "{{WORKSPACE}}",
+  "files": {
+    "CLAUDE.local.md": {
+      "before": null,
+      "sha": "e22092854bc3d273d9672073c125d27e8fc9505e71a3ec89c6a6a721ae193564"
+    },
+    "AGENTS.override.md": {
+      "before": null,
+      "sha": "3bd71c38f05e1400f7af67baf068ce5d20586fe3b7706e61ab63cadd88feeb96"
+    },
+    "GEMINI.md": {
+      "before": null,
+      "sha": "4433d29c9656c46b05ca0c5361aaf4da344dc21cc062bb5934f2fe7ac4adf709"
+    },
+    ".claude/settings.local.json": {
+      "before": null,
+      "sha": "3765c1d00b3154ddf4ba243c4708eb126a5ffc2fad2c863f9a531b662f624bd2"
+    },
+    ".codex/hooks.json": {
+      "before": null,
+      "sha": "9819b3846b1148ae90cb3fad411efe94d3ba1f2c24f0f28f82d6dd36474996a7"
+    },
+    ".agents/hooks.json": {
+      "before": null,
+      "sha": "fa2878ffe6f0b1a6e2964646b22be58ce4a96f038592316224bff67528d118fb"
+    },
+    ".mcp.json": {
+      "before": null,
+      "sha": "1b17594fd560ec5c64bbf6ca7cc144aa0ea6ea0f6f0a3ce3c954e9810737af30"
+    },
+    ".agents/mcp_config.json": {
+      "before": null,
+      "sha": "1b17594fd560ec5c64bbf6ca7cc144aa0ea6ea0f6f0a3ce3c954e9810737af30"
+    },
+    ".codex/config.toml": {
+      "before": null,
+      "sha": "72a9976f11a7d205b1f4446035f57d811c9eecea1614ee84934c71975a37e2d7"
+    }
+  },
+  "complete": true,
+  "assistants": [
+    "claude",
+    "codex",
+    "antigravity"
+  ],
+  "directories": [
+    ".claude",
+    ".agents",
+    ".codex"
+  ],
+  "exclude": "{{REPO}}/.git/info/exclude",
+  "exclude_block": "CiMgd3M6c3RhcnQ6M2Y2MjM1MzgyZTY0Ci8ud3Mtc3RhcnQuanNvbgovQ0xBVURFLmxvY2FsLm1kCi9BR0VOVFMub3ZlcnJpZGUubWQKL0dFTUlOSS5tZAovLmNsYXVkZS9zZXR0aW5ncy5sb2NhbC5qc29uCi8uY29kZXgvaG9va3MuanNvbgovLmFnZW50cy9ob29rcy5qc29uCi8ubWNwLmpzb24KLy5hZ2VudHMvbWNwX2NvbmZpZy5qc29uCi8uY29kZXgvY29uZmlnLnRvbWwKIyAvd3M6c3RhcnQK"
+}

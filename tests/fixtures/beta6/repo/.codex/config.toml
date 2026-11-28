@@ -1,0 +1,4 @@
+[mcp_servers.ai-dev-workspace]
+enabled = true
+command = "python3"
+args = ["{{OLD_KIT}}/mcp/server.py", "--root", "{{WORKSPACE}}"]
