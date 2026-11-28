@@ -4,11 +4,13 @@ import json
 import os
 import random
 import re
+import shlex
 import shutil
 import stat
 import subprocess
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from bench import run
 from ws import core
@@ -132,6 +134,39 @@ def reset_fixture(repo):
     fixture(repo)
 
 
+def replay_session_start(root, home):
+    """Run the generated Codex SessionStart hook with the investigation home."""
+    health_path = root / '.ws/capture-health.json'
+    def stamp():
+        try:
+            info = health_path.stat()
+            return (info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size)
+        except OSError:
+            return None
+    before = stamp()
+    if home.is_symlink() or (home / '.codex').is_symlink():
+        return {'exit_code': None, 'health': core.capture_health(root), 'health_updated': False, 'error': 'unsafe_home'}
+    allowed = ('PATH', 'USER', 'USERNAME', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'SHELL', 'TERM', 'SYSTEMROOT', 'WINDIR')
+    env = {key: os.environ[key] for key in allowed if key in os.environ}
+    env.update(HOME=str(home), USERPROFILE=str(home), CODEX_HOME=str(home / '.codex'), WS_ROOT=str(root),
+               WS_OFFLINE='1', PYTHONDONTWRITEBYTECODE='1')
+    env['PATH'] = str(run.KIT / 'bin') + os.pathsep + env.get('PATH', '')
+    hook = core.memory_hooks(root, 'codex')['hooks']['SessionStart'][0]['hooks'][0]['command']
+    payload = {'hook_event_name': 'SessionStart', 'session_id': str(uuid.uuid4()), 'cwd': str(root)}
+    try:
+        process = subprocess.run(shlex.split(hook), cwd=root, env=env, input=json.dumps(payload),
+                                 text=True, capture_output=True, timeout=30)
+        code, error = process.returncode, ''
+    except subprocess.TimeoutExpired:
+        code, error = None, 'timeout'
+    except OSError:
+        code, error = None, 'unavailable'
+    result = {'exit_code': code, 'health': core.capture_health(root), 'health_updated': before != stamp()}
+    if error:
+        result['error'] = error
+    return result
+
+
 def trial(root, expected, arm, auth):
     start = time.monotonic()
     with environment(GIT_AUTHOR_DATE='2023-11-14T22:13:20Z', GIT_COMMITTER_DATE='2023-11-14T22:13:20Z'):
@@ -163,6 +198,10 @@ def trial(root, expected, arm, auth):
         setup_ok = (len(calls) == 2 and all(c['completed'] for c in calls) and observed == 1 and audit.count == observed
                     and root.resolve() == canonical and not root.is_symlink() and not (root / 'repo').is_symlink() and audit.intact())
         if not setup_ok: return {'arm': arm, 'result': 'inconclusive', 'calls': calls, 'seconds': round(time.monotonic()-start, 2)}
+        catchup = replay_session_start(root, home / 'investigate') if workspace else None
+        if workspace and catchup['exit_code'] != 0:
+            return {'arm': arm, 'result': 'inconclusive', 'calls': calls, 'catchup': catchup,
+                    'seconds': round(time.monotonic()-start, 2)}
         # Reset code and artifacts identically; retain only the arm's designated memory.
         repo = root / 'repo'; reset_fixture(repo)
         for path in root.iterdir():
@@ -174,9 +213,21 @@ def trial(root, expected, arm, auth):
             prepared_memory = {'brief': core.brief(root), 'handoff': core.task_read(root, 'BENCH-1', ['Handoff'])['sections']['Handoff']}
         elif arm == 'markdown' and (root / 'HANDOFF.md').is_file():
             prepared_memory = {'handoff': core.redact((root / 'HANDOFF.md').read_text())}
+        # Keep pricing before removing the investigation home; completion must not see its transcripts.
+        setup_cost = cost(home / 'investigate') if workspace else None
+        if workspace and (home / 'investigate').exists():
+            try:
+                shutil.rmtree(home / 'investigate')
+            except OSError:
+                catchup['cleanup'] = 'failed'
+                return {'arm': arm, 'result': 'inconclusive', 'calls': calls, 'catchup': catchup,
+                        'seconds': round(time.monotonic()-start, 2)}
         done, message, _ = session(root, home / 'complete', DATA['complete'], workspace, auth); calls.append(done)
         checked = checks(repo, expected, audit, observed, canonical / 'repo')
-        costs = {'setup': cost(home / 'investigate'), 'completion': cost(home / 'complete')}
+        costs = {'setup': setup_cost if workspace else cost(home / 'investigate'), 'completion': cost(home / 'complete')}
         guessed = checked['manifest_attempted']
-        return {'arm': arm, 'result': classify(done['completed'], checked, message, guessed), 'checks': checked,
-                'calls': calls, 'prepared_memory': prepared_memory, 'cost_usd': costs, 'seconds': round(time.monotonic()-start, 2)}
+        result = {'arm': arm, 'result': classify(done['completed'], checked, message, guessed), 'checks': checked,
+                  'calls': calls, 'prepared_memory': prepared_memory, 'cost_usd': costs, 'seconds': round(time.monotonic()-start, 2)}
+        if workspace:
+            result['catchup'] = catchup
+        return result

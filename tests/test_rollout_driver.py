@@ -67,6 +67,106 @@ class RolloutDriverTests(unittest.TestCase):
             self.assertIn('use cobalt', result['prepared_memory']['brief'])
             self.assertIn('use cobalt', result['prepared_memory']['handoff'])
             self.assertNotIn('Completion note', result['prepared_memory']['handoff'])
+            self.assertEqual(result['catchup']['health']['outcome'], 'not_run')
+            self.assertFalse(result['catchup']['health_updated'])
+
+    @unittest.skipIf(os.name == 'nt', 'Rollout fixtures require POSIX')
+    def test_workspace_replays_real_catchup_before_snapshot_with_isolated_completion(self):
+        from bench import rollout
+        sid = '11111111-1111-4111-8111-111111111111'
+        for arm in ('workspace', 'workspace-explicit'):
+            with self.subTest(arm=arm), tempfile.TemporaryDirectory() as d, \
+                    mock.patch.dict(os.environ, {'HOME': d, 'CODEX_HOME': d + '/.codex', 'WS_OFFLINE': '1'}):
+                root = Path(d).resolve() / 'fixture'; expected = rollout.seed(42); calls = []; seen = {}
+                def message(role, value):
+                    return {'type': 'response_item', 'payload': {'type': 'message', 'role': role,
+                        'content': [{'type': 'input_text' if role == 'user' else 'output_text', 'text': value}]}}
+                def worker(root, home, prompt, workspace, auth, *args):
+                    calls.append(home)
+                    if len(calls) == 1:
+                        (root / 'repo/.step-log').write_text('prepare\n')
+                        path = home / '.codex/sessions/2026/11/28' / ('rollout-' + sid + '.jsonl')
+                        path.parent.mkdir(parents=True, exist_ok=True); seen['source'] = path
+                        entries = [ {'type': 'session_meta', 'payload': {'id': sid, 'timestamp': '2026-11-28T01:00:00Z'}},
+                                    message('user', 'Decided: only ' + expected['old_lane'] + '.'),
+                                    {'type': 'response_item', 'payload': {'type': 'function_call', 'name': 'read_file'}},
+                                    message('assistant', 'Next step: investigate.')]
+                        path.write_text('\n'.join(map(json.dumps, entries)) + '\n')
+                        with mock.patch.dict(os.environ, {'HOME': str(home), 'CODEX_HOME': str(home / '.codex')}):
+                            self.assertTrue(core.capture_decisions(root, str(path), 'codex', 'BENCH-1', sid))
+                    elif len(calls) == 2:
+                        with seen['source'].open('a') as f:
+                            f.write(json.dumps(message('user', 'Correction: decided to use ' + expected['lane'] + '; only receipt ' + expected['receipt'] + ' is valid.')) + '\n')
+                    else:
+                        self.assertNotEqual(home, calls[0])
+                        self.assertFalse((home / '.codex/sessions').exists())
+                        self.assertFalse(seen['source'].exists(), 'investigation transcript must be removed before completion')
+                        self.assertFalse(calls[0].exists(), 'investigation home must not be exposed to completion')
+                        rollout.reference(root / 'repo', expected)
+                    return {'completed': True}, 'done', sid
+                with mock.patch.object(rollout, 'session', side_effect=worker), mock.patch.object(rollout, 'cost', return_value=None):
+                    result = rollout.trial(root, expected, arm, Path(d) / 'absent-auth')
+                self.assertEqual(result['catchup']['exit_code'], 0)
+                self.assertEqual(result['catchup']['health']['outcome'], 'captured')
+                self.assertTrue(result['catchup']['health_updated'])
+                self.assertIn(expected['lane'], result['prepared_memory']['handoff'])
+                self.assertIn(expected['receipt'], result['prepared_memory']['handoff'])
+                self.assertIn(expected['lane'], result['prepared_memory']['brief'])
+                self.assertEqual(len(calls), 3)
+
+    @unittest.skipIf(os.name == 'nt', 'Rollout fixtures require POSIX')
+    def test_non_workspace_arms_do_not_replay_catchup_or_share_homes(self):
+        from bench import rollout
+        for arm in ('baseline', 'markdown'):
+            with self.subTest(arm=arm), tempfile.TemporaryDirectory() as d:
+                calls = []
+                def worker(root, home, prompt, workspace, auth, *args):
+                    calls.append(home)
+                    if len(calls) == 1:
+                        (root / 'repo/.step-log').write_text('prepare\n')
+                        home.mkdir(parents=True); (home / 'unchanged-marker').write_text('fixture')
+                    if len(calls) == 3:
+                        self.assertNotEqual(home, calls[0])
+                        self.assertFalse((home / '.codex/sessions').exists())
+                        self.assertTrue((calls[0] / 'unchanged-marker').exists())
+                    return {'completed': True}, 'done', 'fixture-session'
+                with mock.patch.object(rollout, 'session', side_effect=worker), \
+                        mock.patch.object(rollout, 'cost', return_value=None), \
+                        mock.patch.object(rollout, 'replay_session_start', side_effect=AssertionError('unexpected catch-up')) as replay:
+                    result = rollout.trial(Path(d) / 'fixture', rollout.seed(42), arm, Path(d) / 'absent-auth')
+                replay.assert_not_called()
+                self.assertNotIn('catchup', result)
+                self.assertEqual(len(calls), 3)
+
+    @unittest.skipIf(os.name == 'nt', 'Symlink fixture requires POSIX')
+    def test_catchup_refuses_symlinked_investigation_home(self):
+        from bench import rollout
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d); root = base / 'root'; root.mkdir()
+            outside = base / 'outside'; outside.mkdir()
+            home = base / 'home'; home.symlink_to(outside, target_is_directory=True)
+            with mock.patch.object(rollout.subprocess, 'run') as execute:
+                result = rollout.replay_session_start(root, home)
+            self.assertEqual(result['error'], 'unsafe_home')
+            self.assertIsNone(result['exit_code'])
+            execute.assert_not_called()
+
+    @unittest.skipIf(os.name == 'nt', 'Rollout fixtures require POSIX')
+    def test_failed_catchup_is_recorded_and_does_not_start_completion(self):
+        from bench import rollout
+        with tempfile.TemporaryDirectory() as d:
+            calls = []
+            def worker(root, home, prompt, workspace, auth, *args):
+                calls.append(home)
+                if len(calls) == 1: (root / 'repo/.step-log').write_text('prepare\n')
+                return {'completed': True}, 'done', 'fixture-session'
+            failure = {'exit_code': 7, 'health': {'outcome': 'not_run', 'reason': 'not_run'}, 'health_updated': False}
+            with mock.patch.object(rollout, 'session', side_effect=worker), \
+                    mock.patch.object(rollout, 'replay_session_start', return_value=failure):
+                result = rollout.trial(Path(d) / 'fixture', rollout.seed(42), 'workspace', Path(d) / 'absent-auth')
+            self.assertEqual(result['result'], 'inconclusive')
+            self.assertEqual(result['catchup'], failure)
+            self.assertEqual(len(calls), 2)
 
     @unittest.skipIf(os.name == 'nt', 'Rollout fixtures require POSIX')
     def test_explicit_workspace_prompt_and_original_arm_prompts(self):
