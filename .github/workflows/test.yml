@@ -38,6 +38,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.9", "3.12"]
+        include:
+          - os: ubuntu-latest
+            python: "3.14"
     steps:
       - if: env.RUN_TESTS != 'true'
         run: echo "Docs-only PR, so this OS is skipped here; the full matrix runs after merge on dev."

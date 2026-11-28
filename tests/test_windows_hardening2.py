@@ -3,7 +3,7 @@ import json
 import os
 import subprocess
 import tempfile
-import types
+import stat
 import unittest
 from pathlib import Path, PureWindowsPath
 from unittest import mock
@@ -17,13 +17,30 @@ MOUNT_POINT = 0xA0000003
 
 def junction_lstat(fake, real=os.lstat):
     """os.lstat that reports `fake` as a Windows junction (mount-point reparse tag)."""
+    class JunctionStat:
+        st_reparse_tag = MOUNT_POINT
+
+        def __init__(self, original):
+            self.original = original
+
+        def __getattr__(self, name):
+            return getattr(self.original, name)
+
     def lstat(path, *args, **kwargs):
-        if os.fspath(path) == os.fspath(fake): return types.SimpleNamespace(st_reparse_tag=MOUNT_POINT)
-        return real(path, *args, **kwargs)
+        result = real(path, *args, **kwargs)
+        return JunctionStat(result) if os.fspath(path) == os.fspath(fake) else result
     return lstat
 
 
 class JunctionTests(Base):
+    def test_junction_fake_preserves_real_directory_stat_fields(self):
+        folder = self.root / 'fake-stat'; folder.mkdir()
+        actual = os.lstat(folder)
+        simulated = junction_lstat(folder)(folder)
+        self.assertTrue(stat.S_ISDIR(simulated.st_mode))
+        self.assertEqual(simulated.st_ino, actual.st_ino)
+        self.assertEqual(simulated.st_reparse_tag, MOUNT_POINT)
+
     def test_is_link_sees_a_junction_only_on_windows(self):
         folder = self.root / 'plain'; folder.mkdir()
         with mock.patch.object(core, 'WINDOWS', False): self.assertFalse(core.is_link(folder))

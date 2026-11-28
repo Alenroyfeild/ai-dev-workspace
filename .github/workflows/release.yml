@@ -9,6 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
       - name: Tag must match kit.json version
         run: |
           v=$(python3 -c "import json;print(json.load(open('kit.json'))['version'])")
