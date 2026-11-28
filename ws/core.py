@@ -2964,6 +2964,7 @@ def validate(root):
 
 
 def status(root):
+    from . import repo
     tasks = task_list(root)
     counts = {}
     for t in tasks:
@@ -2973,7 +2974,7 @@ def status(root):
               'conflicted': [conflict_hint(t['id']) for t in tasks if t['status'] == 'conflicted'],
               'blocked': [f"{t['id']}: {t['next']}" for t in tasks if t['status'] == 'blocked'],
               'open_feedback': len(feedback_list(root)), 'lessons': len(lesson_search(root, '')),
-              'runs': run_report(root)}
+              'runs': run_report(root), 'repo_wiring': repo.wiring_status(root)}
     from . import native
     goals = native.codex_goals(root)
     if 'skipped' not in goals:

@@ -260,6 +260,7 @@ def migration_result(root, result):
         f'Repo wiring kit_version: {repo_v}',
         f'Files changed: {len(changes)} ({changed_count} updated, {new_count} new), kept: {kept_count}',
     ]
+    lines.extend(repo.wiring_hints(repo.wiring_status(root)))
     if pending:
         lines.append(f'Pending proposals (.ws-new): {", ".join(pending)}')
     else:

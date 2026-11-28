@@ -317,6 +317,55 @@ def plugin_missing(root):
     return [str(p) for p in core.read_roots(root)[1:] if (p / LINK).is_file() and plugin_state(p) and not plugin_on(p)]
 
 
+def wiring_status(root):
+    """Inspect recorded repo versions and edited refresh blockers without writes."""
+    result = []
+    current_version = core.kit_meta()['version']
+    for project in core.read_roots(root)[1:]:
+        version, blockers = None, []
+        try:
+            state = load(project)
+            version = state.get('kit_version')
+            if not isinstance(version, str):
+                version = None
+            for name, entry in state['files'].items():
+                if not isinstance(entry, dict):
+                    raise ValueError('Invalid file entry')
+                target = path(project, name)
+                if not target.is_file():
+                    blockers.append(name)
+                    continue
+                raw = target.read_bytes()
+                if hashlib.sha256(raw).hexdigest() == entry.get('sha'):
+                    continue
+                if name in JSON_FILES and stripped(name, raw) is not None:
+                    continue
+                if name == '.codex/config.toml' and codex_block_current(root, raw):
+                    continue
+                blockers.append(name)
+        except (OSError, ValueError, TypeError, KeyError):
+            blockers.append(LINK)
+        result.append(dict(repo=str(project), kit_version=version,
+                           current=version == current_version, blocked_by=sorted(set(blockers))))
+    return result
+
+
+def wiring_hints(states):
+    """Actionable, shell-quoted hints only for known older wiring."""
+    lines = []
+    for state in states:
+        version = state['kit_version']
+        if not version or core._vtuple(version) >= core._vtuple(core.kit_meta()['version']):
+            continue
+        project = state['repo']
+        line = f'Repo wiring for {project}: {version} -> run: cd {shlex.quote(project)} && ws start'
+        for name in state['blocked_by']:
+            fix = ': ws connect codex prints the expected block' if name == '.codex/config.toml' else ''
+            line += f' (first fix {name}{fix})'
+        lines.append(line)
+    return lines
+
+
 def codex_pending(root, check_global=True):
     global_connected = core.client_connected(root, 'codex', global_only=True)
     if check_global and global_connected: return []

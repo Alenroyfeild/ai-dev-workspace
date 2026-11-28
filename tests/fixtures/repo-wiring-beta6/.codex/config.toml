@@ -1,0 +1,3 @@
+[mcp_servers.ai-dev-workspace]
+command = "python3"
+args = ["old-kit/mcp/server.py", "--root", "__ROOT__"]
