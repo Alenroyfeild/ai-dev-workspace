@@ -45,7 +45,7 @@ def S(**props):
 CORE_TOOLS = ('brief', 'find_task', 'read_task', 'checkpoint', 'remember', 'search_vault', 'add_lesson')
 PLUGIN_INACTIVE = False
 ROOTS_DISCOVERY = False
-NO_WORKSPACE = "No ai-dev-workspace here: run `ws start` in your repo (first: `pipx install ai-dev-workspace --pip-args='--pre'`, or pass --workspace-root)."
+NO_WORKSPACE = "No ai-dev-workspace here: run `ws start` in your repo (first: `pipx install ai-dev-workspace`, or pass --workspace-root)."
 
 
 def listed_tools(root, root_capable=False):
