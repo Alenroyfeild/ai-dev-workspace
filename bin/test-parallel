@@ -17,7 +17,8 @@ def run(module, verbose):
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, [str(ROOT), os.environ.get('PYTHONPATH', '')])))
     proc = subprocess.run(cmd, cwd=ROOT / 'tests', env=env, capture_output=True, text=True,
                           encoding='utf-8', errors='replace')
-    return module, proc.returncode, proc.stdout + proc.stderr, time.monotonic() - start
+    code = 0 if proc.returncode == 5 else proc.returncode  # 5 = no tests in a helper module (Python 3.12+); discover treats that as fine
+    return module, code, proc.stdout + proc.stderr, time.monotonic() - start
 
 
 def main():
