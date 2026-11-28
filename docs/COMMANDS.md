@@ -72,6 +72,7 @@ Check that the corrected decision appears in the brief. You can also ask your as
 | Command | What it does |
 |---|---|
 | `ws task find <ref>` | Find a task by branch, ID or another reference. |
+| `ws task sha <ID>` | Print the task record's current sha. Pass it as `--expected-sha` (CLI) or `expected_sha` (MCP) so a save is refused if the task changed since you read it; an empty value is refused. |
 | `ws task next [--worker W]` | Select and claim the first eligible unclaimed task (not done or blocked, dependencies done) in one locked step; prints the task and its claim token. Also the MCP tool `claim_next_task`. |
 | `ws task depend <ID> --on <OTHER>` | Make `<ID>` wait for `<OTHER>`. |
 | `ws task import <file> [--prefix SPEC] [--yes]` | Create tasks from a Task Master `tasks.json` or a Spec Kit style `tasks.md`. Previews unless you pass `--yes`. |

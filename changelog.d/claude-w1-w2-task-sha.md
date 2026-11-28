@@ -1,0 +1,1 @@
+Fixed: `ws checkpoint` (CLI and MCP) refuses an empty `expected_sha` instead of silently skipping the stale-write check; new `ws task sha <ID>` prints the current sha, and both refusal messages name it.
