@@ -292,7 +292,7 @@ def is_link(path):
 
 
 def long_path(path):
-    """Windows `\\?\` form for deep paths (MAX_PATH is 260 unless LongPathsEnabled); unchanged elsewhere or when short."""
+    r"""Windows `\\?\` form for deep paths (MAX_PATH is 260 unless LongPathsEnabled); unchanged elsewhere or when short."""
     text = str(path)
     if not WINDOWS or len(text) < 240 or text.startswith('\\\\?\\'): return Path(path)
     text = os.path.abspath(text)

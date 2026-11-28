@@ -97,6 +97,17 @@ exit 2
             'release view v0.1.0-beta.3 --json isDraft --jq .isDraft',
         ])
 
+    def test_release_pins_a_ci_tested_python_before_running_tests(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertRegex(workflow, r'(?m)^\s*- uses: actions/setup-python@[0-9a-f]{40}(?:\s|$)')
+        self.assertRegex(workflow, r'(?m)^\s*python-version:\s*["\']?3\.12["\']?\s*$')
+        self.assertLess(workflow.index('actions/setup-python@'), workflow.index('python3 -m unittest'))
+
+    def test_ci_adds_ubuntu_python314_without_expanding_other_platforms(self):
+        workflow = (ROOT / '.github/workflows/test.yml').read_text()
+        self.assertIn('Python 3.9+', (ROOT / 'README.md').read_text())
+        self.assertRegex(workflow, r'(?m)^\s*include:\s*\n\s*- os: ubuntu-latest\s*\n\s*python: ["\']3\.14["\']\s*$')
+
     def test_workflow_uses_tested_publisher(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
         self.assertIn('bin/publish-release "$GITHUB_REF_NAME" notes.md', workflow)

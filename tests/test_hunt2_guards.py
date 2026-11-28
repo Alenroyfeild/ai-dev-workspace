@@ -105,6 +105,14 @@ class GuardSpellingTests(unittest.TestCase):
 
 
 class DeepJsonTests(Base):
+    def test_core_compiles_without_invalid_escape_warnings(self):
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, PYTHONPYCACHEPREFIX=d, WS_OFFLINE='1')
+            done = subprocess.run([sys.executable, '-W', 'error::SyntaxWarning', '-W', 'error::DeprecationWarning',
+                                   '-m', 'py_compile', str(KIT / 'ws/core.py')],
+                                  cwd=KIT, env=env, text=True, capture_output=True)
+            self.assertEqual(done.returncode, 0, done.stderr)
+
     def test_plugin_entrypoint_fails_open(self):
         done = run(KIT / 'bin/ws-plugin', '--client', 'claude', cwd=self.root, stdin=DEEP, home=self.tmp.name)
         self.assertEqual((done.returncode, done.stdout.strip()), (0, '{}'), done.stderr[-300:])
