@@ -358,7 +358,7 @@ def wiring_hints(states):
         if not version or core._vtuple(version) >= core._vtuple(core.kit_meta()['version']):
             continue
         project = state['repo']
-        line = f'Repo wiring for {project}: {version} -> run: cd {shlex.quote(project)} && ws start'
+        line = f'Repo wiring for {project}: {version} -> run: cd {core.command_line([project])} && ws start'
         for name in state['blocked_by']:
             fix = ': ws connect codex prints the expected block' if name == '.codex/config.toml' else ''
             line += f' (first fix {name}{fix})'
