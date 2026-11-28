@@ -65,12 +65,12 @@ Prefer a Claude Code plugin? Preview. Not yet listed in Anthropic's official plu
 Live-checked on beta.7 (2026-11-05). See the [plugin preview](docs/ADVANCED.md#claude-code-plugin-preview). Generated assistant hooks and configs stay local (`.git/info/exclude`), task memory lives outside the repo in `~/.ai-dev-workspace/<repo-name>`, and `ws start --undo` cleanly removes repo wiring ([remove it](docs/TUTORIAL.md#remove-it)).
 
 <!-- videos:start -->
-### Watch (videos for 0.1.0b7)
+### Watch (videos for 0.2.0)
 
 - [Watch the 2-minute explainer](https://youtu.be/sfcBNSELq-8)
 - [Under the hood: real commands, real output](https://youtu.be/ZmwwgYzZUJY)
-- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/_jmPEb2wSj4) · [Assistants](https://youtu.be/R6-hfqvz1YA) · [Install as a plugin (Preview)](https://youtu.be/BnbVLSl1vVs) · [Review old lessons](https://youtu.be/mcec1EtTi0A) · [Guards read git's grammar](https://youtu.be/GSZikn9b9qE)
-- Earlier editions: [0.1.0b5](https://youtu.be/w5EwQNO8Lz0) · [0.1.0b6](https://youtu.be/sfcBNSELq-8)
+- Feature shorts: [Switch assistants](https://youtu.be/GAX8Jbl4KqY) · [Resume the next step](https://youtu.be/d4iicMtNq0o) · [Dead ends](https://youtu.be/Pf5JuXsKz98) · [Skills](https://youtu.be/NI69JfxGR_s) · [Team workspace (Preview)](https://youtu.be/-BlKcnaS6yM) · [Guards](https://youtu.be/_jmPEb2wSj4) · [Assistants](https://youtu.be/R6-hfqvz1YA) · [Install as a plugin (Preview)](https://youtu.be/BnbVLSl1vVs) · [Review old lessons](https://youtu.be/mcec1EtTi0A) · [Guards read git's grammar](https://youtu.be/GSZikn9b9qE) · [Check before updating](https://youtu.be/VbDFCLC5qPY) · [Read the upgrade result](https://youtu.be/m7JLC4pFLmg) · [Delete private memory](https://youtu.be/vacxo_HHfpc) · [Claim the next task](https://youtu.be/2O4C0JhMaxw)
+- Earlier editions: [0.1.0b5](https://youtu.be/w5EwQNO8Lz0) · [0.1.0b6](https://youtu.be/sfcBNSELq-8) · [0.1.0b7](https://youtu.be/sfcBNSELq-8)
 <!-- videos:end -->
 
 ## Example
