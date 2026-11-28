@@ -18,6 +18,16 @@ An earlier [partial budget cohort](results/2026-10-10-R9-B1-budget-rollout-codex
 
 Early proofs record their base plus patch fingerprint, now materialized as `c0d7d49`; the fresh cohort records that clean source commit directly. Codeburn did not price Luna: USD is unpriced, not zero. Runs use disposable homes/workspaces, with no Claude sessions. These cooperative fixtures do not confine filesystem reads; the historical contamination concern below remains a limitation.
 
+## Five-arm handoff comparison
+
+After the verbatim-handoff candidate is available in a local checkout, run the same rollout fixture for all five arms:
+
+```sh
+python3 -m bench.rollout_run --verbatim-kit <candidate-checkout> -n 10 --output bench/results/<run-name>.json
+```
+
+The first three arms use this checkout. The fourth runs the existing workspace trial with the candidate's ws code in a separate Python process. The fifth, `workspace-explicit`, uses this checkout and asks the investigator to save the corrected facts and next step with `ws checkpoint`, never a hand-written file. The original four arms retain their prompts and order; each group uses the same generated fixture seed. The candidate checkout must be clean and stay on the same commit throughout the run. The result records both checkout commits and whether either checkout was dirty. The raw JSON retains each scheduled attempt. Each call also records ordered `tool_names`: known command names (and `ws` subcommands) and known tool names only; unknown names become `other` or `mcp:other`. Arguments, paths and tool output are not included in that list. If a candidate process fails mid-trial, partial token usage may be unavailable. A complete five-arm scorecard requires all 50 trials. Model calls start only when this command is run.
+
 ## Corrected rollout: independent paired investigations
 
 Historical post-#77 [2026-10-10 R9-B1 n=5 run](results/2026-10-10-R9-B1-rollout-codex.json), unmodified dev `cbe3f68`, Codex CLI 0.155.1, `gpt-6-luna`/high:
@@ -37,7 +47,7 @@ Follow-up diagnosis: Astra's `full_checkpoint` reproduction confirms a rendering
 Review also found identical wrong baseline guesses in seeds 3 and 4. They match the published 2026-10-09 seed-2 lane/receipt, not any input generated for this run. Their source is unknown: retained records do not show whether they came from reading historical results, shared context or another source. Both remain scored failures. Seed inputs are distinct, but independent worker context and absence of contamination are **not established**; this cooperative fixture does not confine filesystem reads. No affected arm is replaced by a more favorable retry.
 
 
-Run `python3 -m bench.rollout_run -n 5 --output /tmp/rollout.json`. This POSIX runner uses installed Codex `gpt-6-luna`/high, without installs. Each of five independent seeds gets a two-turn investigation in each arm: observe one rejected preparation retry, then receive a superseding lane and replacement opaque approval receipt. The correction requests a read to exercise worked-session capture. A fresh completion receives no conversation facts except the arm's retained memory: baseline retains none, workspace uses task memory/hooks/skills, and the control writes plain `HANDOFF.md`.
+Run `python3 -m bench.rollout_run -n 5 --output /tmp/rollout.json`. This POSIX runner uses installed Codex `gpt-6-luna`/high, without installs. Each of five independent seeds gets a two-turn investigation in each arm: observe one rejected preparation retry, then receive a superseding lane and replacement opaque approval receipt. The correction requests a read to exercise worked-session capture. A fresh completion receives no conversation facts except the arm's retained memory: baseline retains none, workspace uses task memory/hooks/skills, the control writes plain `HANDOFF.md`, and workspace-explicit saves via `ws checkpoint` instead of a hand-written file.
 
 Optional `--provider claude` uses Sonnet, a throwaway HOME/config directory, project-only hooks, strict MCP, confined file reads and a required Bash sandbox with no unsandboxed retry. It requires Claude Code >= 2.1.285 and already available sandbox dependencies; it never installs them or falls back to the real HOME. Authentication must work in that isolated environment (for example an explicitly supplied API key, withheld from sandboxed commands); unavailable authentication or sandboxing cannot count as a successful trial. Session/resume arguments, result parsing, version rejection and interruption cleanup are fixture-tested; live Claude authentication, isolation and benchmark outcomes remain **unverified**. This adapter does not change the historical `bench/run.py` Claude transport or its measured results below. Controls follow the official [sandbox documentation](https://code.claude.com/docs/en/sandboxing), [settings precedence](https://code.claude.com/docs/en/settings), and [CLI tool restrictions](https://code.claude.com/docs/en/cli-reference).
 

@@ -68,6 +68,157 @@ class RolloutDriverTests(unittest.TestCase):
             self.assertIn('use cobalt', result['prepared_memory']['handoff'])
             self.assertNotIn('Completion note', result['prepared_memory']['handoff'])
 
+    @unittest.skipIf(os.name == 'nt', 'Rollout fixtures require POSIX')
+    def test_explicit_workspace_prompt_and_original_arm_prompts(self):
+        from bench import rollout
+        expected = rollout.seed(42)
+        for arm in ('baseline', 'workspace', 'markdown', 'verbatim', 'workspace-explicit'):
+            with self.subTest(arm=arm), tempfile.TemporaryDirectory() as d, \
+                    mock.patch.dict(os.environ, {'HOME': d, 'CODEX_HOME': d + '/.codex'}):
+                calls = []
+                def worker(root, home, prompt, workspace, auth, *args):
+                    calls.append((prompt, workspace))
+                    if len(calls) == 1:
+                        (root / 'repo/.step-log').write_text('prepare\n')
+                    return {'completed': True}, '', 'synthetic-session'
+                # The existing verbatim candidate invokes the workspace trial unchanged.
+                trial_arm = 'workspace' if arm == 'verbatim' else arm
+                with mock.patch.object(rollout, 'session', side_effect=worker):
+                    result = rollout.trial(Path(d) / 'fixture', expected, trial_arm, Path(d) / 'no-auth')
+                correction = rollout.DATA['correct'].format(**expected)
+                if arm == 'markdown':
+                    suffix = ' Save these facts and the next step in HANDOFF.md outside repo.'
+                elif arm == 'workspace-explicit':
+                    suffix = (' Save the corrected facts and the next step with `ws checkpoint BENCH-1 '
+                              '--status in_progress --next "<exact next step>" --note "Handoff=<corrected facts>"`; '
+                              'never write a hand-written file.')
+                else:
+                    suffix = ' Do not write notes manually; stop now.'
+                self.assertEqual(calls[0][0].encode(), rollout.DATA['investigate'].format(**expected).encode())
+                self.assertEqual(calls[1][0].encode(), (correction + suffix).encode())
+                self.assertEqual(calls[2][0].encode(), rollout.DATA['complete'].encode())
+                self.assertEqual(calls[1][1], arm in ('workspace', 'verbatim', 'workspace-explicit'))
+                self.assertEqual(result['arm'], trial_arm)
+
+    def test_fifth_arm_is_appended_with_the_same_seeds_and_recorded_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=5, seed=42, output=Path(d) / 'result.json', verbatim_kit=Path(d) / 'candidate')
+            seen = []
+            def trial(root, expected, arm, auth):
+                seen.append((arm, expected))
+                return {'arm': arm, 'result': 'pass', 'calls': [{'completed': True}]}
+            def candidate(kit, root, expected, auth, benchmark):
+                return trial(root, expected, 'verbatim', auth)
+            benchmark = SimpleNamespace(seed=lambda n: n, trial=trial,
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench',
+                    command=lambda command, path: SimpleNamespace(stdout='' if command[-1] == '--porcelain' else 'fixture')))
+            with mock.patch.object(rollout_run, 'candidate_trial', side_effect=candidate), contextlib.redirect_stdout(io.StringIO()):
+                self.assertTrue(rollout_run.run_trials(benchmark, args, Path(d) / 'no-auth'))
+            result = json.loads(args.output.read_text())
+            order = ('baseline', 'workspace', 'markdown', 'verbatim', 'workspace-explicit')
+            for i in range(5):
+                self.assertEqual(seen[i*5:i*5+5], [(arm, 42+i) for arm in order])
+                self.assertEqual([row['arm'] for row in result['runs'][i*5:i*5+5]], list(order))
+                self.assertEqual([row['seed_index'] for row in result['runs'][i*5:i*5+5]], [i]*5)
+
+    def test_five_arms_use_same_seeds_and_persist_all_50_trials(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
+                                      verbatim_kit=Path(d) / 'candidate')
+            seen = []
+            def normal(root, expected, arm, auth):
+                seen.append((arm, expected))
+                return {'arm': arm, 'result': 'pass', 'calls': [{'completed': True}]}
+            def candidate(kit, root, expected, auth, benchmark):
+                seen.append(('verbatim', expected))
+                return {'arm': 'verbatim', 'result': 'pass', 'calls': [{'completed': True}]}
+            benchmark = SimpleNamespace(seed=lambda n: n, trial=normal,
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench',
+                                    command=lambda command, path: SimpleNamespace(stdout='' if command[-1] == '--porcelain' else 'fixture')))
+            with mock.patch.object(rollout_run, 'candidate_trial', side_effect=candidate), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                completed = rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            self.assertTrue(completed)
+            result = json.loads(args.output.read_text())
+            self.assertEqual(len(result['runs']), 50)
+            for index in range(10):
+                self.assertEqual(seen[index * 5:index * 5 + 5],
+                                 [(arm, 42 + index) for arm in ('baseline', 'workspace', 'markdown', 'verbatim', 'workspace-explicit')])
+                self.assertEqual([run['seed_index'] for run in result['runs'][index * 5:index * 5 + 5]], [index] * 5)
+
+    def test_fourth_arm_refuses_dirty_candidate_before_running_models(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
+                                      verbatim_kit=Path(d) / 'candidate')
+            benchmark = SimpleNamespace(seed=lambda n: n, trial=mock.Mock(),
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench',
+                    command=lambda command, path: SimpleNamespace(stdout=' M ws/core.py' if command[-1] == '--porcelain' else 'fixture')))
+            with self.assertRaisesRegex(RuntimeError, 'candidate checkout must be clean'):
+                rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            benchmark.trial.assert_not_called()
+
+    def test_changed_candidate_invalidates_the_trial_and_keeps_prior_results(self):
+        with tempfile.TemporaryDirectory() as d:
+            candidate = Path(d) / 'candidate'
+            args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
+                                      verbatim_kit=candidate)
+            status_checks = 0
+            def command(argv, path):
+                nonlocal status_checks
+                if path == candidate and argv[-1] == '--porcelain':
+                    status_checks += 1
+                    return SimpleNamespace(stdout=' M ws/core.py' if status_checks >= 3 else '')
+                return SimpleNamespace(stdout='fixture' if argv[-1] == 'HEAD' else '')
+            benchmark = SimpleNamespace(seed=lambda n: n,
+                trial=lambda root, expected, arm, auth: {'arm': arm, 'result': 'pass', 'calls': [{'completed': True}]},
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench', command=command))
+            with mock.patch.object(rollout_run, 'candidate_trial', return_value={'arm': 'verbatim', 'result': 'pass', 'calls': [{'completed': True, 'input_tokens': 10}]}), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                completed = rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            self.assertFalse(completed)
+            result = json.loads(args.output.read_text())
+            self.assertEqual([run['result'] for run in result['runs']], ['pass', 'pass', 'pass', 'inconclusive'])
+            self.assertEqual(result['runs'][-1]['seed_index'], 0)
+            self.assertEqual(result['runs'][-1]['calls'][0]['input_tokens'], 10)
+
+    def test_candidate_failure_saves_the_failed_attempt_and_stops(self):
+        with tempfile.TemporaryDirectory() as d:
+            args = argparse.Namespace(n=10, seed=42, output=Path(d) / 'result.json',
+                                      verbatim_kit=Path(d) / 'candidate')
+            benchmark = SimpleNamespace(seed=lambda n: n,
+                trial=lambda root, expected, arm, auth: {'arm': arm, 'result': 'pass', 'calls': [{'completed': True}]},
+                run=SimpleNamespace(KIT=Path(d), HERE=Path(d) / 'bench',
+                                    command=lambda command, path: SimpleNamespace(stdout='' if command[-1] == '--porcelain' else 'fixture')))
+            with mock.patch.object(rollout_run, 'candidate_trial', side_effect=RuntimeError('fixture failure')), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                completed = rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
+            self.assertFalse(completed)
+            result = json.loads(args.output.read_text())
+            self.assertEqual(result['seed'], 42)
+            self.assertEqual(len(result['runs']), 4)
+            self.assertEqual(result['runs'][-1]['arm'], 'verbatim')
+            self.assertEqual(result['runs'][-1]['result'], 'inconclusive')
+            self.assertIn('candidate arm', result['stopped'])
+
+    def test_candidate_trial_imports_candidate_ws_and_existing_benchmark_fixture(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            kit, harness = base / 'candidate', base / 'harness'
+            (kit / 'ws').mkdir(parents=True)
+            (kit / 'ws/__init__.py').write_text('')
+            (kit / 'ws/core.py').write_text('MARKER = "candidate"\n')
+            (harness / 'bench').mkdir(parents=True)
+            (harness / 'bench/run.py').write_text('KIT = None\n')
+            (harness / 'bench/rollout.py').write_text(
+                'from bench import run\nfrom ws import core\n'
+                'def trial(root, expected, arm, auth):\n'
+                '    return {"arm": arm, "marker": core.MARKER, "kit": str(run.KIT), "expected": expected}\n')
+            benchmark = SimpleNamespace(run=SimpleNamespace(HERE=harness / 'bench'))
+            result = rollout_run.candidate_trial(kit, base / 'trial', {'fixture': 42},
+                                                  base / 'absent-auth', benchmark)
+            self.assertEqual(result, {'arm': 'verbatim', 'marker': 'candidate',
+                                      'kit': str(kit.resolve()), 'expected': {'fixture': 42}})
+
     def test_interruption_keeps_completed_runs_without_seed_hints(self):
         with tempfile.TemporaryDirectory() as d:
             args = argparse.Namespace(n=5, seed=42, output=Path(d) / 'result.json')
@@ -80,11 +231,74 @@ class RolloutDriverTests(unittest.TestCase):
             benchmark.trial.side_effect = None; benchmark.trial.return_value = {'result': 'pass'}
             with contextlib.redirect_stdout(io.StringIO()): rollout_run.run_trials(benchmark, args, Path(d) / 'absent-auth')
             result = json.loads(args.output.read_text())
-            self.assertEqual(result['seed'], 42); self.assertEqual(len(result['runs']), 15)
+            self.assertEqual(result['seed'], 42); self.assertEqual(len(result['runs']), 20)
 
 
 @unittest.skipIf(os.name == "nt", "Owned process cleanup uses POSIX process groups.")
 class RolloutTransportTests(unittest.TestCase):
+    def test_codex_event_stream_records_ordered_names_without_payloads(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {'WS_BENCH_PROVIDER': 'codex'}):
+            root = Path(d); home = root / 'home'
+            secret = 'PRIVATE_CANARY_741'
+            def event(kind, ident, item_type, **fields):
+                return {'type': kind, 'item': dict(id=ident, type=item_type, **fields)}
+            events = [
+                {'type': 'thread.started', 'thread_id': 'fixture-thread'},
+                event('item.started', 'a', 'command_execution', command="/bin/zsh -lc 'ws brief --task PRIVATE_CANARY_741'"),
+                event('item.started', 'b', 'command_execution', command='cat /private/PRIVATE_CANARY_741'),
+                event('item.completed', 'b', 'command_execution', command='cat /private/PRIVATE_CANARY_741', aggregated_output=secret),
+                event('item.completed', 'a', 'command_execution', command="/bin/zsh -lc 'ws brief --task PRIVATE_CANARY_741'", aggregated_output=secret),
+                event('item.completed', 'c', 'mcp_tool_call', server=secret, tool='read_task', arguments={'path': secret}, result=secret),
+                event('item.completed', 'd', 'command_execution', command='python3 /private/PRIVATE_CANARY_741'),
+                event('item.completed', 'e', 'command_execution', command=secret + ' --arg'),
+                {'type': 'turn.completed', 'usage': {'input_tokens': 100, 'output_tokens': 10}},
+            ]
+            worker = mock.Mock(returncode=0)
+            worker.communicate.return_value = ('\n'.join(json.dumps(e) for e in events), '')
+            with mock.patch.object(rollout_transport.subprocess, 'Popen', return_value=worker):
+                call, _, _ = rollout_transport.session(root, home, 'fixture prompt', True, root / 'no-auth')
+            self.assertEqual(call['tool_names'], ['ws brief', 'cat', 'mcp:read_task', 'python3', 'other'])
+            self.assertNotIn(secret, json.dumps(call))
+            self.assertNotIn('/private/', json.dumps(call))
+            result_file = root / 'trial.json'
+            rollout_run.save(result_file, {'seed': 42, 'runs': [{'calls': [call]}]})
+            saved = json.loads(result_file.read_text())['runs'][0]['calls'][0]['tool_names']
+            self.assertEqual(saved, ['ws brief', 'cat', 'mcp:read_task', 'python3', 'other'])
+            self.assertNotIn(secret, result_file.read_text())
+
+    def test_shell_names_never_include_untrusted_arguments_or_paths(self):
+        cases = (
+            ('ws --workspace-root /private/SECRET_741 checkpoint --note SECRET_741', 'ws checkpoint'),
+            ('/usr/bin/python3 /private/SECRET_741', 'python3'),
+            ('ws SECRET_741 --arg', 'ws'),
+            ('/private/SECRET_741 --arg', 'other'),
+            ('SECRET_741=secret', 'other'),
+            ("bash -lc 'unterminated", 'other'),
+        )
+        for command, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(rollout_transport.shell_name(command), expected)
+
+    def test_claude_event_stream_records_names_without_inputs(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); worker = mock.Mock(returncode=0)
+            events = [
+                {'type': 'assistant', 'message': {'content': [
+                    {'type': 'tool_use', 'name': 'Read', 'input': {'file_path': '/private/SECRET_741'}},
+                    {'type': 'tool_use', 'name': 'Bash', 'input': {'command': 'ws checkpoint BENCH-1 --note SECRET_741'}},
+                    {'type': 'tool_use', 'name': 'mcp__ai-dev-workspace__brief', 'input': {'text': 'SECRET_741'}},
+                    {'type': 'tool_use', 'name': 'SECRET_741', 'input': {}},
+                ]}},
+                {'type': 'result', 'session_id': 'fixture', 'result': '', 'usage': {}},
+            ]
+            worker.communicate.return_value = ('\n'.join(json.dumps(e) for e in events), '')
+            with mock.patch.object(rollout_transport.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout='2.1.300')), \
+                    mock.patch.object(rollout_transport.subprocess, 'Popen', return_value=worker):
+                call, _, _ = rollout_transport.claude_session(root, root / 'home', 'fixture', False)
+            self.assertEqual(call['tool_names'], ['Read', 'ws checkpoint', 'mcp:brief', 'other'])
+            self.assertNotIn('SECRET_741', json.dumps(call))
+            self.assertNotIn('/private/', json.dumps(call))
+
     def test_claude_transport_does_not_inherit_secret_environment(self):
         allowed = {'PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'SHELL', 'TERM',
                    'WS_OFFLINE', 'WS_ROOT', 'PYTHONDONTWRITEBYTECODE'}
