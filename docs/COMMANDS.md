@@ -72,6 +72,7 @@ Check that the corrected decision appears in the brief. You can also ask your as
 | Command | What it does |
 |---|---|
 | `ws task find <ref>` | Find a task by branch, ID or another reference. |
+| `ws task fix-status [--yes]` | Rename status spellings from imported vaults (complete, merged, in-progress, queued, waiting, diagnosed and similar) to the standard ones. Previews unless you pass `--yes`; keeps the old value as `old_status`. Unknown values are listed and left alone. |
 | `ws task sha <ID>` | Print the task record's current sha. Pass it as `--expected-sha` (CLI) or `expected_sha` (MCP) so a save is refused if the task changed since you read it; an empty value is refused. |
 | `ws task next [--worker W]` | Select and claim the first eligible unclaimed task (not done or blocked, dependencies done) in one locked step; prints the task and its claim token. Also the MCP tool `claim_next_task`. |
 | `ws task depend <ID> --on <OTHER>` | Make `<ID>` wait for `<OTHER>`. |
