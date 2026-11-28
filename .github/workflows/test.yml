@@ -49,27 +49,6 @@ jobs:
       - if: env.RUN_TESTS == 'true'
         uses: actions/setup-python@v7
         with: {python-version: "${{ matrix.python }}"}
-      - name: Temporary Python 3.14 baseline classification
-        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -eu
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          baseline=$(mktemp -d)
-          git archive "$BASE_SHA" | tar -x -C "$baseline"
-          export HOME="$(mktemp -d)" WS_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1
-          cd "$baseline"
-          for pattern in test_windows_hardening2.py test_hunt2_guards.py test_plugin_runtime.py test_undo_clean.py; do
-            echo "Baseline $BASE_SHA $pattern:"
-            set +e
-            python -m unittest discover -s tests -p "$pattern" > "$RUNNER_TEMP/$pattern.log" 2>&1
-            rc=$?
-            set -e
-            echo "exit=$rc"
-            grep -E '^FAIL:|^ERROR:|^Ran |^FAILED|^OK|^AssertionError:|SyntaxWarning|^  File ' "$RUNNER_TEMP/$pattern.log" || true
-          done
       - if: env.RUN_TESTS == 'true' && runner.os == 'Windows'
         run: chcp 65001
       - if: env.RUN_TESTS == 'true'
