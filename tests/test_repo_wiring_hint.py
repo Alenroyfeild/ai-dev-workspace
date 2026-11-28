@@ -88,4 +88,3 @@ class RepoWiringHintTests(Base):
         self.assertIsNone(state['kit_version'])
         self.assertEqual(state['blocked_by'], ['.ws-start.json'])
         self.assertEqual(record.read_bytes(), before)
-
