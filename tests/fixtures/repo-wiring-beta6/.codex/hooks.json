@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "python3 /fixture/old-kit/bin/ws --workspace-root __ROOT__ brief --hook --client codex"
+          }
+        ]
+      }
+    ]
+  }
+}

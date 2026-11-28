@@ -1,0 +1,15 @@
+{
+  "kit_version": "0.1.0-beta.6",
+  "workspace": "__ROOT__",
+  "files": {
+    ".codex/config.toml": {
+      "sha": "0bd2fe357cef826eb906322a61511675ffff440533e3cd41dad07c86118ddff4",
+      "before": null
+    },
+    ".codex/hooks.json": {
+      "sha": "15de32bdf6342aed3a4845a7925699b2de384ae91001227e51931aff52909e40",
+      "before": null
+    }
+  },
+  "complete": true
+}

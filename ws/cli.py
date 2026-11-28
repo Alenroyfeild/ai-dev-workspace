@@ -87,6 +87,7 @@ def show(plan, summary):
 
 
 def text_status(report):
+    from . import repo
     lines = [f"Workspace: {report['workspace']}"]
     tasks = ', '.join(f'{name} {count}' for name, count in sorted(report['tasks'].items())) or 'none'
     lines.append('Tasks: ' + tasks)
@@ -97,6 +98,11 @@ def text_status(report):
                   f"Recent runs: {report['runs']['steps']}"))
     if 'codex_goals' in report:
         lines.append(f"Codex goals: {report['codex_goals']['active']} active, {report['codex_goals']['complete']} complete")
+    for state in report.get('repo_wiring', []):
+        blocked = ', '.join(state['blocked_by']) or 'none'
+        lines.append(f"Repo wiring: {state['repo']}: {state['kit_version'] or 'unknown'}; "
+                     f"current: {str(state['current']).lower()}; blocked_by: {blocked}")
+    lines.extend(repo.wiring_hints(report.get('repo_wiring', [])))
     return '\n'.join(lines)
 
 
@@ -308,6 +314,7 @@ def main(argv=None):
     s = sub.add_parser('pack', help='plug a pack into this workspace'); s.add_argument('action', choices=['add', 'remove']); s.add_argument('name', nargs='?')
     s.add_argument('--from', dest='source', help='private pack folder (kept outside the kit)')
     s = sub.add_parser('status', help='workspace overview'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
+    s.add_argument('--json', action='store_true', help='print JSON even in a terminal')
     s = sub.add_parser('route', help='resolve an explicit role binding; PATH availability only'); s.add_argument('role', nargs='?', default='lead'); s.add_argument('--text', action='store_true', help='show a human-readable summary')
     s = sub.add_parser('delegate', help='prepare bounded work or test the read-only worker'); s.add_argument('task', nargs='?'); s.add_argument('--role'); s.add_argument('--run', action='store_true')
     s.add_argument('--selftest', action='store_true'); s.add_argument('--provider', choices=('codex', 'claude'))
@@ -766,7 +773,7 @@ def main(argv=None):
             out(assist.apply(root, a.id) if a.action == 'apply' else assist.decide(root, a.id, a.decision, a.until) if a.action == 'decide' else assist.suggestions(root)); return 0
         if a.cmd == 'status':
             result = core.status(root)
-            out(text_status(result) if a.text or human() else result)
+            out(text_status(result) if not a.json and (a.text or human()) else result)
         elif a.cmd == 'map': out(core.codebase_map(root, a.repo, allow_external=bool(a.repo)))
         elif a.cmd == 'pack':
             from . import packs
