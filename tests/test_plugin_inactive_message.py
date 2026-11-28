@@ -9,7 +9,7 @@ Surfaces:
   3. SKILL.md prerequisite lines for handoff, pickup, lesson.
 
 All three must tell the user:
-  - Install: pipx install ai-dev-workspace --pip-args='--pre'
+  - Install: pipx install ai-dev-workspace
   - Activate: ws start
 
 The hook stays silent (no stdout); nothing here changes ws/plugin_runtime.py output.
@@ -29,7 +29,7 @@ spec = importlib.util.spec_from_file_location('workspace_mcp', KIT / 'mcp' / 'se
 server = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(server)
 
-INSTALL_CMD = "pipx install ai-dev-workspace --pip-args='--pre'"
+INSTALL_CMD = "pipx install ai-dev-workspace"
 WS_START_CMD = 'ws start'
 
 
