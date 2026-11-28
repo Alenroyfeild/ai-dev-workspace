@@ -1,0 +1,1 @@
+Added: `ws task fix-status [--yes]` renames status spellings from imported vaults to the standard ones (preview first, old value kept as `old_status`), and `ws validate` names the standard status for a known spelling. SETUP.md covers offline installs.

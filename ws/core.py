@@ -112,6 +112,12 @@ def newer_format_message(label, number):
 REQUIRED = ('Objective', 'Acceptance criteria', 'Evidence', 'Checks', 'Blockers', 'Next action', 'Handoff')
 NOTE_SECTIONS = REQUIRED + ('Findings', 'Failures', 'Risks', 'Do not redo')
 STATUSES = ('backlog', 'ready', 'in_progress', 'review', 'blocked', 'done')
+# Status spellings seen in imported vaults; `ws task fix-status` renames them (old value kept as old_status).
+STATUS_ALIASES = {'in-progress': 'in_progress', 'inprogress': 'in_progress', 'in progress': 'in_progress', 'doing': 'in_progress',
+                  'active': 'in_progress', 'delegated': 'in_progress', 'complete': 'done', 'completed': 'done', 'merged': 'done',
+                  'closed': 'done', 'finished': 'done', 'queued': 'ready', 'todo': 'ready', 'to-do': 'ready', 'open': 'ready',
+                  'waiting': 'blocked', 'on-hold': 'blocked', 'on hold': 'blocked', 'in-review': 'review', 'in review': 'review',
+                  'diagnosed': 'review'}
 ID_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 SECRET_RE = re.compile(
     # Marker only: redact() splices whole key blocks (linear); this still locates a key for line numbers.
@@ -1391,6 +1397,26 @@ def task_import(root, file, prefix='SPEC', write=False):
                 if i['depends_on']: meta['depends_on'] = ', '.join(i['depends_on'])
                 atomic_write(path, set_meta(read_exact(path), meta))
     return result
+
+
+def task_fix_status(root, apply=False):
+    """Rename known status spellings (STATUS_ALIASES) to the standard ones; preview unless apply. Keeps old_status."""
+    renames, unknown = [], []
+    with lock(root):
+        for path in sorted((vault(root) / 'Tasks').glob('*.md')):
+            if not ID_RE.fullmatch(path.stem): continue
+            text = read_exact(path)
+            if conflicted(text): continue
+            status = parse_meta(text).get('status', '')
+            if status in STATUSES: continue
+            target = STATUS_ALIASES.get(status.lower())
+            if not target:
+                unknown.append({'task': path.stem, 'status': status}); continue
+            renames.append({'task': path.stem, 'from': status, 'to': target})
+            if apply:
+                atomic_write(path, set_meta(text, {'status': target, 'old_status': status}))
+    return {'applied': bool(apply and renames), 'renames': renames, 'unknown': unknown,
+            'next': '' if apply or not renames else 'ws task fix-status --yes'}
 
 
 def task_find(root, ref):
@@ -2933,7 +2959,9 @@ def validate(root):
         if meta.get('id') != path.stem:
             errors.append(f'{path.name}: id must equal the file name')
         if meta.get('status') not in STATUSES:
-            errors.append(f'{path.name}: status must be one of {", ".join(STATUSES)}')
+            alias = STATUS_ALIASES.get(meta.get('status', '').lower())
+            hint = f'; use {alias} (`ws task fix-status` previews the rename)' if alias else ''
+            errors.append(f'{path.name}: status must be one of {", ".join(STATUSES)}{hint}')
         for name in REQUIRED:
             if not re.search(rf'^## {re.escape(name)}\s*$', text, re.M):
                 errors.append(f'{path.name}: missing section {name}')

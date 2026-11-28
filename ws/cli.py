@@ -388,6 +388,7 @@ def main(argv=None):
                      'a changed token refuses the release. A token left locally before the task write grants no claim.')
     s.add_argument('--worker', help='label for this session (default: $USER)')
     s = t.add_parser('find', help='find tasks by ID, branch or title'); s.add_argument('ref', help='ID, branch or title text')
+    s = t.add_parser('fix-status', help='rename imported status spellings (complete, in-progress, queued...) to standard ones; preview unless --yes'); s.add_argument('--yes', action='store_true')
     s = t.add_parser('sha', help='print the task record\'s current sha (pass it as --expected-sha)'); s.add_argument('id')
     s = t.add_parser('show', help='print one task record'); s.add_argument('id'); s.add_argument('--section', action='append', help='print only this section; repeat for several')
     s = t.add_parser('depend', help='make a task wait for another'); s.add_argument('id'); s.add_argument('--on', required=True, metavar='OTHER')
@@ -874,6 +875,7 @@ def main(argv=None):
             elif a.action == 'find': out(core.task_find(root, a.ref))
             elif a.action == 'depend': out(core.task_depend(root, a.id, a.on))
             elif a.action == 'sha': out(core.task_read(root, a.id)['sha'])
+            elif a.action == 'fix-status': out(core.task_fix_status(root, a.yes))
             elif a.action == 'import':
                 res = core.task_import(root, a.file, a.prefix, a.yes); out(res)
                 if res['errors']: return 1

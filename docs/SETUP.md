@@ -16,6 +16,8 @@ ws --help
 
 macOS, Linux and Windows. Linux: CI only; no live session on record. Windows: CI only. Requires Python 3.9+ and git. No pip packages.
 
+Offline (no PyPI access): use the git-clone route above, which needs no install step. To pip-install from a source checkout without network, install `wheel` into that venv first (an older venv's setuptools cannot build without it), then run `pip install --no-index --no-build-isolation <checkout>`.
+
 ## 2. Create a workspace
 
 One workspace per product (it can serve several repos). `ws map` also links an existing `graphify-out/GRAPH_REPORT.md` and its top headings; `ws search` searches that report. The kit never runs Graphify.
