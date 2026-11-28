@@ -388,6 +388,7 @@ def main(argv=None):
                      'a changed token refuses the release. A token left locally before the task write grants no claim.')
     s.add_argument('--worker', help='label for this session (default: $USER)')
     s = t.add_parser('find', help='find tasks by ID, branch or title'); s.add_argument('ref', help='ID, branch or title text')
+    s = t.add_parser('sha', help='print the task record\'s current sha (pass it as --expected-sha)'); s.add_argument('id')
     s = t.add_parser('show', help='print one task record'); s.add_argument('id'); s.add_argument('--section', action='append', help='print only this section; repeat for several')
     s = t.add_parser('depend', help='make a task wait for another'); s.add_argument('id'); s.add_argument('--on', required=True, metavar='OTHER')
     s = t.add_parser('import', help='create tasks from Task Master tasks.json or a Spec Kit tasks.md (preview unless --yes)')
@@ -872,6 +873,7 @@ def main(argv=None):
                 out(core.claim_next(root, worker))
             elif a.action == 'find': out(core.task_find(root, a.ref))
             elif a.action == 'depend': out(core.task_depend(root, a.id, a.on))
+            elif a.action == 'sha': out(core.task_read(root, a.id)['sha'])
             elif a.action == 'import':
                 res = core.task_import(root, a.file, a.prefix, a.yes); out(res)
                 if res['errors']: return 1

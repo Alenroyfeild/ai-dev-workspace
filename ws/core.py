@@ -1515,8 +1515,10 @@ def checkpoint(root, task_id, status, next_action, expected_sha=None, worker=Non
         meta = parse_meta(text)
         if meta.get('claimed_by') and (worker != meta['claimed_by'] or token != meta.get('claim_token')):
             raise WsError(f'{task_id} is claimed by {meta["claimed_by"]}; pass its worker and token.')
+        if expected_sha is not None and not str(expected_sha).strip():
+            raise WsError(f'expected_sha is empty, so the stale-write check cannot run. Pass the current value from `ws task sha {task_id}`, or omit it to save without the check.')
         if expected_sha and expected_sha != digest_text(text):
-            raise WsError('Task changed since you read it; read it again before checkpointing.')
+            raise WsError(f'Task changed since you read it; get the current sha with `ws task sha {task_id}` (and re-read what changed) before checkpointing.')
         values = {'status': status, 'updated': now(), 'checkpoint_at': now(), 'checkpoint_count': int(meta.get('checkpoint_count', 0)) + 1}
         head = _task_git(root, task_id, 'rev-parse', 'HEAD').strip()
         if re.fullmatch(r'[0-9a-f]{40,64}', head): values['checkpoint_commit'] = head  # lets brief spot stale memory
